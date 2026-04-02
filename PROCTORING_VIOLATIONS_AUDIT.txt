@@ -1,0 +1,186 @@
+PROJECT VIOLATION INVENTORY (ENABLED + DISABLED)
+Generated: 2026-03-08
+Repository: EvaluationPlatform-claude-deploy-digital-ocean-y3EtN
+Scope: backend + frontend + python_cv_service proctoring pipeline
+
+====================================================================
+1) RUNTIME SWITCHES AND GLOBAL TIMING
+====================================================================
+| Setting | Current Value | Source |
+|---|---:|---|
+| TEMP_DISABLE_AUDIO_PROCTORING | true | backend/src/controllers/proctoring.ts, backend/src/services/proctorAIService.ts, frontend/src/hooks/useProctoring.ts |
+| TEMP_DISABLE_SUSPICIOUS_AUDIO | true (derived) | frontend/src/hooks/useProctoring.ts |
+| TEMP_DISABLED_EVENTS | suspicious_audio, voice_detected, multiple_voice_detected, multiple_voices_detected, multi_voice_detected, multi_voice, multiple_voice, multiple_voices | backend/src/controllers/proctoring.ts |
+| PROCTOR_ALLOWED_EVENTS | multiple_faces,phone_detected,face_not_detected,voice_detected,tab_switch,fullscreen_exit,window_blur,copy_paste_attempt,devtools_open,camera_blocked,looking_away,suspicious_audio,unauthorized_object_detected | backend/.env |
+| PROCTOR_REPORT_EVENTS | phone_detected,multiple_faces,looking_away,voice_detected,suspicious_audio,unauthorized_object_detected | backend/.env |
+| Python CV_ENABLED_EVENTS | face_not_detected,multiple_faces,phone_detected,looking_away,camera_blocked | python_cv_service/.env |
+| Backend analysis min interval | 4000 ms (default) | backend/src/controllers/proctoring.ts (PROCTOR_SESSION_MIN_INTERVAL_MS) |
+| Frontend snapshot analysis interval | 2000 ms | frontend/.env (VITE_PROCTOR_ANALYSIS_INTERVAL_MS) |
+| Frontend face detection interval | 3000 ms | frontend/src/hooks/useProctoring.ts |
+| Frontend obstruction check interval | 500 ms | frontend/src/hooks/useProctoring.ts |
+| Frontend monitor check interval | 10000 ms | frontend/src/hooks/useProctoring.ts |
+| Frontend startup anti-cheat arm delay | 15000 ms | frontend/src/pages/candidate/ExamInterface.tsx |
+| Python per-event cooldown | 1.8 s | python_cv_service/.env (VIOLATION_COOLDOWN_SECONDS) |
+
+Effective note:
+- Audio/voice proctoring is globally disabled right now by hard-coded flags and disabled-event filters.
+- Even if env allowlists include voice/suspicious audio, TEMP_DISABLED_EVENTS still blocks them.
+
+====================================================================
+2) CANONICAL VIOLATION MATRIX (ENABLED + DISABLED + DEFINED)
+====================================================================
+Status legend:
+- ENABLED: can currently be generated and stored
+- DISABLED: blocked by current flags/filters
+- DEFINED_ONLY: exists in maps but no active generation path by default
+- INFO_ONLY: informational event, not treated as violation
+
+| # | Event Type | Status | Primary Detection Source(s) | Threshold / Rule | Detection Time / Window | Cooldown / Debounce | Counts Toward Violation Limit | Trust Report Set* |
+|---:|---|---|---|---|---|---|---|---|
+| 1 | tab_switch | ENABLED | Frontend visibilitychange; backend screenInfo.tabVisible=false | Tab hidden / test tab not visible | Immediate browser event; backend cycle ~2s send / >=4s process | None (event-specific); UI dedupe 5s for repeated realtime events | Yes | No (with current backend/.env PROCTOR_REPORT_EVENTS) |
+| 2 | window_blur | ENABLED | Frontend window blur via window_exit/focus_loss mapping | Window loses focus | Immediate on blur | None | Yes | No |
+| 3 | fullscreen_exit | ENABLED | Frontend fullscreenchange; backend screenInfo.isFullscreen=false | Fullscreen not active | Immediate on exit + backend cycle | None | Yes | No |
+| 4 | copy_paste_attempt | ENABLED | Frontend copy/paste intercept; backend candidate mapping | Copy/Paste attempted | Immediate on copy/paste event | None | Yes | No |
+| 5 | devtools_open | ENABLED | Frontend key combo detection + heuristic window-size detection | F12/Ctrl+Shift+I/J OR outer-inner size delta >160 | Immediate key event OR every 4s heuristic poll | None | Yes | No |
+| 6 | camera_blocked | ENABLED | Frontend obstruction monitor; Python CV | Frontend: dark/uniform/disconnected camera sustained >=1200ms. Python: camera-blocked signal sustained >1.0s | Frontend 500ms checks with 1.2s sustain; Python snapshot-driven | Python global cooldown 1.8s | Yes | No |
+| 7 | face_not_detected | ENABLED | Python CV; frontend AI fallback; backend face payload path | Python: face_count==0 for >1.5s. Frontend fallback: no face for 3 consecutive detect frames | Python snapshot-driven. Frontend fallback approx 9s (3 frames at 3s default) | Frontend default client cooldown 12s; Python cooldown 1.8s | Yes | No |
+| 8 | multiple_faces | ENABLED | Python CV; frontend AI fallback; backend face payload path | Python: face_count>1 for >1.5s. Frontend fallback: faces/person count >1 | Python snapshot-driven; frontend face cycle every 3s | Frontend default 12s (mapped path); Python cooldown 1.8s | Yes | Yes |
+| 9 | looking_away | ENABLED | Python CV; frontend AI fallback; backend gaze payload path | Python: off-screen gaze >1.5s, threshold GAZE_LEFT_RIGHT_THRESHOLD=0.30. Frontend fallback: 5 consecutive off-screen frames | Python snapshot-driven; frontend fallback approx 15s (5 frames at 3s) | Frontend default 12s; Python cooldown 1.8s | Yes | Yes |
+| 10 | phone_detected | ENABLED | Python YOLO; frontend object rules; backend object payload path | Python: conf>=0.28 and areaRatio>=0.00003. Frontend: cell phone >=35% or suspicious object >0.3 mapped | Snapshot/face-detect cycles | Frontend phone rule 9000ms + default 12s mapped; Python per-phone 1.8s + global 1.8s | Yes | Yes |
+| 11 | secondary_monitor_detected | ENABLED | Backend monitor transition path (init/update monitor count), frontend monitor polling | Triggered only on monitor transition <=1 to >1 | Frontend monitor check every 10s + session init/update | Frontend monitor cooldown 6000ms | Yes | No |
+| 12 | unauthorized_object_detected | ENABLED (low priority) | Frontend object rules / AI mapped objects | laptop>=45% or remote>=45%, or mapped from object classes (laptop/book/remote) | Face detection cycle every 3s | 10000ms object rule, or 12000ms default mapped | No (low-priority exclusion) | Yes |
+| 13 | suspicious_audio | DISABLED | Backend audio analysis + frontend audio fallback (both gated off) | Would use AUDIO_WARNING_LEVEL=42 / AUDIO_CRITICAL_LEVEL=58 / AUDIO_VOICE_MIN_LEVEL=16 | Would run on audio intervals (2s) and analysis cycles | Frontend fallback 10000ms | No (low-priority exclusion) | Yes (configured), but blocked currently |
+| 14 | voice_detected | DISABLED | External/alias mappings only (no active analyzer emit path now) | No active threshold path in current runtime | N/A in current runtime | Backend event cooldown 120000ms if enabled | Yes (if enabled) | Yes (configured), but blocked currently |
+| 15 | eyes_closed_long | DEFINED_ONLY | Backend analyzeProctoring map | eyeOpenness average <0.3 | Analysis cycle dependent | None | No (low-priority exclusion) | No |
+| 16 | rapid_typing | DEFINED_ONLY | Severity/low-priority maps only | No active detector implementation | N/A | N/A | No (low-priority exclusion) | No |
+| 17 | unusual_mouse_movement | DEFINED_ONLY | Severity/low-priority maps only | No active detector implementation | N/A | N/A | No (low-priority exclusion) | No |
+| 18 | screen_share_stopped | DEFINED_ONLY | Severity map only | No active detector implementation in current flow | N/A | N/A | (Would count if emitted and allowed) | No |
+| 19 | external_monitor | DEFINED_ONLY (legacy alias) | Alias -> secondary_monitor_detected | Normalized alias event | Same as secondary monitor path | Same as secondary monitor path | Same as secondary monitor path | Same as secondary monitor report behavior |
+| 20 | camera_resumed | INFO_ONLY | Frontend obstruction-clear signal | Emitted when obstruction clears and clear streak passes | After obstruction clears (~2 clear checks) | N/A | No (non-violation event) | No |
+| 21 | tab_switch_resume | INFO_ONLY | Frontend activity log | Candidate returns to tab | Immediate return event | N/A | No (non-violation event) | No |
+| 22 | window_focus_return | INFO_ONLY | Frontend activity log | Candidate regains window focus | Immediate focus event | N/A | No (non-violation event) | No |
+
+* Trust Report Set column reflects backend/.env PROCTOR_REPORT_EVENTS currently set to:
+  phone_detected,multiple_faces,looking_away,voice_detected,suspicious_audio,unauthorized_object_detected
+
+====================================================================
+3) VOICE / AUDIO SPECIFIC IDENTIFIERS (COMPLETE)
+====================================================================
+Canonical audio/voice violations:
+- voice_detected (DISABLED)
+- suspicious_audio (DISABLED)
+
+Temporarily disabled audio/voice event IDs (TEMP_DISABLED_EVENTS):
+- suspicious_audio
+- voice_detected
+- multiple_voice_detected
+- multiple_voices_detected
+- multi_voice_detected
+- multi_voice
+- multiple_voice
+- multiple_voices
+
+Voice-related alias normalizations (map to voice_detected, therefore blocked):
+- voice
+- voice_activity
+- speech_detected
+- audio_voice
+- external engine type VOICE -> voice_detected
+
+Summary count:
+- 2 canonical voice/audio violations
+- 6 extra multi-voice compatibility event IDs
+- 4 voice alias tokens + 1 external engine token mapped into voice_detected
+
+====================================================================
+4) NORMALIZATION / ALIAS MAP (IMPORTANT FOR LOGS)
+====================================================================
+| Raw / Alias Input | Normalized Stored Event |
+|---|---|
+| no_face, no_face_detected, no_face_visible, no_person_visible, face_missing | face_not_detected |
+| multi_face, multiple_face, multi_faces, more_than_one_face | multiple_faces |
+| phone, mobile_phone, cell_phone, phone_usage | phone_detected |
+| off_screen, off_screen_gaze, gaze_away | looking_away |
+| tab_change, tab_switched | tab_switch |
+| full_screen_exit, fullscreen_off | fullscreen_exit |
+| focus_loss, window_exit | window_blur |
+| copy_paste, copy_attempt, paste_attempt | copy_paste_attempt |
+| camera_obstructed, camera_disabled, cam_blocked | camera_blocked |
+| dev_tools_open | devtools_open |
+| external_monitor, secondary_monitor, secondary_screen, secondary_screen_detected | secondary_monitor_detected |
+| voice, voice_activity, speech_detected, audio_voice | voice_detected (currently blocked) |
+
+====================================================================
+5) COUNTING AND TERMINATION LOGIC (REFERENCE)
+====================================================================
+Violation counter increment rules:
+- Count increments in backend storeViolation unless event is in NON_VIOLATION_EVENTS or LOW_PRIORITY_EVENTS.
+- LOW_PRIORITY_EVENTS (do NOT increment): suspicious_audio, unauthorized_object_detected, eyes_closed_long, rapid_typing, unusual_mouse_movement.
+- NON_VIOLATION_EVENTS (do NOT increment): camera_resumed, tab_switch_resume, window_focus_return.
+
+Auto-submit / termination condition:
+- Termination is based on attempt.violations >= test.maxViolations.
+- Candidate activity events (tab/window/fullscreen/copy/paste/devtools) increment immediately in candidate.ts mapping path.
+- AI/Python violations increment through proctoring.ts -> storeViolation path when accepted.
+
+====================================================================
+6) PROCTORING FILE ARCHITECTURE TREE
+====================================================================
+EvaluationPlatform-claude-deploy-digital-ocean-y3EtN/
+|-- backend/
+|   |-- .env
+|   `-- src/
+|       |-- routes/
+|       |   |-- candidate.ts
+|       |   `-- proctoring.ts
+|       |-- controllers/
+|       |   |-- candidate.ts
+|       |   |-- proctoring.ts
+|       |   `-- trustReports.ts
+|       `-- services/
+|           |-- fileStorageService.ts
+|           |-- proctorAIService.ts
+|           |-- pythonVisionService.ts
+|           `-- socketService.ts
+|-- frontend/
+|   |-- .env
+|   `-- src/
+|       |-- hooks/
+|       |   `-- useProctoring.ts
+|       |-- pages/
+|       |   |-- candidate/
+|       |   |   `-- ExamInterface.tsx
+|       |   `-- admin/
+|       |       |-- ProctorDashboard.tsx
+|       |       |-- TrustReports.tsx
+|       |       `-- AttemptDetails.tsx
+|       |-- services/
+|       |   |-- aiDetectionService.ts
+|       |   |-- proctorService.ts
+|       |   `-- realtimeService.ts
+|       `-- utils/
+|           `-- violationLabels.ts
+`-- python_cv_service/
+    |-- .env
+    |-- app.py
+    |-- ai_server.py
+    |-- requirements.txt
+    `-- README.md
+
+====================================================================
+7) SOURCE FILES USED FOR THIS INVENTORY
+====================================================================
+- backend/src/controllers/proctoring.ts
+- backend/src/controllers/candidate.ts
+- backend/src/controllers/trustReports.ts
+- backend/src/services/proctorAIService.ts
+- backend/src/services/pythonVisionService.ts
+- frontend/src/hooks/useProctoring.ts
+- frontend/src/pages/candidate/ExamInterface.tsx
+- frontend/src/services/aiDetectionService.ts
+- frontend/src/services/proctorService.ts
+- frontend/src/utils/violationLabels.ts
+- backend/.env
+- frontend/.env
+- python_cv_service/.env
+- python_cv_service/app.py

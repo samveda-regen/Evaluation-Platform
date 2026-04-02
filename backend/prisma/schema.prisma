@@ -1,0 +1,713 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum QuestionSource {
+  QUESTION_BANK
+  CUSTOM
+}
+
+enum QuestionRepositoryCategory {
+  CODING
+  MCQ
+  BEHAVIORAL
+}
+
+enum InvitationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model Admin {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  tests     Test[]
+  mcqQuestions    MCQQuestion[]
+  codingQuestions CodingQuestion[]
+}
+
+model Candidate {
+  id           String             @id @default(uuid())
+  email        String
+  name         String
+  password     String?
+  createdAt    DateTime           @default(now())
+  testAttempts TestAttempt[]
+  identity     CandidateIdentity?
+
+  @@unique([email])
+}
+
+model Test {
+  id                    String    @id @default(uuid())
+  testCode              String    @unique
+  name                  String
+  description           String?
+  instructions          String?
+  duration              Int // in minutes
+  startTime             DateTime
+  endTime               DateTime?
+  totalMarks            Int
+  passingMarks          Int?
+  negativeMarking       Float     @default(0)
+  isActive              Boolean   @default(true)
+  shuffleQuestions      Boolean   @default(false)
+  shuffleOptions        Boolean   @default(false)
+  allowMultipleAttempts Boolean   @default(false)
+  maxViolations         Int       @default(3)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  adminId String
+  admin   Admin  @relation(fields: [adminId], references: [id])
+
+  // Proctoring settings
+  proctorEnabled        Boolean @default(false)
+  requireCamera         Boolean @default(false)
+  requireMicrophone     Boolean @default(false)
+  requireScreenShare    Boolean @default(false)
+  requireIdVerification Boolean @default(false)
+  allowMobileProctoring Boolean @default(false)
+
+  questions TestQuestion[]
+  sections  TestSection[]
+  attempts  TestAttempt[]
+  analytics TestAnalytics?
+  invitations TestInvitation[]
+}
+
+model TestInvitation {
+  id        String           @id @default(uuid())
+  testId    String
+  name      String
+  email     String
+  token     String           @unique
+  status    InvitationStatus @default(PENDING)
+  sentAt    DateTime?
+  error     String?
+  consumedAt DateTime?
+  createdAt DateTime         @default(now())
+
+  test Test @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@index([testId])
+  @@index([email])
+  @@unique([testId, email])
+}
+
+model MCQQuestion {
+  id String @id @default(uuid())
+
+  // Repository classification
+  source             QuestionSource             @default(CUSTOM)
+  repositoryCategory QuestionRepositoryCategory @default(MCQ)
+  isEnabled          Boolean                    @default(true)
+
+  questionText     String
+  options          String // JSON array
+  correctAnswers   String // JSON array
+  marks            Int
+  isMultipleChoice Boolean @default(false)
+  explanation      String?
+
+  difficulty String  @default("medium")
+  topic      String?
+  tags       String? // JSON array of skills
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  adminId String?
+  admin   Admin? @relation(fields: [adminId], references: [id])
+
+  mediaAssets   MediaAsset[]
+  testQuestions TestQuestion[]
+  answers       MCQAnswer[]
+
+  @@index([source])
+  @@index([repositoryCategory])
+  @@index([difficulty])
+  @@index([isEnabled])
+  @@index([adminId])
+}
+
+model CodingQuestion {
+  id String @id @default(uuid())
+
+  // Repository classification
+  source             QuestionSource             @default(CUSTOM)
+  repositoryCategory QuestionRepositoryCategory @default(CODING)
+  isEnabled          Boolean                    @default(true)
+
+  title        String
+  description  String
+  inputFormat  String
+  outputFormat String
+  constraints  String?
+  sampleInput  String
+  sampleOutput String
+
+  marks       Int
+  timeLimit   Int @default(2000)
+  memoryLimit Int @default(256)
+
+  supportedLanguages String // JSON array
+  codeTemplates      String?
+  partialScoring     Boolean @default(false)
+
+  difficulty String  @default("medium")
+  topic      String?
+  tags       String?
+
+  autoEvaluate Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  adminId String?
+  admin   Admin? @relation(fields: [adminId], references: [id])
+
+  testCases     TestCase[]
+  testQuestions TestQuestion[]
+  answers       CodingAnswer[]
+
+  @@index([source])
+  @@index([repositoryCategory])
+  @@index([difficulty])
+  @@index([isEnabled])
+  @@index([adminId])
+}
+
+model BehavioralQuestion {
+  id String @id @default(uuid())
+
+  // Repository classification
+  source             QuestionSource             @default(CUSTOM)
+  repositoryCategory QuestionRepositoryCategory @default(BEHAVIORAL)
+  isEnabled          Boolean                    @default(true)
+
+  title       String
+  description String
+
+  marks Int
+
+  difficulty String  @default("medium")
+  topic      String?
+  tags       String?
+
+  expectedAnswer String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  testQuestions TestQuestion[]
+  answers       BehavioralAnswer[]
+
+  @@index([source])
+  @@index([repositoryCategory])
+  @@index([difficulty])
+  @@index([isEnabled])
+}
+
+model TestCase {
+  id             String  @id @default(uuid())
+  input          String
+  expectedOutput String
+  isHidden       Boolean @default(false)
+  marks          Int     @default(0)
+
+  questionId String
+  question   CodingQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+}
+
+model TestQuestion {
+  id String @id @default(uuid())
+
+  testId       String
+  questionType String // "mcq", "coding", "behavioral"
+
+  sectionId String?
+
+  mcqQuestionId        String?
+  codingQuestionId     String?
+  behavioralQuestionId String?
+
+  orderIndex Int
+
+  test Test @relation(fields: [testId], references: [id], onDelete: Cascade)
+  section TestSection? @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  mcqQuestion        MCQQuestion?        @relation(fields: [mcqQuestionId], references: [id])
+  codingQuestion     CodingQuestion?     @relation(fields: [codingQuestionId], references: [id])
+  behavioralQuestion BehavioralQuestion? @relation(fields: [behavioralQuestionId], references: [id])
+
+  attemptQuestions TestAttemptQuestion[]
+
+  @@unique([testId, orderIndex])
+}
+
+model TestSection {
+  id String @id @default(uuid())
+
+  testId   String
+  name     String
+  orderIndex Int
+  questionsPerCandidate Int @default(1)
+
+  test      Test          @relation(fields: [testId], references: [id], onDelete: Cascade)
+  questions TestQuestion[]
+
+  @@unique([testId, orderIndex])
+  @@index([testId])
+}
+
+model TestAttempt {
+  id          String    @id @default(uuid())
+  testId      String
+  candidateId String
+  startTime   DateTime  @default(now())
+  endTime     DateTime?
+  submittedAt DateTime?
+  status      String    @default("in_progress") // in_progress, submitted, auto_submitted, flagged
+  score       Float?
+  violations  Int       @default(0)
+  isFlagged   Boolean   @default(false)
+  flagReason  String?
+
+  test      Test      @relation(fields: [testId], references: [id])
+  candidate Candidate @relation(fields: [candidateId], references: [id])
+
+  mcqAnswers        MCQAnswer[]
+  codingAnswers     CodingAnswer[]
+  behavioralAnswers BehavioralAnswer[]
+  activityLogs      ActivityLog[]
+  attemptQuestions  TestAttemptQuestion[]
+
+  // Proctoring and Analytics relations
+  proctorSession ProctorSession?
+  analytics      PerformanceAnalytics?
+
+  @@unique([testId, candidateId])
+}
+
+model TestAttemptQuestion {
+  id String @id @default(uuid())
+
+  attemptId      String
+  testQuestionId String
+  orderIndex     Int
+
+  attempt      TestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  testQuestion TestQuestion @relation(fields: [testQuestionId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, testQuestionId])
+  @@unique([attemptId, orderIndex])
+  @@index([attemptId])
+}
+
+model MCQAnswer {
+  id              String   @id @default(uuid())
+  attemptId       String
+  questionId      String
+  selectedOptions String // JSON array of selected option indices
+  isCorrect       Boolean?
+  marksObtained   Float?
+  answeredAt      DateTime @default(now())
+
+  attempt  TestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question MCQQuestion @relation(fields: [questionId], references: [id])
+
+  @@unique([attemptId, questionId])
+}
+
+model CodingAnswer {
+  id            String   @id @default(uuid())
+  attemptId     String
+  questionId    String
+  code          String
+  language      String
+  testResults   String? // JSON array of test results
+  marksObtained Float?
+  executionTime Int?
+  memoryUsed    Int?
+  submittedAt   DateTime @default(now())
+
+  attempt  TestAttempt    @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question CodingQuestion @relation(fields: [questionId], references: [id])
+
+  @@unique([attemptId, questionId])
+}
+
+model BehavioralAnswer {
+  id            String   @id @default(uuid())
+  attemptId     String
+  questionId    String
+  answerText    String
+  marksObtained Float?
+  submittedAt   DateTime @default(now())
+
+  attempt  TestAttempt        @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question BehavioralQuestion @relation(fields: [questionId], references: [id])
+
+  @@unique([attemptId, questionId])
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  attemptId String
+  eventType String // login, test_start, tab_switch, focus_loss, fullscreen_exit, etc.
+  eventData String? // JSON for additional data
+  timestamp DateTime @default(now())
+
+  attempt TestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+}
+
+// ==================== PROCTORING MODELS ====================
+
+model ProctorSession {
+  id        String      @id @default(uuid())
+  attemptId String      @unique
+  attempt   TestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  // Session status
+  cameraEnabled      Boolean @default(false)
+  microphoneEnabled  Boolean @default(false)
+  screenShareEnabled Boolean @default(false)
+
+  // Device info
+  browserInfo       String? // JSON: { name, version, os }
+  screenResolution  String? // "1920x1080"
+  deviceFingerprint String? // Unique device identifier
+  ipAddress         String?
+  sessionMetadata   Json? // Canonical session metadata blob
+
+  // Auxiliary device tracking
+  mobileDeviceId String? // For mobile pairing
+  mobileVerified Boolean @default(false)
+
+  // External monitor detection
+  monitorCount            Int     @default(1)
+  externalMonitorDetected Boolean @default(false)
+
+  // Face verification status
+  faceVerified   Boolean @default(false)
+  faceMatchScore Float? // 0-100 confidence score
+
+  startedAt DateTime  @default(now())
+  endedAt   DateTime?
+
+  // Relations
+  events        ProctorEvent[]
+  recordings    ProctorRecording[]
+  faceSnapshots FaceSnapshot[]
+  telemetry     ProctorTelemetry[]
+}
+
+model ProctorEvent {
+  id        String         @id @default(uuid())
+  sessionId String
+  session   ProctorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  eventType  String // face_not_detected, multiple_faces, looking_away, audio_anomaly,
+  // phone_detected, external_monitor, screen_switch, tab_change,
+  // copy_paste, devtools_open, screen_share_stopped, suspicious_audio
+  severity   String @default("medium") // low, medium, high, critical
+  confidence Float? // AI confidence score 0-100
+
+  // Event details
+  description String?
+  metadata    String? // JSON for additional context
+
+  // Evidence
+  snapshotUrl  String? // URL to captured frame/screenshot
+  audioClipUrl String? // URL to audio clip if relevant
+
+  // Timestamps
+  timestamp DateTime @default(now())
+  duration  Int? // Duration of violation in ms (for continuous events)
+
+  // Admin review
+  reviewed    Boolean   @default(false)
+  reviewedAt  DateTime?
+  reviewedBy  String? // Admin ID
+  reviewNotes String?
+  dismissed   Boolean   @default(false) // If admin marks as false positive
+}
+
+model ProctorRecording {
+  id        String         @id @default(uuid())
+  sessionId String
+  session   ProctorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  recordingType String // webcam, screen, audio, combined
+  storageUrl    String // URL to stored video/audio file
+  storageBucket String? // Storage bucket name
+  storageKey    String? // Object key in storage
+
+  startTime DateTime
+  endTime   DateTime?
+  duration  Int? // Duration in seconds
+  fileSize  Int? // Size in bytes
+  mimeType  String? // video/webm, audio/webm, etc.
+
+  // Processing status
+  status          String  @default("recording") // recording, uploading, processing, ready, failed
+  processingError String?
+
+  // Violation clips extracted from this recording
+  violationClips ViolationClip[]
+
+  createdAt DateTime @default(now())
+}
+
+model ProctorTelemetry {
+  id        String         @id @default(uuid())
+  sessionId String
+  session   ProctorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  source  String @default("analysis") // analysis, violation_report, engine_event
+  payload Json
+
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([createdAt])
+}
+
+model ViolationClip {
+  id          String           @id @default(uuid())
+  recordingId String
+  recording   ProctorRecording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+
+  clipUrl       String // URL to the specific violation clip
+  startOffset   Int // Start time offset in ms from recording start
+  endOffset     Int // End time offset in ms
+  violationType String // Type of violation captured
+  description   String?
+
+  createdAt DateTime @default(now())
+}
+
+model FaceSnapshot {
+  id        String         @id @default(uuid())
+  sessionId String
+  session   ProctorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  imageUrl   String // URL to face snapshot
+  purpose    String // verification, periodic_check, violation_evidence
+  matchScore Float? // Face match score compared to reference
+  faceCount  Int? // Number of faces detected
+
+  // Face analysis results
+  gazeDirection String? // JSON: { x, y, z } or "looking_away", "looking_at_screen"
+  emotionData   String? // JSON: { emotion: confidence }
+
+  capturedAt DateTime @default(now())
+}
+
+// ==================== ID VERIFICATION MODELS ====================
+
+model CandidateIdentity {
+  id          String    @id @default(uuid())
+  candidateId String    @unique
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  // ID Document
+  idDocumentType   String? // national_id, passport, drivers_license, student_id
+  idDocumentUrl    String? // URL to uploaded ID document
+  idDocumentNumber String? // Encrypted document number
+
+  // Face reference for proctoring
+  faceReferenceUrl String? // Reference photo for face matching
+
+  // Verification status
+  verificationStatus String    @default("pending") // pending, verified, rejected, expired
+  verifiedAt         DateTime?
+  verifiedBy         String? // Admin ID or "ai_auto_verified"
+  rejectionReason    String?
+
+  // AI verification scores
+  documentAuthScore Float? // Document authenticity score 0-100
+  faceMatchScore    Float? // Face match with ID photo score 0-100
+  livenessScore     Float? // Liveness detection score 0-100
+
+  // Metadata
+  verificationAttempts Int       @default(0)
+  lastAttemptAt        DateTime?
+  expiresAt            DateTime? // When verification expires
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ==================== MEDIA MODELS FOR MCQ ====================
+
+model MediaAsset {
+  id String @id @default(uuid())
+
+  // File info
+  filename     String
+  originalName String
+  mimeType     String // image/png, video/mp4, audio/mp3, etc.
+  fileSize     Int // Size in bytes
+
+  // Storage
+  storageUrl    String // Full URL to access
+  storageBucket String? // Bucket name
+  storageKey    String // Object key in storage
+
+  // Media type
+  mediaType String // image, video, audio
+
+  // Dimensions (for images/videos)
+  width    Int?
+  height   Int?
+  duration Int? // Duration in seconds for audio/video
+
+  // Thumbnails
+  thumbnailUrl String?
+
+  // Processing
+  status          String  @default("uploaded") // uploaded, processing, ready, failed
+  processingError String?
+
+  // Relations
+  mcqQuestionId String?
+  mcqQuestion   MCQQuestion? @relation(fields: [mcqQuestionId], references: [id], onDelete: SetNull)
+
+  // Metadata
+  uploadedBy String? // Admin ID
+  createdAt  DateTime @default(now())
+}
+
+// ==================== PERFORMANCE ANALYTICS MODELS ====================
+
+model PerformanceAnalytics {
+  id        String      @id @default(uuid())
+  attemptId String      @unique
+  attempt   TestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  // Overall metrics
+  totalScore   Float
+  percentile   Float? // Percentile rank among all attempts
+  overallGrade String? // A, B, C, D, F or custom grades
+
+  // Time analysis
+  totalTimeTaken         Int // Total time in seconds
+  averageTimePerQuestion Int? // Average time per question in seconds
+
+  // Difficulty breakdown
+  easyCorrect    Int    @default(0)
+  easyTotal      Int    @default(0)
+  easyAccuracy   Float?
+  mediumCorrect  Int    @default(0)
+  mediumTotal    Int    @default(0)
+  mediumAccuracy Float?
+  hardCorrect    Int    @default(0)
+  hardTotal      Int    @default(0)
+  hardAccuracy   Float?
+
+  // Topic-wise performance (JSON)
+  topicAnalysis String? // JSON: { "topic1": { correct: 5, total: 10, accuracy: 50 }, ... }
+
+  // Tag/Skill analysis (JSON)
+  skillAnalysis String? // JSON: { "skill1": { correct: 3, total: 5, accuracy: 60 }, ... }
+
+  // AI-generated insights
+  aiInsights      String? // AI-generated analysis text
+  strengths       String? // JSON array of identified strengths
+  weaknesses      String? // JSON array of identified weaknesses
+  recommendations String? // JSON array of recommendations
+
+  // Proctoring summary
+  proctoringSummary String? // JSON: { totalViolations, violationTypes, riskScore }
+  trustScore        Float? // Overall trust/integrity score 0-100
+
+  // Coding-specific metrics (if applicable)
+  codingMetrics String? // JSON: { avgExecutionTime, avgMemory, passRate, codeQuality }
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TestAnalytics {
+  id     String @id @default(uuid())
+  testId String @unique
+  test   Test   @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  // Participation metrics
+  totalAttempts     Int    @default(0)
+  completedAttempts Int    @default(0)
+  averageScore      Float?
+  medianScore       Float?
+  highestScore      Float?
+  lowestScore       Float?
+  passRate          Float?
+
+  // Time metrics
+  averageTimeTaken  Int? // In seconds
+  fastestCompletion Int?
+  slowestCompletion Int?
+
+  // Question difficulty analysis
+  questionDifficulty String? // JSON: { "questionId": { attempts, correct, difficulty } }
+
+  // Proctoring summary
+  totalViolations   Int    @default(0)
+  flaggedAttempts   Int    @default(0)
+  averageTrustScore Float?
+
+  // Distribution data for charts
+  scoreDistribution String? // JSON: { "0-10": 5, "11-20": 10, ... }
+  timeDistribution  String? // JSON: distribution of completion times
+
+  lastCalculatedAt DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// ==================== FILE STORAGE IN POSTGRESQL ====================
+
+model FileStorage {
+  id String @id @default(uuid())
+
+  // File metadata
+  filename     String // Generated filename
+  originalName String // Original filename from upload
+  mimeType     String // image/png, video/webm, audio/mp3, etc.
+  fileSize     Int // Size in bytes
+
+  // File data stored directly in PostgreSQL
+  data Bytes // Binary file data
+
+  // Categorization
+  category String // recording, snapshot, mcq_media, id_document, violation_clip
+
+  // Reference IDs (one will be set based on category)
+  attemptId   String? // For recordings, snapshots
+  questionId  String? // For MCQ media
+  candidateId String? // For ID documents
+  sessionId   String? // For proctoring data
+
+  // Additional metadata
+  metadata String? // JSON for extra info (dimensions, duration, etc.)
+
+  // Timestamps
+  createdAt DateTime @default(now())
+
+  @@index([category])
+  @@index([attemptId])
+  @@index([questionId])
+  @@index([candidateId])
+  @@index([sessionId])
+}

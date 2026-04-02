@@ -1,0 +1,8 @@
+train_images=3038
+val_images=1278
+class_counts:
+0 (person): 1548
+1 (cell phone): 1409
+2 (book): 2523
+3 (laptop): 1750
+4 (monitor): 1169

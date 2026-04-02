@@ -1,0 +1,29 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.db
+*.sqlite
+
+# Node
+node_modules/
+dist/
+build/
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+backend-trace.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime upload/storage artifacts
+backend/storage/meta/*.json
+backend/storage/objects/*

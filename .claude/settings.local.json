@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc --noEmit)",
+      "Bash(taskkill /PID 4208 /F)",
+      "Bash(npm run build)"
+    ]
+  }
+}
