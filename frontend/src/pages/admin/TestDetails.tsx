@@ -6,6 +6,12 @@ import { Test, MCQQuestion, CodingQuestion } from '../../types';
 import { format } from 'date-fns';
 import TestCandidatesPanel from './TestCandidatesPanel';
 
+interface InvitationSummary {
+  total: number;
+  sent: number;
+  failed: number;
+}
+
 interface BehavioralQuestion {
   id: string;
   title: string;
@@ -46,6 +52,12 @@ export default function TestDetails() {
   const [questions, setQuestions] = useState<TestQuestion[]>([]);
   const [sections, setSections] = useState<TestSection[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [invitationFile, setInvitationFile] = useState<File | null>(null);
+  const [customMessage, setCustomMessage] = useState('');
+  const [sendingInvitations, setSendingInvitations] = useState(false);
+  const [invitationSummary, setInvitationSummary] = useState<InvitationSummary | null>(null);
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [questionType, setQuestionType] = useState<'mcq' | 'coding' | 'behavioral'>('mcq');
@@ -134,6 +146,58 @@ export default function TestDetails() {
     next.set('tab', 'candidates');
     next.delete('view');
     setSearchParams(next, { replace: true });
+  };
+
+  const openInviteModal = () => {
+    setShowInviteModal(true);
+    setInvitationFile(null);
+    setCustomMessage('');
+    setInvitationSummary(null);
+  };
+
+  const closeInviteModal = () => {
+    if (sendingInvitations) {
+      return;
+    }
+    setShowInviteModal(false);
+    setInvitationFile(null);
+    setCustomMessage('');
+    setInvitationSummary(null);
+  };
+
+  const handleSendInvitations = async () => {
+    if (!testId) {
+      return;
+    }
+
+    if (!invitationFile) {
+      toast.error('Please upload a CSV or XLSX file');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('file', invitationFile);
+    if (customMessage.trim()) {
+      formData.append('customMessage', customMessage.trim());
+    }
+
+    setSendingInvitations(true);
+    setInvitationSummary(null);
+
+    try {
+      const { data } = await adminApi.sendInvitations(testId, formData);
+      setInvitationSummary(data);
+      if (data.failed > 0 && data.sent > 0) {
+        toast.success(`Invitation batch completed with partial failures (${data.sent} sent, ${data.failed} failed)`);
+      } else {
+        toast.success('Invitation batch completed');
+      }
+    } catch (error: unknown) {
+      const typedError = error as { response?: { data?: { error?: string } } };
+      toast.error(typedError.response?.data?.error || 'Failed to send invitations');
+    } finally {
+      setSendingInvitations(false);
+    }
   };
 
   const isCandidatesView = searchParams.get('tab') === 'candidates';
@@ -566,12 +630,12 @@ export default function TestDetails() {
           >
             {test.isActive ? 'Deactivate' : 'Activate'}
           </button>
-          <Link
-            to={`/admin/tests/${testId}?tab=candidates`}
+          <button
+            onClick={openInviteModal}
             className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             Invite
-          </Link>
+          </button>
           <Link
             to={`/admin/tests/${testId}/edit`}
             className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
@@ -1369,6 +1433,96 @@ export default function TestDetails() {
                 disabled={savingCustom}
               >
                 {savingCustom ? 'Adding...' : 'Add Custom Question'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showInviteModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="card w-full max-w-2xl">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h2 className="text-xl font-semibold text-gray-800">Send Invitations</h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  Upload a CSV or XLSX file with <span className="font-mono">name,email</span> columns for{' '}
+                  <span className="font-medium">{test?.name}</span>.
+                </p>
+              </div>
+              <button
+                onClick={closeInviteModal}
+                disabled={sendingInvitations}
+                className="text-gray-500 hover:text-gray-700 text-xl leading-none"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Candidate File
+                </label>
+                <input
+                  type="file"
+                  accept=".csv,.xlsx"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] || null;
+                    setInvitationFile(file);
+                  }}
+                  className="input"
+                  disabled={sendingInvitations}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Supported formats: CSV, XLSX
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Optional Custom Message
+                </label>
+                <textarea
+                  value={customMessage}
+                  onChange={(event) => setCustomMessage(event.target.value)}
+                  rows={4}
+                  className="input w-full"
+                  placeholder="Add a custom note included in invitation emails..."
+                  disabled={sendingInvitations}
+                />
+              </div>
+
+              {sendingInvitations && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
+                  Sending invitations in batches of 10. Please wait...
+                </div>
+              )}
+
+              {invitationSummary && (
+                <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">
+                  Total: {invitationSummary.total} | Sent: {invitationSummary.sent} | Failed: {invitationSummary.failed}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 mt-6">
+              <button
+                type="button"
+                onClick={handleSendInvitations}
+                disabled={sendingInvitations}
+                className="btn btn-primary"
+              >
+                {sendingInvitations ? 'Sending...' : 'Send Invitations'}
+              </button>
+              <button
+                type="button"
+                onClick={closeInviteModal}
+                disabled={sendingInvitations}
+                className="btn btn-secondary"
+              >
+                Close
               </button>
             </div>
           </div>
