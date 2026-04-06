@@ -24,24 +24,11 @@ export default function TestList() {
   const [customMessage, setCustomMessage] = useState('');
   const [sendingInvitations, setSendingInvitations] = useState(false);
   const [invitationSummary, setInvitationSummary] = useState<InvitationSummary | null>(null);
-  const [openInvitesMenuId, setOpenInvitesMenuId] = useState<string | null>(null);
   const ownerLabel = admin?.name || admin?.email || 'Admin';
 
   useEffect(() => {
     loadTests();
   }, [page]);
-
-  useEffect(() => {
-    const handleClick = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (!target?.closest('[data-invites-menu]')) {
-        setOpenInvitesMenuId(null);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
 
   const loadTests = async () => {
     setLoading(true);
@@ -107,10 +94,6 @@ export default function TestList() {
     } finally {
       setSendingInvitations(false);
     }
-  };
-
-  const toggleInvitesMenu = (testId: string) => {
-    setOpenInvitesMenuId((current) => (current === testId ? null : testId));
   };
 
   return (
@@ -348,14 +331,14 @@ export default function TestList() {
                     <div className="text-center text-slate-600">0</div>
                     <div className="text-center text-slate-600">{test._count?.attempts || 0}</div>
                     <div className="text-center text-slate-600">0</div>
-                    <div className="relative flex justify-end" data-invites-menu>
+                    <div className="relative flex justify-end">
                       <button
                         onClick={(event) => {
                           event.stopPropagation();
-                          toggleInvitesMenu(test.id);
+                          openInvitationModal(test);
                         }}
                         className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50"
-                        aria-label="Invitations"
+                        aria-label="Send Invitations"
                       >
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                           <path
@@ -372,30 +355,6 @@ export default function TestList() {
                           />
                         </svg>
                       </button>
-                      {openInvitesMenuId === test.id && (
-                        <div className="absolute right-0 top-11 w-52 rounded-lg border border-slate-200 bg-white shadow-lg z-10">
-                          <button
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setOpenInvitesMenuId(null);
-                              openInvitationModal(test);
-                            }}
-                            className="w-full text-left px-4 py-2 text-sm hover:bg-slate-50"
-                          >
-                            Send Invites
-                          </button>
-                          <Link
-                            to={`/admin/tests/${test.id}?tab=candidates`}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setOpenInvitesMenuId(null);
-                            }}
-                            className="block px-4 py-2 text-sm hover:bg-slate-50"
-                          >
-                            Invites Dashboard
-                          </Link>
-                        </div>
-                      )}
                     </div>
                   </div>
                 ))}
