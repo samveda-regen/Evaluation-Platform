@@ -10,7 +10,8 @@ import {
   updateTestValidation,
   createMCQValidation,
   createCodingValidation,
-  paginationValidation
+  paginationValidation,
+  invitationPreviewValidation
 } from '../middleware/validation.js';
 import { registerAdmin, loginAdmin, getAdminProfile } from '../controllers/adminAuth.js';
 import {
@@ -53,7 +54,7 @@ import {
   createTestFromAgent,
   suggestTags
 } from '../controllers/testAgent.js';
-import { sendTestInvitations, getInvitationDashboard, getTestInvitationDashboard } from '../controllers/invitation.js';
+import { sendTestInvitations, getInvitationDashboard, getTestInvitationDashboard, sendInvitationPreview } from '../controllers/invitation.js';
 
 import {
   getRepositoryQuestions,
@@ -87,6 +88,13 @@ router.get('/tests/:testId', adminAuth, getTestById);
 router.put('/tests/:testId', adminAuth, updateTestValidation, handleValidationErrors, updateTest);
 router.delete('/tests/:testId', adminAuth, deleteTest);
 router.post('/tests/:testId/send-invitations', adminAuth, invitationUpload.single('file'), sendTestInvitations);
+router.post(
+  '/tests/:testId/send-test-email',
+  adminAuth,
+  invitationPreviewValidation,
+  handleValidationErrors,
+  sendInvitationPreview
+);
 router.get('/tests/:testId/invitations', adminAuth, getTestInvitationDashboard);
 router.post('/tests/:testId/sections', adminAuth, createTestSection);
 router.delete('/tests/:testId/sections/:sectionId', adminAuth, deleteTestSection);

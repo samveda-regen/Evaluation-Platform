@@ -67,6 +67,8 @@ model Test {
   maxViolations         Int       @default(3)
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
+  invitationEmailSubject String?
+  invitationEmailBody    String?
 
   adminId String
   admin   Admin  @relation(fields: [adminId], references: [id])

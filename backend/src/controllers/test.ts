@@ -114,7 +114,9 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
       requireCamera,
       requireMicrophone,
       requireScreenShare,
-      requireIdVerification
+      requireIdVerification,
+      invitationEmailSubject,
+      invitationEmailBody
     } = req.body;
 
     const testCode = generateTestCode();
@@ -140,6 +142,8 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
         requireMicrophone: requireMicrophone || false,
         requireScreenShare: requireScreenShare || false,
         requireIdVerification: requireIdVerification || false,
+        invitationEmailSubject: invitationEmailSubject ? sanitizeInput(String(invitationEmailSubject).trim()) : null,
+        invitationEmailBody: invitationEmailBody ? sanitizeInput(String(invitationEmailBody).trim()) : null,
         adminId: req.admin!.id
       }
     });
@@ -398,6 +402,18 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
     if (updates.requireMicrophone !== undefined) sanitizedUpdates.requireMicrophone = updates.requireMicrophone;
     if (updates.requireScreenShare !== undefined) sanitizedUpdates.requireScreenShare = updates.requireScreenShare;
     if (updates.requireIdVerification !== undefined) sanitizedUpdates.requireIdVerification = updates.requireIdVerification;
+    if (updates.invitationEmailSubject !== undefined) {
+      const subject = typeof updates.invitationEmailSubject === 'string'
+        ? updates.invitationEmailSubject.trim()
+        : '';
+      sanitizedUpdates.invitationEmailSubject = subject ? sanitizeInput(subject) : null;
+    }
+    if (updates.invitationEmailBody !== undefined) {
+      const body = typeof updates.invitationEmailBody === 'string'
+        ? updates.invitationEmailBody.trim()
+        : '';
+      sanitizedUpdates.invitationEmailBody = body ? sanitizeInput(body) : null;
+    }
 
     const updatedTest = await prisma.test.update({
       where: { id: testId },

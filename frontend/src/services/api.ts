@@ -143,6 +143,9 @@ export const adminApi = {
   sendInvitations: (testId: string, data: FormData) =>
     api.post(`/admin/tests/${testId}/send-invitations`, data),
 
+  sendTestEmail: (testId: string, data: { email: string; candidateName?: string }) =>
+    api.post(`/admin/tests/${testId}/send-test-email`, data),
+
   getTestInvitations: (testId: string) =>
     api.get(`/admin/tests/${testId}/invitations`),
 

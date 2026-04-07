@@ -15,6 +15,19 @@ type SettingsState = {
   allowMultipleAttempts: boolean;
 };
 
+const DEFAULT_INVITATION_SUBJECT = 'You are invited to take {{testName}}';
+const DEFAULT_INVITATION_BODY = [
+  'Hi {{candidateName}},',
+  '',
+  'You have been invited to take the test "{{testName}}".',
+  'Click the link below to start:',
+  '{{testLink}}',
+  '',
+  '{{customMessage}}',
+  '',
+  'Good luck!'
+].join('\n');
+
 const defaultSettings: SettingsState = {
   proctorEnabled: true,
   requireCamera: true,
@@ -32,6 +45,12 @@ export default function TestSettings() {
   const [settings, setSettings] = useState<SettingsState>(defaultSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [emailDirty, setEmailDirty] = useState(false);
+  const [emailSubject, setEmailSubject] = useState(DEFAULT_INVITATION_SUBJECT);
+  const [emailBody, setEmailBody] = useState(DEFAULT_INVITATION_BODY);
+  const [previewEmail, setPreviewEmail] = useState('');
+  const [previewSending, setPreviewSending] = useState(false);
   const [activePanel, setActivePanel] = useState<'general' | 'test_integrity' | 'emails'>('test_integrity');
   const [generalForm, setGeneralForm] = useState({
     jobLink: '',
@@ -64,6 +83,9 @@ export default function TestSettings() {
         shuffleOptions: loaded.shuffleOptions ?? false,
         allowMultipleAttempts: loaded.allowMultipleAttempts ?? false
       });
+      setEmailSubject(loaded.invitationEmailSubject ?? DEFAULT_INVITATION_SUBJECT);
+      setEmailBody(loaded.invitationEmailBody ?? DEFAULT_INVITATION_BODY);
+      setEmailDirty(false);
     } catch (error) {
       toast.error('Failed to load test settings');
     } finally {
@@ -90,6 +112,56 @@ export default function TestSettings() {
       void handleSave(next);
       return next;
     });
+  };
+
+  const handleEmailSave = async () => {
+    if (!testId) return;
+    setEmailSaving(true);
+    try {
+      await adminApi.updateTest(testId, {
+        invitationEmailSubject: emailSubject.trim(),
+        invitationEmailBody: emailBody.trim()
+      });
+      toast.success('Invitation email template updated');
+      setEmailDirty(false);
+    } catch (error) {
+      toast.error('Failed to update invitation email template');
+    } finally {
+      setEmailSaving(false);
+    }
+  };
+
+  const resetEmailTemplate = () => {
+    setEmailSubject(DEFAULT_INVITATION_SUBJECT);
+    setEmailBody(DEFAULT_INVITATION_BODY);
+    setEmailDirty(true);
+  };
+
+  const handleSendPreview = async () => {
+    if (!testId) return;
+    const targetEmail = previewEmail.trim();
+    if (!targetEmail) {
+      toast.error('Enter an email address to send the preview');
+      return;
+    }
+
+    setPreviewSending(true);
+    try {
+      if (emailDirty) {
+        await adminApi.updateTest(testId, {
+          invitationEmailSubject: emailSubject.trim(),
+          invitationEmailBody: emailBody.trim()
+        });
+        setEmailDirty(false);
+      }
+
+      await adminApi.sendTestEmail(testId, { email: targetEmail });
+      toast.success('Preview email sent');
+    } catch (error) {
+      toast.error('Failed to send preview email');
+    } finally {
+      setPreviewSending(false);
+    }
   };
 
   if (loading) {
@@ -367,9 +439,9 @@ export default function TestSettings() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="text-xl font-semibold text-slate-900">Confirmation Email</h2>
+                  <h2 className="text-xl font-semibold text-slate-900">Invitation Email</h2>
                   <p className="text-sm text-slate-500">
-                    This email will be sent to the candidate when they complete the test.
+                    This email will be sent to candidates when you invite them to the test.
                   </p>
                 </div>
                 <button className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 text-slate-600">
@@ -378,30 +450,90 @@ export default function TestSettings() {
               </div>
 
               <div className="rounded-2xl border border-slate-300 bg-white">
-                <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-3 text-sm text-slate-500">
-                  <span>↺</span>
-                  <span>↻</span>
-                  <span className="h-4 w-px bg-slate-200" />
-                  <span className="font-semibold">B</span>
-                  <span className="italic">I</span>
-                  <span className="underline">U</span>
-                  <span className="line-through">S</span>
-                  <span>🔗</span>
-                  <span className="h-4 w-px bg-slate-200" />
-                  <span>1·</span>
-                  <span>•</span>
-                  <span>≡</span>
-                  <span className="h-4 w-px bg-slate-200" />
-                  <span>Normal ▾</span>
-                  <span>Arial ▾</span>
-                  <span>14px ▾</span>
-                  <span>Add Field ▾</span>
-                  <span className="ml-auto">🖼</span>
+                <div className="border-b border-slate-200 px-5 py-4">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Subject
+                  </label>
+                  <input
+                    className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-emerald-500"
+                    value={emailSubject}
+                    onChange={(event) => {
+                      setEmailSubject(event.target.value);
+                      setEmailDirty(true);
+                    }}
+                    placeholder="Subject line"
+                  />
                 </div>
-                <textarea
-                  className="min-h-[240px] w-full rounded-b-2xl px-5 py-4 text-sm text-slate-700 outline-none"
-                  defaultValue={`Hello,\n\nThanks for completing ${test.name}. We've sent your submission to .\n\nIn the meantime, you can go ahead and solve more of such code challenges on HackerRank. Solving code challenges is a great way to keep your skills sharp for interviews.\n\nWish you all the best for your test result!\n\nThis is an automated message. Please do not reply to this. You'll need to contact directly for any follow-up questions.\n\nThanks,\nRegen Team`}
-                />
+                <div className="px-5 py-4">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Body
+                  </label>
+                  <textarea
+                    className="mt-2 min-h-[240px] w-full rounded-lg border border-slate-200 px-3 py-3 text-sm text-slate-700 outline-none focus:border-emerald-500"
+                    value={emailBody}
+                    onChange={(event) => {
+                      setEmailBody(event.target.value);
+                      setEmailDirty(true);
+                    }}
+                    placeholder="Write your invitation email"
+                  />
+                  <p className="mt-3 text-xs text-slate-500">
+                    Available fields: <span className="font-mono">{'{{candidateName}}'}</span>,{' '}
+                    <span className="font-mono">{'{{testName}}'}</span>,{' '}
+                    <span className="font-mono">{'{{testCode}}'}</span>,{' '}
+                    <span className="font-mono">{'{{testLink}}'}</span>,{' '}
+                    <span className="font-mono">{'{{customMessage}}'}</span>.
+                    If you omit <span className="font-mono">{'{{customMessage}}'}</span>, the custom note will be appended automatically.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-5 py-4">
+                  <button
+                    type="button"
+                    onClick={resetEmailTemplate}
+                    className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    Reset to default
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleEmailSave}
+                    disabled={!emailDirty || emailSaving}
+                    className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${
+                      !emailDirty || emailSaving ? 'bg-slate-300' : 'bg-emerald-600 hover:bg-emerald-700'
+                    }`}
+                  >
+                    {emailSaving ? 'Saving...' : 'Save template'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Send a Test Email</p>
+                    <p className="text-xs text-slate-500">
+                      Sends a preview using the saved template. The link in the email is not active.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <input
+                    className="w-full flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 outline-none focus:border-emerald-500"
+                    placeholder="you@example.com"
+                    value={previewEmail}
+                    onChange={(event) => setPreviewEmail(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSendPreview}
+                    disabled={previewSending || emailSaving}
+                    className={`rounded-lg px-4 py-2 text-sm font-semibold text-white ${
+                      previewSending || emailSaving ? 'bg-slate-300' : 'bg-emerald-600 hover:bg-emerald-700'
+                    }`}
+                  >
+                    {previewSending ? 'Sending...' : 'Send test'}
+                  </button>
+                </div>
               </div>
             </div>
           )}

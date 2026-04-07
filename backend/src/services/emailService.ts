@@ -5,8 +5,11 @@ interface InvitationEmailPayload {
   to: string;
   candidateName: string;
   testName: string;
+  testCode?: string;
   testLink: string;
   customMessage?: string;
+  subjectTemplate?: string;
+  bodyTemplate?: string;
 }
 
 interface SmtpConfiguration {
@@ -24,6 +27,19 @@ interface SmtpConfiguration {
 type MailProvider = 'auto' | 'smtp';
 type ZohoAccountType = 'personal' | 'organization';
 type ZohoDataCenter = 'us' | 'eu' | 'in' | 'au' | 'cn';
+
+const DEFAULT_INVITATION_SUBJECT = 'You are invited to take {{testName}}';
+const DEFAULT_INVITATION_BODY = [
+  'Hi {{candidateName}},',
+  '',
+  'You have been invited to take the test "{{testName}}".',
+  'Click the link below to start:',
+  '{{testLink}}',
+  '',
+  '{{customMessage}}',
+  '',
+  'Good luck!'
+].join('\n');
 
 let cachedTransporter: { key: string; transporter: any } | null = null;
 
@@ -201,23 +217,6 @@ function extractEmailAddress(value: string): string {
   return (match?.[1] || value).trim().toLowerCase();
 }
 
-function buildInvitationBody(payload: InvitationEmailPayload): string {
-  const lines = [
-    `Hi ${payload.candidateName},`,
-    '',
-    `You have been invited to take the test "${payload.testName}".`,
-    'Click below to start:',
-    payload.testLink
-  ];
-
-  if (payload.customMessage?.trim()) {
-    lines.push('', payload.customMessage.trim());
-  }
-
-  lines.push('', 'Good luck!');
-  return lines.join('\n');
-}
-
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -227,26 +226,73 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function buildInvitationHtml(payload: InvitationEmailPayload): string {
-  const candidateName = escapeHtml(payload.candidateName);
-  const testName = escapeHtml(payload.testName);
-  const testLink = escapeHtml(payload.testLink);
-  const customMessage = payload.customMessage?.trim();
+const TEMPLATE_VARIABLE_REGEX = /{{\s*([a-zA-Z0-9_]+)\s*}}/g;
 
-  const customMessageBlock = customMessage
-    ? `<p>${escapeHtml(customMessage).replace(/\n/g, '<br />')}</p>`
-    : '';
+function renderTemplate(template: string, data: Record<string, string>): string {
+  return template.replace(TEMPLATE_VARIABLE_REGEX, (_, key: string) => data[key] ?? '');
+}
 
-  return [
-    `<p>Hi ${candidateName},</p>`,
-    `<p>You have been invited to take the test <strong>${testName}</strong>.</p>`,
-    '<p>Click below to start:</p>',
-    `<p><a href="${testLink}" target="_blank" rel="noopener noreferrer">${testLink}</a></p>`,
-    customMessageBlock,
-    '<p>Good luck!</p>'
-  ]
-    .filter(Boolean)
+function normalizeTemplateText(value: string): string {
+  return value
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function normalizeSubject(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function ensureCustomMessage(template: string, customMessage: string): string {
+  if (!customMessage) {
+    return template;
+  }
+
+  if (/{{\s*customMessage\s*}}/i.test(template)) {
+    return template;
+  }
+
+  return `${template.trim()}\n\n{{customMessage}}`;
+}
+
+function renderTextAsHtml(text: string): string {
+  if (!text) {
+    return '';
+  }
+
+  const escaped = escapeHtml(text);
+  const linked = escaped.replace(
+    /(https?:\/\/[^\s<]+)/g,
+    '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+  );
+
+  return linked
+    .split(/\n{2,}/g)
+    .map((paragraph) => `<p>${paragraph.replace(/\n/g, '<br />')}</p>`)
     .join('\n');
+}
+
+function buildInvitationContent(payload: InvitationEmailPayload): { subject: string; text: string; html: string } {
+  const customMessage = payload.customMessage?.trim() || '';
+  const data: Record<string, string> = {
+    candidateName: payload.candidateName,
+    testName: payload.testName,
+    testCode: payload.testCode || '',
+    testLink: payload.testLink,
+    customMessage
+  };
+
+  const rawSubjectTemplate = payload.subjectTemplate?.trim() || DEFAULT_INVITATION_SUBJECT;
+  const rawBodyTemplate = payload.bodyTemplate?.trim() || DEFAULT_INVITATION_BODY;
+  const bodyTemplate = ensureCustomMessage(rawBodyTemplate, customMessage);
+
+  const subject = normalizeSubject(renderTemplate(rawSubjectTemplate, data))
+    || normalizeSubject(renderTemplate(DEFAULT_INVITATION_SUBJECT, data));
+  const text = normalizeTemplateText(renderTemplate(bodyTemplate, data))
+    || normalizeTemplateText(renderTemplate(DEFAULT_INVITATION_BODY, data));
+  const html = renderTextAsHtml(text);
+
+  return { subject, text, html };
 }
 
 function isRetryableZohoError(error: unknown): boolean {
@@ -297,12 +343,13 @@ async function sendInvitationEmailViaSmtp(payload: InvitationEmailPayload): Prom
     attemptedHosts.push(candidateHost);
 
     try {
+      const content = buildInvitationContent(payload);
       const info = await transporter.sendMail({
         from: fromAddress,
         to: payload.to,
-        subject: "You're Invited to Take the Test",
-        text: buildInvitationBody(payload),
-        html: buildInvitationHtml(payload)
+        subject: content.subject,
+        text: content.text,
+        html: content.html
       });
 
       console.log('Email sent via SMTP:', info.messageId);

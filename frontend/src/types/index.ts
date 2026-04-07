@@ -32,6 +32,8 @@ export interface Test {
   requireMicrophone?: boolean;
   requireScreenShare?: boolean;
   requireIdVerification?: boolean;
+  invitationEmailSubject?: string | null;
+  invitationEmailBody?: string | null;
   createdAt: string;
   _count?: {
     questions: number;

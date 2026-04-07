@@ -344,8 +344,11 @@ export async function sendBulkTestInvitations(input: {
     select: {
       id: true,
       name: true,
+      testCode: true,
       isActive: true,
-      endTime: true
+      endTime: true,
+      invitationEmailSubject: true,
+      invitationEmailBody: true
     }
   });
 
@@ -407,8 +410,11 @@ export async function sendBulkTestInvitations(input: {
           to: row.email,
           candidateName: row.name,
           testName: test.name,
+          testCode: test.testCode,
           testLink: buildInviteLink(invitation.token),
-          customMessage: sanitizedCustomMessage
+          customMessage: sanitizedCustomMessage,
+          subjectTemplate: test.invitationEmailSubject || undefined,
+          bodyTemplate: test.invitationEmailBody || undefined
         }, row.email);
 
         await prisma.testInvitation.update({
@@ -556,4 +562,44 @@ export async function consumeInvitation(invitationId: string, testId: string): P
   if (updateResult.count === 0) {
     throw new InvitationServiceError('This invitation link has already been used.', 400);
   }
+}
+
+export async function sendInvitationPreviewEmail(input: {
+  testId: string;
+  adminId: string;
+  email: string;
+  candidateName?: string;
+}): Promise<void> {
+  const test = await prisma.test.findFirst({
+    where: {
+      id: input.testId,
+      adminId: input.adminId
+    },
+    select: {
+      id: true,
+      name: true,
+      testCode: true,
+      invitationEmailSubject: true,
+      invitationEmailBody: true
+    }
+  });
+
+  if (!test) {
+    throw new InvitationServiceError('Test not found.', 404);
+  }
+
+  const token = `preview-${randomBytes(16).toString('hex')}`;
+  const candidateName = input.candidateName?.trim() || 'Preview Candidate';
+  const previewNote = 'Preview only. This link will not start a real test.';
+
+  await sendInvitationEmail({
+    to: input.email,
+    candidateName,
+    testName: test.name,
+    testCode: test.testCode,
+    testLink: buildInviteLink(token),
+    customMessage: previewNote,
+    subjectTemplate: test.invitationEmailSubject || undefined,
+    bodyTemplate: test.invitationEmailBody || undefined
+  });
 }

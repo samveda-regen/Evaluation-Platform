@@ -5,7 +5,8 @@ import prisma from '../utils/db.js';
 import {
   InvitationServiceError,
   getPublicInvitationDetails,
-  sendBulkTestInvitations
+  sendBulkTestInvitations,
+  sendInvitationPreviewEmail
 } from '../services/invitationService.js';
 
 function getErrorMessage(error: unknown): string {
@@ -274,6 +275,36 @@ export async function getTestInvitationDashboard(req: AuthenticatedRequest, res:
     });
   } catch (error) {
     console.error('Get test invitation dashboard error:', error);
+    res.status(500).json({ error: getErrorMessage(error) });
+  }
+}
+
+export async function sendInvitationPreview(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { testId } = req.params;
+    const email = typeof req.body.email === 'string' ? req.body.email.trim() : '';
+    const candidateName = typeof req.body.candidateName === 'string' ? req.body.candidateName.trim() : undefined;
+
+    if (!email) {
+      res.status(400).json({ error: 'Email is required.' });
+      return;
+    }
+
+    await sendInvitationPreviewEmail({
+      testId,
+      adminId: req.admin!.id,
+      email,
+      candidateName
+    });
+
+    res.json({ message: 'Preview email sent.' });
+  } catch (error) {
+    if (error instanceof InvitationServiceError) {
+      res.status(error.statusCode).json({ error: error.message });
+      return;
+    }
+
+    console.error('Send invitation preview error:', error);
     res.status(500).json({ error: getErrorMessage(error) });
   }
 }

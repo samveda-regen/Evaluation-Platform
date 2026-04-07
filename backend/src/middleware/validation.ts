@@ -37,7 +37,9 @@ export const createTestValidation: ValidationChain[] = [
   body('requireMicrophone').optional().isBoolean().withMessage('Require microphone must be boolean'),
   body('requireScreenShare').optional().isBoolean().withMessage('Require screen share must be boolean'),
   body('requireIdVerification').optional().isBoolean().withMessage('Require ID verification must be boolean'),
-  body('instructions').optional().trim()
+  body('instructions').optional().trim(),
+  body('invitationEmailSubject').optional().isString().isLength({ max: 200 }),
+  body('invitationEmailBody').optional().isString().isLength({ max: 10000 })
 ];
 
 export const updateTestValidation: ValidationChain[] = [
@@ -54,7 +56,9 @@ export const updateTestValidation: ValidationChain[] = [
   body('requireCamera').optional().isBoolean(),
   body('requireMicrophone').optional().isBoolean(),
   body('requireScreenShare').optional().isBoolean(),
-  body('requireIdVerification').optional().isBoolean()
+  body('requireIdVerification').optional().isBoolean(),
+  body('invitationEmailSubject').optional().isString().isLength({ max: 200 }),
+  body('invitationEmailBody').optional().isString().isLength({ max: 10000 })
 ];
 
 // MCQ Question validation
@@ -116,6 +120,11 @@ export const invitationLoginValidation: ValidationChain[] = [
     .isString()
     .isLength({ min: 32 })
     .withMessage('Valid invitation token is required')
+];
+
+export const invitationPreviewValidation: ValidationChain[] = [
+  body('email').isEmail().withMessage('Valid email is required'),
+  body('candidateName').optional().isString().isLength({ min: 1, max: 120 })
 ];
 
 // Answer submission validation
