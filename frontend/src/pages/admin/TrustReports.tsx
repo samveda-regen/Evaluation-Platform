@@ -27,18 +27,31 @@ interface TrustReportRow {
     focusLoss: number;
     fullscreenExit: number;
     copyPaste: number;
+    devtoolsOpen: number;
     cameraBlocked: number;
-    phone: number;
-    multipleFaces: number;
-    faceAbsent: number;
-    lookingAway: number;
-    voice: number;
     secondaryMonitor: number;
-    suspiciousAudio: number;
-    unauthorizedObject: number;
+    screenshotEvidence: number;
+    phone?: number;
+    multipleFaces?: number;
+    faceAbsent?: number;
+    lookingAway?: number;
+    voice?: number;
+    suspiciousAudio?: number;
+    unauthorizedObject?: number;
   };
   latestViolationAt: string | null;
   latestSnapshotUrl: string | null;
+  screenshotCount?: number;
+  snapshotUrls?: string[];
+  violationProofs?: Array<{
+    eventId: string | null;
+    eventType: string;
+    severity: string;
+    timestamp: string | null;
+    snapshotUrl: string;
+    isAiEvent: boolean;
+    source: string;
+  }>;
   llmSummary: string | null;
 }
 
@@ -64,6 +77,7 @@ export default function TrustReports() {
   const [bulkReEvalLoading, setBulkReEvalLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [activeProofRow, setActiveProofRow] = useState<TrustReportRow | null>(null);
 
   const selectedTestLabel = useMemo(() => {
     if (!testIdParam) return 'All Tests';
@@ -82,26 +96,41 @@ export default function TrustReports() {
       row => row.riskLevel === 'high' || row.riskLevel === 'critical'
     ).length;
     const totalViolations = reports.reduce((sum, row) => sum + row.totalViolations, 0);
-    const phone = reports.reduce((sum, row) => sum + row.violations.phone, 0);
-    const multipleFaces = reports.reduce((sum, row) => sum + row.violations.multipleFaces, 0);
-    const noFace = reports.reduce((sum, row) => sum + row.violations.faceAbsent, 0);
-    const offScreen = reports.reduce((sum, row) => sum + row.violations.lookingAway, 0);
-    const voice = reports.reduce((sum, row) => sum + row.violations.voice, 0);
-    const suspiciousAudio = reports.reduce((sum, row) => sum + (row.violations.suspiciousAudio || 0), 0);
-    const unauthorizedObject = reports.reduce((sum, row) => sum + (row.violations.unauthorizedObject || 0), 0);
+    const tabSwitch = reports.reduce((sum, row) => sum + (row.violations.tabSwitch || 0), 0);
+    const focusLoss = reports.reduce((sum, row) => sum + (row.violations.focusLoss || 0), 0);
+    const fullscreenExit = reports.reduce((sum, row) => sum + (row.violations.fullscreenExit || 0), 0);
+    const copyPaste = reports.reduce((sum, row) => sum + (row.violations.copyPaste || 0), 0);
+    const devtoolsOpen = reports.reduce((sum, row) => sum + (row.violations.devtoolsOpen || 0), 0);
+    const cameraBlocked = reports.reduce((sum, row) => sum + (row.violations.cameraBlocked || 0), 0);
+    const secondaryMonitor = reports.reduce((sum, row) => sum + (row.violations.secondaryMonitor || 0), 0);
+    const phone = reports.reduce((sum, row) => sum + (row.violations.phone || 0), 0);
+    const multipleFaces = reports.reduce((sum, row) => sum + (row.violations.multipleFaces || 0), 0);
+    const noFace = reports.reduce((sum, row) => sum + (row.violations.faceAbsent || 0), 0);
+    const offScreen = reports.reduce((sum, row) => sum + (row.violations.lookingAway || 0), 0);
+    const voice = reports.reduce((sum, row) => sum + (row.violations.voice || 0), 0);
+    const screenshotEvidence = reports.reduce(
+      (sum, row) => sum + (row.violations.screenshotEvidence || row.screenshotCount || 0),
+      0
+    );
     return {
       totalCandidates,
       avgTrust,
       flaggedCandidates,
       highRiskCandidates,
       totalViolations,
+      tabSwitch,
+      focusLoss,
+      fullscreenExit,
+      copyPaste,
+      devtoolsOpen,
+      cameraBlocked,
+      secondaryMonitor,
       phone,
       multipleFaces,
       noFace,
       offScreen,
       voice,
-      suspiciousAudio,
-      unauthorizedObject,
+      screenshotEvidence,
     };
   }, [reports]);
 
@@ -254,11 +283,19 @@ export default function TrustReports() {
       'TrustScore',
       'Risk',
       'Flagged',
+      'TabSwitch',
+      'WindowBlur',
+      'FullscreenExit',
+      'CopyPaste',
+      'DevtoolsOpen',
+      'CameraBlocked',
+      'SecondaryMonitor',
       'Phone',
-      'MultipleFaces',
-      'No Face',
-      'Off-Screen Gaze',
+      'MultiFace',
+      'NoFace',
+      'OffScreenGaze',
       'Voice',
+      'ScreenshotEvidence',
       'TotalViolations',
       'StartTime',
       'EndTime',
@@ -271,11 +308,19 @@ export default function TrustReports() {
       row.trustScore.toFixed(1),
       row.riskLevel,
       row.isFlagged ? 'Yes' : 'No',
-      row.violations.phone.toString(),
-      row.violations.multipleFaces.toString(),
-      row.violations.faceAbsent.toString(),
-      row.violations.lookingAway.toString(),
-      row.violations.voice.toString(),
+      row.violations.tabSwitch.toString(),
+      row.violations.focusLoss.toString(),
+      row.violations.fullscreenExit.toString(),
+      row.violations.copyPaste.toString(),
+      row.violations.devtoolsOpen.toString(),
+      row.violations.cameraBlocked.toString(),
+      row.violations.secondaryMonitor.toString(),
+      String(row.violations.phone || 0),
+      String(row.violations.multipleFaces || 0),
+      String(row.violations.faceAbsent || 0),
+      String(row.violations.lookingAway || 0),
+      String(row.violations.voice || 0),
+      String(row.violations.screenshotEvidence || row.screenshotCount || 0),
       row.totalViolations.toString(),
       row.startTime,
       row.endTime || '',
@@ -298,6 +343,12 @@ export default function TrustReports() {
     if (level === 'medium') return 'badge badge-info';
     return 'badge badge-success';
   };
+
+  const formatEventTypeLabel = (eventType: string) =>
+    eventType
+      .split('_')
+      .map(token => token.charAt(0).toUpperCase() + token.slice(1))
+      .join(' ');
 
   return (
     <div className="space-y-6">
@@ -346,7 +397,7 @@ export default function TrustReports() {
           <p className="text-xs text-gray-500 uppercase tracking-wide">Violations</p>
           <p className="text-2xl font-bold text-indigo-600 mt-1">{stats.totalViolations}</p>
           <p className="text-xs text-gray-500 mt-1">
-            P:{stats.phone} M:{stats.multipleFaces} NF:{stats.noFace} OSG:{stats.offScreen} V:{stats.voice}
+            TS:{stats.tabSwitch} BL:{stats.focusLoss} FS:{stats.fullscreenExit} CP:{stats.copyPaste} SS:{stats.screenshotEvidence} P:{stats.phone} MF:{stats.multipleFaces} NF:{stats.noFace} OSG:{stats.offScreen} V:{stats.voice}
           </p>
         </div>
       </div>
@@ -470,12 +521,21 @@ export default function TrustReports() {
                       <th className="py-3 px-3 font-semibold whitespace-nowrap">Test</th>
                       <th className="py-3 px-3 font-semibold whitespace-nowrap text-center">Trust %</th>
                       <th className="py-3 px-3 font-semibold whitespace-nowrap">Risk</th>
+                      <th className="py-3 px-3 font-semibold whitespace-nowrap text-center">Tab</th>
+                      <th className="py-3 px-3 font-semibold whitespace-nowrap text-center">Blur</th>
+                      <th className="py-3 px-3 font-semibold whitespace-nowrap text-center">Fullscreen</th>
+                      <th className="py-3 px-3 font-semibold whitespace-nowrap text-center">Copy/Paste</th>
+                      <th className="py-3 px-3 font-semibold whitespace-nowrap text-center">DevTools</th>
+                      <th className="py-3 px-3 font-semibold whitespace-nowrap text-center">Camera</th>
+                      <th className="py-3 px-3 font-semibold whitespace-nowrap text-center">2nd Monitor</th>
                       <th className="py-3 px-3 font-semibold whitespace-nowrap text-center">Phone</th>
                       <th className="py-3 px-3 font-semibold whitespace-nowrap text-center">Multi-Face</th>
                       <th className="py-3 px-3 font-semibold whitespace-nowrap text-center">No Face</th>
                       <th className="py-3 px-3 font-semibold whitespace-nowrap text-center">Off-Screen Gaze</th>
                       <th className="py-3 px-3 font-semibold whitespace-nowrap text-center">Voice</th>
+                      <th className="py-3 px-3 font-semibold whitespace-nowrap text-center">Screenshots</th>
                       <th className="py-3 px-3 font-semibold whitespace-nowrap text-center">Total</th>
+                      <th className="py-3 px-3 font-semibold whitespace-nowrap text-center">Proofs</th>
                       <th className="py-3 px-3 font-semibold whitespace-nowrap">Actions</th>
                     </tr>
                   </thead>
@@ -521,15 +581,56 @@ export default function TrustReports() {
                             {row.isFlagged && <span className="badge badge-danger">flagged</span>}
                           </div>
                         </td>
-                        <td className="py-3 px-3 text-center font-medium">{row.violations.phone}</td>
-                        <td className="py-3 px-3 text-center font-medium">{row.violations.multipleFaces}</td>
-                        <td className="py-3 px-3 text-center font-medium">{row.violations.faceAbsent}</td>
-                        <td className="py-3 px-3 text-center font-medium">{row.violations.lookingAway}</td>
-                        <td className="py-3 px-3 text-center font-medium">{row.violations.voice}</td>
+                        <td className="py-3 px-3 text-center font-medium">{row.violations.tabSwitch}</td>
+                        <td className="py-3 px-3 text-center font-medium">{row.violations.focusLoss}</td>
+                        <td className="py-3 px-3 text-center font-medium">{row.violations.fullscreenExit}</td>
+                        <td className="py-3 px-3 text-center font-medium">{row.violations.copyPaste}</td>
+                        <td className="py-3 px-3 text-center font-medium">{row.violations.devtoolsOpen}</td>
+                        <td className="py-3 px-3 text-center font-medium">{row.violations.cameraBlocked}</td>
+                        <td className="py-3 px-3 text-center font-medium">{row.violations.secondaryMonitor}</td>
+                        <td className="py-3 px-3 text-center font-medium">{row.violations.phone || 0}</td>
+                        <td className="py-3 px-3 text-center font-medium">{row.violations.multipleFaces || 0}</td>
+                        <td className="py-3 px-3 text-center font-medium">{row.violations.faceAbsent || 0}</td>
+                        <td className="py-3 px-3 text-center font-medium">{row.violations.lookingAway || 0}</td>
+                        <td className="py-3 px-3 text-center font-medium">{row.violations.voice || 0}</td>
+                        <td className="py-3 px-3 text-center font-medium">
+                          {row.violations.screenshotEvidence || row.screenshotCount || 0}
+                        </td>
                         <td className="py-3 px-3 text-center">
                           <span className={`font-bold text-base ${row.totalViolations > 0 ? 'text-red-600' : 'text-gray-400'}`}>
                             {row.totalViolations}
                           </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="flex flex-col items-center gap-1 min-w-[110px]">
+                            <span className="text-xs text-gray-600">
+                              {row.screenshotCount || (row.violationProofs || []).length} items
+                            </span>
+                            <div className="flex items-center gap-1">
+                              {(row.violationProofs || []).slice(0, 2).map((proof, idx) => (
+                                <button
+                                  key={`${proof.eventId || proof.snapshotUrl}-${idx}`}
+                                  className="border border-gray-200 rounded overflow-hidden hover:border-blue-400 transition-colors"
+                                  onClick={() => setActiveProofRow(row)}
+                                  title={`${proof.isAiEvent ? 'AI' : 'Non-AI'}: ${formatEventTypeLabel(proof.eventType)}`}
+                                >
+                                  <img
+                                    src={proof.snapshotUrl}
+                                    alt={`${proof.eventType} evidence`}
+                                    className="h-8 w-10 object-cover"
+                                  />
+                                </button>
+                              ))}
+                              {(row.violationProofs || []).length > 0 && (
+                                <button
+                                  className="text-[11px] px-2 py-1 rounded bg-slate-100 hover:bg-slate-200"
+                                  onClick={() => setActiveProofRow(row)}
+                                >
+                                  View
+                                </button>
+                              )}
+                            </div>
+                          </div>
                         </td>
                         <td className="py-3 px-3">
                           <div className="flex flex-col gap-2 min-w-[120px]">
@@ -557,6 +658,69 @@ export default function TrustReports() {
           )}
         </div>
       </div>
+
+      {activeProofRow && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-5 py-3 border-b">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">
+                  Violation Proofs: {activeProofRow.candidateName}
+                </h2>
+                <p className="text-xs text-gray-500">
+                  {activeProofRow.testName} ({activeProofRow.testCode}) • {activeProofRow.screenshotCount || (activeProofRow.violationProofs || []).length} evidence items
+                </p>
+              </div>
+              <button
+                className="px-3 py-1.5 rounded-md bg-slate-100 hover:bg-slate-200 text-sm"
+                onClick={() => setActiveProofRow(null)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="p-4 overflow-auto">
+              {(activeProofRow.violationProofs || []).length === 0 ? (
+                <p className="text-sm text-gray-500">No evidence images available for this attempt.</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {(activeProofRow.violationProofs || []).map((proof, idx) => (
+                    <div key={`${proof.eventId || proof.snapshotUrl}-${idx}`} className="border rounded-lg overflow-hidden bg-slate-50">
+                      <img
+                        src={proof.snapshotUrl}
+                        alt={`${proof.eventType} evidence`}
+                        className="w-full h-44 object-cover bg-black/5"
+                      />
+                      <div className="p-3 space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-medium text-gray-900">
+                            {formatEventTypeLabel(proof.eventType)}
+                          </span>
+                          <span className={`text-[11px] px-2 py-0.5 rounded-full ${proof.isAiEvent ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                            {proof.isAiEvent ? 'AI' : 'Non-AI'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500">Severity: {proof.severity}</p>
+                        <p className="text-xs text-gray-500">Source: {proof.source}</p>
+                        <p className="text-xs text-gray-500">
+                          {proof.timestamp ? format(new Date(proof.timestamp), 'MMM d, yyyy h:mm:ss a') : 'Unknown time'}
+                        </p>
+                        <a
+                          href={proof.snapshotUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex mt-1 text-xs text-blue-600 hover:text-blue-700"
+                        >
+                          Open full image
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
