@@ -3,21 +3,71 @@ import prisma from '../utils/db.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import { callLLM } from '../services/llmService.js';
 
+const AI_PROCTOR_EVENT_TYPES = new Set([
+  'multiple_faces',
+  'phone_detected',
+  'face_not_detected',
+  'looking_away',
+  'voice_detected',
+  'suspicious_audio',
+  'unauthorized_object_detected',
+]);
+
+const DEFAULT_TRUST_REPORT_EVENTS =
+  'tab_switch,window_blur,fullscreen_exit,copy_paste_attempt,devtools_open,camera_blocked,secondary_monitor_detected,multiple_faces,phone_detected,face_not_detected,looking_away,voice_detected,suspicious_audio,unauthorized_object_detected';
+
 const REPORT_EVENT_TYPES = Array.from(
-  new Set([
-    ...(
-      process.env.PROCTOR_REPORT_EVENTS ||
-      'tab_switch,window_blur,fullscreen_exit,copy_paste_attempt,camera_blocked,multiple_faces,phone_detected,face_not_detected,looking_away,voice_detected,secondary_monitor_detected'
-    )
-      .split(',')
+  new Set(
+    [
+      ...DEFAULT_TRUST_REPORT_EVENTS.split(','),
+      ...(process.env.PROCTOR_REPORT_EVENTS || '').split(','),
+    ]
       .map(v => v.trim().toLowerCase())
-      .filter(Boolean),
-    // Keep no-face violations in trust reports even if env list is missing it.
-    'face_not_detected',
-  ])
+      .filter(Boolean)
+  )
 );
 
+const TRUST_SCORING_EVENT_TYPES = REPORT_EVENT_TYPES.filter(eventType => !AI_PROCTOR_EVENT_TYPES.has(eventType));
+
 type TrustRiskLevel = 'low' | 'medium' | 'high' | 'critical';
+type TrustEvent = {
+  id?: string;
+  sessionId?: string;
+  eventType: string;
+  severity: string;
+  confidence: number | null;
+  metadata?: string | null;
+  snapshotUrl?: string | null;
+  timestamp?: Date;
+};
+
+type ViolationProof = {
+  eventId: string | null;
+  eventType: string;
+  severity: string;
+  timestamp: string | null;
+  snapshotUrl: string;
+  isAiEvent: boolean;
+  source: string;
+};
+
+type TrustViolationCounts = {
+  tabSwitch: number;
+  focusLoss: number;
+  fullscreenExit: number;
+  copyPaste: number;
+  devtoolsOpen: number;
+  cameraBlocked: number;
+  secondaryMonitor: number;
+  screenshotEvidence: number;
+  phone: number;
+  multipleFaces: number;
+  faceAbsent: number;
+  lookingAway: number;
+  voice: number;
+  suspiciousAudio: number;
+  unauthorizedObject: number;
+};
 
 function toNormalizedConfidence(confidence?: number | null): number {
   const raw = confidence ?? 0.5;
@@ -25,47 +75,95 @@ function toNormalizedConfidence(confidence?: number | null): number {
   return Math.max(0, Math.min(1, raw / 100));
 }
 
-// Phone detection carries a 1.5× deduction multiplier — it is high priority
+const TRUST_SCREENSHOT_EVIDENCE_WEIGHT = Number(process.env.TRUST_SCREENSHOT_EVIDENCE_WEIGHT || 1.5);
 const TRUST_EVENT_WEIGHT_MAP: Record<string, number> = {
   tab_switch: 3,
   window_blur: 3,
   fullscreen_exit: 2,
   copy_paste_attempt: 5,
+  devtools_open: 8,
   camera_blocked: 20,
-  multiple_faces: 15,
-  phone_detected: 20,
-  face_not_detected: 15,
-  looking_away: 1,
-  voice_detected: 15,
   secondary_monitor_detected: 20,
 };
 
-function calculateTrustFromEvents(
-  events: Array<{ eventType: string; severity: string; confidence: number | null }>
-): number {
+function getEventMetadata(event: Pick<TrustEvent, 'metadata'>): Record<string, unknown> {
+  if (!event.metadata) return {};
+  try {
+    const parsed = JSON.parse(event.metadata);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    return {};
+  }
+  return {};
+}
+
+function isAiProctorEvent(event: TrustEvent): boolean {
+  if (AI_PROCTOR_EVENT_TYPES.has(event.eventType)) return true;
+
+  const metadata = getEventMetadata(event);
+  const source = String(metadata.source || '').toLowerCase();
+  const aiSource = String(metadata.aiSource || '').toLowerCase();
+  const hasAiTrace = typeof metadata.aiTraceId === 'string' && metadata.aiTraceId.length > 0;
+
+  return source === 'external_ai_engine' || aiSource.length > 0 || hasAiTrace;
+}
+
+function filterNonAiTrustEvents(events: TrustEvent[]): TrustEvent[] {
+  return events.filter(event => !isAiProctorEvent(event));
+}
+
+function buildViolationCounts(events: TrustEvent[]): TrustViolationCounts {
+  return {
+    tabSwitch: events.filter(e => e.eventType === 'tab_switch').length,
+    focusLoss: events.filter(e => e.eventType === 'window_blur').length,
+    fullscreenExit: events.filter(e => e.eventType === 'fullscreen_exit').length,
+    copyPaste: events.filter(e => e.eventType === 'copy_paste_attempt').length,
+    devtoolsOpen: events.filter(e => e.eventType === 'devtools_open').length,
+    cameraBlocked: events.filter(e => e.eventType === 'camera_blocked').length,
+    secondaryMonitor: events.filter(e => e.eventType === 'secondary_monitor_detected').length,
+    screenshotEvidence: events.filter(e => !!e.snapshotUrl).length,
+    // Legacy keys preserved for existing frontend compatibility.
+    phone: 0,
+    multipleFaces: 0,
+    faceAbsent: 0,
+    lookingAway: 0,
+    voice: 0,
+    suspiciousAudio: 0,
+    unauthorizedObject: 0,
+  };
+}
+
+function calculateTrustFromEvents(events: TrustEvent[]): number {
   if (events.length === 0) return 100;
 
   let deductions = 0;
   for (const event of events) {
     const confidence = toNormalizedConfidence(event.confidence);
     const weight = TRUST_EVENT_WEIGHT_MAP[event.eventType];
+
     if (typeof weight === 'number') {
       deductions += weight * confidence;
-      continue;
+    } else {
+      switch (event.severity) {
+        case 'critical':
+          deductions += 20 * confidence;
+          break;
+        case 'high':
+          deductions += 10 * confidence;
+          break;
+        case 'medium':
+          deductions += 5 * confidence;
+          break;
+        default:
+          deductions += 2 * confidence;
+          break;
+      }
     }
-    switch (event.severity) {
-      case 'critical':
-        deductions += 20 * confidence;
-        break;
-      case 'high':
-        deductions += 10 * confidence;
-        break;
-      case 'medium':
-        deductions += 5 * confidence;
-        break;
-      default:
-        deductions += 2 * confidence;
-        break;
+
+    if (event.snapshotUrl) {
+      deductions += TRUST_SCREENSHOT_EVIDENCE_WEIGHT * confidence;
     }
   }
 
@@ -86,6 +184,37 @@ function safeParseJSON<T>(raw?: string | null): T | null {
   } catch {
     return null;
   }
+}
+
+function getSnapshotUrls(events: TrustEvent[], max = 8): string[] {
+  const urls = events
+    .map(event => event.snapshotUrl)
+    .filter((url): url is string => typeof url === 'string' && url.length > 0);
+  return Array.from(new Set(urls)).slice(0, max);
+}
+
+function buildViolationProofs(events: TrustEvent[], max = 12): ViolationProof[] {
+  return events
+    .filter((event): event is TrustEvent & { snapshotUrl: string } => !!event.snapshotUrl)
+    .slice(0, max)
+    .map(event => {
+      const metadata = getEventMetadata(event);
+      const snapshotSource = String(
+        metadata.snapshotSource ||
+          metadata.snapshotEvidenceSource ||
+          metadata.source ||
+          (isAiProctorEvent(event) ? 'ai_camera' : 'screen_or_camera')
+      );
+      return {
+        eventId: event.id || null,
+        eventType: event.eventType,
+        severity: event.severity,
+        timestamp: event.timestamp ? event.timestamp.toISOString() : null,
+        snapshotUrl: event.snapshotUrl,
+        isAiEvent: isAiProctorEvent(event),
+        source: snapshotSource,
+      };
+    });
 }
 
 export async function getTrustReports(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -153,7 +282,7 @@ export async function getTrustReports(req: AuthenticatedRequest, res: Response):
       .map(a => a.proctorSession?.id)
       .filter((v): v is string => !!v);
 
-    const events = sessionIds.length
+    const events: TrustEvent[] = sessionIds.length
       ? await prisma.proctorEvent.findMany({
           where: {
             sessionId: { in: sessionIds },
@@ -174,43 +303,29 @@ export async function getTrustReports(req: AuthenticatedRequest, res: Response):
         })
       : [];
 
-    const eventsBySession = new Map<string, typeof events>();
+    const eventsBySession = new Map<string, TrustEvent[]>();
     for (const event of events) {
-      const bucket = eventsBySession.get(event.sessionId) || [];
+      const sessionId = event.sessionId;
+      if (!sessionId) continue;
+      const bucket = eventsBySession.get(sessionId) || [];
       bucket.push(event);
-      eventsBySession.set(event.sessionId, bucket);
+      eventsBySession.set(sessionId, bucket);
     }
 
     const reportRows = attempts.map(attempt => {
       const sessionId = attempt.proctorSession?.id;
-      const sessionEvents = sessionId ? eventsBySession.get(sessionId) || [] : [];
+      const rawSessionEvents = sessionId ? eventsBySession.get(sessionId) || [] : [];
+      const sessionEventsForTrust = filterNonAiTrustEvents(rawSessionEvents);
 
-      const counts = {
-        tabSwitch: sessionEvents.filter(e => e.eventType === 'tab_switch').length,
-        focusLoss: sessionEvents.filter(e => e.eventType === 'window_blur').length,
-        fullscreenExit: sessionEvents.filter(e => e.eventType === 'fullscreen_exit').length,
-        copyPaste: sessionEvents.filter(e => e.eventType === 'copy_paste_attempt').length,
-        cameraBlocked: sessionEvents.filter(e => e.eventType === 'camera_blocked').length,
-        phone: sessionEvents.filter(e => e.eventType === 'phone_detected').length,
-        multipleFaces: sessionEvents.filter(e => e.eventType === 'multiple_faces').length,
-        faceAbsent: sessionEvents.filter(e => e.eventType === 'face_not_detected').length,
-        lookingAway: sessionEvents.filter(e => e.eventType === 'looking_away').length,
-        voice: sessionEvents.filter(e => e.eventType === 'voice_detected').length,
-        secondaryMonitor: sessionEvents.filter(e => e.eventType === 'secondary_monitor_detected').length,
-        suspiciousAudio: sessionEvents.filter(e => e.eventType === 'suspicious_audio').length,
-        unauthorizedObject: sessionEvents.filter(e => e.eventType === 'unauthorized_object_detected').length,
-      };
-      const totalViolations = sessionEvents.length;
-
-      const derivedTrust = calculateTrustFromEvents(sessionEvents);
-      const trustScore =
-        typeof attempt.analytics?.trustScore === 'number'
-          ? attempt.analytics.trustScore
-          : derivedTrust;
-
+      const counts = buildViolationCounts(rawSessionEvents);
+      const totalViolations = rawSessionEvents.length;
+      const trustScore = Number(calculateTrustFromEvents(sessionEventsForTrust).toFixed(1));
       const riskLevel = riskLevelFromTrustScore(trustScore);
       const parsedSummary = safeParseJSON<{ llmSummary?: string }>(attempt.analytics?.proctoringSummary || null);
-      const latestEvent = sessionEvents[0];
+      const latestEvent = rawSessionEvents[0];
+      const latestSnapshotEvent = rawSessionEvents.find(event => !!event.snapshotUrl);
+      const snapshotUrls = getSnapshotUrls(rawSessionEvents);
+      const violationProofs = buildViolationProofs(rawSessionEvents);
 
       return {
         attemptId: attempt.id,
@@ -224,12 +339,16 @@ export async function getTrustReports(req: AuthenticatedRequest, res: Response):
         isFlagged: attempt.isFlagged,
         startTime: attempt.startTime,
         endTime: attempt.endTime,
-        trustScore: Number(trustScore.toFixed(1)),
+        trustScore,
         riskLevel,
         totalViolations,
+        trustRelevantViolations: sessionEventsForTrust.length,
         violations: counts,
         latestViolationAt: latestEvent?.timestamp || null,
-        latestSnapshotUrl: latestEvent?.snapshotUrl || null,
+        latestSnapshotUrl: latestSnapshotEvent?.snapshotUrl || null,
+        screenshotCount: counts.screenshotEvidence,
+        snapshotUrls,
+        violationProofs,
         llmSummary: parsedSummary?.llmSummary || null,
       };
     });
@@ -240,6 +359,8 @@ export async function getTrustReports(req: AuthenticatedRequest, res: Response):
       reports: filteredRows,
       filters: {
         reportEventTypes: REPORT_EVENT_TYPES,
+        trustScoringEventTypes: TRUST_SCORING_EVENT_TYPES,
+        excludedAiEventTypes: Array.from(AI_PROCTOR_EVENT_TYPES),
         riskLevels: ['low', 'medium', 'high', 'critical'],
       },
       testTree: tests.map(test => ({
@@ -284,7 +405,7 @@ export async function reEvaluateTrustReport(req: AuthenticatedRequest, res: Resp
       return;
     }
 
-    const events = attempt.proctorSession
+    const eventsRaw: TrustEvent[] = attempt.proctorSession
       ? await prisma.proctorEvent.findMany({
           where: {
             sessionId: attempt.proctorSession.id,
@@ -297,28 +418,17 @@ export async function reEvaluateTrustReport(req: AuthenticatedRequest, res: Resp
             confidence: true,
             metadata: true,
             timestamp: true,
+            snapshotUrl: true,
           },
           orderBy: { timestamp: 'desc' },
         })
       : [];
 
-    const trustScore = Number(calculateTrustFromEvents(events).toFixed(1));
+    const eventsForTrust = filterNonAiTrustEvents(eventsRaw);
+    const trustScore = Number(calculateTrustFromEvents(eventsForTrust).toFixed(1));
     const riskLevel = riskLevelFromTrustScore(trustScore);
-    const counts = {
-      tabSwitch: events.filter(e => e.eventType === 'tab_switch').length,
-      focusLoss: events.filter(e => e.eventType === 'window_blur').length,
-      fullscreenExit: events.filter(e => e.eventType === 'fullscreen_exit').length,
-      copyPaste: events.filter(e => e.eventType === 'copy_paste_attempt').length,
-      cameraBlocked: events.filter(e => e.eventType === 'camera_blocked').length,
-      phone: events.filter(e => e.eventType === 'phone_detected').length,
-      multipleFaces: events.filter(e => e.eventType === 'multiple_faces').length,
-      faceAbsent: events.filter(e => e.eventType === 'face_not_detected').length,
-      lookingAway: events.filter(e => e.eventType === 'looking_away').length,
-      voice: events.filter(e => e.eventType === 'voice_detected').length,
-      secondaryMonitor: events.filter(e => e.eventType === 'secondary_monitor_detected').length,
-      suspiciousAudio: events.filter(e => e.eventType === 'suspicious_audio').length,
-      unauthorizedObject: events.filter(e => e.eventType === 'unauthorized_object_detected').length,
-    };
+    const counts = buildViolationCounts(eventsRaw);
+    const snapshotUrls = getSnapshotUrls(eventsRaw);
 
     let llmSummary = `Trust score ${trustScore}%. Risk level ${riskLevel}.`;
     try {
@@ -336,8 +446,8 @@ export async function reEvaluateTrustReport(req: AuthenticatedRequest, res: Resp
               `Test: ${attempt.test.name} (${attempt.test.testCode})`,
               `Trust Score: ${trustScore}`,
               `Risk Level: ${riskLevel}`,
-              `Violations: tab_switch=${counts.tabSwitch}, focus_loss=${counts.focusLoss}, fullscreen_exit=${counts.fullscreenExit}, copy_paste=${counts.copyPaste}, camera_blocked=${counts.cameraBlocked}, phone=${counts.phone}, multiple_faces=${counts.multipleFaces}, face_not_detected=${counts.faceAbsent}, looking_away=${counts.lookingAway}, voice=${counts.voice}, secondary_monitor=${counts.secondaryMonitor}`,
-              `Total reportable violations: ${events.length}`,
+              `Violations: tab_switch=${counts.tabSwitch}, focus_loss=${counts.focusLoss}, fullscreen_exit=${counts.fullscreenExit}, copy_paste=${counts.copyPaste}, devtools_open=${counts.devtoolsOpen}, camera_blocked=${counts.cameraBlocked}, secondary_monitor=${counts.secondaryMonitor}, screenshot_evidence=${counts.screenshotEvidence}`,
+              `Total reportable violations: ${eventsRaw.length}`,
               'Provide a concise integrity assessment with one recommendation.',
             ].join('\n'),
           },
@@ -363,10 +473,15 @@ export async function reEvaluateTrustReport(req: AuthenticatedRequest, res: Resp
       generatedAt: new Date().toISOString(),
       trustScore,
       riskLevel,
-      totalViolations: events.length,
+      totalViolations: eventsRaw.length,
+      trustRelevantViolations: eventsForTrust.length,
       violations: counts,
+      screenshotCount: counts.screenshotEvidence,
+      snapshotUrls,
       llmSummary,
       reportEventTypes: REPORT_EVENT_TYPES,
+      trustScoringEventTypes: TRUST_SCORING_EVENT_TYPES,
+      excludedAiEventTypes: Array.from(AI_PROCTOR_EVENT_TYPES),
     };
 
     await prisma.performanceAnalytics.upsert({
@@ -388,8 +503,11 @@ export async function reEvaluateTrustReport(req: AuthenticatedRequest, res: Resp
       attemptId,
       trustScore,
       riskLevel,
-      totalViolations: events.length,
+      totalViolations: eventsRaw.length,
+      trustRelevantViolations: eventsForTrust.length,
       violations: counts,
+      screenshotCount: counts.screenshotEvidence,
+      latestSnapshotUrl: snapshotUrls[0] || null,
       llmSummary,
       generatedAt: proctoringSummary.generatedAt,
     });
