@@ -47,6 +47,8 @@ export default function TestCandidatesPanel({ testId }: TestCandidatesPanelProps
   const [inviteStatusFilter, setInviteStatusFilter] = useState('');
   const [lifecycleFilter, setLifecycleFilter] = useState('');
   const [selectedInviteId, setSelectedInviteId] = useState<string | null>(null);
+  const [selectedInviteIds, setSelectedInviteIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const [invitationData, setInvitationData] = useState<InvitationDashboardResponse | null>(null);
   const [invitationLoading, setInvitationLoading] = useState(true);
@@ -69,6 +71,16 @@ export default function TestCandidatesPanel({ testId }: TestCandidatesPanelProps
     try {
       const { data } = await adminApi.getTestInvitations(testId);
       setInvitationData(data);
+      setSelectedInviteIds((prev) => {
+        const validIds = new Set<string>((data.invitations || []).map((invite: InvitationRow) => invite.id));
+        const next = new Set<string>();
+        prev.forEach((id) => {
+          if (validIds.has(id)) {
+            next.add(id);
+          }
+        });
+        return next;
+      });
     } catch (error) {
       toast.error('Failed to load candidate status');
     } finally {
@@ -151,6 +163,9 @@ export default function TestCandidatesPanel({ testId }: TestCandidatesPanelProps
   const selectedAttempt = selectedInvite
     ? attemptByEmail.get(selectedInvite.email.toLowerCase()) || null
     : null;
+  const allSelected =
+    filteredInvitations.length > 0 &&
+    filteredInvitations.every((invite) => selectedInviteIds.has(invite.id));
 
   const inviteDisplay = (invite: InvitationRow) => {
     if (invite.lifecycleStatus === 'Completed') return { label: 'Completed', tone: 'bg-emerald-50 text-emerald-700' };
@@ -169,6 +184,75 @@ export default function TestCandidatesPanel({ testId }: TestCandidatesPanelProps
   const handleRefresh = () => {
     loadInvitations();
     loadResults();
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedInviteIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        filteredInvitations.forEach((invite) => next.delete(invite.id));
+      } else {
+        filteredInvitations.forEach((invite) => next.add(invite.id));
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectInvite = (inviteId: string) => {
+    setSelectedInviteIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(inviteId)) {
+        next.delete(inviteId);
+      } else {
+        next.add(inviteId);
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteSelected = async () => {
+    if (!testId || selectedInviteIds.size === 0) return;
+
+    const confirmed = window.confirm(
+      `Remove ${selectedInviteIds.size} selected candidate${selectedInviteIds.size > 1 ? 's' : ''} from this test?`
+    );
+    if (!confirmed) return;
+
+    const idsToDelete = Array.from(selectedInviteIds);
+    setBulkDeleting(true);
+
+    try {
+      const results = await Promise.allSettled(
+        idsToDelete.map((invitationId) => adminApi.deleteTestInvitation(testId, invitationId))
+      );
+
+      const successIds = idsToDelete.filter((_, index) => results[index].status === 'fulfilled');
+      const failedCount = idsToDelete.length - successIds.length;
+
+      if (successIds.length > 0) {
+        setSelectedInviteIds((prev) => {
+          const next = new Set(prev);
+          successIds.forEach((id) => next.delete(id));
+          return next;
+        });
+
+        if (selectedInviteId && successIds.includes(selectedInviteId)) {
+          setSelectedInviteId(null);
+        }
+      }
+
+      if (failedCount === 0) {
+        toast.success(`Removed ${successIds.length} candidate${successIds.length > 1 ? 's' : ''}`);
+      } else if (successIds.length === 0) {
+        toast.error('Failed to remove selected candidate(s)');
+      } else {
+        toast.success(`Removed ${successIds.length} candidate(s). ${failedCount} failed.`);
+      }
+
+      await Promise.all([loadInvitations(), loadResults()]);
+    } finally {
+      setBulkDeleting(false);
+    }
   };
 
   const isLoading = invitationLoading || resultsLoading;
@@ -264,6 +348,15 @@ export default function TestCandidatesPanel({ testId }: TestCandidatesPanelProps
             />
           </div>
           <div className="flex items-center gap-2">
+            {selectedInviteIds.size > 0 && (
+              <button
+                onClick={handleDeleteSelected}
+                disabled={bulkDeleting || isLoading}
+                className="inline-flex items-center gap-2 rounded-lg border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100 disabled:opacity-60"
+              >
+                {bulkDeleting ? 'Deleting...' : `Delete Selected (${selectedInviteIds.size})`}
+              </button>
+            )}
             <button
               onClick={handleRefresh}
               disabled={isLoading}
@@ -300,7 +393,13 @@ export default function TestCandidatesPanel({ testId }: TestCandidatesPanelProps
 
         <div className="rounded-2xl border border-slate-200 bg-white">
           <div className="grid grid-cols-[44px_minmax(200px,1fr)_140px_110px_140px_140px] items-center gap-3 border-b border-slate-200 bg-[#f7f9fd] px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
-            <input type="checkbox" className="h-4 w-4 rounded border-slate-300" />
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleSelectAll}
+              className="h-4 w-4 rounded border-slate-300"
+              aria-label="Select all candidates"
+            />
             <div className="flex items-center gap-2">
               Candidate
               <span className="text-slate-300">⇅</span>
@@ -334,10 +433,19 @@ export default function TestCandidatesPanel({ testId }: TestCandidatesPanelProps
                 return (
                   <div
                     key={invite.id}
-                    className="grid cursor-pointer grid-cols-[44px_minmax(200px,1fr)_140px_110px_140px_140px] items-center gap-3 px-4 py-3 hover:bg-slate-50"
+                    className={`grid cursor-pointer grid-cols-[44px_minmax(200px,1fr)_140px_110px_140px_140px] items-center gap-3 px-4 py-3 hover:bg-slate-50 ${
+                      selectedInviteIds.has(invite.id) ? 'bg-blue-50/60' : ''
+                    }`}
                     onClick={() => setSelectedInviteId(invite.id)}
                   >
-                    <input type="checkbox" className="h-4 w-4 rounded border-slate-300" />
+                    <input
+                      type="checkbox"
+                      checked={selectedInviteIds.has(invite.id)}
+                      onClick={(event) => event.stopPropagation()}
+                      onChange={() => toggleSelectInvite(invite.id)}
+                      className="h-4 w-4 rounded border-slate-300"
+                      aria-label={`Select ${invite.name}`}
+                    />
                     <div className="flex flex-col">
                       <span className="font-medium text-slate-900">{invite.name}</span>
                       <span className="text-xs text-slate-500">{invite.email}</span>
