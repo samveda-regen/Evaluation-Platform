@@ -21,19 +21,34 @@ interface SmtpConfiguration {
   zohoDataCenter: ZohoDataCenter;
 }
 
-type MailProvider = 'auto' | 'smtp';
+type MailProvider = 'auto' | 'smtp' | 'sendgrid';
 type ZohoAccountType = 'personal' | 'organization';
 type ZohoDataCenter = 'us' | 'eu' | 'in' | 'au' | 'cn';
+interface SendGridConfiguration {
+  apiKey: string;
+  fromAddress: string;
+  apiUrl: string;
+  timeoutMs: number;
+}
 
 let cachedTransporter: { key: string; transporter: any } | null = null;
 
 function parseMailProvider(value: string | undefined): MailProvider {
   const normalized = (value || 'smtp').trim().toLowerCase();
-  if (normalized === 'smtp' || normalized === 'auto') {
+  if (normalized === 'smtp' || normalized === 'sendgrid' || normalized === 'auto') {
     return normalized;
   }
 
-  console.warn(`Invalid MAIL_PROVIDER "${value}". Falling back to "smtp".`);
+  console.warn(`Invalid MAIL_PROVIDER "${value}". Falling back to "auto".`);
+  return 'auto';
+}
+
+function resolveProviderForAuto(): Exclude<MailProvider, 'auto'> {
+  const hasSendGridApiKey = Boolean(process.env.SENDGRID_API_KEY?.trim());
+  if (hasSendGridApiKey) {
+    return 'sendgrid';
+  }
+
   return 'smtp';
 }
 
@@ -196,6 +211,38 @@ function getFromAddressForSmtp(): string {
     || '';
 }
 
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return Math.floor(parsed);
+  }
+  return fallback;
+}
+
+function getSendGridConfiguration(): SendGridConfiguration {
+  const apiKey = process.env.SENDGRID_API_KEY?.trim().replace(/\r/g, '') || '';
+  const fromAddress = (process.env.SENDGRID_FROM?.trim().replace(/\r/g, ''))
+    || (process.env.EMAIL_FROM?.trim().replace(/\r/g, ''))
+    || '';
+  const apiUrl = process.env.SENDGRID_API_URL?.trim().replace(/\r/g, '')
+    || 'https://api.sendgrid.com/v3/mail/send';
+  const timeoutMs = parsePositiveInt(process.env.SENDGRID_TIMEOUT_MS, 12000);
+
+  if (!apiKey) {
+    throw new Error('SendGrid is not configured. Please set SENDGRID_API_KEY.');
+  }
+  if (!fromAddress) {
+    throw new Error('SendGrid "from" address is not configured. Please set SENDGRID_FROM or EMAIL_FROM.');
+  }
+
+  return {
+    apiKey,
+    fromAddress,
+    apiUrl,
+    timeoutMs
+  };
+}
+
 function extractEmailAddress(value: string): string {
   const match = value.match(/<([^>]+)>/);
   return (match?.[1] || value).trim().toLowerCase();
@@ -342,17 +389,78 @@ async function sendInvitationEmailViaSmtp(payload: InvitationEmailPayload): Prom
   throw lastError;
 }
 
+async function readSendGridError(response: Response): Promise<string> {
+  const raw = await response.text();
+  if (!raw) {
+    return `HTTP ${response.status}`;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as { errors?: Array<{ message?: string }> };
+    if (Array.isArray(parsed.errors) && parsed.errors.length > 0) {
+      const messages = parsed.errors
+        .map((item) => (item?.message || '').trim())
+        .filter(Boolean);
+      if (messages.length > 0) {
+        return messages.join('; ');
+      }
+    }
+  } catch {
+    // ignore JSON parse errors and return raw text below
+  }
+
+  return raw.slice(0, 600);
+}
+
+async function sendInvitationEmailViaSendGrid(payload: InvitationEmailPayload): Promise<void> {
+  const config = getSendGridConfiguration();
+
+  const response = await fetch(config.apiUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      personalizations: [
+        {
+          to: [{ email: payload.to }]
+        }
+      ],
+      from: { email: config.fromAddress },
+      subject: "You're Invited to Take the Test",
+      content: [
+        { type: 'text/plain', value: buildInvitationBody(payload) },
+        { type: 'text/html', value: buildInvitationHtml(payload) }
+      ]
+    }),
+    signal: AbortSignal.timeout(config.timeoutMs)
+  });
+
+  if (response.status !== 202) {
+    const errorMessage = await readSendGridError(response);
+    throw new Error(`SendGrid send failed (${response.status}): ${errorMessage}`);
+  }
+}
+
 export async function sendInvitationEmail(payload: InvitationEmailPayload): Promise<void> {
   const provider = getMailProvider();
+  const resolvedProvider = provider === 'auto' ? resolveProviderForAuto() : provider;
 
   try {
     if (provider === 'auto') {
-      console.warn('MAIL_PROVIDER=auto resolved to SMTP. Configure SMTP_* environment variables.');
+      console.warn(`MAIL_PROVIDER=auto resolved to ${resolvedProvider}.`);
     }
+
+    if (resolvedProvider === 'sendgrid') {
+      await sendInvitationEmailViaSendGrid(payload);
+      return;
+    }
+
     await sendInvitationEmailViaSmtp(payload);
   } catch (error) {
     console.error('Failed to send invitation email:', {
-      provider: 'smtp',
+      provider: resolvedProvider,
       error
     });
     throw error;
