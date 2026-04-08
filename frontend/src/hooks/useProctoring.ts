@@ -126,6 +126,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
   // Refs for media streams and analyzers
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const processingVideoRef = useRef<HTMLVideoElement | null>(null);
+  const screenProcessingVideoRef = useRef<HTMLVideoElement | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
@@ -141,6 +142,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
   const recordingUploadFailuresRef = useRef<Record<string, number>>({});
   const recordingUploadDisabledRef = useRef<Record<string, boolean>>({});
   const clientViolationSeenRef = useRef<Record<string, number>>({});
+  const latestScreenEvidenceFrameRef = useRef<string | null>(null);
 
   // Interval refs
   const faceDetectionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -148,6 +150,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
   const analysisIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const obstructionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const screenEvidenceIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const snapshotAnalysisInFlightRef = useRef(false);
   const analysisFailureStreakRef = useRef(0);
   const analysisBackoffUntilRef = useRef(0);
@@ -208,6 +211,47 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     }
     return processingVideo || uiVideo || null;
   }, []);
+
+  const getActiveScreenVideoElement = useCallback((): HTMLVideoElement | null => {
+    const screenVideo = screenProcessingVideoRef.current;
+    if (screenVideo && screenVideo.videoWidth > 0 && screenVideo.videoHeight > 0) {
+      return screenVideo;
+    }
+    return null;
+  }, []);
+
+  const captureViolationEvidenceFrame = useCallback((
+    options: { quality?: number; maxWidth?: number; allowWebcamFallback?: boolean } = {}
+  ): { snapshotData?: string; snapshotSource: 'screen_share' | 'screen_share_cached' | 'webcam' | 'none' } => {
+    const quality = options.quality ?? 0.8;
+    const maxWidth = options.maxWidth ?? 1280;
+
+    const screenVideo = getActiveScreenVideoElement();
+    if (screenVideo) {
+      const frame = captureFrame(screenVideo, { quality, maxWidth });
+      if (frame) {
+        latestScreenEvidenceFrameRef.current = frame;
+        return { snapshotData: frame, snapshotSource: 'screen_share' };
+      }
+    }
+
+    const cachedScreenFrame = latestScreenEvidenceFrameRef.current;
+    if (cachedScreenFrame) {
+      return { snapshotData: cachedScreenFrame, snapshotSource: 'screen_share_cached' };
+    }
+
+    if (options.allowWebcamFallback !== false) {
+      const cameraVideo = getActiveVideoElement();
+      if (cameraVideo) {
+        const frame = captureFrame(cameraVideo, { quality, maxWidth: Math.min(maxWidth, 960) });
+        if (frame) {
+          return { snapshotData: frame, snapshotSource: 'webcam' };
+        }
+      }
+    }
+
+    return { snapshotSource: 'none' };
+  }, [getActiveScreenVideoElement, getActiveVideoElement]);
 
   const analyzeObstructionSignal = useCallback((video: HTMLVideoElement): {
     blocked: boolean;
@@ -354,12 +398,34 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
         const screenStream = cached.screenStream || (allowRuntimeScreenPrompt ? await requestScreenShare() : null);
         if (screenStream) {
           screenStreamRef.current = screenStream;
+          if (screenProcessingVideoRef.current) {
+            screenProcessingVideoRef.current.pause();
+            screenProcessingVideoRef.current.srcObject = null;
+          if (screenProcessingVideoRef.current.parentNode) {
+            screenProcessingVideoRef.current.parentNode.removeChild(screenProcessingVideoRef.current);
+          }
+          screenProcessingVideoRef.current = null;
+          }
+          const screenProcessingVideo = document.createElement('video');
+          screenProcessingVideo.autoplay = true;
+          screenProcessingVideo.muted = true;
+          screenProcessingVideo.playsInline = true;
+          screenProcessingVideo.setAttribute('aria-hidden', 'true');
+          screenProcessingVideo.style.cssText =
+            'position:fixed;width:1px;height:1px;top:-9999px;left:-9999px;opacity:0;pointer-events:none;';
+          document.body.appendChild(screenProcessingVideo);
+          screenProcessingVideo.srcObject = screenStream;
+          screenProcessingVideo.play().catch(console.error);
+          screenProcessingVideoRef.current = screenProcessingVideo;
           screenShareEnabled = true;
           setStatus(prev => ({ ...prev, screenShareEnabled: true }));
         } else {
+          latestScreenEvidenceFrameRef.current = null;
           // Surface as hook error; UI decides how to present and route.
           setError('Screen share permission denied');
         }
+      } else {
+        latestScreenEvidenceFrameRef.current = null;
       }
 
       // Enforce mandatory proctoring permissions
@@ -532,12 +598,14 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
         const remoteObj = objs.find((o) => o.class === 'remote' && o.confidence >= 45);
 
         if (phoneObj && canEmitClientViolation('object:phone', 9000)) {
+          const violationEvidence = captureViolationEvidenceFrame({ quality: 0.72, maxWidth: 1280 });
           const violationData: ViolationData = {
             eventType: 'phone_detected',
             severity: 'critical',
             confidence: Math.round(phoneObj.confidence),
             description: `Mobile phone detected (${Math.round(phoneObj.confidence)}%)`,
-            snapshotData: captureFrame(activeVideo, { quality: 0.72, maxWidth: 900 }) || undefined,
+            metadata: { snapshotSource: violationEvidence.snapshotSource },
+            snapshotData: violationEvidence.snapshotData,
           };
           await reportViolationAndHandleTermination(violationData);
           traceLog('client_violation_emit', {
@@ -552,12 +620,14 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
 
         if ((laptopObj || remoteObj) && canEmitClientViolation('object:unauthorized', 10000)) {
           const best = laptopObj || remoteObj!;
+          const violationEvidence = captureViolationEvidenceFrame({ quality: 0.72, maxWidth: 1280 });
           const violationData: ViolationData = {
             eventType: 'unauthorized_object_detected',
             severity: 'high',
             confidence: Math.round(best.confidence),
             description: `${best.class} detected (${Math.round(best.confidence)}%)`,
-            snapshotData: captureFrame(activeVideo, { quality: 0.72, maxWidth: 900 }) || undefined,
+            metadata: { snapshotSource: violationEvidence.snapshotSource },
+            snapshotData: violationEvidence.snapshotData,
           };
           await reportViolationAndHandleTermination(violationData);
           traceLog('client_violation_emit', {
@@ -582,15 +652,19 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
 
           const dedupeKey = `${mappedType}:${v.severity}`;
           if (!canEmitClientViolation(dedupeKey)) continue;
+          const violationEvidence = NO_SNAPSHOT_CLIENT_EVENTS.has(mappedType)
+            ? { snapshotSource: 'none' as const, snapshotData: undefined }
+            : captureViolationEvidenceFrame({ quality: 0.7, maxWidth: 1280 });
 
           const violationData: ViolationData = {
             eventType: mappedType,
             severity: MATRIX_SEVERITY_BY_EVENT[mappedType] || v.severity,
             confidence: Math.max(50, v.confidence),
             description: v.description,
-            snapshotData: NO_SNAPSHOT_CLIENT_EVENTS.has(mappedType)
-              ? undefined
-              : captureFrame(activeVideo, { quality: 0.7, maxWidth: 800 }) || undefined,
+            metadata: violationEvidence.snapshotData
+              ? { snapshotSource: violationEvidence.snapshotSource }
+              : undefined,
+            snapshotData: violationEvidence.snapshotData,
           };
 
           await reportViolationAndHandleTermination(violationData);
@@ -629,7 +703,15 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
       faceDetected,
       lookingAtScreen,
     }));
-  }, [session, aiProctorReady, getActiveVideoElement, canEmitClientViolation, reportViolationAndHandleTermination, finalConfig]);
+  }, [
+    session,
+    aiProctorReady,
+    getActiveVideoElement,
+    canEmitClientViolation,
+    reportViolationAndHandleTermination,
+    finalConfig,
+    captureViolationEvidenceFrame,
+  ]);
 
   // Run audio status only. Violations are emitted by backend analysis pipeline.
   const runAudioAnalysis = useCallback(async () => {
@@ -689,7 +771,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
       if (shouldFreeze && !state.blocked) {
         state.blocked = true;
         state.freezeStartedAt = now;
-        const snapshot = captureFrame(activeVideo, { quality: 0.8, maxWidth: 960 }) || undefined;
+        const violationEvidence = captureViolationEvidenceFrame({ quality: 0.8, maxWidth: 1280 });
         const violation: ViolationData = {
           eventType: 'camera_blocked',
           severity: 'critical',
@@ -698,8 +780,9 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
           metadata: {
             reason,
             detectedAt: new Date(now).toISOString(),
+            snapshotSource: violationEvidence.snapshotSource,
           },
-          snapshotData: snapshot,
+          snapshotData: violationEvidence.snapshotData,
         };
         await reportViolationAndHandleTermination(violation);
         setStatus(prev => ({
@@ -738,7 +821,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
       const freezeDurationMs = Math.max(0, now - freezeStartedAt);
       state.blocked = false;
       state.freezeStartedAt = null;
-      const resumeSnapshot = captureFrame(activeVideo, { quality: 0.7, maxWidth: 900 }) || undefined;
+      const resumeEvidence = captureViolationEvidenceFrame({ quality: 0.7, maxWidth: 1280 });
       const resumeEvent: ViolationData = {
         eventType: 'camera_resumed',
         severity: 'low',
@@ -749,8 +832,9 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
           freezeStartedAt: new Date(freezeStartedAt).toISOString(),
           resumedAt: new Date(now).toISOString(),
           freezeDurationMs,
+          snapshotSource: resumeEvidence.snapshotSource,
         },
-        snapshotData: resumeSnapshot,
+        snapshotData: resumeEvidence.snapshotData,
       };
       await reportViolationAndHandleTermination(resumeEvent);
       setStatus(prev => ({
@@ -774,6 +858,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     getActiveVideoElement,
     analyzeObstructionSignal,
     reportViolationAndHandleTermination,
+    captureViolationEvidenceFrame,
   ]);
 
   // Upload periodic snapshot
@@ -985,6 +1070,21 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
       void runSnapshotAnalysis();
     }, analysisIntervalMs);
 
+    // Keep a recent screen evidence frame so tab-switch/window blur violations can still
+    // carry evidence even if live screen capture is briefly unavailable at emit time.
+    if (screenStreamRef.current) {
+      const refreshScreenEvidence = () => {
+        const screenVideo = getActiveScreenVideoElement();
+        if (!screenVideo) return;
+        const frame = captureFrame(screenVideo, { quality: 0.68, maxWidth: 1280 });
+        if (frame) {
+          latestScreenEvidenceFrameRef.current = frame;
+        }
+      };
+      refreshScreenEvidence();
+      screenEvidenceIntervalRef.current = setInterval(refreshScreenEvidence, 1500);
+    }
+
     return () => {
       if (faceDetectionIntervalRef.current) {
         clearInterval(faceDetectionIntervalRef.current);
@@ -1001,6 +1101,9 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
       if (obstructionIntervalRef.current) {
         clearInterval(obstructionIntervalRef.current);
       }
+      if (screenEvidenceIntervalRef.current) {
+        clearInterval(screenEvidenceIntervalRef.current);
+      }
     };
   }, [
     status.isInitialized,
@@ -1012,6 +1115,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     uploadPeriodicSnapshot,
     runSnapshotAnalysis,
     analysisIntervalMs,
+    getActiveScreenVideoElement,
   ]);
 
   // Initialize on mount
@@ -1035,11 +1139,24 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
         if (processingVideoRef.current.parentNode) {
           processingVideoRef.current.parentNode.removeChild(processingVideoRef.current);
         }
+        processingVideoRef.current = null;
       }
+      if (screenProcessingVideoRef.current) {
+        screenProcessingVideoRef.current.pause();
+        screenProcessingVideoRef.current.srcObject = null;
+        if (screenProcessingVideoRef.current.parentNode) {
+          screenProcessingVideoRef.current.parentNode.removeChild(screenProcessingVideoRef.current);
+        }
+        screenProcessingVideoRef.current = null;
+      }
+      latestScreenEvidenceFrameRef.current = null;
       if (audioAnalyzerRef.current) {
         audioAnalyzerRef.current.destroy();
       }
       clearCachedStreams(true);
+      if (screenEvidenceIntervalRef.current) {
+        clearInterval(screenEvidenceIntervalRef.current);
+      }
       if (webcamRecorderRef.current && webcamRecorderRef.current.state !== 'inactive') {
         webcamRecorderRef.current.stop();
       }
@@ -1062,16 +1179,17 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     severity: 'low' | 'medium' | 'high' | 'critical' = 'medium'
   ) => {
     if (!session) return;
-    const activeVideo = getActiveVideoElement();
+    const violationEvidence = captureViolationEvidenceFrame({ quality: 0.7, maxWidth: 1280 });
 
     const violation: ViolationData = {
       eventType,
       severity,
       confidence: 100,
       description,
-      snapshotData: activeVideo
-        ? captureFrame(activeVideo, { quality: 0.7, maxWidth: 640 }) || undefined
+      metadata: violationEvidence.snapshotData
+        ? { snapshotSource: violationEvidence.snapshotSource }
         : undefined,
+      snapshotData: violationEvidence.snapshotData,
     };
 
     await reportViolationAndHandleTermination(violation);
@@ -1083,7 +1201,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     if (finalConfig.onViolation) {
       finalConfig.onViolation(violation);
     }
-  }, [session, finalConfig, reportViolationAndHandleTermination, getActiveVideoElement]);
+  }, [session, finalConfig, reportViolationAndHandleTermination, captureViolationEvidenceFrame]);
 
   // End session
   const endSession = useCallback(async () => {
@@ -1103,6 +1221,9 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     if (obstructionIntervalRef.current) {
       clearInterval(obstructionIntervalRef.current);
     }
+    if (screenEvidenceIntervalRef.current) {
+      clearInterval(screenEvidenceIntervalRef.current);
+    }
 
     // Stop media streams
     if (cameraStreamRef.current) {
@@ -1120,7 +1241,17 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
       if (processingVideoRef.current.parentNode) {
         processingVideoRef.current.parentNode.removeChild(processingVideoRef.current);
       }
+      processingVideoRef.current = null;
     }
+    if (screenProcessingVideoRef.current) {
+      screenProcessingVideoRef.current.pause();
+      screenProcessingVideoRef.current.srcObject = null;
+      if (screenProcessingVideoRef.current.parentNode) {
+        screenProcessingVideoRef.current.parentNode.removeChild(screenProcessingVideoRef.current);
+      }
+      screenProcessingVideoRef.current = null;
+    }
+    latestScreenEvidenceFrameRef.current = null;
 
     // Destroy analyzers
     if (audioAnalyzerRef.current) {
@@ -1147,6 +1278,12 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     return captureFrame(activeVideo, options);
   }, [getActiveVideoElement]);
 
+  const captureEvidenceFrame = useCallback(
+    (options?: { quality?: number; maxWidth?: number; allowWebcamFallback?: boolean }) =>
+      captureViolationEvidenceFrame(options),
+    [captureViolationEvidenceFrame]
+  );
+
   return {
     status,
     session,
@@ -1159,6 +1296,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     aiProctorReady, // Indicates if YOLO/COCO-SSD AI detection is active
     runAudioAnalysis,
     capturePreviewFrame,
+    captureEvidenceFrame,
   };
 }
 
