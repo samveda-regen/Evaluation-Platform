@@ -32,6 +32,16 @@ body {
   background: #555;
 }
 
+/* Hide scrollbar for specific containers while preserving scroll behavior */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Prevent text selection in test mode */
 .no-select {
   user-select: none;
