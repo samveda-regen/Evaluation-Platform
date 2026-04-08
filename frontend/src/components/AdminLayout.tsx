@@ -40,7 +40,7 @@ export default function AdminLayout() {
             <span className="text-sm font-semibold tracking-wide">Regen</span>
           </Link>
 
-          <nav className="flex-1 overflow-x-auto">
+          <nav className="hide-scrollbar flex-1 overflow-x-auto overflow-y-hidden">
             <ul className="flex items-center gap-6 whitespace-nowrap text-sm">
               {navItems.map(item => (
                 <li key={item.path}>
