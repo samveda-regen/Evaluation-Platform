@@ -277,3 +277,53 @@ export async function getTestInvitationDashboard(req: AuthenticatedRequest, res:
     res.status(500).json({ error: getErrorMessage(error) });
   }
 }
+
+export async function deleteTestInvitationCandidate(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { testId, invitationId } = req.params;
+    const adminId = req.admin!.id;
+
+    const invitation = await prisma.testInvitation.findFirst({
+      where: {
+        id: invitationId,
+        testId,
+        test: { adminId }
+      },
+      select: {
+        id: true,
+        testId: true,
+        email: true
+      }
+    });
+
+    if (!invitation) {
+      res.status(404).json({ error: 'Invitation not found for this test' });
+      return;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const candidate = await tx.candidate.findUnique({
+        where: { email: invitation.email },
+        select: { id: true }
+      });
+
+      if (candidate) {
+        await tx.testAttempt.deleteMany({
+          where: {
+            testId: invitation.testId,
+            candidateId: candidate.id
+          }
+        });
+      }
+
+      await tx.testInvitation.delete({
+        where: { id: invitation.id }
+      });
+    });
+
+    res.json({ message: 'Candidate removed from test successfully' });
+  } catch (error) {
+    console.error('Delete test invitation candidate error:', error);
+    res.status(500).json({ error: getErrorMessage(error) });
+  }
+}
