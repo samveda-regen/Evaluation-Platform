@@ -472,7 +472,7 @@ export async function sendBulkTestInvitations(input: {
   if (sent === 0 && rows.length > 0) {
     const firstFailure = failureReasons.length > 0 ? ` First failure: ${failureReasons[0]}` : '';
     throw new InvitationServiceError(
-      `No invitation emails were sent. Please check SMTP mail configuration and server logs.${firstFailure}`,
+      `No invitation emails were sent. Please check mail provider configuration (SendGrid/SMTP) and server logs.${firstFailure}`,
       502
     );
   }
