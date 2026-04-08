@@ -68,7 +68,6 @@ export default function TestInterface() {
     mcqAnswers,
     codingAnswers,
     behavioralAnswers,
-    violations,
     isSubmitted,
     setCurrentQuestion,
     saveMCQAnswer,
@@ -933,13 +932,6 @@ export default function TestInterface() {
           <div className="text-sm">
             <span className="text-gray-500">Answered: </span>
             <span className="font-medium">{getAnsweredCount()}/{questions.length}</span>
-          </div>
-
-          <div className="text-sm">
-            <span className="text-gray-500">Violations: </span>
-            <span className={`font-medium ${violations > 0 ? 'text-red-600' : 'text-green-600'}`}>
-              {violations}/{maxViolations}
-            </span>
           </div>
 
           <div className={`text-xl font-mono font-bold ${timeRemaining < 300000 ? 'text-red-600' : 'text-primary-600'}`}>
