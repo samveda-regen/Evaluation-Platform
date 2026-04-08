@@ -175,7 +175,8 @@ export default function TestInterface() {
     emitActivity();
 
     if (TEMP_AI_PAUSE_EVENTS.has(eventType)) {
-      triggerPolicyPause(message);
+      const pauseMs = eventType === 'phone_detected' ? 15000 : 10000;
+      triggerPolicyPause(message, pauseMs);
     }
 
   }, [incrementViolations, showViolationWarning, showTrustWarning, triggerPolicyPause, testId, attemptId, isSubmitted]);
@@ -185,6 +186,7 @@ export default function TestInterface() {
     endSession: endProctoringSession,
     error: proctorError,
     capturePreviewFrame,
+    captureEvidenceFrame,
   } = useProctoring(attemptId || '', {
     enabled: proctorEnabled,
     enableCamera: requireCamera,
@@ -563,7 +565,8 @@ export default function TestInterface() {
     if (!ALLOWED_CANDIDATE_VIOLATIONS.has(eventType)) return;
 
     const newViolations = incrementViolations();
-    const snapshotData = capturePreviewFrame({ quality: 0.8, maxWidth: 960 }) || undefined;
+    const violationEvidence = captureEvidenceFrame({ quality: 0.82, maxWidth: 1366 });
+    const snapshotData = violationEvidence.snapshotData;
     const confidence = eventType === 'devtools_open' ? 98 : 90;
     const durationMs =
       eventType === 'tab_switch'
@@ -580,6 +583,7 @@ export default function TestInterface() {
           confidence,
           durationMs,
           snapshotData,
+          snapshotSource: violationEvidence.snapshotSource,
           timestamp: new Date().toISOString(),
         },
       });
@@ -616,7 +620,7 @@ export default function TestInterface() {
     } catch (error) {
       console.error('Failed to log activity:', error);
     }
-  }, [incrementViolations, isSubmitted, capturePreviewFrame]);
+  }, [incrementViolations, isSubmitted, captureEvidenceFrame]);
 
   const handleReenterFullscreen = async () => {
     try {
