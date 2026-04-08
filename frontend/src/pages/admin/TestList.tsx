@@ -19,6 +19,8 @@ export default function TestList() {
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [selectedTestIds, setSelectedTestIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [selectedTestForInvites, setSelectedTestForInvites] = useState<Test | null>(null);
   const [invitationFile, setInvitationFile] = useState<File | null>(null);
   const [customMessage, setCustomMessage] = useState('');
@@ -36,10 +38,86 @@ export default function TestList() {
       const { data } = await adminApi.getTests(page);
       setTests(data.tests);
       setPagination(data.pagination);
+      setSelectedTestIds((prev) => {
+        const next = new Set<string>();
+        data.tests.forEach((test: Test) => {
+          if (prev.has(test.id)) {
+            next.add(test.id);
+          }
+        });
+        return next;
+      });
     } catch (error) {
       toast.error('Failed to load tests');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const allSelected = tests.length > 0 && tests.every((test) => selectedTestIds.has(test.id));
+
+  const toggleSelectAll = () => {
+    setSelectedTestIds(() => {
+      if (allSelected) {
+        return new Set<string>();
+      }
+      return new Set<string>(tests.map((test) => test.id));
+    });
+  };
+
+  const toggleSelectTest = (testId: string) => {
+    setSelectedTestIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(testId)) {
+        next.delete(testId);
+      } else {
+        next.add(testId);
+      }
+      return next;
+    });
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedTestIds.size === 0) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${selectedTestIds.size} selected test${selectedTestIds.size > 1 ? 's' : ''}? This cannot be undone.`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setBulkDeleting(true);
+    const idsToDelete = Array.from(selectedTestIds);
+
+    try {
+      const results = await Promise.allSettled(idsToDelete.map((testId) => adminApi.deleteTest(testId)));
+      const successIds = idsToDelete.filter((_, index) => results[index].status === 'fulfilled');
+      const failedCount = idsToDelete.length - successIds.length;
+
+      if (successIds.length > 0) {
+        const successSet = new Set(successIds);
+        setTests((prev) => prev.filter((test) => !successSet.has(test.id)));
+        setSelectedTestIds((prev) => {
+          const next = new Set(prev);
+          successIds.forEach((id) => next.delete(id));
+          return next;
+        });
+      }
+
+      if (failedCount === 0) {
+        toast.success(`Deleted ${successIds.length} test${successIds.length > 1 ? 's' : ''}`);
+      } else if (successIds.length === 0) {
+        toast.error('Unable to delete selected test(s). Some tests may have dependencies.');
+      } else {
+        toast.success(`Deleted ${successIds.length} test(s). ${failedCount} could not be deleted.`);
+      }
+
+      await loadTests();
+    } finally {
+      setBulkDeleting(false);
     }
   };
 
@@ -107,6 +185,15 @@ export default function TestList() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-3xl font-semibold text-slate-900">Tests</h1>
         <div className="flex flex-wrap items-center gap-3">
+          {selectedTestIds.size > 0 && (
+            <button
+              onClick={handleDeleteSelected}
+              disabled={bulkDeleting}
+              className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"
+            >
+              {bulkDeleting ? 'Deleting...' : `Delete Selected (${selectedTestIds.size})`}
+            </button>
+          )}
           <button className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path
@@ -219,7 +306,16 @@ export default function TestList() {
 
             <section className="rounded-2xl border border-slate-200 bg-white">
               <div className="grid grid-cols-[minmax(320px,1fr)_110px_110px_110px_44px] gap-4 border-b border-slate-200 px-5 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <span>Tests</span>
+                <span className="inline-flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleSelectAll}
+                    className="h-4 w-4 rounded border-slate-300"
+                    aria-label="Select all tests"
+                  />
+                  <span>Tests</span>
+                </span>
                 <span className="text-center">Not Attempted</span>
                 <span className="text-center">Completed</span>
                 <span className="text-center">To Evaluate</span>
@@ -242,8 +338,17 @@ export default function TestList() {
                     className="grid cursor-pointer grid-cols-[minmax(320px,1fr)_110px_110px_110px_44px] gap-4 border-b border-slate-200 px-5 py-5 text-sm transition hover:bg-slate-50 last:border-b-0"
                   >
                     <div className="flex items-start gap-3">
-                      <input type="checkbox" className="mt-1 h-4 w-4 rounded border-slate-300" />
+                      <input
+                        type="checkbox"
+                        checked={selectedTestIds.has(test.id)}
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => event.stopPropagation()}
+                        onChange={() => toggleSelectTest(test.id)}
+                        className="mt-1 h-4 w-4 rounded border-slate-300"
+                        aria-label={`Select ${test.name}`}
+                      />
                       <button
+                        onClick={(event) => event.stopPropagation()}
                         className="mt-1 text-slate-300 transition hover:text-amber-400"
                         aria-label="Star test"
                       >
