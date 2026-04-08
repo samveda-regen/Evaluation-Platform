@@ -146,6 +146,9 @@ export const adminApi = {
   getTestInvitations: (testId: string) =>
     api.get(`/admin/tests/${testId}/invitations`),
 
+  deleteTestInvitation: (testId: string, invitationId: string) =>
+    api.delete(`/admin/tests/${testId}/invitations/${invitationId}`),
+
   addQuestionToTest: (testId: string, data: { questionId: string; questionType: string; orderIndex?: number; sectionId?: string | null }) =>
     api.post(`/admin/tests/${testId}/questions`, data),
 
