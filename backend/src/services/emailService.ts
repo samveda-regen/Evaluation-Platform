@@ -252,16 +252,41 @@ function buildInvitationBody(payload: InvitationEmailPayload): string {
   const lines = [
     `Hi ${payload.candidateName},`,
     '',
-    `You have been invited to take the test "${payload.testName}".`,
-    'Click below to start:',
-    payload.testLink
+    'Thank you for your interest in the AI Developer role at ReGen.',
+    '',
+    'As discussed, you are invited to take the Online MCQ + Coding Assessment as the next step in our selection process.',
+    '',
+    'Your exam window will be from 12:00 PM to 4:00 PM. After this time, the portal will automatically close, so please ensure you complete your assessment within the given duration.',
+    '',
+    'Please use the below link to access the exam portal:',
+    payload.testLink,
+    '',
+    'EXAM INSTRUCTIONS:',
+    '1. Ensure you have a stable internet connection before starting the test.',
+    '2. Use a laptop/desktop for a better experience (avoid mobile devices).',
+    '3. Do not refresh or close the browser during the test.',
+    '4. Make sure you complete all questions within the given duration.',
+    '5. Avoid switching tabs or opening other applications during the assessment.',
+    '6. Any form of malpractice may lead to disqualification.',
+    '',
+    'Further updates regarding the next steps will be shared with candidates who successfully clear this round.',
+    '',
+    'If you face any issues accessing the portal, feel free to reply to this email.'
   ];
 
   if (payload.customMessage?.trim()) {
     lines.push('', payload.customMessage.trim());
   }
 
-  lines.push('', 'Good luck!');
+  lines.push(
+    '',
+    'Wishing you all the best!',
+    '',
+    'Best Regards,',
+    'Kiran Penubakala',
+    'kiran@regenconsult.au',
+    '7658920525'
+  );
   return lines.join('\n');
 }
 
@@ -276,7 +301,6 @@ function escapeHtml(value: string): string {
 
 function buildInvitationHtml(payload: InvitationEmailPayload): string {
   const candidateName = escapeHtml(payload.candidateName);
-  const testName = escapeHtml(payload.testName);
   const testLink = escapeHtml(payload.testLink);
   const customMessage = payload.customMessage?.trim();
 
@@ -286,11 +310,25 @@ function buildInvitationHtml(payload: InvitationEmailPayload): string {
 
   return [
     `<p>Hi ${candidateName},</p>`,
-    `<p>You have been invited to take the test <strong>${testName}</strong>.</p>`,
-    '<p>Click below to start:</p>',
+    '<p>Thank you for your interest in the AI Developer role at ReGen.</p>',
+    '<p>As discussed, you are invited to take the Online MCQ + Coding Assessment as the next step in our selection process.</p>',
+    '<p>Your exam window will be from 12:00 PM to 4:00 PM. After this time, the portal will automatically close, so please ensure you complete your assessment within the given duration.</p>',
+    '<p>Please use the below link to access the exam portal:</p>',
     `<p><a href="${testLink}" target="_blank" rel="noopener noreferrer">${testLink}</a></p>`,
+    '<p><strong>Exam Instructions:</strong></p>',
+    '<ul>',
+    '<li>Ensure you have a stable internet connection before starting the test.</li>',
+    '<li>Use a laptop/desktop for a better experience (avoid mobile devices).</li>',
+    '<li>Do not refresh or close the browser during the test.</li>',
+    '<li>Make sure you complete all questions within the given duration.</li>',
+    '<li>Avoid switching tabs or opening other applications during the assessment.</li>',
+    '<li>Any form of malpractice may lead to disqualification.</li>',
+    '</ul>',
+    '<p>Further updates regarding the next steps will be shared with candidates who successfully clear this round.</p>',
+    '<p>If you face any issues accessing the portal, feel free to reply to this email.</p>',
     customMessageBlock,
-    '<p>Good luck!</p>'
+    '<p>Wishing you all the best!</p>',
+    '<p>Best Regards,<br />Kiran Penubakala<br />kiran@regenconsult.au<br />7658920525</p>'
   ]
     .filter(Boolean)
     .join('\n');
@@ -347,7 +385,7 @@ async function sendInvitationEmailViaSmtp(payload: InvitationEmailPayload): Prom
       const info = await transporter.sendMail({
         from: fromAddress,
         to: payload.to,
-        subject: "You're Invited to Take the Test",
+        subject: 'AI Developer Assessment – ReGen',
         text: buildInvitationBody(payload),
         html: buildInvitationHtml(payload)
       });
@@ -428,7 +466,7 @@ async function sendInvitationEmailViaSendGrid(payload: InvitationEmailPayload): 
         }
       ],
       from: { email: config.fromAddress },
-      subject: "You're Invited to Take the Test",
+      subject: 'AI Developer Assessment – ReGen',
       content: [
         { type: 'text/plain', value: buildInvitationBody(payload) },
         { type: 'text/html', value: buildInvitationHtml(payload) }
