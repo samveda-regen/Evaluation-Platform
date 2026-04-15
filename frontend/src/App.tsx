@@ -81,6 +81,7 @@ export default function App() {
         <Route path="attempts/:attemptId" element={<AttemptDetails />} />
         <Route path="attempts/:attemptId/proctoring" element={<ProctorDashboard />} />
         <Route path="mcq/new" element={<MCQForm />} />
+        <Route path="mcq/:questionId/edit" element={<MCQForm />} />
         <Route path="coding/new" element={<CodingForm />} />
         <Route path="repository" element={<RepositoryLayout />}>
           <Route index element={<Navigate to="question-bank" replace />} />

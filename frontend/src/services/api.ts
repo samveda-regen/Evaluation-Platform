@@ -195,6 +195,9 @@ export const adminApi = {
   disableQuestionBankQuestion: (questionId: string, category: RepositoryCategory) =>
     api.put(`/admin/repository/question-bank/${questionId}/disable?category=${category}`),
 
+  copyQuestionBankQuestion: (questionId: string, category: RepositoryCategory) =>
+    api.post(`/admin/repository/question-bank/${questionId}/copy?category=${category}`),
+
   createCustomBehavioral: (data: {
     title: string;
     description: string;
@@ -213,6 +216,15 @@ export const adminApi = {
 
   deleteRepositoryQuestion: (questionId: string, category: RepositoryCategory) =>
     api.delete(`/admin/repository/custom/${questionId}?category=${category}`),
+
+  getCustomRepositoryQuestion: (questionId: string, category: RepositoryCategory) =>
+    api.get(`/admin/repository/custom/${questionId}?category=${category}`),
+
+  updateCustomRepositoryQuestion: (
+    questionId: string,
+    category: RepositoryCategory,
+    data: Record<string, unknown>
+  ) => api.put(`/admin/repository/custom/${questionId}?category=${category}`, data),
 
   // Results
   getTestResults: (testId: string, page = 1, limit = 20, status = '', flagged = false) =>

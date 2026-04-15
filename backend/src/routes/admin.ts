@@ -62,11 +62,14 @@ import {
 
 import {
   getRepositoryQuestions,
+  getCustomRepositoryQuestion,
   toggleRepositoryQuestion,
+  copyRepositoryQuestion,
   deleteRepositoryQuestion,
   createCustomMCQ,
   createCustomCoding,
-  createCustomBehavioral
+  createCustomBehavioral,
+  updateCustomRepositoryQuestion
 } from '../controllers/repository.js';
 const router = Router();
 const invitationUpload = multer({
@@ -155,6 +158,7 @@ router.put('/repository/question-bank/:questionId/enable', adminAuth, async (req
 router.put('/repository/question-bank/:questionId/disable', adminAuth, async (req, res) => {
   return toggleRepositoryQuestion(req, res, false);
 });
+router.post('/repository/question-bank/:questionId/copy', adminAuth, copyRepositoryQuestion);
 
 // Custom Questions (create/enable/disable/delete)
 router.get(
@@ -168,9 +172,11 @@ router.get(
   }
 );
 
+router.get('/repository/custom/:questionId', adminAuth, getCustomRepositoryQuestion);
 router.post('/repository/custom/mcq', adminAuth, createMCQValidation, handleValidationErrors, createCustomMCQ);
 router.post('/repository/custom/coding', adminAuth, createCodingValidation, handleValidationErrors, createCustomCoding);
 router.post('/repository/custom/behavioral', adminAuth, createCustomBehavioral);
+router.put('/repository/custom/:questionId', adminAuth, updateCustomRepositoryQuestion);
 router.put('/repository/custom/:questionId/enable', adminAuth, async (req, res) => {
   return toggleRepositoryQuestion(req, res, true);
 });

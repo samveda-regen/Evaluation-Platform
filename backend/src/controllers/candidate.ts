@@ -4,6 +4,7 @@ import { generateCandidateToken } from '../utils/jwt.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import { sanitizeInput } from '../utils/sanitize.js';
 import { executeCode, compareOutput } from '../utils/codeExecutor.js';
+import { calculateCodingQuestionScore } from '../utils/codingScoring.js';
 import prisma from '../utils/db.js';
 import { emitToTestProctorRoom, emitToProctorTargets } from '../services/socketService.js';
 import { Prisma } from '@prisma/client';
@@ -1262,7 +1263,7 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
       timeLimit: number;
       marks: number;
       partialScoring: boolean;
-      testCases: Array<{ id: string; input: string; expectedOutput: string }>;
+      testCases: Array<{ id: string; input: string; expectedOutput: string; marks: number }>;
     }>();
 
     for (const eq of test.questions) {
@@ -1328,22 +1329,14 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
           return {
             testCaseId: testCase.id,
             passed,
+            marks: testCase.marks,
             executionTime: result.executionTime,
             error: result.error
           };
         });
 
         const testResults = await Promise.all(testPromises);
-        const passedTests = testResults.filter(r => r.passed).length;
-
-        // Calculate marks
-        let marks = 0;
-        if (question.partialScoring) {
-          // Round to 2 decimal places to avoid floating point issues
-          marks = Math.round((passedTests / question.testCases.length) * question.marks * 100) / 100;
-        } else {
-          marks = passedTests === question.testCases.length ? question.marks : 0;
-        }
+        const marks = calculateCodingQuestionScore(question, testResults);
 
         totalScore += marks;
         codingUpdates.push({

@@ -45,7 +45,7 @@ interface AttemptData {
     title: string;
     code: string;
     language: string;
-    testResults: Array<{ testCaseId: string; passed: boolean; error?: string }> | null;
+    testResults: Array<{ testCaseId: string; passed: boolean; marks?: number; error?: string }> | null;
     marks: number;
     marksObtained: number;
   }>;
@@ -314,6 +314,7 @@ export default function AttemptDetails() {
                           className={`badge ${result.passed ? 'badge-success' : 'badge-danger'}`}
                         >
                           Test {idx + 1}: {result.passed ? 'Passed' : 'Failed'}
+                          {typeof result.marks === 'number' ? ` (${result.marks} marks)` : ''}
                         </span>
                       ))}
                     </div>

@@ -28,6 +28,7 @@ export interface MCQOption {
 export interface TestCaseResult {
   testCaseId: string;
   passed: boolean;
+  marks?: number;
   actualOutput?: string;
   expectedOutput?: string;
   executionTime?: number;

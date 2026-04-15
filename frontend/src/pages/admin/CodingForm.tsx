@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 
@@ -14,8 +14,11 @@ const LANGUAGES = ['python', 'javascript', 'java', 'cpp', 'c'];
 
 export default function CodingForm() {
   const navigate = useNavigate();
+  const { questionId } = useParams();
+  const isEditMode = Boolean(questionId);
 
   const [loading, setLoading] = useState(false);
+  const [loadingQuestion, setLoadingQuestion] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -36,6 +39,79 @@ export default function CodingForm() {
     tags: [] as string[]
   });
   const [tagInput, setTagInput] = useState('');
+
+  useEffect(() => {
+    if (!isEditMode || !questionId) return;
+
+    const loadQuestion = async () => {
+      setLoadingQuestion(true);
+      try {
+        const { data } = await adminApi.getCustomRepositoryQuestion(questionId, 'CODING');
+        const question = data?.question as {
+          title: string;
+          description: string;
+          inputFormat: string;
+          outputFormat: string;
+          constraints?: string | null;
+          sampleInput: string;
+          sampleOutput: string;
+          marks: number;
+          timeLimit: number;
+          memoryLimit: number;
+          supportedLanguages: string[];
+          codeTemplates: Record<string, string> | null;
+          partialScoring: boolean;
+          difficulty: string;
+          topic?: string | null;
+          tags?: string[];
+          testCases?: TestCase[];
+        };
+
+        if (!question) {
+          toast.error('Question not found');
+          navigate('/admin/repository/custom');
+          return;
+        }
+
+        setFormData({
+          title: question.title,
+          description: question.description,
+          inputFormat: question.inputFormat,
+          outputFormat: question.outputFormat,
+          constraints: question.constraints || '',
+          sampleInput: question.sampleInput,
+          sampleOutput: question.sampleOutput,
+          marks: question.marks,
+          timeLimit: question.timeLimit || 2000,
+          memoryLimit: question.memoryLimit || 256,
+          supportedLanguages: question.supportedLanguages || ['python', 'javascript'],
+          codeTemplates: question.codeTemplates || {},
+          partialScoring: question.partialScoring ?? false,
+          testCases:
+            question.testCases && question.testCases.length > 0
+              ? question.testCases.map((tc) => ({
+                  input: tc.input,
+                  expectedOutput: tc.expectedOutput,
+                  isHidden: tc.isHidden,
+                  marks: tc.marks
+                }))
+              : [{ input: '', expectedOutput: '', isHidden: false, marks: 10 }],
+          difficulty: question.difficulty || 'medium',
+          topic: question.topic || '',
+          tags: question.tags || []
+        });
+        setTagInput('');
+      } catch (error: unknown) {
+        const err = error as { response?: { data?: { error?: string } } };
+        toast.error(err.response?.data?.error || 'Failed to load question');
+        navigate('/admin/repository/custom');
+      } finally {
+        setLoadingQuestion(false);
+      }
+    };
+
+    void loadQuestion();
+  }, [isEditMode, questionId, navigate]);
 
   const addTag = () => {
     const tag = tagInput.trim().toLowerCase();
@@ -63,8 +139,13 @@ export default function CodingForm() {
     setLoading(true);
 
     try {
-      await adminApi.createCoding(formData);
-      toast.success('Question created');
+      if (isEditMode && questionId) {
+        await adminApi.updateCustomRepositoryQuestion(questionId, 'CODING', formData);
+        toast.success('Question updated');
+      } else {
+        await adminApi.createCoding(formData);
+        toast.success('Question created');
+      }
       navigate('/admin/repository/custom');
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } } };
@@ -116,9 +197,19 @@ export default function CodingForm() {
     setFormData({ ...formData, testCases: newTestCases });
   };
 
+  if (loadingQuestion) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600" />
+      </div>
+    );
+  }
+
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">Create Coding Question</h1>
+      <h1 className="text-2xl font-bold text-gray-800 mb-6">
+        {isEditMode ? 'Edit Coding Question' : 'Create Coding Question'}
+      </h1>
 
       <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
         <div className="card">
@@ -440,7 +531,7 @@ export default function CodingForm() {
 
         <div className="flex gap-3">
           <button type="submit" disabled={loading} className="btn btn-primary">
-            {loading ? 'Saving...' : 'Create Question'}
+            {loading ? 'Saving...' : isEditMode ? 'Update Question' : 'Create Question'}
           </button>
           <button type="button" onClick={() => navigate('/admin/repository/custom')} className="btn btn-secondary">
             Cancel

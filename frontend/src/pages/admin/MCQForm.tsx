@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 
@@ -19,8 +19,11 @@ interface MediaAsset {
 
 export default function MCQForm() {
   const navigate = useNavigate();
+  const { questionId } = useParams();
+  const isEditMode = Boolean(questionId);
 
   const [loading, setLoading] = useState(false);
+  const [loadingQuestion, setLoadingQuestion] = useState(false);
   const [formData, setFormData] = useState({
     questionText: '',
     options: ['', '', '', ''],
@@ -36,6 +39,57 @@ export default function MCQForm() {
   const [mediaAssets, setMediaAssets] = useState<MediaAsset[]>([]);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!isEditMode || !questionId) return;
+
+    const loadQuestion = async () => {
+      setLoadingQuestion(true);
+      try {
+        const { data } = await adminApi.getCustomRepositoryQuestion(questionId, 'MCQ');
+        const question = data?.question as {
+          questionText: string;
+          options: string[];
+          correctAnswers: number[];
+          marks: number;
+          isMultipleChoice: boolean;
+          explanation?: string | null;
+          difficulty: string;
+          topic?: string | null;
+          tags?: string[];
+          mediaAssets?: MediaAsset[];
+        };
+
+        if (!question) {
+          toast.error('Question not found');
+          navigate('/admin/repository/custom');
+          return;
+        }
+
+        setFormData({
+          questionText: question.questionText,
+          options: question.options.length > 0 ? question.options : ['', ''],
+          correctAnswers: question.correctAnswers || [],
+          marks: question.marks,
+          isMultipleChoice: question.isMultipleChoice || question.correctAnswers.length > 1,
+          explanation: question.explanation || '',
+          difficulty: question.difficulty || 'medium',
+          topic: question.topic || '',
+          tags: question.tags || []
+        });
+        setTagInput('');
+        setMediaAssets(question.mediaAssets || []);
+      } catch (error: unknown) {
+        const err = error as { response?: { data?: { error?: string } } };
+        toast.error(err.response?.data?.error || 'Failed to load question');
+        navigate('/admin/repository/custom');
+      } finally {
+        setLoadingQuestion(false);
+      }
+    };
+
+    void loadQuestion();
+  }, [isEditMode, questionId, navigate]);
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -99,7 +153,8 @@ export default function MCQForm() {
             width,
             height,
             duration
-          }
+          },
+          questionId: isEditMode ? questionId : undefined
         };
 
         const { data } = await adminApi.uploadMedia(uploadData);
@@ -187,17 +242,21 @@ export default function MCQForm() {
         ...formData,
         options: nonEmptyOptions
       };
+      if (isEditMode && questionId) {
+        await adminApi.updateCustomRepositoryQuestion(questionId, 'MCQ', data);
+        toast.success('Question updated');
+      } else {
+        const createResponse = await adminApi.createMCQ(data);
+        const createdQuestionId: string | undefined = createResponse?.data?.question?.id;
 
-      const createResponse = await adminApi.createMCQ(data);
-      const createdQuestionId: string | undefined = createResponse?.data?.question?.id;
+        // If media was uploaded before question existed, attach it now.
+        if (createdQuestionId && mediaAssets.length > 0) {
+          const assetIds = mediaAssets.map(asset => asset.id);
+          await adminApi.assignMediaToQuestion(createdQuestionId, assetIds);
+        }
 
-      // If media was uploaded before question existed, attach it now.
-      if (createdQuestionId && mediaAssets.length > 0) {
-        const assetIds = mediaAssets.map(asset => asset.id);
-        await adminApi.assignMediaToQuestion(createdQuestionId, assetIds);
+        toast.success('Question created');
       }
-
-      toast.success('Question created');
       navigate('/admin/repository/custom');
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } } };
@@ -244,9 +303,19 @@ export default function MCQForm() {
     }
   };
 
+  if (loadingQuestion) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600" />
+      </div>
+    );
+  }
+
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">Create MCQ Question</h1>
+      <h1 className="text-2xl font-bold text-gray-800 mb-6">
+        {isEditMode ? 'Edit MCQ Question' : 'Create MCQ Question'}
+      </h1>
 
       <form onSubmit={handleSubmit} className="card max-w-3xl">
         <div className="space-y-6">
@@ -567,7 +636,7 @@ export default function MCQForm() {
               disabled={loading}
               className="btn btn-primary"
             >
-              {loading ? 'Saving...' : 'Create Question'}
+              {loading ? 'Saving...' : isEditMode ? 'Update Question' : 'Create Question'}
             </button>
             <button
               type="button"

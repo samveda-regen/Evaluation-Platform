@@ -5,6 +5,7 @@ import { adminApi } from '../../../services/api';
 import type {
   Pagination,
   RepositoryCategory,
+  RepositoryBehavioralQuestion,
   RepositoryCodingQuestion,
   RepositoryMCQQuestion,
   RepositoryQuestion
@@ -24,6 +25,10 @@ function isMCQQuestion(question: RepositoryQuestion): question is RepositoryMCQQ
 
 function isCodingQuestion(question: RepositoryQuestion): question is RepositoryCodingQuestion {
   return question.repositoryCategory === 'CODING';
+}
+
+function isBehavioralQuestion(question: RepositoryQuestion): question is RepositoryBehavioralQuestion {
+  return question.repositoryCategory === 'BEHAVIORAL';
 }
 
 interface BehavioralFormState {
@@ -59,6 +64,7 @@ export default function CustomQuestions() {
   const [enabledFilter, setEnabledFilter] = useState<EnabledFilter>('all');
 
   const [isBehavioralModalOpen, setIsBehavioralModalOpen] = useState(false);
+  const [editingBehavioralId, setEditingBehavioralId] = useState<string | null>(null);
   const [behavioralForm, setBehavioralForm] =
     useState<BehavioralFormState>(DEFAULT_BEHAVIORAL_FORM);
   const [behavioralTagInput, setBehavioralTagInput] = useState('');
@@ -129,6 +135,22 @@ export default function CustomQuestions() {
   const openCreateBehavioralModal = () => {
     setBehavioralForm(DEFAULT_BEHAVIORAL_FORM);
     setBehavioralTagInput('');
+    setEditingBehavioralId(null);
+    setIsBehavioralModalOpen(true);
+  };
+
+  const openEditBehavioralModal = (question: RepositoryBehavioralQuestion) => {
+    setBehavioralForm({
+      title: question.title,
+      description: question.description,
+      expectedAnswer: question.expectedAnswer ?? '',
+      marks: question.marks,
+      difficulty: question.difficulty,
+      topic: question.topic ?? '',
+      tags: question.tags ?? []
+    });
+    setBehavioralTagInput('');
+    setEditingBehavioralId(question.id);
     setIsBehavioralModalOpen(true);
   };
 
@@ -136,6 +158,7 @@ export default function CustomQuestions() {
     setIsBehavioralModalOpen(false);
     setBehavioralForm(DEFAULT_BEHAVIORAL_FORM);
     setBehavioralTagInput('');
+    setEditingBehavioralId(null);
   };
 
   const addBehavioralTag = () => {
@@ -173,16 +196,29 @@ export default function CustomQuestions() {
 
     setSavingBehavioral(true);
     try {
-      await adminApi.createCustomBehavioral({
-        title: behavioralForm.title,
-        description: behavioralForm.description,
-        expectedAnswer: behavioralForm.expectedAnswer || undefined,
-        marks: behavioralForm.marks,
-        difficulty: behavioralForm.difficulty,
-        topic: behavioralForm.topic || undefined,
-        tags: behavioralForm.tags
-      });
-      toast.success('Behavioral question created');
+      if (editingBehavioralId) {
+        await adminApi.updateCustomRepositoryQuestion(editingBehavioralId, 'BEHAVIORAL', {
+          title: behavioralForm.title,
+          description: behavioralForm.description,
+          expectedAnswer: behavioralForm.expectedAnswer || undefined,
+          marks: behavioralForm.marks,
+          difficulty: behavioralForm.difficulty,
+          topic: behavioralForm.topic || undefined,
+          tags: behavioralForm.tags
+        });
+        toast.success('Behavioral question updated');
+      } else {
+        await adminApi.createCustomBehavioral({
+          title: behavioralForm.title,
+          description: behavioralForm.description,
+          expectedAnswer: behavioralForm.expectedAnswer || undefined,
+          marks: behavioralForm.marks,
+          difficulty: behavioralForm.difficulty,
+          topic: behavioralForm.topic || undefined,
+          tags: behavioralForm.tags
+        });
+        toast.success('Behavioral question created');
+      }
 
       closeBehavioralModal();
       await loadQuestions();
@@ -393,6 +429,31 @@ export default function CustomQuestions() {
                   </div>
 
                   <div className="flex flex-col sm:flex-row gap-2">
+                    {isMCQQuestion(question) && (
+                      <Link
+                        to={`/admin/mcq/${question.id}/edit`}
+                        className="btn btn-secondary text-sm"
+                      >
+                        Edit
+                      </Link>
+                    )}
+                    {isCodingQuestion(question) && (
+                      <Link
+                        to={`/admin/coding/${question.id}/edit`}
+                        className="btn btn-secondary text-sm"
+                      >
+                        Edit
+                      </Link>
+                    )}
+                    {isBehavioralQuestion(question) && (
+                      <button
+                        type="button"
+                        onClick={() => openEditBehavioralModal(question)}
+                        className="btn btn-secondary text-sm"
+                      >
+                        Edit
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleToggleQuestion(question)}
@@ -442,7 +503,9 @@ export default function CustomQuestions() {
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Create Behavioral Question</h3>
+              <h3 className="text-lg font-semibold">
+                {editingBehavioralId ? 'Edit Behavioral Question' : 'Create Behavioral Question'}
+              </h3>
               <button
                 type="button"
                 onClick={closeBehavioralModal}
@@ -589,7 +652,11 @@ export default function CustomQuestions() {
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary" disabled={savingBehavioral}>
-                  {savingBehavioral ? 'Saving...' : 'Create Question'}
+                  {savingBehavioral
+                    ? 'Saving...'
+                    : editingBehavioralId
+                    ? 'Update Question'
+                    : 'Create Question'}
                 </button>
               </div>
             </form>

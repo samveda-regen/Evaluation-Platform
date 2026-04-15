@@ -74,6 +74,20 @@ export interface TestCase {
   marks: number;
 }
 
+export interface RepositoryMediaAsset {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  fileSize: number;
+  storageUrl: string;
+  mediaType: 'image' | 'video' | 'audio';
+  filename?: string;
+  width?: number;
+  height?: number;
+  duration?: number;
+  thumbnailUrl?: string;
+}
+
 export interface TestQuestion {
   id: string;
   type: 'mcq' | 'coding' | 'behavioral';
@@ -190,6 +204,7 @@ export interface RepositoryMCQQuestion extends RepositoryQuestionBase {
   correctAnswers: number[];
   isMultipleChoice: boolean;
   explanation?: string | null;
+  mediaAssets?: RepositoryMediaAsset[];
 }
 
 export interface RepositoryCodingQuestion extends RepositoryQuestionBase {
@@ -207,6 +222,7 @@ export interface RepositoryCodingQuestion extends RepositoryQuestionBase {
   codeTemplates: Record<string, string> | null;
   partialScoring: boolean;
   autoEvaluate: boolean;
+  testCases?: TestCase[];
 }
 
 export interface RepositoryBehavioralQuestion extends RepositoryQuestionBase {

@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../types/index.js';
+import { calculateCodingQuestionScore } from '../utils/codingScoring.js';
 import prisma from '../utils/db.js';
 
 export async function getTestResults(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -371,7 +372,6 @@ export async function reEvaluateAttempt(req: AuthenticatedRequest, res: Response
     for (const codingAnswer of attempt.codingAnswers) {
       const question = codingAnswer.question;
       const testResults = [];
-      let passedTests = 0;
 
       for (const testCase of question.testCases) {
         const result = await executeCode({
@@ -386,19 +386,13 @@ export async function reEvaluateAttempt(req: AuthenticatedRequest, res: Response
         testResults.push({
           testCaseId: testCase.id,
           passed,
+          marks: testCase.marks,
           executionTime: result.executionTime,
           error: result.error
         });
-
-        if (passed) passedTests++;
       }
 
-      let marks = 0;
-      if (question.partialScoring) {
-        marks = (passedTests / question.testCases.length) * question.marks;
-      } else {
-        marks = passedTests === question.testCases.length ? question.marks : 0;
-      }
+      const marks = calculateCodingQuestionScore(question, testResults);
 
       totalScore += marks;
 

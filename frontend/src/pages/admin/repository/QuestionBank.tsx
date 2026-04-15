@@ -36,6 +36,7 @@ export default function QuestionBank() {
   const [topic, setTopic] = useState('');
   const [tag, setTag] = useState('');
   const [enabledFilter, setEnabledFilter] = useState<EnabledFilter>('all');
+  const [copyingId, setCopyingId] = useState<string | null>(null);
 
   useEffect(() => {
     void loadQuestions();
@@ -81,6 +82,19 @@ export default function QuestionBank() {
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } } };
       toast.error(err.response?.data?.error || 'Failed to update question status');
+    }
+  };
+
+  const handleCopyQuestion = async (question: RepositoryQuestion) => {
+    setCopyingId(question.id);
+    try {
+      await adminApi.copyQuestionBankQuestion(question.id, question.repositoryCategory);
+      toast.success('Question copied to Custom Questions');
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { error?: string } } };
+      toast.error(err.response?.data?.error || 'Failed to copy question');
+    } finally {
+      setCopyingId(null);
     }
   };
 
@@ -264,6 +278,14 @@ export default function QuestionBank() {
                     </div>
 
                     <div className="flex flex-col sm:flex-row gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyQuestion(question)}
+                        className="btn btn-secondary text-sm"
+                        disabled={copyingId === question.id}
+                      >
+                        {copyingId === question.id ? 'Copying...' : 'Copy'}
+                      </button>
                       <button
                         type="button"
                         onClick={() => handleToggleQuestion(question)}

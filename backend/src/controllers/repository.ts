@@ -325,6 +325,463 @@ export async function getRepositoryQuestions(req: AuthenticatedRequest, res: Res
 }
 
 // ==========================================
+// GET SINGLE CUSTOM QUESTION
+// ==========================================
+export async function getCustomRepositoryQuestion(req: AuthenticatedRequest, res: Response) {
+  try {
+    const { questionId } = req.params;
+    const category = parseCategory(req.query.category);
+
+    if (!category) {
+      res.status(400).json({ error: 'Invalid category. Use MCQ, CODING, or BEHAVIORAL.' });
+      return;
+    }
+
+    switch (category) {
+      case 'MCQ': {
+        const question = await prisma.mCQQuestion.findUnique({
+          where: { id: questionId },
+          include: { mediaAssets: true }
+        });
+
+        if (!question) {
+          res.status(404).json({ error: 'Question not found' });
+          return;
+        }
+
+        if (question.source !== QuestionSource.CUSTOM) {
+          res.status(400).json({ error: 'Only custom questions can be edited.' });
+          return;
+        }
+
+        res.json({ question: serializeMCQQuestion(question) });
+        return;
+      }
+
+      case 'CODING': {
+        const question = await prisma.codingQuestion.findUnique({
+          where: { id: questionId },
+          include: { testCases: true }
+        });
+
+        if (!question) {
+          res.status(404).json({ error: 'Question not found' });
+          return;
+        }
+
+        if (question.source !== QuestionSource.CUSTOM) {
+          res.status(400).json({ error: 'Only custom questions can be edited.' });
+          return;
+        }
+
+        res.json({ question: serializeCodingQuestion(question) });
+        return;
+      }
+
+      case 'BEHAVIORAL': {
+        const question = await prisma.behavioralQuestion.findUnique({
+          where: { id: questionId }
+        });
+
+        if (!question) {
+          res.status(404).json({ error: 'Question not found' });
+          return;
+        }
+
+        if (question.source !== QuestionSource.CUSTOM) {
+          res.status(400).json({ error: 'Only custom questions can be edited.' });
+          return;
+        }
+
+        res.json({ question: serializeBehavioralQuestion(question) });
+      }
+    }
+  } catch (error) {
+    console.error('Get repository question error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ==========================================
+// UPDATE CUSTOM QUESTION
+// ==========================================
+export async function updateCustomRepositoryQuestion(req: AuthenticatedRequest, res: Response) {
+  try {
+    const { questionId } = req.params;
+    const category = parseCategory(req.query.category);
+    const updates = req.body ?? {};
+
+    if (!category) {
+      res.status(400).json({ error: 'Invalid category. Use MCQ, CODING, or BEHAVIORAL.' });
+      return;
+    }
+
+    switch (category) {
+      case 'MCQ': {
+        const question = await prisma.mCQQuestion.findUnique({ where: { id: questionId } });
+
+        if (!question) {
+          res.status(404).json({ error: 'Question not found' });
+          return;
+        }
+
+        if (question.source !== QuestionSource.CUSTOM) {
+          res.status(400).json({ error: 'Only custom questions can be edited.' });
+          return;
+        }
+
+        const updateData: Prisma.MCQQuestionUpdateInput = {};
+
+        if (updates.questionText !== undefined) {
+          const questionText = toStringOrUndefined(updates.questionText);
+          if (!questionText) {
+            res.status(400).json({ error: 'Question text is required.' });
+            return;
+          }
+          updateData.questionText = sanitizeInput(questionText);
+        }
+
+        let normalizedOptions: string[] | undefined;
+        if (updates.options !== undefined) {
+          if (!Array.isArray(updates.options) || updates.options.length < 2 || updates.options.length > 6) {
+            res.status(400).json({ error: '2-6 options required' });
+            return;
+          }
+
+          const nextOptions = updates.options.map((option: unknown) => String(option).trim());
+          if (nextOptions.some((option: string) => option.length === 0)) {
+            res.status(400).json({ error: 'Each option must have text' });
+            return;
+          }
+
+          const uniqueOptions = new Set(nextOptions.map((o: string) => o.toLowerCase()));
+          if (uniqueOptions.size !== nextOptions.length) {
+            res.status(400).json({ error: 'Options must be unique' });
+            return;
+          }
+
+          normalizedOptions = nextOptions;
+          updateData.options = JSON.stringify(nextOptions.map((o: string) => sanitizeInput(o)));
+        }
+
+        if (updates.correctAnswers !== undefined) {
+          if (!Array.isArray(updates.correctAnswers) || updates.correctAnswers.length === 0) {
+            res.status(400).json({ error: 'At least one correct answer required' });
+            return;
+          }
+
+          const optionSource = normalizedOptions ?? parseJsonArray<string>(question.options);
+          const validIndices = updates.correctAnswers.every(
+            (idx: number) => Number.isInteger(idx) && idx >= 0 && idx < optionSource.length
+          );
+          if (!validIndices) {
+            res.status(400).json({ error: 'Invalid correct answer indices' });
+            return;
+          }
+
+          updateData.correctAnswers = JSON.stringify(updates.correctAnswers);
+          updateData.isMultipleChoice = updates.isMultipleChoice ?? updates.correctAnswers.length > 1;
+        } else if (updates.isMultipleChoice !== undefined) {
+          updateData.isMultipleChoice = Boolean(updates.isMultipleChoice);
+        }
+
+        if (updates.marks !== undefined) {
+          const marks = Number.parseInt(String(updates.marks), 10);
+          if (!Number.isFinite(marks) || marks < 1) {
+            res.status(400).json({ error: 'Marks must be a positive integer.' });
+            return;
+          }
+          updateData.marks = marks;
+        }
+
+        if (updates.explanation !== undefined) {
+          const explanation = typeof updates.explanation === 'string' ? updates.explanation.trim() : '';
+          updateData.explanation = explanation ? sanitizeInput(explanation) : null;
+        }
+
+        if (updates.difficulty !== undefined) {
+          const difficulty = parseDifficulty(updates.difficulty);
+          if (updates.difficulty && !difficulty) {
+            res.status(400).json({ error: 'Invalid difficulty level. Use: easy, medium, or hard' });
+            return;
+          }
+          updateData.difficulty = difficulty ?? 'medium';
+        }
+
+        if (updates.topic !== undefined) {
+          const topic = toStringOrUndefined(updates.topic);
+          updateData.topic = topic ? sanitizeInput(topic) : null;
+        }
+
+        if (updates.tags !== undefined) {
+          const parsedTags = parseTagsInput(updates.tags);
+          updateData.tags = parsedTags ? JSON.stringify(parsedTags) : null;
+        }
+
+        const updatedQuestion = await prisma.mCQQuestion.update({
+          where: { id: questionId },
+          data: updateData
+        });
+
+        res.json({
+          message: 'Question updated successfully',
+          question: serializeMCQQuestion(updatedQuestion)
+        });
+        return;
+      }
+
+      case 'CODING': {
+        const question = await prisma.codingQuestion.findUnique({ where: { id: questionId } });
+
+        if (!question) {
+          res.status(404).json({ error: 'Question not found' });
+          return;
+        }
+
+        if (question.source !== QuestionSource.CUSTOM) {
+          res.status(400).json({ error: 'Only custom questions can be edited.' });
+          return;
+        }
+
+        const updateData: Prisma.CodingQuestionUpdateInput = {};
+
+        if (updates.title !== undefined) {
+          const title = toStringOrUndefined(updates.title);
+          if (!title) {
+            res.status(400).json({ error: 'Title is required.' });
+            return;
+          }
+          updateData.title = sanitizeInput(title);
+        }
+
+        if (updates.description !== undefined) {
+          const description = toStringOrUndefined(updates.description);
+          if (!description) {
+            res.status(400).json({ error: 'Description is required.' });
+            return;
+          }
+          updateData.description = sanitizeInput(description);
+        }
+
+        if (updates.inputFormat !== undefined) {
+          const inputFormat = toStringOrUndefined(updates.inputFormat);
+          if (!inputFormat) {
+            res.status(400).json({ error: 'Input format is required.' });
+            return;
+          }
+          updateData.inputFormat = sanitizeInput(inputFormat);
+        }
+
+        if (updates.outputFormat !== undefined) {
+          const outputFormat = toStringOrUndefined(updates.outputFormat);
+          if (!outputFormat) {
+            res.status(400).json({ error: 'Output format is required.' });
+            return;
+          }
+          updateData.outputFormat = sanitizeInput(outputFormat);
+        }
+
+        if (updates.constraints !== undefined) {
+          updateData.constraints = updates.constraints ? sanitizeInput(String(updates.constraints)) : null;
+        }
+
+        if (updates.sampleInput !== undefined) {
+          updateData.sampleInput = String(updates.sampleInput);
+        }
+
+        if (updates.sampleOutput !== undefined) {
+          updateData.sampleOutput = String(updates.sampleOutput);
+        }
+
+        if (updates.marks !== undefined) {
+          const marks = Number.parseInt(String(updates.marks), 10);
+          if (!Number.isFinite(marks) || marks < 1) {
+            res.status(400).json({ error: 'Marks must be a positive integer.' });
+            return;
+          }
+          updateData.marks = marks;
+        }
+
+        if (updates.timeLimit !== undefined) {
+          const timeLimit = Number.parseInt(String(updates.timeLimit), 10);
+          if (Number.isFinite(timeLimit)) {
+            updateData.timeLimit = timeLimit;
+          }
+        }
+
+        if (updates.memoryLimit !== undefined) {
+          const memoryLimit = Number.parseInt(String(updates.memoryLimit), 10);
+          if (Number.isFinite(memoryLimit)) {
+            updateData.memoryLimit = memoryLimit;
+          }
+        }
+
+        if (updates.supportedLanguages !== undefined) {
+          if (!Array.isArray(updates.supportedLanguages) || updates.supportedLanguages.length === 0) {
+            res.status(400).json({ error: 'At least one language required.' });
+            return;
+          }
+          updateData.supportedLanguages = JSON.stringify(updates.supportedLanguages);
+        }
+
+        if (updates.codeTemplates !== undefined) {
+          updateData.codeTemplates = updates.codeTemplates ? JSON.stringify(updates.codeTemplates) : null;
+        }
+
+        if (updates.partialScoring !== undefined) {
+          updateData.partialScoring = Boolean(updates.partialScoring);
+        }
+
+        if (updates.difficulty !== undefined) {
+          const difficulty = parseDifficulty(updates.difficulty);
+          if (updates.difficulty && !difficulty) {
+            res.status(400).json({ error: 'Invalid difficulty level. Use: easy, medium, or hard' });
+            return;
+          }
+          updateData.difficulty = difficulty ?? 'medium';
+        }
+
+        if (updates.topic !== undefined) {
+          const topic = toStringOrUndefined(updates.topic);
+          updateData.topic = topic ? sanitizeInput(topic) : null;
+        }
+
+        if (updates.tags !== undefined) {
+          const parsedTags = parseTagsInput(updates.tags);
+          updateData.tags = parsedTags ? JSON.stringify(parsedTags) : null;
+        }
+
+        if (updates.testCases !== undefined) {
+          if (!Array.isArray(updates.testCases) || updates.testCases.length === 0) {
+            res.status(400).json({ error: 'At least one test case required.' });
+            return;
+          }
+
+          const preparedTestCases = updates.testCases.map((testCase: Record<string, unknown>) => {
+            const input = typeof testCase.input === 'string' ? testCase.input : '';
+            const expectedOutput =
+              typeof testCase.expectedOutput === 'string' ? testCase.expectedOutput : '';
+
+            if (!input || !expectedOutput) {
+              throw new Error('Test case input and expected output are required.');
+            }
+
+            const marks = Number.parseInt(String(testCase.marks ?? '0'), 10);
+            return {
+              input,
+              expectedOutput,
+              isHidden: Boolean(testCase.isHidden),
+              marks: Number.isFinite(marks) ? marks : 0
+            };
+          });
+
+          updateData.testCases = {
+            deleteMany: {},
+            create: preparedTestCases
+          };
+        }
+
+        const updatedQuestion = await prisma.codingQuestion.update({
+          where: { id: questionId },
+          data: updateData,
+          include: { testCases: true }
+        });
+
+        res.json({
+          message: 'Question updated successfully',
+          question: serializeCodingQuestion(updatedQuestion)
+        });
+        return;
+      }
+
+      case 'BEHAVIORAL': {
+        const question = await prisma.behavioralQuestion.findUnique({ where: { id: questionId } });
+
+        if (!question) {
+          res.status(404).json({ error: 'Question not found' });
+          return;
+        }
+
+        if (question.source !== QuestionSource.CUSTOM) {
+          res.status(400).json({ error: 'Only custom questions can be edited.' });
+          return;
+        }
+
+        const updateData: Prisma.BehavioralQuestionUpdateInput = {};
+
+        if (updates.title !== undefined) {
+          const title = toStringOrUndefined(updates.title);
+          if (!title) {
+            res.status(400).json({ error: 'Title is required.' });
+            return;
+          }
+          updateData.title = sanitizeInput(title);
+        }
+
+        if (updates.description !== undefined) {
+          const description = toStringOrUndefined(updates.description);
+          if (!description) {
+            res.status(400).json({ error: 'Description is required.' });
+            return;
+          }
+          updateData.description = sanitizeInput(description);
+        }
+
+        if (updates.expectedAnswer !== undefined) {
+          const expectedAnswer = toStringOrUndefined(updates.expectedAnswer);
+          updateData.expectedAnswer = expectedAnswer ? sanitizeInput(expectedAnswer) : null;
+        }
+
+        if (updates.marks !== undefined) {
+          const marks = Number.parseInt(String(updates.marks), 10);
+          if (!Number.isFinite(marks) || marks < 1) {
+            res.status(400).json({ error: 'Marks must be a positive integer.' });
+            return;
+          }
+          updateData.marks = marks;
+        }
+
+        if (updates.difficulty !== undefined) {
+          const difficulty = parseDifficulty(updates.difficulty);
+          if (updates.difficulty && !difficulty) {
+            res.status(400).json({ error: 'Invalid difficulty level. Use: easy, medium, or hard' });
+            return;
+          }
+          updateData.difficulty = difficulty ?? 'medium';
+        }
+
+        if (updates.topic !== undefined) {
+          const topic = toStringOrUndefined(updates.topic);
+          updateData.topic = topic ? sanitizeInput(topic) : null;
+        }
+
+        if (updates.tags !== undefined) {
+          const parsedTags = parseTagsInput(updates.tags);
+          updateData.tags = parsedTags ? JSON.stringify(parsedTags) : null;
+        }
+
+        const updatedQuestion = await prisma.behavioralQuestion.update({
+          where: { id: questionId },
+          data: updateData
+        });
+
+        res.json({
+          message: 'Question updated successfully',
+          question: serializeBehavioralQuestion(updatedQuestion)
+        });
+      }
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('Test case')) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    console.error('Update repository question error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ==========================================
 // ENABLE / DISABLE
 // ==========================================
 export async function toggleRepositoryQuestion(
@@ -387,6 +844,175 @@ export async function toggleRepositoryQuestion(
     res.json({ message: `Question ${value ? 'enabled' : 'disabled'} successfully` });
   } catch (error) {
     console.error('Toggle repository error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ==========================================
+// COPY QUESTION BANK QUESTION TO CUSTOM
+// ==========================================
+export async function copyRepositoryQuestion(req: AuthenticatedRequest, res: Response) {
+  try {
+    const { questionId } = req.params;
+    const category = parseCategory(req.query.category);
+
+    if (!category) {
+      res.status(400).json({ error: 'Invalid category. Use MCQ, CODING, or BEHAVIORAL.' });
+      return;
+    }
+
+    switch (category) {
+      case 'MCQ': {
+        const question = await prisma.mCQQuestion.findUnique({
+          where: { id: questionId },
+          include: { mediaAssets: true }
+        });
+
+        if (!question) {
+          res.status(404).json({ error: 'Question not found' });
+          return;
+        }
+
+        if (question.source !== QuestionSource.QUESTION_BANK) {
+          res.status(400).json({ error: 'Only library questions can be copied.' });
+          return;
+        }
+
+        const created = await prisma.mCQQuestion.create({
+          data: {
+            source: QuestionSource.CUSTOM,
+            repositoryCategory: QuestionRepositoryCategory.MCQ,
+            isEnabled: true,
+            questionText: question.questionText,
+            options: question.options,
+            correctAnswers: question.correctAnswers,
+            marks: question.marks,
+            isMultipleChoice: question.isMultipleChoice,
+            explanation: question.explanation,
+            difficulty: question.difficulty,
+            topic: question.topic,
+            tags: question.tags,
+            adminId: req.admin?.id ?? null
+          }
+        });
+
+        if (question.mediaAssets.length > 0) {
+          await prisma.mediaAsset.createMany({
+            data: question.mediaAssets.map((asset) => ({
+              filename: asset.filename,
+              originalName: asset.originalName,
+              mimeType: asset.mimeType,
+              fileSize: asset.fileSize,
+              storageUrl: asset.storageUrl,
+              storageBucket: asset.storageBucket,
+              storageKey: asset.storageKey,
+              mediaType: asset.mediaType,
+              width: asset.width,
+              height: asset.height,
+              duration: asset.duration,
+              thumbnailUrl: asset.thumbnailUrl,
+              status: asset.status,
+              processingError: asset.processingError,
+              mcqQuestionId: created.id,
+              uploadedBy: req.admin?.id ?? null
+            }))
+          });
+        }
+
+        res.status(201).json({ message: 'Question copied successfully', questionId: created.id });
+        return;
+      }
+
+      case 'CODING': {
+        const question = await prisma.codingQuestion.findUnique({
+          where: { id: questionId },
+          include: { testCases: true }
+        });
+
+        if (!question) {
+          res.status(404).json({ error: 'Question not found' });
+          return;
+        }
+
+        if (question.source !== QuestionSource.QUESTION_BANK) {
+          res.status(400).json({ error: 'Only library questions can be copied.' });
+          return;
+        }
+
+        const created = await prisma.codingQuestion.create({
+          data: {
+            source: QuestionSource.CUSTOM,
+            repositoryCategory: QuestionRepositoryCategory.CODING,
+            isEnabled: true,
+            title: question.title,
+            description: question.description,
+            inputFormat: question.inputFormat,
+            outputFormat: question.outputFormat,
+            constraints: question.constraints,
+            sampleInput: question.sampleInput,
+            sampleOutput: question.sampleOutput,
+            marks: question.marks,
+            timeLimit: question.timeLimit,
+            memoryLimit: question.memoryLimit,
+            supportedLanguages: question.supportedLanguages,
+            codeTemplates: question.codeTemplates,
+            partialScoring: question.partialScoring,
+            difficulty: question.difficulty,
+            topic: question.topic,
+            tags: question.tags,
+            autoEvaluate: question.autoEvaluate,
+            adminId: req.admin?.id ?? null,
+            testCases: {
+              create: question.testCases.map((tc) => ({
+                input: tc.input,
+                expectedOutput: tc.expectedOutput,
+                isHidden: tc.isHidden,
+                marks: tc.marks
+              }))
+            }
+          },
+          include: { testCases: true }
+        });
+
+        res.status(201).json({ message: 'Question copied successfully', questionId: created.id });
+        return;
+      }
+
+      case 'BEHAVIORAL': {
+        const question = await prisma.behavioralQuestion.findUnique({
+          where: { id: questionId }
+        });
+
+        if (!question) {
+          res.status(404).json({ error: 'Question not found' });
+          return;
+        }
+
+        if (question.source !== QuestionSource.QUESTION_BANK) {
+          res.status(400).json({ error: 'Only library questions can be copied.' });
+          return;
+        }
+
+        const created = await prisma.behavioralQuestion.create({
+          data: {
+            source: QuestionSource.CUSTOM,
+            repositoryCategory: QuestionRepositoryCategory.BEHAVIORAL,
+            isEnabled: true,
+            title: question.title,
+            description: question.description,
+            expectedAnswer: question.expectedAnswer,
+            marks: question.marks,
+            difficulty: question.difficulty,
+            topic: question.topic,
+            tags: question.tags
+          }
+        });
+
+        res.status(201).json({ message: 'Question copied successfully', questionId: created.id });
+      }
+    }
+  } catch (error) {
+    console.error('Copy repository question error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }
