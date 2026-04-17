@@ -94,6 +94,23 @@ function toOptionalSanitizedString(value: unknown): string | null {
   return trimmed ? sanitizeInput(trimmed) : null;
 }
 
+function parseDateValue(value: unknown): Date | null {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+
+  const parsed = new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function calculateDurationMinutes(startTime: Date, endTime: Date): number {
+  return Math.ceil((endTime.getTime() - startTime.getTime()) / (60 * 1000));
+}
+
 export async function createTest(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const {
@@ -117,6 +134,34 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
       requireIdVerification
     } = req.body;
 
+    const parsedStartTime = parseDateValue(startTime);
+    const parsedEndTime = parseDateValue(endTime);
+    const requestedDuration = Number.parseInt(String(duration), 10);
+
+    if (!parsedStartTime) {
+      res.status(400).json({ error: 'Valid start time is required' });
+      return;
+    }
+
+    if (!Number.isFinite(requestedDuration) || requestedDuration < 1) {
+      res.status(400).json({ error: 'Duration must be a positive integer (minutes)' });
+      return;
+    }
+
+    if (endTime !== undefined && endTime !== null && endTime !== '' && !parsedEndTime) {
+      res.status(400).json({ error: 'End time must be valid ISO8601' });
+      return;
+    }
+
+    if (parsedEndTime && parsedEndTime <= parsedStartTime) {
+      res.status(400).json({ error: 'End time must be after start time' });
+      return;
+    }
+
+    const resolvedDuration = parsedEndTime
+      ? calculateDurationMinutes(parsedStartTime, parsedEndTime)
+      : requestedDuration;
+
     const testCode = generateTestCode();
 
     const test = await prisma.test.create({
@@ -125,9 +170,9 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
         name: sanitizeInput(name),
         description: description ? sanitizeInput(description) : null,
         instructions: instructions ? sanitizeInput(instructions) : null,
-        duration: parseInt(duration),
-        startTime: new Date(startTime),
-        endTime: endTime ? new Date(endTime) : null,
+        duration: resolvedDuration,
+        startTime: parsedStartTime,
+        endTime: parsedEndTime,
         totalMarks: parseInt(totalMarks),
         passingMarks: passingMarks ? parseInt(passingMarks) : null,
         negativeMarking: negativeMarking ? parseFloat(negativeMarking) : 0,
@@ -378,13 +423,58 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
     }
 
     const sanitizedUpdates: Record<string, unknown> = {};
+    const hasStartTimeUpdate = updates.startTime !== undefined;
+    const hasEndTimeUpdate = updates.endTime !== undefined;
+    const hasDurationUpdate = updates.duration !== undefined;
 
     if (updates.name) sanitizedUpdates.name = sanitizeInput(updates.name);
     if (updates.description !== undefined) sanitizedUpdates.description = updates.description ? sanitizeInput(updates.description) : null;
     if (updates.instructions !== undefined) sanitizedUpdates.instructions = updates.instructions ? sanitizeInput(updates.instructions) : null;
-    if (updates.duration) sanitizedUpdates.duration = parseInt(updates.duration);
-    if (updates.startTime) sanitizedUpdates.startTime = new Date(updates.startTime);
-    if (updates.endTime !== undefined) sanitizedUpdates.endTime = updates.endTime ? new Date(updates.endTime) : null;
+    if (hasDurationUpdate) {
+      const parsedDuration = Number.parseInt(String(updates.duration), 10);
+      if (!Number.isFinite(parsedDuration) || parsedDuration < 1) {
+        res.status(400).json({ error: 'Duration must be a positive integer (minutes)' });
+        return;
+      }
+      sanitizedUpdates.duration = parsedDuration;
+    }
+
+    let resolvedStartTime = test.startTime;
+    if (hasStartTimeUpdate) {
+      const parsedStartTime = parseDateValue(updates.startTime);
+      if (!parsedStartTime) {
+        res.status(400).json({ error: 'Valid start time is required' });
+        return;
+      }
+      resolvedStartTime = parsedStartTime;
+      sanitizedUpdates.startTime = parsedStartTime;
+    }
+
+    let resolvedEndTime = test.endTime;
+    if (hasEndTimeUpdate) {
+      if (updates.endTime === null || updates.endTime === '') {
+        resolvedEndTime = null;
+        sanitizedUpdates.endTime = null;
+      } else {
+        const parsedEndTime = parseDateValue(updates.endTime);
+        if (!parsedEndTime) {
+          res.status(400).json({ error: 'End time must be valid ISO8601' });
+          return;
+        }
+        resolvedEndTime = parsedEndTime;
+        sanitizedUpdates.endTime = parsedEndTime;
+      }
+    }
+
+    if (resolvedEndTime && resolvedEndTime <= resolvedStartTime) {
+      res.status(400).json({ error: 'End time must be after start time' });
+      return;
+    }
+
+    if (!hasDurationUpdate && (hasStartTimeUpdate || hasEndTimeUpdate) && resolvedEndTime) {
+      sanitizedUpdates.duration = calculateDurationMinutes(resolvedStartTime, resolvedEndTime);
+    }
+
     if (updates.totalMarks) sanitizedUpdates.totalMarks = parseInt(updates.totalMarks);
     if (updates.passingMarks !== undefined) sanitizedUpdates.passingMarks = updates.passingMarks ? parseInt(updates.passingMarks) : null;
     if (updates.negativeMarking !== undefined) sanitizedUpdates.negativeMarking = parseFloat(updates.negativeMarking) || 0;
