@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { TestQuestion, MCQAnswer, CodingAnswer, BehavioralAnswer } from '../types';
+import { DEFAULT_CUSTOM_AI_VIOLATIONS, normalizeCustomAIViolationSelection } from '../constants/customAIViolations';
 
 interface TestState {
   testId: string | null;
@@ -14,6 +15,7 @@ interface TestState {
   requireCamera: boolean;
   requireMicrophone: boolean;
   requireScreenShare: boolean;
+  customAIViolations: string[];
   startTime: Date | null;
   questions: TestQuestion[];
   currentQuestionIndex: number;
@@ -36,6 +38,7 @@ interface TestState {
     requireCamera: boolean;
     requireMicrophone: boolean;
     requireScreenShare: boolean;
+    customAIViolations?: string[];
     startTime: Date;
     questions: TestQuestion[];
     initialViolations?: number;
@@ -64,6 +67,7 @@ export const useTestStore = create<TestState>((set, get) => ({
   requireCamera: false,
   requireMicrophone: false,
   requireScreenShare: false,
+  customAIViolations: [...DEFAULT_CUSTOM_AI_VIOLATIONS],
   startTime: null,
   questions: [],
   currentQuestionIndex: 0,
@@ -86,6 +90,7 @@ export const useTestStore = create<TestState>((set, get) => ({
     requireCamera: data.requireCamera,
     requireMicrophone: data.requireMicrophone,
     requireScreenShare: data.requireScreenShare,
+    customAIViolations: normalizeCustomAIViolationSelection(data.customAIViolations),
     startTime: data.startTime,
     questions: data.questions,
     currentQuestionIndex: 0,
@@ -140,6 +145,7 @@ export const useTestStore = create<TestState>((set, get) => ({
     requireCamera: false,
     requireMicrophone: false,
     requireScreenShare: false,
+    customAIViolations: [...DEFAULT_CUSTOM_AI_VIOLATIONS],
     startTime: null,
     questions: [],
     currentQuestionIndex: 0,
