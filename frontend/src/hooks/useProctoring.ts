@@ -57,6 +57,7 @@ export interface ProctorConfig {
   enableFaceDetection: boolean;
   enableAudioAnalysis: boolean;
   enableMonitorDetection: boolean;
+  enabledViolationEvents?: string[];
   faceDetectionInterval: number;
   snapshotInterval: number;
   onViolation?: (violation: ViolationData) => void;
@@ -71,6 +72,7 @@ const defaultConfig: ProctorConfig = {
   enableFaceDetection: true,
   enableAudioAnalysis: true,
   enableMonitorDetection: true,
+  enabledViolationEvents: undefined,
   faceDetectionInterval: 2000, // Check face every 2 seconds
   snapshotInterval: 45000, // Take snapshot every 45 seconds
 };
@@ -199,6 +201,15 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     clientViolationSeenRef.current[key] = now;
     return true;
   }, []);
+
+  const isViolationEnabled = useCallback((eventType: string): boolean => {
+    const configured = finalConfig.enabledViolationEvents;
+    if (!configured) {
+      return true;
+    }
+    const normalized = (eventType || '').trim().toLowerCase();
+    return configured.includes(normalized);
+  }, [finalConfig.enabledViolationEvents]);
 
   const getActiveVideoElement = useCallback((): HTMLVideoElement | null => {
     const processingVideo = processingVideoRef.current;
@@ -597,7 +608,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
         const laptopObj = objs.find((o) => o.class === 'laptop' && o.confidence >= 45);
         const remoteObj = objs.find((o) => o.class === 'remote' && o.confidence >= 45);
 
-        if (phoneObj && canEmitClientViolation('object:phone', 9000)) {
+        if (phoneObj && isViolationEnabled('phone_detected') && canEmitClientViolation('object:phone', 9000)) {
           const violationEvidence = captureViolationEvidenceFrame({ quality: 0.72, maxWidth: 1280 });
           const violationData: ViolationData = {
             eventType: 'phone_detected',
@@ -618,7 +629,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
           if (finalConfig.onViolation) finalConfig.onViolation(violationData);
         }
 
-        if ((laptopObj || remoteObj) && canEmitClientViolation('object:unauthorized', 10000)) {
+        if ((laptopObj || remoteObj) && isViolationEnabled('unauthorized_object_detected') && canEmitClientViolation('object:unauthorized', 10000)) {
           const best = laptopObj || remoteObj!;
           const violationEvidence = captureViolationEvidenceFrame({ quality: 0.72, maxWidth: 1280 });
           const violationData: ViolationData = {
@@ -651,6 +662,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
           }
 
           const dedupeKey = `${mappedType}:${v.severity}`;
+          if (!isViolationEnabled(mappedType)) continue;
           if (!canEmitClientViolation(dedupeKey)) continue;
           const violationEvidence = NO_SNAPSHOT_CLIENT_EVENTS.has(mappedType)
             ? { snapshotSource: 'none' as const, snapshotData: undefined }
@@ -707,6 +719,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     session,
     aiProctorReady,
     getActiveVideoElement,
+    isViolationEnabled,
     canEmitClientViolation,
     reportViolationAndHandleTermination,
     finalConfig,
@@ -719,7 +732,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
 
     const result = audioAnalyzerRef.current.analyze();
     setStatus(prev => ({ ...prev, audioLevel: result.audioLevel }));
-    if (!TEMP_DISABLE_SUSPICIOUS_AUDIO && result.suspiciousSound && canEmitClientViolation('audio:suspicious', 10000)) {
+    if (!TEMP_DISABLE_SUSPICIOUS_AUDIO && isViolationEnabled('suspicious_audio') && result.suspiciousSound && canEmitClientViolation('audio:suspicious', 10000)) {
       const violation: ViolationData = {
         eventType: 'suspicious_audio',
         severity: result.audioLevel >= 58 ? 'high' : 'medium',
@@ -743,10 +756,30 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
         finalConfig.onViolation(violation);
       }
     }
-  }, [session, canEmitClientViolation, reportViolationAndHandleTermination, finalConfig]);
+  }, [session, canEmitClientViolation, reportViolationAndHandleTermination, finalConfig, isViolationEnabled]);
 
   const runObstructionMonitor = useCallback(async () => {
     if (!session) return;
+    if (!isViolationEnabled('camera_blocked')) {
+      const state = obstructionStateRef.current;
+      state.blocked = false;
+      state.blockedSince = null;
+      state.freezeStartedAt = null;
+      state.clearStreak = 0;
+      setStatus((prev) =>
+        prev.cameraBlocked || prev.testFrozen
+          ? {
+              ...prev,
+              cameraBlocked: false,
+              testFrozen: false,
+              freezeReason: undefined,
+              freezeStartedAt: null,
+              freezeDurationMs: 0,
+            }
+          : prev
+      );
+      return;
+    }
     const activeVideo = getActiveVideoElement();
     if (!activeVideo) return;
 
@@ -855,6 +888,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
   }, [
     session,
     finalConfig,
+    isViolationEnabled,
     getActiveVideoElement,
     analyzeObstructionSignal,
     reportViolationAndHandleTermination,
@@ -1010,7 +1044,12 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
         setStatus(prev => ({ ...prev, monitorCount: currentCount }));
         await updateMonitorCount(session.sessionId, currentCount);
 
-        if (currentCount > 1 && previousCount <= 1 && canEmitClientViolation('monitor:secondary', 6000)) {
+        if (
+          isViolationEnabled('secondary_monitor_detected') &&
+          currentCount > 1 &&
+          previousCount <= 1 &&
+          canEmitClientViolation('monitor:secondary', 6000)
+        ) {
           const violation: ViolationData = {
             eventType: 'secondary_monitor_detected',
             severity: 'critical',
@@ -1032,7 +1071,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
 
     const interval = setInterval(checkMonitors, 8000);
     return () => clearInterval(interval);
-  }, [session, status.monitorCount, finalConfig.enableMonitorDetection, finalConfig.onViolation, canEmitClientViolation]);
+  }, [session, status.monitorCount, finalConfig.enableMonitorDetection, finalConfig.onViolation, canEmitClientViolation, isViolationEnabled]);
 
   // Start intervals when initialized
   useEffect(() => {
