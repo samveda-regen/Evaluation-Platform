@@ -15,6 +15,7 @@ import {
 import { registerAdmin, loginAdmin, getAdminProfile } from '../controllers/adminAuth.js';
 import {
   createTest,
+  createAdminPreviewAttempt,
   createTestSection,
   deleteTestSection,
   getTests,
@@ -91,6 +92,7 @@ router.get('/tests', adminAuth, paginationValidation, handleValidationErrors, ge
 router.get('/tests/:testId', adminAuth, getTestById);
 router.put('/tests/:testId', adminAuth, updateTestValidation, handleValidationErrors, updateTest);
 router.delete('/tests/:testId', adminAuth, deleteTest);
+router.post('/tests/:testId/try', adminAuth, createAdminPreviewAttempt);
 router.post('/tests/:testId/send-invitations', adminAuth, invitationUpload.single('file'), sendTestInvitations);
 router.get('/tests/:testId/invitations', adminAuth, getTestInvitationDashboard);
 router.delete('/tests/:testId/invitations/:invitationId', adminAuth, deleteTestInvitationCandidate);
