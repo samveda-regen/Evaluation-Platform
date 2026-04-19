@@ -1,6 +1,7 @@
 import { callLLM, parseJSONFromLLM } from './llmService.js';
 import prisma from '../utils/db.js';
 import { Prisma } from '@prisma/client';
+import { DEFAULT_CUSTOM_AI_VIOLATION_EVENTS } from '../utils/proctoringConfig.js';
 
 interface JobProfile {
   title: string;
@@ -206,6 +207,7 @@ export async function createTestFromSelection(
         shuffleQuestions: testSettings.shuffleQuestions ?? false,
         shuffleOptions: testSettings.shuffleOptions ?? false,
         maxViolations: testSettings.maxViolations ?? 3,
+        customAIViolations: JSON.stringify(DEFAULT_CUSTOM_AI_VIOLATION_EVENTS),
         adminId
       }
     });
