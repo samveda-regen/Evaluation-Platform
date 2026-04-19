@@ -78,6 +78,7 @@ model Test {
   requireScreenShare    Boolean @default(false)
   requireIdVerification Boolean @default(false)
   allowMobileProctoring Boolean @default(false)
+  customAIViolations    String? // JSON array of enabled proctoring violation event types
 
   questions TestQuestion[]
   sections  TestSection[]
