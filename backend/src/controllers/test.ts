@@ -4,6 +4,12 @@ import { v4 as uuidv4 } from 'uuid';
 import { AuthenticatedRequest } from '../types/index.js';
 import { sanitizeInput } from '../utils/sanitize.js';
 import prisma from '../utils/db.js';
+import { generateCandidateToken } from '../utils/jwt.js';
+import {
+  DEFAULT_CUSTOM_AI_VIOLATION_EVENTS,
+  normalizeCustomAIViolationEvents,
+  parseStoredCustomAIViolationEvents,
+} from '../utils/proctoringConfig.js';
 
 const TEST_SCOPED_TAG = '__test_scoped__';
 
@@ -111,6 +117,13 @@ function calculateDurationMinutes(startTime: Date, endTime: Date): number {
   return Math.ceil((endTime.getTime() - startTime.getTime()) / (60 * 1000));
 }
 
+function mapTestWithCustomAI<T extends { customAIViolations?: string | null }>(test: T): Omit<T, 'customAIViolations'> & { customAIViolations: string[] } {
+  return {
+    ...test,
+    customAIViolations: parseStoredCustomAIViolationEvents(test.customAIViolations ?? null),
+  };
+}
+
 export async function createTest(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const {
@@ -131,7 +144,8 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
       requireCamera,
       requireMicrophone,
       requireScreenShare,
-      requireIdVerification
+      requireIdVerification,
+      customAIViolations,
     } = req.body;
 
     const parsedStartTime = parseDateValue(startTime);
@@ -161,6 +175,10 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
     const resolvedDuration = parsedEndTime
       ? calculateDurationMinutes(parsedStartTime, parsedEndTime)
       : requestedDuration;
+    const enabledAIViolations =
+      customAIViolations === undefined
+        ? [...DEFAULT_CUSTOM_AI_VIOLATION_EVENTS]
+        : normalizeCustomAIViolationEvents(customAIViolations);
 
     const testCode = generateTestCode();
 
@@ -185,6 +203,7 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
         requireMicrophone: requireMicrophone || false,
         requireScreenShare: requireScreenShare || false,
         requireIdVerification: requireIdVerification || false,
+        customAIViolations: JSON.stringify(enabledAIViolations),
         adminId: req.admin!.id
       }
     });
@@ -192,7 +211,7 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
     res.status(201).json({
       message: 'Test created successfully',
       test: {
-        ...test,
+        ...mapTestWithCustomAI(test),
         testCode
       }
     });
@@ -227,7 +246,7 @@ export async function getTests(req: AuthenticatedRequest, res: Response): Promis
     ]);
 
     res.json({
-      tests,
+      tests: tests.map((test) => mapTestWithCustomAI(test)),
       pagination: {
         page,
         limit,
@@ -291,7 +310,7 @@ export async function getTestById(req: AuthenticatedRequest, res: Response): Pro
       return;
     }
 
-    res.json({ test });
+    res.json({ test: mapTestWithCustomAI(test) });
   } catch (error) {
     console.error('Get test error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -475,6 +494,11 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
       sanitizedUpdates.duration = calculateDurationMinutes(resolvedStartTime, resolvedEndTime);
     }
 
+    if (updates.customAIViolations !== undefined) {
+      const parsedCustomAIViolations = normalizeCustomAIViolationEvents(updates.customAIViolations);
+      sanitizedUpdates.customAIViolations = JSON.stringify(parsedCustomAIViolations);
+    }
+
     if (updates.totalMarks) sanitizedUpdates.totalMarks = parseInt(updates.totalMarks);
     if (updates.passingMarks !== undefined) sanitizedUpdates.passingMarks = updates.passingMarks ? parseInt(updates.passingMarks) : null;
     if (updates.negativeMarking !== undefined) sanitizedUpdates.negativeMarking = parseFloat(updates.negativeMarking) || 0;
@@ -496,7 +520,7 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
 
     res.json({
       message: 'Test updated successfully',
-      test: updatedTest
+      test: mapTestWithCustomAI(updatedTest)
     });
   } catch (error) {
     console.error('Update test error:', error);
@@ -588,6 +612,136 @@ export async function deleteTest(req: AuthenticatedRequest, res: Response): Prom
   } catch (error) {
     console.error('Delete test error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function createAdminPreviewAttempt(
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> {
+  try {
+    const { testId } = req.params;
+    const adminId = req.admin!.id;
+    const adminEmail = req.admin!.email;
+
+    const test = await prisma.test.findFirst({
+      where: {
+        id: testId,
+        adminId,
+      },
+      select: {
+        id: true,
+        name: true,
+        requireIdVerification: true,
+      },
+    });
+
+    if (!test) {
+      res.status(404).json({ error: 'Test not found' });
+      return;
+    }
+
+    const previewEmail = `preview+${adminId.slice(0, 8)}+${testId.slice(0, 8)}@regen.local`;
+    const previewNameBase = adminEmail.split('@')[0] || 'Admin';
+    const previewName = `${previewNameBase} (Preview)`;
+
+    const candidate = await prisma.candidate.upsert({
+      where: { email: previewEmail },
+      create: {
+        email: previewEmail,
+        name: previewName,
+      },
+      update: {
+        name: previewName,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+      },
+    });
+
+    const attempt = await prisma.$transaction(async (tx) => {
+      const existingAttempt = await tx.testAttempt.findUnique({
+        where: {
+          testId_candidateId: {
+            testId,
+            candidateId: candidate.id,
+          },
+        },
+        select: { id: true },
+      });
+
+      if (existingAttempt) {
+        await tx.testAttempt.delete({
+          where: { id: existingAttempt.id },
+        });
+      }
+
+      const createdAttempt = await tx.testAttempt.create({
+        data: {
+          testId,
+          candidateId: candidate.id,
+          status: 'in_progress',
+          startTime: new Date(),
+          endTime: null,
+          submittedAt: null,
+          score: null,
+          violations: 0,
+          isFlagged: false,
+          flagReason: null,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (test.requireIdVerification) {
+        await tx.candidateIdentity.upsert({
+          where: { candidateId: candidate.id },
+          create: {
+            candidateId: candidate.id,
+            verificationStatus: 'verified',
+            verifiedAt: new Date(),
+            verifiedBy: 'admin_preview',
+            expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+          },
+          update: {
+            verificationStatus: 'verified',
+            verifiedAt: new Date(),
+            verifiedBy: 'admin_preview',
+            rejectionReason: null,
+            expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+          },
+        });
+      }
+
+      return createdAttempt;
+    });
+
+    const token = generateCandidateToken({
+      id: candidate.id,
+      email: candidate.email,
+      testId,
+      attemptId: attempt.id,
+      role: 'candidate',
+    });
+
+    res.json({
+      message: 'Preview session ready',
+      token,
+      candidate,
+      attempt: {
+        id: attempt.id,
+      },
+      test: {
+        id: test.id,
+        name: test.name,
+      },
+    });
+  } catch (error) {
+    console.error('Create admin preview attempt error:', error);
+    res.status(500).json({ error: 'Failed to create preview session' });
   }
 }
 
