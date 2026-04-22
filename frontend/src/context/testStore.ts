@@ -16,6 +16,7 @@ interface TestState {
   requireMicrophone: boolean;
   requireScreenShare: boolean;
   customAIViolations: string[];
+  violationPopupSettings: { enabled: boolean; durationSeconds: number };
   startTime: Date | null;
   questions: TestQuestion[];
   currentQuestionIndex: number;
@@ -39,6 +40,7 @@ interface TestState {
     requireMicrophone: boolean;
     requireScreenShare: boolean;
     customAIViolations?: string[];
+    violationPopupSettings?: { enabled: boolean; durationSeconds: number };
     startTime: Date;
     questions: TestQuestion[];
     initialViolations?: number;
@@ -68,6 +70,7 @@ export const useTestStore = create<TestState>((set, get) => ({
   requireMicrophone: false,
   requireScreenShare: false,
   customAIViolations: [...DEFAULT_CUSTOM_AI_VIOLATIONS],
+  violationPopupSettings: { enabled: false, durationSeconds: 3 },
   startTime: null,
   questions: [],
   currentQuestionIndex: 0,
@@ -91,6 +94,7 @@ export const useTestStore = create<TestState>((set, get) => ({
     requireMicrophone: data.requireMicrophone,
     requireScreenShare: data.requireScreenShare,
     customAIViolations: normalizeCustomAIViolationSelection(data.customAIViolations),
+    violationPopupSettings: data.violationPopupSettings ?? { enabled: false, durationSeconds: 3 },
     startTime: data.startTime,
     questions: data.questions,
     currentQuestionIndex: 0,
@@ -146,6 +150,7 @@ export const useTestStore = create<TestState>((set, get) => ({
     requireMicrophone: false,
     requireScreenShare: false,
     customAIViolations: [...DEFAULT_CUSTOM_AI_VIOLATIONS],
+    violationPopupSettings: { enabled: false, durationSeconds: 3 },
     startTime: null,
     questions: [],
     currentQuestionIndex: 0,
