@@ -79,6 +79,7 @@ model Test {
   requireIdVerification Boolean @default(false)
   allowMobileProctoring Boolean @default(false)
   customAIViolations    String? // JSON array of enabled proctoring violation event types
+  violationPopupSettings String? // JSON: { enabled: boolean, durationSeconds: number }
 
   questions TestQuestion[]
   sections  TestSection[]
