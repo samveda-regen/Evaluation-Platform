@@ -513,9 +513,16 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
     if (updates.requireScreenShare !== undefined) sanitizedUpdates.requireScreenShare = updates.requireScreenShare;
     if (updates.requireIdVerification !== undefined) sanitizedUpdates.requireIdVerification = updates.requireIdVerification;
 
+    if (updates.violationPopupSettings !== undefined) {
+      const popup = updates.violationPopupSettings;
+      const enabled = typeof popup?.enabled === 'boolean' ? popup.enabled : false;
+      const durationSeconds = Number.isFinite(Number(popup?.durationSeconds)) ? Math.max(1, Math.min(60, Number(popup.durationSeconds))) : 3;
+      sanitizedUpdates.violationPopupSettings = JSON.stringify({ enabled, durationSeconds });
+    }
+
     const updatedTest = await prisma.test.update({
       where: { id: testId },
-      data: sanitizedUpdates
+      data: sanitizedUpdates as Parameters<typeof prisma.test.update>[0]['data']
     });
 
     res.json({
