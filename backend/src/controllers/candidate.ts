@@ -4,7 +4,6 @@ import { generateCandidateToken } from '../utils/jwt.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import { sanitizeInput } from '../utils/sanitize.js';
 import { executeCode, compareOutput } from '../utils/codeExecutor.js';
-import { calculateCodingQuestionScore } from '../utils/codingScoring.js';
 import prisma from '../utils/db.js';
 import { emitToTestProctorRoom, emitToProctorTargets } from '../services/socketService.js';
 import { Prisma } from '@prisma/client';
@@ -14,6 +13,8 @@ import {
   getInvitationContextForLogin
 } from '../services/invitationService.js';
 import { uploadSnapshot } from '../services/fileStorageService.js';
+import { parseStoredCustomAIViolationEvents } from '../utils/proctoringConfig.js';
+import { sumMarksObtained } from '../utils/attemptScore.js';
 
 export async function candidateLogin(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -517,6 +518,7 @@ export async function getTestDetails(req: AuthenticatedRequest, res: Response): 
           requireCamera: true,
           requireMicrophone: true,
           requireScreenShare: true,
+          customAIViolations: true,
           shuffleQuestions: true,
           shuffleOptions: true,
           maxViolations: true
@@ -533,7 +535,10 @@ export async function getTestDetails(req: AuthenticatedRequest, res: Response): 
     }
 
     res.json({
-      test,
+      test: {
+        ...test,
+        customAIViolations: parseStoredCustomAIViolationEvents(test.customAIViolations),
+      },
       attempt: {
         id: attempt.id,
         startTime: attempt.startTime,
@@ -552,7 +557,16 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
     const { testId, attemptId, invitationId } = req.candidate!;
 
     const attempt = await prisma.testAttempt.findUnique({
-      where: { id: attemptId }
+      where: { id: attemptId },
+      include: {
+        test: {
+          select: {
+            id: true,
+            maxViolations: true,
+            customAIViolations: true,
+          },
+        },
+      },
     });
 
     if (!attempt || attempt.status !== 'in_progress') {
@@ -879,7 +893,8 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
         requireCamera: test.requireCamera,
         requireMicrophone: test.requireMicrophone,
         requireScreenShare: test.requireScreenShare,
-        maxViolations: test.maxViolations
+        maxViolations: test.maxViolations,
+        customAIViolations: parseStoredCustomAIViolationEvents(test.customAIViolations),
       },
       questions,
       startTime: attempt.startTime
@@ -896,7 +911,16 @@ export async function saveMCQAnswer(req: AuthenticatedRequest, res: Response): P
     const { questionId, selectedOptions } = req.body;
 
     const attempt = await prisma.testAttempt.findUnique({
-      where: { id: attemptId }
+      where: { id: attemptId },
+      include: {
+        test: {
+          select: {
+            id: true,
+            maxViolations: true,
+            customAIViolations: true,
+          },
+        },
+      },
     });
 
     if (!attempt || attempt.status !== 'in_progress') {
@@ -936,7 +960,16 @@ export async function saveCodingAnswer(req: AuthenticatedRequest, res: Response)
     const { questionId, code, language } = req.body;
 
     const attempt = await prisma.testAttempt.findUnique({
-      where: { id: attemptId }
+      where: { id: attemptId },
+      include: {
+        test: {
+          select: {
+            id: true,
+            maxViolations: true,
+            customAIViolations: true,
+          },
+        },
+      },
     });
 
     if (!attempt || attempt.status !== 'in_progress') {
@@ -1052,10 +1085,20 @@ export async function logActivity(req: AuthenticatedRequest, res: Response): Pro
   try {
     const { attemptId, testId } = req.candidate!;
     const { eventType, eventData } = req.body;
+    const normalizedEventType = typeof eventType === 'string' ? eventType.trim().toLowerCase() : '';
     const normalizedEventData = eventData && typeof eventData === 'object' ? eventData : null;
 
     const attempt = await prisma.testAttempt.findUnique({
-      where: { id: attemptId }
+      where: { id: attemptId },
+      include: {
+        test: {
+          select: {
+            id: true,
+            maxViolations: true,
+            customAIViolations: true,
+          },
+        },
+      },
     });
 
     if (!attempt) {
@@ -1066,16 +1109,16 @@ export async function logActivity(req: AuthenticatedRequest, res: Response): Pro
     await prisma.activityLog.create({
       data: {
         attemptId,
-        eventType,
+        eventType: normalizedEventType || 'unknown',
         eventData: normalizedEventData ? JSON.stringify(normalizedEventData) : null
       }
     });
 
     emitToTestProctorRoom(testId, 'activity-update', {
       testId,
-      attemptId,
-      activity: {
-        eventType,
+        attemptId,
+        activity: {
+        eventType: normalizedEventType || 'unknown',
         eventData: normalizedEventData || null,
         timestamp: new Date().toISOString(),
       },
@@ -1099,9 +1142,20 @@ export async function logActivity(req: AuthenticatedRequest, res: Response): Pro
       copy_paste_attempt: 'medium', // Warning
       devtools_open: 'critical',
     };
-    if (violationEventMap[eventType]) {
-      const mappedType = violationEventMap[eventType];
+    if (violationEventMap[normalizedEventType]) {
+      const mappedType = violationEventMap[normalizedEventType];
       const mappedSeverity = violationSeverityMap[mappedType] || 'medium';
+
+      const enabledViolations = new Set(parseStoredCustomAIViolationEvents(attempt.test.customAIViolations));
+      if (!enabledViolations.has(mappedType)) {
+        res.json({
+          message: 'Activity logged',
+          ignored: true,
+          reason: 'event_not_enabled_for_test',
+          mappedEventType: mappedType,
+        });
+        return;
+      }
 
       const updatedAttempt = await prisma.testAttempt.update({
         where: { id: attemptId },
@@ -1156,7 +1210,7 @@ export async function logActivity(req: AuthenticatedRequest, res: Response): Pro
                 : 100,
             description:
               (normalizedEventData?.message as string | undefined) ||
-              `${eventType.replace(/_/g, ' ')} detected`,
+              `${normalizedEventType.replace(/_/g, ' ')} detected`,
             metadata: metadataForEvent ? JSON.stringify(metadataForEvent) : null,
             snapshotUrl,
             duration:
@@ -1175,17 +1229,13 @@ export async function logActivity(req: AuthenticatedRequest, res: Response): Pro
           severity: mappedSeverity,
           description:
             (normalizedEventData?.message as string | undefined) ||
-            `${eventType.replace(/_/g, ' ')} detected`,
+            `${normalizedEventType.replace(/_/g, ' ')} detected`,
           timestamp: new Date().toISOString(),
         },
       });
 
-      // Get test to check max violations
-      const test = await prisma.test.findUnique({
-        where: { id: updatedAttempt.testId }
-      });
-
-      if (test && newViolations >= test.maxViolations) {
+      const maxViolations = attempt.test.maxViolations;
+      if (newViolations >= maxViolations) {
         res.json({
           message: 'Activity logged',
           violation: true,
@@ -1199,7 +1249,7 @@ export async function logActivity(req: AuthenticatedRequest, res: Response): Pro
         message: 'Activity logged',
         violation: true,
         violationCount: newViolations,
-        maxViolations: test?.maxViolations
+        maxViolations
       });
       return;
     }
@@ -1263,7 +1313,7 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
       timeLimit: number;
       marks: number;
       partialScoring: boolean;
-      testCases: Array<{ id: string; input: string; expectedOutput: string; marks: number }>;
+      testCases: Array<{ id: string; input: string; expectedOutput: string }>;
     }>();
 
     for (const eq of test.questions) {
@@ -1329,14 +1379,22 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
           return {
             testCaseId: testCase.id,
             passed,
-            marks: testCase.marks,
             executionTime: result.executionTime,
             error: result.error
           };
         });
 
         const testResults = await Promise.all(testPromises);
-        const marks = calculateCodingQuestionScore(question, testResults);
+        const passedTests = testResults.filter(r => r.passed).length;
+
+        // Calculate marks
+        let marks = 0;
+        if (question.partialScoring) {
+          // Round to 2 decimal places to avoid floating point issues
+          marks = Math.round((passedTests / question.testCases.length) * question.marks * 100) / 100;
+        } else {
+          marks = passedTests === question.testCases.length ? question.marks : 0;
+        }
 
         totalScore += marks;
         codingUpdates.push({
@@ -1346,6 +1404,8 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
         });
       }
     }
+
+    totalScore += sumMarksObtained(attempt.behavioralAnswers);
 
     // Execute all database updates in a transaction for consistency
     await prisma.$transaction([

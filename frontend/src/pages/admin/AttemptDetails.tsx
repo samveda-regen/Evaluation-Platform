@@ -45,7 +45,7 @@ interface AttemptData {
     title: string;
     code: string;
     language: string;
-    testResults: Array<{ testCaseId: string; passed: boolean; marks?: number; error?: string }> | null;
+    testResults: Array<{ testCaseId: string; passed: boolean; error?: string }> | null;
     marks: number;
     marksObtained: number;
   }>;
@@ -72,10 +72,27 @@ export default function AttemptDetails() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'mcq' | 'coding' | 'behavioral' | 'activity'>('mcq');
   const [reEvaluating, setReEvaluating] = useState(false);
+  const [behavioralDrafts, setBehavioralDrafts] = useState<Record<string, string>>({});
+  const [savingBehavioralQuestionId, setSavingBehavioralQuestionId] = useState<string | null>(null);
 
   useEffect(() => {
     loadAttempt();
   }, [attemptId]);
+
+  useEffect(() => {
+    if (!data) {
+      return;
+    }
+
+    setBehavioralDrafts(
+      Object.fromEntries(
+        data.behavioralAnswers.map((answer) => [
+          answer.questionId,
+          answer.marksObtained != null ? String(answer.marksObtained) : ''
+        ])
+      )
+    );
+  }, [data]);
 
   const loadAttempt = async () => {
     try {
@@ -117,6 +134,41 @@ export default function AttemptDetails() {
       toast.error('Failed to re-evaluate');
     } finally {
       setReEvaluating(false);
+    }
+  };
+
+  const handleBehavioralScoreChange = (questionId: string, value: string) => {
+    setBehavioralDrafts((current) => ({
+      ...current,
+      [questionId]: value
+    }));
+  };
+
+  const handleBehavioralScoreSave = async (questionId: string, maxMarks: number) => {
+    const rawValue = behavioralDrafts[questionId] ?? '';
+    const parsedMarks = Number(rawValue);
+
+    if (rawValue.trim() === '' || !Number.isFinite(parsedMarks)) {
+      toast.error('Enter a valid behavioral score before saving');
+      return;
+    }
+
+    if (parsedMarks < 0 || parsedMarks > maxMarks) {
+      toast.error(`Behavioral score must be between 0 and ${maxMarks}`);
+      return;
+    }
+
+    setSavingBehavioralQuestionId(questionId);
+    try {
+      await adminApi.gradeBehavioralAnswer(attemptId!, questionId, {
+        marksObtained: parsedMarks
+      });
+      toast.success('Behavioral score saved');
+      await loadAttempt();
+    } catch (error) {
+      toast.error('Failed to save behavioral score');
+    } finally {
+      setSavingBehavioralQuestionId(null);
     }
   };
 
@@ -314,7 +366,6 @@ export default function AttemptDetails() {
                           className={`badge ${result.passed ? 'badge-success' : 'badge-danger'}`}
                         >
                           Test {idx + 1}: {result.passed ? 'Passed' : 'Failed'}
-                          {typeof result.marks === 'number' ? ` (${result.marks} marks)` : ''}
                         </span>
                       ))}
                     </div>
@@ -345,6 +396,30 @@ export default function AttemptDetails() {
                   <p className="whitespace-pre-wrap text-gray-800">
                     {answer.answerText || 'No response provided.'}
                   </p>
+                </div>
+                <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
+                  <label className="flex-1">
+                    <span className="block text-sm font-medium text-gray-700 mb-1">
+                      Awarded Marks
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={answer.marks}
+                      step="0.01"
+                      value={behavioralDrafts[answer.questionId] ?? ''}
+                      onChange={(e) => handleBehavioralScoreChange(answer.questionId, e.target.value)}
+                      className="input w-full"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    disabled={savingBehavioralQuestionId === answer.questionId}
+                    onClick={() => handleBehavioralScoreSave(answer.questionId, answer.marks)}
+                  >
+                    {savingBehavioralQuestionId === answer.questionId ? 'Saving...' : 'Save Score'}
+                  </button>
                 </div>
               </div>
             ))

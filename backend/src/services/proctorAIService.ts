@@ -14,6 +14,12 @@
 
 import prisma from '../utils/db';
 import { uploadSnapshot, uploadRecording } from './fileStorageService';
+import {
+  calculateTrustScoreFromEvents,
+  getTrustScoreForSessionId,
+  riskLevelFromTrustScore,
+  TRUST_REPORT_EVENT_TYPES,
+} from './trustScoreService';
 
 // Violation severity thresholds
 const SEVERITY_THRESHOLDS = {
@@ -37,34 +43,6 @@ const LOW_PRIORITY_EVENTS = new Set([
   'rapid_typing',
   'unusual_mouse_movement',
 ]);
-// Phone detection carries a 1.5× trust-score deduction multiplier on top of its critical severity
-const PHONE_DEDUCTION_MULTIPLIER = 1.5;
-const REPORT_EVENT_TYPES = new Set(
-  [
-    ...(
-      process.env.PROCTOR_REPORT_EVENTS ||
-      'tab_switch,window_blur,fullscreen_exit,copy_paste_attempt,camera_blocked,multiple_faces,phone_detected,face_not_detected,looking_away,voice_detected,secondary_monitor_detected'
-    )
-      .split(',')
-      .map(v => v.trim().toLowerCase())
-      .filter(Boolean),
-    // Keep no-face violations in trust math even if env list is missing it.
-    'face_not_detected',
-  ]
-);
-const TRUST_EVENT_WEIGHT_MAP: Record<string, number> = {
-  tab_switch: 3,
-  window_blur: 3,
-  fullscreen_exit: 2,
-  copy_paste_attempt: 5,
-  camera_blocked: 20,
-  multiple_faces: 15,
-  phone_detected: 20,
-  face_not_detected: 15,
-  looking_away: 1,
-  voice_detected: 15,
-  secondary_monitor_detected: 20,
-};
 
 // Violation types and their base severity
 const VIOLATION_SEVERITY_MAP: Record<string, string> = {
@@ -442,50 +420,7 @@ export async function storeFaceSnapshot(
  */
 export async function calculateTrustScore(sessionId: string): Promise<number> {
   try {
-    const events = await prisma.proctorEvent.findMany({
-      where: {
-        sessionId,
-        dismissed: false,
-        eventType: { in: Array.from(REPORT_EVENT_TYPES) },
-      },
-    });
-
-    if (events.length === 0) {
-      return 100; // Perfect score if no violations
-    }
-
-    let deductions = 0;
-
-    for (const event of events) {
-      // Backward/forward compatible normalization:
-      // - legacy/local pipeline often stores 0..1
-      // - python CV adapter stores 0..100
-      const rawConfidence = event.confidence || 0.5;
-      const confidence = Math.max(0, Math.min(1, rawConfidence > 1 ? rawConfidence / 100 : rawConfidence));
-      const weight = TRUST_EVENT_WEIGHT_MAP[event.eventType];
-      if (typeof weight === 'number') {
-        deductions += weight * confidence;
-        continue;
-      }
-      const phoneMultiplier = event.eventType === 'phone_detected' ? PHONE_DEDUCTION_MULTIPLIER : 1;
-      switch (event.severity) {
-        case 'critical':
-          deductions += 20 * confidence * phoneMultiplier;
-          break;
-        case 'high':
-          deductions += 10 * confidence * phoneMultiplier;
-          break;
-        case 'medium':
-          deductions += 5 * confidence * phoneMultiplier;
-          break;
-        default:
-          deductions += 2 * confidence * phoneMultiplier;
-          break;
-      }
-    }
-
-    // Cap deductions at 100
-    return Math.max(0, Math.min(100, 100 - deductions));
+    return await getTrustScoreForSessionId(sessionId);
   } catch (error) {
     console.error('Error calculating trust score:', error);
     return 50; // Default middle score on error
@@ -525,7 +460,7 @@ export async function generateProctoringSummary(attemptId: string): Promise<{
     }
 
     const events = session.events.filter(
-      event => !NON_VIOLATION_EVENTS.has(event.eventType) && REPORT_EVENT_TYPES.has(event.eventType)
+      event => !NON_VIOLATION_EVENTS.has(event.eventType) && TRUST_REPORT_EVENT_TYPES.includes(event.eventType)
     );
     const violationsByType: Record<string, number> = {};
     const violationsBySeverity: Record<string, number> = {};
@@ -535,13 +470,8 @@ export async function generateProctoringSummary(attemptId: string): Promise<{
       violationsBySeverity[event.severity] = (violationsBySeverity[event.severity] || 0) + 1;
     }
 
-    const trustScore = await calculateTrustScore(session.id);
-
-    // Determine risk level
-    let riskLevel: 'low' | 'medium' | 'high' | 'critical' = 'low';
-    if (trustScore < 30) riskLevel = 'critical';
-    else if (trustScore < 50) riskLevel = 'high';
-    else if (trustScore < 75) riskLevel = 'medium';
+    const trustScore = calculateTrustScoreFromEvents(events);
+    const riskLevel = riskLevelFromTrustScore(trustScore);
 
     // Recommend flagging if critical violations or very low trust score
     const flagRecommendation =

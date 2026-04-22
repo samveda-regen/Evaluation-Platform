@@ -32,6 +32,7 @@ export interface Test {
   requireMicrophone?: boolean;
   requireScreenShare?: boolean;
   requireIdVerification?: boolean;
+  customAIViolations?: string[];
   createdAt: string;
   _count?: {
     questions: number;

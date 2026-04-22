@@ -1,7 +1,8 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../types/index.js';
-import { calculateCodingQuestionScore } from '../utils/codingScoring.js';
 import prisma from '../utils/db.js';
+import { sumMarksObtained } from '../utils/attemptScore.js';
+import { getTrustScoresForAttemptIds } from '../services/trustScoreService.js';
 
 export async function getTestResults(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -79,13 +80,11 @@ export async function getTestResults(req: AuthenticatedRequest, res: Response): 
           }
         })
       : null;
+    const trustScoresByAttemptId = await getTrustScoresForAttemptIds(attempts.map(attempt => attempt.id));
 
     const attemptsWithTrust = attempts.map((attempt: typeof attempts[number]) => ({
       ...attempt,
-      trustScore:
-        typeof attempt.analytics?.trustScore === 'number'
-          ? attempt.analytics.trustScore
-          : Math.max(0, 100 - attempt.violations * 8),
+      trustScore: trustScoresByAttemptId.get(attempt.id) ?? 100,
     }));
 
     res.json({
@@ -314,6 +313,7 @@ export async function reEvaluateAttempt(req: AuthenticatedRequest, res: Response
             negativeMarking: true
           }
         },
+        behavioralAnswers: true,
         mcqAnswers: {
           include: { question: true }
         },
@@ -372,6 +372,7 @@ export async function reEvaluateAttempt(req: AuthenticatedRequest, res: Response
     for (const codingAnswer of attempt.codingAnswers) {
       const question = codingAnswer.question;
       const testResults = [];
+      let passedTests = 0;
 
       for (const testCase of question.testCases) {
         const result = await executeCode({
@@ -386,13 +387,19 @@ export async function reEvaluateAttempt(req: AuthenticatedRequest, res: Response
         testResults.push({
           testCaseId: testCase.id,
           passed,
-          marks: testCase.marks,
           executionTime: result.executionTime,
           error: result.error
         });
+
+        if (passed) passedTests++;
       }
 
-      const marks = calculateCodingQuestionScore(question, testResults);
+      let marks = 0;
+      if (question.partialScoring) {
+        marks = Math.round((passedTests / question.testCases.length) * question.marks * 100) / 100;
+      } else {
+        marks = passedTests === question.testCases.length ? question.marks : 0;
+      }
 
       totalScore += marks;
 
@@ -404,6 +411,8 @@ export async function reEvaluateAttempt(req: AuthenticatedRequest, res: Response
         }
       });
     }
+
+    totalScore += sumMarksObtained(attempt.behavioralAnswers);
 
     // Update attempt score
     await prisma.testAttempt.update({
@@ -417,6 +426,93 @@ export async function reEvaluateAttempt(req: AuthenticatedRequest, res: Response
     });
   } catch (error) {
     console.error('Re-evaluate attempt error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function gradeBehavioralAnswer(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { attemptId, questionId } = req.params;
+    const parsedMarks = Number(req.body.marksObtained);
+
+    if (!Number.isFinite(parsedMarks) || parsedMarks < 0) {
+      res.status(400).json({ error: 'marksObtained must be a valid non-negative number' });
+      return;
+    }
+
+    const answer = await prisma.behavioralAnswer.findFirst({
+      where: {
+        attemptId,
+        questionId,
+        attempt: {
+          test: {
+            adminId: req.admin!.id
+          }
+        }
+      },
+      include: {
+        question: {
+          select: {
+            marks: true
+          }
+        }
+      }
+    });
+
+    if (!answer) {
+      res.status(404).json({ error: 'Behavioral answer not found' });
+      return;
+    }
+
+    if (parsedMarks > answer.question.marks) {
+      res.status(400).json({ error: `marksObtained cannot exceed ${answer.question.marks}` });
+      return;
+    }
+
+    const roundedMarks = Math.round(parsedMarks * 100) / 100;
+
+    const totalScore = await prisma.$transaction(async (tx) => {
+      await tx.behavioralAnswer.update({
+        where: { id: answer.id },
+        data: { marksObtained: roundedMarks }
+      });
+
+      const [mcqAnswers, codingAnswers, behavioralAnswers] = await Promise.all([
+        tx.mCQAnswer.findMany({
+          where: { attemptId },
+          select: { marksObtained: true }
+        }),
+        tx.codingAnswer.findMany({
+          where: { attemptId },
+          select: { marksObtained: true }
+        }),
+        tx.behavioralAnswer.findMany({
+          where: { attemptId },
+          select: { marksObtained: true }
+        })
+      ]);
+
+      const recalculatedScore =
+        sumMarksObtained(mcqAnswers) +
+        sumMarksObtained(codingAnswers) +
+        sumMarksObtained(behavioralAnswers);
+
+      await tx.testAttempt.update({
+        where: { id: attemptId },
+        data: { score: recalculatedScore }
+      });
+
+      return recalculatedScore;
+    });
+
+    res.json({
+      message: 'Behavioral answer graded successfully',
+      questionId,
+      marksObtained: roundedMarks,
+      totalScore
+    });
+  } catch (error) {
+    console.error('Grade behavioral answer error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }

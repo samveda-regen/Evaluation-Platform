@@ -10,6 +10,7 @@ import {
   ProctoringAnalysis,
   ViolationEvent,
 } from '../services/proctorAIService';
+import { getTrustScoresForAttemptIds } from '../services/trustScoreService.js';
 import {
   uploadRecording,
   uploadSnapshot,
@@ -17,6 +18,7 @@ import {
 } from '../services/fileStorageService';
 import { emitToProctorTargets } from '../services/socketService';
 import { analyzeFrameWithPythonForSession } from '../services/pythonVisionService';
+import { parseStoredCustomAIViolationEvents } from '../utils/proctoringConfig.js';
 
 const PROCTOR_TRACE = (process.env.PROCTOR_TRACE || 'false').toLowerCase() === 'true';
 const PROCTOR_AUTO_FLAG_ON_CRITICAL =
@@ -166,10 +168,18 @@ function normalizeViolationEventType(rawType: string): string {
   return EVENT_TYPE_ALIASES[normalized] || normalized;
 }
 
-function isAllowedEvent(eventType: string): boolean {
+function isAllowedEvent(eventType: string, enabledEvents?: Set<string>): boolean {
   const normalized = normalizeViolationEventType(eventType);
   if (TEMP_DISABLED_EVENTS.has(normalized)) return false;
-  return PROCTOR_ALLOWED_EVENTS.has(eventType) || PROCTOR_ALLOWED_EVENTS.has(normalized);
+  const globallyAllowed =
+    PROCTOR_ALLOWED_EVENTS.has(eventType) || PROCTOR_ALLOWED_EVENTS.has(normalized);
+  if (!globallyAllowed) {
+    return false;
+  }
+  if (enabledEvents) {
+    return enabledEvents.has(normalized);
+  }
+  return true;
 }
 
 function normalizeSeverity(raw: unknown): ViolationEvent['severity'] {
@@ -277,8 +287,19 @@ async function emitSecondaryMonitorViolation(
   sessionId: string,
   attemptId: string,
   testId: string,
-  monitorCount: number
+  monitorCount: number,
+  enabledEvents?: Set<string>
 ): Promise<void> {
+  if (!isAllowedEvent('secondary_monitor_detected', enabledEvents)) {
+    proctorTrace('secondary_monitor_ignored', {
+      sessionId,
+      attemptId,
+      monitorCount,
+      reason: 'event_not_enabled',
+    });
+    return;
+  }
+
   const violation: ViolationEvent = {
     eventType: 'secondary_monitor_detected',
     severity: 'critical',
@@ -339,6 +360,7 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
             requireCamera: true,
             requireMicrophone: true,
             requireScreenShare: true,
+            customAIViolations: true,
           },
         },
       },
@@ -358,6 +380,9 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
     if (existingSession) {
       // Update existing session
       const normalizedMonitorCount = Math.max(1, Number(monitorCount) || 1);
+      const enabledAIViolations = parseStoredCustomAIViolationEvents(
+        attempt.test.customAIViolations
+      );
       const metadataPatch = {
         cameraEnabled,
         microphoneEnabled: effectiveMicrophoneEnabled,
@@ -367,6 +392,7 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
         deviceFingerprint,
         monitorCount: normalizedMonitorCount,
         externalMonitorDetected: normalizedMonitorCount > 1,
+        enabledAIViolations,
         ipAddress: req.ip,
         sessionUpdatedAt: new Date().toISOString(),
       };
@@ -387,7 +413,13 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
       });
 
       if (normalizedMonitorCount > 1 && (existingSession.monitorCount || 1) <= 1) {
-        await emitSecondaryMonitorViolation(session.id, attemptId, attempt.testId, normalizedMonitorCount);
+        await emitSecondaryMonitorViolation(
+          session.id,
+          attemptId,
+          attempt.testId,
+          normalizedMonitorCount,
+          new Set(enabledAIViolations)
+        );
       }
 
       res.json({
@@ -420,6 +452,9 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
 
     // Create new proctoring session
     const normalizedMonitorCount = Math.max(1, Number(monitorCount) || 1);
+    const enabledAIViolations = parseStoredCustomAIViolationEvents(
+      attempt.test.customAIViolations
+    );
     const metadataPatch = {
       cameraEnabled,
       microphoneEnabled: effectiveMicrophoneEnabled,
@@ -429,6 +464,7 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
       deviceFingerprint,
       monitorCount: normalizedMonitorCount,
       externalMonitorDetected: normalizedMonitorCount > 1,
+      enabledAIViolations,
       ipAddress: req.ip,
       sessionStartedAt: new Date().toISOString(),
     };
@@ -449,7 +485,13 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
     });
 
     if (normalizedMonitorCount > 1) {
-      await emitSecondaryMonitorViolation(session.id, attemptId, attempt.testId, normalizedMonitorCount);
+      await emitSecondaryMonitorViolation(
+        session.id,
+        attemptId,
+        attempt.testId,
+        normalizedMonitorCount,
+        new Set(enabledAIViolations)
+      );
     }
 
     res.status(201).json({
@@ -529,7 +571,19 @@ export const submitAnalysis = async (req: Request, res: Response): Promise<void>
       // Verify session exists
       const session = await prisma.proctorSession.findUnique({
         where: { id: sessionId },
-        select: { id: true, attemptId: true },
+        select: {
+          id: true,
+          attemptId: true,
+          attempt: {
+            select: {
+              test: {
+                select: {
+                  customAIViolations: true,
+                },
+              },
+            },
+          },
+        },
       });
 
       if (!session) {
@@ -548,6 +602,9 @@ export const submitAnalysis = async (req: Request, res: Response): Promise<void>
       return;
     }
     sessionAnalysisLastMs.set(sessionId, nowMs);
+    const enabledEvents = new Set(
+      parseStoredCustomAIViolationEvents(session.attempt.test.customAIViolations)
+    );
 
     const telemetryPayload = stripLargeFields({
       ...analysisData,
@@ -623,15 +680,18 @@ export const submitAnalysis = async (req: Request, res: Response): Promise<void>
       }
     }
     const normalizedViolations = Array.from(dedupedByCycle.values());
-    const allowedViolations = normalizedViolations.filter(v => isAllowedEvent(v.eventType));
+    const allowedViolations = normalizedViolations.filter((v) =>
+      isAllowedEvent(v.eventType, enabledEvents)
+    );
     const droppedViolationTypes = normalizedViolations
-      .filter(v => !isAllowedEvent(v.eventType))
+      .filter((v) => !isAllowedEvent(v.eventType, enabledEvents))
       .map(v => v.eventType);
     if (droppedViolationTypes.length > 0) {
       proctorTrace('violations_dropped_by_allowlist', {
         sessionId,
         droppedViolationTypes,
         allowedEvents: Array.from(PROCTOR_ALLOWED_EVENTS),
+        enabledEvents: Array.from(enabledEvents),
       });
     }
 
@@ -771,6 +831,26 @@ export const submitAnalysis = async (req: Request, res: Response): Promise<void>
 export const reportViolation = async (req: Request, res: Response): Promise<void> => {
   try {
     const { sessionId } = req.params;
+    const proctorSession = await prisma.proctorSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        attempt: {
+          include: {
+            test: {
+              select: { maxViolations: true, customAIViolations: true },
+            },
+          },
+        },
+      },
+    });
+    if (!proctorSession) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+    const enabledEvents = new Set(
+      parseStoredCustomAIViolationEvents(proctorSession.attempt.test.customAIViolations)
+    );
+
     const normalizedEventType = normalizeViolationEventType(req.body?.eventType || '');
     const violation: ViolationEvent = {
       ...req.body,
@@ -791,11 +871,12 @@ export const reportViolation = async (req: Request, res: Response): Promise<void
         };
       }
     }
-    if (!isAllowedEvent(violation.eventType)) {
+    if (!isAllowedEvent(violation.eventType, enabledEvents)) {
       proctorTrace('report_violation_ignored', {
         sessionId,
         eventType: violation.eventType,
         allowedEvents: Array.from(PROCTOR_ALLOWED_EVENTS),
+        enabledEvents: Array.from(enabledEvents),
       });
       res.json({
         success: true,
@@ -846,21 +927,20 @@ export const reportViolation = async (req: Request, res: Response): Promise<void
       return;
     }
 
-    const proctorSession = await prisma.proctorSession.findUnique({
-      where: { id: sessionId },
-      include: {
-        attempt: {
-          include: {
-            test: {
-              select: { maxViolations: true },
-            },
+    const updatedAttempt = await prisma.testAttempt.findUnique({
+      where: { id: proctorSession.attemptId },
+      select: {
+        violations: true,
+        test: {
+          select: {
+            maxViolations: true,
           },
         },
       },
     });
 
-    const totalViolations = proctorSession?.attempt.violations ?? 0;
-    const maxViolations = proctorSession?.attempt.test.maxViolations ?? 3;
+    const totalViolations = updatedAttempt?.violations ?? proctorSession.attempt.violations;
+    const maxViolations = updatedAttempt?.test.maxViolations ?? proctorSession.attempt.test.maxViolations;
     const shouldTerminate = totalViolations >= maxViolations;
 
     res.json({
@@ -878,20 +958,18 @@ export const reportViolation = async (req: Request, res: Response): Promise<void
       shouldTerminate,
     });
 
-    if (proctorSession) {
-      emitToProctorTargets(proctorSession.attempt.testId, proctorSession.attemptId, 'violation-detected', {
-        attemptId: proctorSession.attemptId,
-        testId: proctorSession.attempt.testId,
-        sessionId,
-        violation: {
-          type: violation.eventType,
-          severity: violation.severity,
-          confidence: violation.confidence,
-          description: violation.description,
-          timestamp: new Date().toISOString(),
-        },
-      });
-    }
+    emitToProctorTargets(proctorSession.attempt.testId, proctorSession.attemptId, 'violation-detected', {
+      attemptId: proctorSession.attemptId,
+      testId: proctorSession.attempt.testId,
+      sessionId,
+      violation: {
+        type: violation.eventType,
+        severity: violation.severity,
+        confidence: violation.confidence,
+        description: violation.description,
+        timestamp: new Date().toISOString(),
+      },
+    });
   } catch (error) {
     console.error('Error reporting violation:', error);
     res.status(500).json({ error: 'Failed to report violation' });
@@ -930,12 +1008,35 @@ export const ingestExternalEngineEvent = async (req: Request, res: Response): Pr
     const mappedEventType = normalizeViolationEventType(
       EXTERNAL_EVENT_MAP[rawType] || rawType.toLowerCase()
     );
-    if (!isAllowedEvent(mappedEventType)) {
+    const sessionConfig = await prisma.proctorSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        attempt: {
+          select: {
+            test: {
+              select: {
+                customAIViolations: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!sessionConfig) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+    const enabledEvents = new Set(
+      parseStoredCustomAIViolationEvents(sessionConfig.attempt.test.customAIViolations)
+    );
+
+    if (!isAllowedEvent(mappedEventType, enabledEvents)) {
       proctorTrace('external_event_ignored', {
         sessionId,
         rawType,
         mappedEventType,
         reason: 'not_in_allowlist',
+        enabledEvents: Array.from(enabledEvents),
       });
       res.json({ success: true, ignored: true, reason: 'event_not_allowed' });
       return;
@@ -1652,16 +1753,27 @@ export const updateMonitorCount = async (req: Request, res: Response): Promise<v
 
     const attempt = await prisma.testAttempt.findUnique({
       where: { id: existingSession.attemptId },
-      select: { testId: true },
+      select: {
+        testId: true,
+        test: {
+          select: {
+            customAIViolations: true,
+          },
+        },
+      },
     });
 
     // Trigger violation only when transitioning from single-monitor to multi-monitor.
     if (attempt && parsedMonitorCount > 1 && previousMonitorCount <= 1) {
+      const enabledEvents = new Set(
+        parseStoredCustomAIViolationEvents(attempt.test.customAIViolations)
+      );
       await emitSecondaryMonitorViolation(
         sessionId,
         existingSession.attemptId,
         attempt.testId,
-        parsedMonitorCount
+        parsedMonitorCount,
+        enabledEvents
       );
     }
 
@@ -1745,6 +1857,7 @@ export const getLiveTestSessions = async (req: Request, res: Response): Promise<
       },
       orderBy: { startTime: 'desc' },
     });
+    const trustScoresByAttemptId = await getTrustScoresForAttemptIds(attempts.map(attempt => attempt.id));
 
     const now = Date.now();
     const liveCandidates = attempts.map(attempt => {
@@ -1772,7 +1885,7 @@ export const getLiveTestSessions = async (req: Request, res: Response): Promise<
         },
         violations: attempt.violations,
         isFlagged: attempt.isFlagged,
-        trustScore: attempt.analytics?.trustScore ?? 100,
+        trustScore: trustScoresByAttemptId.get(attempt.id) ?? 100,
         livePreviewUrl: latestEvent?.snapshotUrl || latestSnapshot?.imageUrl || null,
         lastViolation: latestEvent
           ? {

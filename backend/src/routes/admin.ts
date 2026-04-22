@@ -15,6 +15,7 @@ import {
 import { registerAdmin, loginAdmin, getAdminProfile } from '../controllers/adminAuth.js';
 import {
   createTest,
+  createAdminPreviewAttempt,
   createTestSection,
   deleteTestSection,
   getTests,
@@ -43,6 +44,7 @@ import {
   flagAttempt,
   deleteAttempt,
   reEvaluateAttempt,
+  gradeBehavioralAnswer,
   exportResults,
   getDashboardStats
 } from '../controllers/results.js';
@@ -94,6 +96,7 @@ router.get('/tests', adminAuth, paginationValidation, handleValidationErrors, ge
 router.get('/tests/:testId', adminAuth, getTestById);
 router.put('/tests/:testId', adminAuth, updateTestValidation, handleValidationErrors, updateTest);
 router.delete('/tests/:testId', adminAuth, deleteTest);
+router.post('/tests/:testId/try', adminAuth, createAdminPreviewAttempt);
 router.post('/tests/:testId/send-invitations', adminAuth, invitationUpload.single('file'), sendTestInvitations);
 router.get('/tests/:testId/invitations', adminAuth, getTestInvitationDashboard);
 router.delete('/tests/:testId/invitations/:invitationId', adminAuth, deleteTestInvitationCandidate);
@@ -125,6 +128,7 @@ router.get('/attempts/:attemptId', adminAuth, getAttemptDetails);
 router.post('/attempts/:attemptId/flag', adminAuth, flagAttempt);
 router.delete('/attempts/:attemptId', adminAuth, deleteAttempt);
 router.post('/attempts/:attemptId/reevaluate', adminAuth, reEvaluateAttempt);
+router.patch('/attempts/:attemptId/behavioral/:questionId/score', adminAuth, gradeBehavioralAnswer);
 router.get('/tests/:testId/export', adminAuth, exportResults);
 router.get('/trust-reports', adminAuth, getTrustReports);
 router.post('/attempts/:attemptId/trust-report/reevaluate', adminAuth, reEvaluateTrustReport);

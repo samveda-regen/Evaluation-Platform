@@ -251,7 +251,7 @@ export default function MCQForm() {
 
         // If media was uploaded before question existed, attach it now.
         if (createdQuestionId && mediaAssets.length > 0) {
-          const assetIds = mediaAssets.map(asset => asset.id);
+          const assetIds = mediaAssets.map((asset) => asset.id);
           await adminApi.assignMediaToQuestion(createdQuestionId, assetIds);
         }
 

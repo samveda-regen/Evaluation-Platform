@@ -5,6 +5,7 @@ import {
   generateTestAnalytics,
   getPerformanceComparison,
 } from '../services/performanceEvaluationService';
+import { getTrustScoresForAttemptIds } from '../services/trustScoreService.js';
 
 /**
  * Get performance analytics for a specific attempt
@@ -64,19 +65,11 @@ export const getAttemptAnalytics = async (req: Request, res: Response): Promise<
 export const getTestAnalytics = async (req: Request, res: Response): Promise<void> => {
   try {
     const { testId } = req.params;
-    const { regenerate } = req.query;
 
-    // Check if analytics exist
-    let analytics = await prisma.testAnalytics.findUnique({
+    await generateTestAnalytics(testId);
+    const analytics = await prisma.testAnalytics.findUnique({
       where: { testId },
     });
-
-    if (!analytics || regenerate === 'true') {
-      await generateTestAnalytics(testId);
-      analytics = await prisma.testAnalytics.findUnique({
-        where: { testId },
-      });
-    }
 
     if (!analytics) {
       res.status(404).json({ error: 'Analytics not found' });
@@ -363,6 +356,10 @@ export const getLeaderboard = async (req: Request, res: Response): Promise<void>
       orderBy: { score: 'desc' },
       take: Number(limit),
     });
+    const trustScoresByAttemptId =
+      includeProctoring === 'true'
+        ? await getTrustScoresForAttemptIds(attempts.map(attempt => attempt.id))
+        : new Map<string, number>();
 
     const leaderboard = attempts.map((attempt, index) => ({
       rank: index + 1,
@@ -371,7 +368,7 @@ export const getLeaderboard = async (req: Request, res: Response): Promise<void>
       score: attempt.score,
       percentile: attempt.analytics?.percentile,
       grade: attempt.analytics?.overallGrade,
-      trustScore: attempt.analytics?.trustScore,
+      trustScore: includeProctoring === 'true' ? trustScoresByAttemptId.get(attempt.id) : undefined,
       submittedAt: attempt.submittedAt,
     }));
 
@@ -441,23 +438,25 @@ export const getDashboardStats = async (req: Request, res: Response): Promise<vo
     });
 
     const testIds = tests.map(e => e.id);
+    const submittedStatuses = ['submitted', 'auto_submitted'];
+    const submittedWhere = {
+      testId: { in: testIds },
+      status: { in: submittedStatuses },
+    };
 
     // Get various statistics
     const [
       totalAttempts,
       completedAttempts,
       flaggedAttempts,
-      avgTrustScore,
+      submittedAttempts,
       recentAttempts,
     ] = await Promise.all([
       prisma.testAttempt.count({
         where: { testId: { in: testIds } },
       }),
       prisma.testAttempt.count({
-        where: {
-          testId: { in: testIds },
-          status: { in: ['submitted', 'auto_submitted'] },
-        },
+        where: submittedWhere,
       }),
       prisma.testAttempt.count({
         where: {
@@ -465,18 +464,12 @@ export const getDashboardStats = async (req: Request, res: Response): Promise<vo
           isFlagged: true,
         },
       }),
-      prisma.performanceAnalytics.aggregate({
-        where: {
-          attempt: { testId: { in: testIds } },
-          trustScore: { not: null },
-        },
-        _avg: { trustScore: true },
+      prisma.testAttempt.findMany({
+        where: submittedWhere,
+        select: { id: true },
       }),
       prisma.testAttempt.findMany({
-        where: {
-          testId: { in: testIds },
-          status: { in: ['submitted', 'auto_submitted'] },
-        },
+        where: submittedWhere,
         include: {
           candidate: { select: { name: true, email: true } },
           test: { select: { name: true } },
@@ -485,7 +478,14 @@ export const getDashboardStats = async (req: Request, res: Response): Promise<vo
         orderBy: { submittedAt: 'desc' },
         take: 10,
       }),
-    ]);
+    ] as const);
+    const allTrustScoresByAttemptId = await getTrustScoresForAttemptIds(
+      submittedAttempts.map(attempt => attempt.id)
+    );
+    const allTrustScores = Array.from(allTrustScoresByAttemptId.values());
+    const recentTrustScoresByAttemptId = await getTrustScoresForAttemptIds(
+      recentAttempts.map(attempt => attempt.id)
+    );
 
     res.json({
       success: true,
@@ -493,7 +493,10 @@ export const getDashboardStats = async (req: Request, res: Response): Promise<vo
         totalAttempts,
         completedAttempts,
         flaggedAttempts,
-        avgTrustScore: avgTrustScore._avg.trustScore || 0,
+        avgTrustScore:
+          allTrustScores.length > 0
+            ? allTrustScores.reduce((sum, score) => sum + score, 0) / allTrustScores.length
+            : 0,
         completionRate: totalAttempts > 0 ? (completedAttempts / totalAttempts) * 100 : 0,
         flagRate: completedAttempts > 0 ? (flaggedAttempts / completedAttempts) * 100 : 0,
       },
@@ -504,7 +507,7 @@ export const getDashboardStats = async (req: Request, res: Response): Promise<vo
         testName: a.test.name,
         score: a.score,
         grade: a.analytics?.overallGrade,
-        trustScore: a.analytics?.trustScore,
+        trustScore: recentTrustScoresByAttemptId.get(a.id) ?? 100,
         isFlagged: a.isFlagged,
         submittedAt: a.submittedAt,
       })),

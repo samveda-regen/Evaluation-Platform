@@ -2,32 +2,11 @@ import { Response } from 'express';
 import prisma from '../utils/db.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import { callLLM } from '../services/llmService.js';
-
-const AI_PROCTOR_EVENT_TYPES = new Set([
-  'multiple_faces',
-  'phone_detected',
-  'face_not_detected',
-  'looking_away',
-  'voice_detected',
-  'suspicious_audio',
-  'unauthorized_object_detected',
-]);
-
-const DEFAULT_TRUST_REPORT_EVENTS =
-  'tab_switch,window_blur,fullscreen_exit,copy_paste_attempt,devtools_open,camera_blocked,secondary_monitor_detected,multiple_faces,phone_detected,face_not_detected,looking_away,voice_detected,suspicious_audio,unauthorized_object_detected';
-
-const REPORT_EVENT_TYPES = Array.from(
-  new Set(
-    [
-      ...DEFAULT_TRUST_REPORT_EVENTS.split(','),
-      ...(process.env.PROCTOR_REPORT_EVENTS || '').split(','),
-    ]
-      .map(v => v.trim().toLowerCase())
-      .filter(Boolean)
-  )
-);
-
-const TRUST_SCORING_EVENT_TYPES = REPORT_EVENT_TYPES.filter(eventType => !AI_PROCTOR_EVENT_TYPES.has(eventType));
+import {
+  calculateTrustScoreFromEvents,
+  riskLevelFromTrustScore,
+  TRUST_REPORT_EVENT_TYPES,
+} from '../services/trustScoreService.js';
 
 type TrustRiskLevel = 'low' | 'medium' | 'high' | 'critical';
 type TrustEvent = {
@@ -69,23 +48,6 @@ type TrustViolationCounts = {
   unauthorizedObject: number;
 };
 
-function toNormalizedConfidence(confidence?: number | null): number {
-  const raw = confidence ?? 0.5;
-  if (raw <= 1) return Math.max(0, Math.min(1, raw));
-  return Math.max(0, Math.min(1, raw / 100));
-}
-
-const TRUST_SCREENSHOT_EVIDENCE_WEIGHT = Number(process.env.TRUST_SCREENSHOT_EVIDENCE_WEIGHT || 1.5);
-const TRUST_EVENT_WEIGHT_MAP: Record<string, number> = {
-  tab_switch: 3,
-  window_blur: 3,
-  fullscreen_exit: 2,
-  copy_paste_attempt: 5,
-  devtools_open: 8,
-  camera_blocked: 20,
-  secondary_monitor_detected: 20,
-};
-
 function getEventMetadata(event: Pick<TrustEvent, 'metadata'>): Record<string, unknown> {
   if (!event.metadata) return {};
   try {
@@ -100,18 +62,12 @@ function getEventMetadata(event: Pick<TrustEvent, 'metadata'>): Record<string, u
 }
 
 function isAiProctorEvent(event: TrustEvent): boolean {
-  if (AI_PROCTOR_EVENT_TYPES.has(event.eventType)) return true;
-
   const metadata = getEventMetadata(event);
   const source = String(metadata.source || '').toLowerCase();
   const aiSource = String(metadata.aiSource || '').toLowerCase();
   const hasAiTrace = typeof metadata.aiTraceId === 'string' && metadata.aiTraceId.length > 0;
 
   return source === 'external_ai_engine' || aiSource.length > 0 || hasAiTrace;
-}
-
-function filterNonAiTrustEvents(events: TrustEvent[]): TrustEvent[] {
-  return events.filter(event => !isAiProctorEvent(event));
 }
 
 function buildViolationCounts(events: TrustEvent[]): TrustViolationCounts {
@@ -133,48 +89,6 @@ function buildViolationCounts(events: TrustEvent[]): TrustViolationCounts {
     suspiciousAudio: 0,
     unauthorizedObject: 0,
   };
-}
-
-function calculateTrustFromEvents(events: TrustEvent[]): number {
-  if (events.length === 0) return 100;
-
-  let deductions = 0;
-  for (const event of events) {
-    const confidence = toNormalizedConfidence(event.confidence);
-    const weight = TRUST_EVENT_WEIGHT_MAP[event.eventType];
-
-    if (typeof weight === 'number') {
-      deductions += weight * confidence;
-    } else {
-      switch (event.severity) {
-        case 'critical':
-          deductions += 20 * confidence;
-          break;
-        case 'high':
-          deductions += 10 * confidence;
-          break;
-        case 'medium':
-          deductions += 5 * confidence;
-          break;
-        default:
-          deductions += 2 * confidence;
-          break;
-      }
-    }
-
-    if (event.snapshotUrl) {
-      deductions += TRUST_SCREENSHOT_EVIDENCE_WEIGHT * confidence;
-    }
-  }
-
-  return Math.max(0, Math.min(100, 100 - deductions));
-}
-
-function riskLevelFromTrustScore(score: number): TrustRiskLevel {
-  if (score < 30) return 'critical';
-  if (score < 50) return 'high';
-  if (score < 75) return 'medium';
-  return 'low';
 }
 
 function safeParseJSON<T>(raw?: string | null): T | null {
@@ -287,7 +201,7 @@ export async function getTrustReports(req: AuthenticatedRequest, res: Response):
           where: {
             sessionId: { in: sessionIds },
             dismissed: false,
-            eventType: { in: REPORT_EVENT_TYPES },
+            eventType: { in: TRUST_REPORT_EVENT_TYPES },
           },
           select: {
             id: true,
@@ -315,11 +229,10 @@ export async function getTrustReports(req: AuthenticatedRequest, res: Response):
     const reportRows = attempts.map(attempt => {
       const sessionId = attempt.proctorSession?.id;
       const rawSessionEvents = sessionId ? eventsBySession.get(sessionId) || [] : [];
-      const sessionEventsForTrust = filterNonAiTrustEvents(rawSessionEvents);
 
       const counts = buildViolationCounts(rawSessionEvents);
       const totalViolations = rawSessionEvents.length;
-      const trustScore = Number(calculateTrustFromEvents(sessionEventsForTrust).toFixed(1));
+      const trustScore = calculateTrustScoreFromEvents(rawSessionEvents);
       const riskLevel = riskLevelFromTrustScore(trustScore);
       const parsedSummary = safeParseJSON<{ llmSummary?: string }>(attempt.analytics?.proctoringSummary || null);
       const latestEvent = rawSessionEvents[0];
@@ -342,7 +255,7 @@ export async function getTrustReports(req: AuthenticatedRequest, res: Response):
         trustScore,
         riskLevel,
         totalViolations,
-        trustRelevantViolations: sessionEventsForTrust.length,
+        trustRelevantViolations: rawSessionEvents.length,
         violations: counts,
         latestViolationAt: latestEvent?.timestamp || null,
         latestSnapshotUrl: latestSnapshotEvent?.snapshotUrl || null,
@@ -358,9 +271,9 @@ export async function getTrustReports(req: AuthenticatedRequest, res: Response):
     res.json({
       reports: filteredRows,
       filters: {
-        reportEventTypes: REPORT_EVENT_TYPES,
-        trustScoringEventTypes: TRUST_SCORING_EVENT_TYPES,
-        excludedAiEventTypes: Array.from(AI_PROCTOR_EVENT_TYPES),
+        reportEventTypes: TRUST_REPORT_EVENT_TYPES,
+        trustScoringEventTypes: TRUST_REPORT_EVENT_TYPES,
+        excludedAiEventTypes: [],
         riskLevels: ['low', 'medium', 'high', 'critical'],
       },
       testTree: tests.map(test => ({
@@ -410,7 +323,7 @@ export async function reEvaluateTrustReport(req: AuthenticatedRequest, res: Resp
           where: {
             sessionId: attempt.proctorSession.id,
             dismissed: false,
-            eventType: { in: REPORT_EVENT_TYPES },
+            eventType: { in: TRUST_REPORT_EVENT_TYPES },
           },
           select: {
             eventType: true,
@@ -424,8 +337,7 @@ export async function reEvaluateTrustReport(req: AuthenticatedRequest, res: Resp
         })
       : [];
 
-    const eventsForTrust = filterNonAiTrustEvents(eventsRaw);
-    const trustScore = Number(calculateTrustFromEvents(eventsForTrust).toFixed(1));
+    const trustScore = calculateTrustScoreFromEvents(eventsRaw);
     const riskLevel = riskLevelFromTrustScore(trustScore);
     const counts = buildViolationCounts(eventsRaw);
     const snapshotUrls = getSnapshotUrls(eventsRaw);
@@ -474,14 +386,14 @@ export async function reEvaluateTrustReport(req: AuthenticatedRequest, res: Resp
       trustScore,
       riskLevel,
       totalViolations: eventsRaw.length,
-      trustRelevantViolations: eventsForTrust.length,
+      trustRelevantViolations: eventsRaw.length,
       violations: counts,
       screenshotCount: counts.screenshotEvidence,
       snapshotUrls,
       llmSummary,
-      reportEventTypes: REPORT_EVENT_TYPES,
-      trustScoringEventTypes: TRUST_SCORING_EVENT_TYPES,
-      excludedAiEventTypes: Array.from(AI_PROCTOR_EVENT_TYPES),
+      reportEventTypes: TRUST_REPORT_EVENT_TYPES,
+      trustScoringEventTypes: TRUST_REPORT_EVENT_TYPES,
+      excludedAiEventTypes: [],
     };
 
     await prisma.performanceAnalytics.upsert({
@@ -504,7 +416,7 @@ export async function reEvaluateTrustReport(req: AuthenticatedRequest, res: Resp
       trustScore,
       riskLevel,
       totalViolations: eventsRaw.length,
-      trustRelevantViolations: eventsForTrust.length,
+      trustRelevantViolations: eventsRaw.length,
       violations: counts,
       screenshotCount: counts.screenshotEvidence,
       latestSnapshotUrl: snapshotUrls[0] || null,

@@ -13,6 +13,11 @@
 
 import prisma from '../utils/db';
 import { callLLM } from './llmService';
+import {
+  calculateTrustScoreFromEvents,
+  getTrustScoresForAttemptIds,
+  TRUST_REPORT_EVENT_TYPES,
+} from './trustScoreService';
 
 export interface TopicPerformance {
   topic: string;
@@ -408,9 +413,10 @@ export async function generatePerformanceEvaluation(attemptId: string): Promise<
     // Calculate trust score from proctoring
     let trustScore: number | undefined;
     if (attempt.proctorSession) {
-      const violations = attempt.proctorSession.events.length;
-      const criticalViolations = attempt.proctorSession.events.filter(e => e.severity === 'critical').length;
-      trustScore = Math.max(0, 100 - (violations * 5) - (criticalViolations * 15));
+      const trustEvents = attempt.proctorSession.events.filter(event =>
+        TRUST_REPORT_EVENT_TYPES.includes(event.eventType)
+      );
+      trustScore = calculateTrustScoreFromEvents(trustEvents);
     }
 
     // Generate AI insights
@@ -560,6 +566,10 @@ export async function generateTestAnalytics(testId: string): Promise<void> {
 
     const scores = attempts.map(a => a.score || 0);
     const sortedScores = [...scores].sort((a, b) => a - b);
+    const trustScoresByAttemptId = await getTrustScoresForAttemptIds(attempts.map(attempt => attempt.id));
+    const trustScores = attempts
+      .map(attempt => trustScoresByAttemptId.get(attempt.id))
+      .filter((score): score is number => typeof score === 'number');
 
     const analytics = {
       totalAttempts: attempts.length,
@@ -570,9 +580,10 @@ export async function generateTestAnalytics(testId: string): Promise<void> {
       lowestScore: Math.min(...scores),
       passRate: (attempts.filter(a => (a.score || 0) >= (attempts[0]?.test?.passingMarks || 0)).length / attempts.length) * 100,
       flaggedAttempts: attempts.filter(a => a.isFlagged).length,
-      averageTrustScore: attempts.filter(a => a.analytics?.trustScore != null)
-        .reduce((sum, a) => sum + (a.analytics?.trustScore || 0), 0) /
-        Math.max(attempts.filter(a => a.analytics?.trustScore != null).length, 1),
+      averageTrustScore:
+        trustScores.length > 0
+          ? trustScores.reduce((sum, score) => sum + score, 0) / trustScores.length
+          : null,
       totalViolations: attempts.reduce((sum, a) => sum + a.violations, 0),
     };
 
@@ -630,6 +641,7 @@ export async function getPerformanceComparison(testId: string, filters?: {
     },
     orderBy: { score: 'desc' },
   });
+  const trustScoresByAttemptId = await getTrustScoresForAttemptIds(attempts.map(attempt => attempt.id));
 
   return attempts.map(attempt => ({
     candidateId: attempt.candidate.id,
@@ -641,7 +653,7 @@ export async function getPerformanceComparison(testId: string, filters?: {
       : 0,
     percentile: attempt.analytics?.percentile,
     grade: attempt.analytics?.overallGrade,
-    trustScore: attempt.analytics?.trustScore,
+    trustScore: trustScoresByAttemptId.get(attempt.id),
     violations: attempt.violations,
     isFlagged: attempt.isFlagged,
     difficultyAccuracy: attempt.analytics ? {

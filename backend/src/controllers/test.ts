@@ -4,6 +4,12 @@ import { v4 as uuidv4 } from 'uuid';
 import { AuthenticatedRequest } from '../types/index.js';
 import { sanitizeInput } from '../utils/sanitize.js';
 import prisma from '../utils/db.js';
+import { generateCandidateToken } from '../utils/jwt.js';
+import {
+  DEFAULT_CUSTOM_AI_VIOLATION_EVENTS,
+  normalizeCustomAIViolationEvents,
+  parseStoredCustomAIViolationEvents,
+} from '../utils/proctoringConfig.js';
 
 const TEST_SCOPED_TAG = '__test_scoped__';
 
@@ -94,6 +100,55 @@ function toOptionalSanitizedString(value: unknown): string | null {
   return trimmed ? sanitizeInput(trimmed) : null;
 }
 
+function parseDateValue(value: unknown): Date | null {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+
+  const parsed = new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function calculateDurationMinutes(startTime: Date, endTime: Date): number {
+  return Math.ceil((endTime.getTime() - startTime.getTime()) / (60 * 1000));
+}
+
+async function recalculateTestTotalMarks(testId: string): Promise<number> {
+  const testQuestions = await prisma.testQuestion.findMany({
+    where: { testId },
+    include: {
+      mcqQuestion: { select: { marks: true } },
+      codingQuestion: { select: { marks: true } },
+      behavioralQuestion: { select: { marks: true } }
+    }
+  });
+
+  const totalMarks = testQuestions.reduce((sum, question) => (
+    sum +
+    (question.mcqQuestion?.marks ?? 0) +
+    (question.codingQuestion?.marks ?? 0) +
+    (question.behavioralQuestion?.marks ?? 0)
+  ), 0);
+
+  await prisma.test.update({
+    where: { id: testId },
+    data: { totalMarks }
+  });
+
+  return totalMarks;
+}
+
+function mapTestWithCustomAI<T extends { customAIViolations?: string | null }>(test: T): Omit<T, 'customAIViolations'> & { customAIViolations: string[] } {
+  return {
+    ...test,
+    customAIViolations: parseStoredCustomAIViolationEvents(test.customAIViolations ?? null),
+  };
+}
+
 export async function createTest(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const {
@@ -114,8 +169,41 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
       requireCamera,
       requireMicrophone,
       requireScreenShare,
-      requireIdVerification
+      requireIdVerification,
+      customAIViolations,
     } = req.body;
+
+    const parsedStartTime = parseDateValue(startTime);
+    const parsedEndTime = parseDateValue(endTime);
+    const requestedDuration = Number.parseInt(String(duration), 10);
+
+    if (!parsedStartTime) {
+      res.status(400).json({ error: 'Valid start time is required' });
+      return;
+    }
+
+    if (!Number.isFinite(requestedDuration) || requestedDuration < 1) {
+      res.status(400).json({ error: 'Duration must be a positive integer (minutes)' });
+      return;
+    }
+
+    if (endTime !== undefined && endTime !== null && endTime !== '' && !parsedEndTime) {
+      res.status(400).json({ error: 'End time must be valid ISO8601' });
+      return;
+    }
+
+    if (parsedEndTime && parsedEndTime <= parsedStartTime) {
+      res.status(400).json({ error: 'End time must be after start time' });
+      return;
+    }
+
+    const resolvedDuration = parsedEndTime
+      ? calculateDurationMinutes(parsedStartTime, parsedEndTime)
+      : requestedDuration;
+    const enabledAIViolations =
+      customAIViolations === undefined
+        ? [...DEFAULT_CUSTOM_AI_VIOLATION_EVENTS]
+        : normalizeCustomAIViolationEvents(customAIViolations);
 
     const testCode = generateTestCode();
 
@@ -125,9 +213,9 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
         name: sanitizeInput(name),
         description: description ? sanitizeInput(description) : null,
         instructions: instructions ? sanitizeInput(instructions) : null,
-        duration: parseInt(duration),
-        startTime: new Date(startTime),
-        endTime: endTime ? new Date(endTime) : null,
+        duration: resolvedDuration,
+        startTime: parsedStartTime,
+        endTime: parsedEndTime,
         totalMarks: parseInt(totalMarks),
         passingMarks: passingMarks ? parseInt(passingMarks) : null,
         negativeMarking: negativeMarking ? parseFloat(negativeMarking) : 0,
@@ -140,6 +228,7 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
         requireMicrophone: requireMicrophone || false,
         requireScreenShare: requireScreenShare || false,
         requireIdVerification: requireIdVerification || false,
+        customAIViolations: JSON.stringify(enabledAIViolations),
         adminId: req.admin!.id
       }
     });
@@ -147,7 +236,7 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
     res.status(201).json({
       message: 'Test created successfully',
       test: {
-        ...test,
+        ...mapTestWithCustomAI(test),
         testCode
       }
     });
@@ -182,7 +271,7 @@ export async function getTests(req: AuthenticatedRequest, res: Response): Promis
     ]);
 
     res.json({
-      tests,
+      tests: tests.map((test) => mapTestWithCustomAI(test)),
       pagination: {
         page,
         limit,
@@ -246,7 +335,7 @@ export async function getTestById(req: AuthenticatedRequest, res: Response): Pro
       return;
     }
 
-    res.json({ test });
+    res.json({ test: mapTestWithCustomAI(test) });
   } catch (error) {
     console.error('Get test error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -378,13 +467,63 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
     }
 
     const sanitizedUpdates: Record<string, unknown> = {};
+    const hasStartTimeUpdate = updates.startTime !== undefined;
+    const hasEndTimeUpdate = updates.endTime !== undefined;
+    const hasDurationUpdate = updates.duration !== undefined;
 
     if (updates.name) sanitizedUpdates.name = sanitizeInput(updates.name);
     if (updates.description !== undefined) sanitizedUpdates.description = updates.description ? sanitizeInput(updates.description) : null;
     if (updates.instructions !== undefined) sanitizedUpdates.instructions = updates.instructions ? sanitizeInput(updates.instructions) : null;
-    if (updates.duration) sanitizedUpdates.duration = parseInt(updates.duration);
-    if (updates.startTime) sanitizedUpdates.startTime = new Date(updates.startTime);
-    if (updates.endTime !== undefined) sanitizedUpdates.endTime = updates.endTime ? new Date(updates.endTime) : null;
+    if (hasDurationUpdate) {
+      const parsedDuration = Number.parseInt(String(updates.duration), 10);
+      if (!Number.isFinite(parsedDuration) || parsedDuration < 1) {
+        res.status(400).json({ error: 'Duration must be a positive integer (minutes)' });
+        return;
+      }
+      sanitizedUpdates.duration = parsedDuration;
+    }
+
+    let resolvedStartTime = test.startTime;
+    if (hasStartTimeUpdate) {
+      const parsedStartTime = parseDateValue(updates.startTime);
+      if (!parsedStartTime) {
+        res.status(400).json({ error: 'Valid start time is required' });
+        return;
+      }
+      resolvedStartTime = parsedStartTime;
+      sanitizedUpdates.startTime = parsedStartTime;
+    }
+
+    let resolvedEndTime = test.endTime;
+    if (hasEndTimeUpdate) {
+      if (updates.endTime === null || updates.endTime === '') {
+        resolvedEndTime = null;
+        sanitizedUpdates.endTime = null;
+      } else {
+        const parsedEndTime = parseDateValue(updates.endTime);
+        if (!parsedEndTime) {
+          res.status(400).json({ error: 'End time must be valid ISO8601' });
+          return;
+        }
+        resolvedEndTime = parsedEndTime;
+        sanitizedUpdates.endTime = parsedEndTime;
+      }
+    }
+
+    if (resolvedEndTime && resolvedEndTime <= resolvedStartTime) {
+      res.status(400).json({ error: 'End time must be after start time' });
+      return;
+    }
+
+    if (!hasDurationUpdate && (hasStartTimeUpdate || hasEndTimeUpdate) && resolvedEndTime) {
+      sanitizedUpdates.duration = calculateDurationMinutes(resolvedStartTime, resolvedEndTime);
+    }
+
+    if (updates.customAIViolations !== undefined) {
+      const parsedCustomAIViolations = normalizeCustomAIViolationEvents(updates.customAIViolations);
+      sanitizedUpdates.customAIViolations = JSON.stringify(parsedCustomAIViolations);
+    }
+
     if (updates.totalMarks) sanitizedUpdates.totalMarks = parseInt(updates.totalMarks);
     if (updates.passingMarks !== undefined) sanitizedUpdates.passingMarks = updates.passingMarks ? parseInt(updates.passingMarks) : null;
     if (updates.negativeMarking !== undefined) sanitizedUpdates.negativeMarking = parseFloat(updates.negativeMarking) || 0;
@@ -406,7 +545,7 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
 
     res.json({
       message: 'Test updated successfully',
-      test: updatedTest
+      test: mapTestWithCustomAI(updatedTest)
     });
   } catch (error) {
     console.error('Update test error:', error);
@@ -498,6 +637,136 @@ export async function deleteTest(req: AuthenticatedRequest, res: Response): Prom
   } catch (error) {
     console.error('Delete test error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function createAdminPreviewAttempt(
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> {
+  try {
+    const { testId } = req.params;
+    const adminId = req.admin!.id;
+    const adminEmail = req.admin!.email;
+
+    const test = await prisma.test.findFirst({
+      where: {
+        id: testId,
+        adminId,
+      },
+      select: {
+        id: true,
+        name: true,
+        requireIdVerification: true,
+      },
+    });
+
+    if (!test) {
+      res.status(404).json({ error: 'Test not found' });
+      return;
+    }
+
+    const previewEmail = `preview+${adminId.slice(0, 8)}+${testId.slice(0, 8)}@regen.local`;
+    const previewNameBase = adminEmail.split('@')[0] || 'Admin';
+    const previewName = `${previewNameBase} (Preview)`;
+
+    const candidate = await prisma.candidate.upsert({
+      where: { email: previewEmail },
+      create: {
+        email: previewEmail,
+        name: previewName,
+      },
+      update: {
+        name: previewName,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+      },
+    });
+
+    const attempt = await prisma.$transaction(async (tx) => {
+      const existingAttempt = await tx.testAttempt.findUnique({
+        where: {
+          testId_candidateId: {
+            testId,
+            candidateId: candidate.id,
+          },
+        },
+        select: { id: true },
+      });
+
+      if (existingAttempt) {
+        await tx.testAttempt.delete({
+          where: { id: existingAttempt.id },
+        });
+      }
+
+      const createdAttempt = await tx.testAttempt.create({
+        data: {
+          testId,
+          candidateId: candidate.id,
+          status: 'in_progress',
+          startTime: new Date(),
+          endTime: null,
+          submittedAt: null,
+          score: null,
+          violations: 0,
+          isFlagged: false,
+          flagReason: null,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      if (test.requireIdVerification) {
+        await tx.candidateIdentity.upsert({
+          where: { candidateId: candidate.id },
+          create: {
+            candidateId: candidate.id,
+            verificationStatus: 'verified',
+            verifiedAt: new Date(),
+            verifiedBy: 'admin_preview',
+            expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+          },
+          update: {
+            verificationStatus: 'verified',
+            verifiedAt: new Date(),
+            verifiedBy: 'admin_preview',
+            rejectionReason: null,
+            expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+          },
+        });
+      }
+
+      return createdAttempt;
+    });
+
+    const token = generateCandidateToken({
+      id: candidate.id,
+      email: candidate.email,
+      testId,
+      attemptId: attempt.id,
+      role: 'candidate',
+    });
+
+    res.json({
+      message: 'Preview session ready',
+      token,
+      candidate,
+      attempt: {
+        id: attempt.id,
+      },
+      test: {
+        id: test.id,
+        name: test.name,
+      },
+    });
+  } catch (error) {
+    console.error('Create admin preview attempt error:', error);
+    res.status(500).json({ error: 'Failed to create preview session' });
   }
 }
 
@@ -615,6 +884,8 @@ export async function addQuestionToTest(req: AuthenticatedRequest, res: Response
         behavioralQuestion: true
       }
     });
+
+    await recalculateTestTotalMarks(testId);
 
     res.status(201).json({
       message: 'Question added to test',
@@ -766,6 +1037,8 @@ export async function addCustomQuestionToTest(req: AuthenticatedRequest, res: Re
         return [createdQuestion, createdTestQuestion];
       });
 
+      await recalculateTestTotalMarks(testId);
+
       res.status(201).json({
         message: 'Custom MCQ question created and added to test.',
         testQuestion,
@@ -908,6 +1181,8 @@ export async function addCustomQuestionToTest(req: AuthenticatedRequest, res: Re
         return [createdQuestion, createdTestQuestion];
       });
 
+      await recalculateTestTotalMarks(testId);
+
       res.status(201).json({
         message: 'Custom coding question created and added to test.',
         testQuestion,
@@ -980,6 +1255,8 @@ export async function addCustomQuestionToTest(req: AuthenticatedRequest, res: Re
         return [createdQuestion, createdTestQuestion];
       });
 
+      await recalculateTestTotalMarks(testId);
+
       res.status(201).json({
         message: 'Custom behavioral question created and added to test.',
         testQuestion,
@@ -1026,6 +1303,8 @@ export async function removeQuestionFromTest(req: AuthenticatedRequest, res: Res
     await prisma.testQuestion.delete({
       where: { id: questionId }
     });
+
+    await recalculateTestTotalMarks(testId);
 
     res.json({ message: 'Question removed from test' });
   } catch (error) {

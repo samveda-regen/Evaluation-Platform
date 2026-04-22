@@ -454,14 +454,14 @@ export async function updateCustomRepositoryQuestion(req: AuthenticatedRequest, 
             return;
           }
 
-          const uniqueOptions = new Set(nextOptions.map((o: string) => o.toLowerCase()));
+          const uniqueOptions = new Set(nextOptions.map((option: string) => option.toLowerCase()));
           if (uniqueOptions.size !== nextOptions.length) {
             res.status(400).json({ error: 'Options must be unique' });
             return;
           }
 
           normalizedOptions = nextOptions;
-          updateData.options = JSON.stringify(nextOptions.map((o: string) => sanitizeInput(o)));
+          updateData.options = JSON.stringify(nextOptions.map((option: string) => sanitizeInput(option)));
         }
 
         if (updates.correctAnswers !== undefined) {

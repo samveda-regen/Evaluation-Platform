@@ -12,6 +12,7 @@ import CodingForm from './pages/admin/CodingForm';
 import AttemptDetails from './pages/admin/AttemptDetails';
 import AgentTestForm from './pages/admin/AgentTestForm';
 import TestSettings from './pages/admin/TestSettings';
+import TestAIProctoring from './pages/admin/TestAIProctoring';
 import ProctorDashboard from './pages/admin/ProctorDashboard';
 import PerformanceAnalytics from './pages/admin/PerformanceAnalytics';
 import RepositoryLayout from './pages/admin/repository/RepositoryLayout';
@@ -76,6 +77,7 @@ export default function App() {
         <Route path="tests/:testId" element={<TestDetails />} />
         <Route path="tests/:testId/edit" element={<TestForm />} />
         <Route path="tests/:testId/settings" element={<TestSettings />} />
+        <Route path="tests/:testId/ai-proctoring" element={<TestAIProctoring />} />
         <Route path="tests/:testId/results" element={<TestResultsRedirect />} />
         <Route path="tests/:testId/analytics" element={<PerformanceAnalytics />} />
         <Route path="attempts/:attemptId" element={<AttemptDetails />} />

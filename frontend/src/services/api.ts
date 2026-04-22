@@ -140,6 +140,9 @@ export const adminApi = {
   deleteTest: (testId: string) =>
     api.delete(`/admin/tests/${testId}`),
 
+  tryTest: (testId: string) =>
+    api.post(`/admin/tests/${testId}/try`),
+
   sendInvitations: (testId: string, data: FormData) =>
     api.post(`/admin/tests/${testId}/send-invitations`, data),
 
@@ -238,6 +241,9 @@ export const adminApi = {
 
   reEvaluateAttempt: (attemptId: string) =>
     api.post(`/admin/attempts/${attemptId}/reevaluate`),
+
+  gradeBehavioralAnswer: (attemptId: string, questionId: string, data: { marksObtained: number }) =>
+    api.patch(`/admin/attempts/${attemptId}/behavioral/${questionId}/score`, data),
 
   exportResults: (testId: string, format: 'csv' | 'json' = 'csv') =>
     api.get(`/admin/tests/${testId}/export?format=${format}`, { responseType: format === 'csv' ? 'blob' : 'json' }),

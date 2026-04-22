@@ -4,6 +4,39 @@ import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { format } from 'date-fns';
 
+function calculateDurationMinutes(startTime: string, endTime: string): number | null {
+  if (!startTime || !endTime) {
+    return null;
+  }
+
+  const startDate = new Date(startTime);
+  const endDate = new Date(endTime);
+
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return null;
+  }
+
+  const diffMs = endDate.getTime() - startDate.getTime();
+  if (diffMs <= 0) {
+    return null;
+  }
+
+  return Math.ceil(diffMs / (60 * 1000));
+}
+
+function toISOStringFromLocalDateTime(value: string): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return parsed.toISOString();
+}
+
 export default function TestForm() {
   const { testId } = useParams();
   const navigate = useNavigate();
@@ -72,9 +105,32 @@ export default function TestForm() {
     setLoading(true);
 
     try {
+      const derivedDuration = calculateDurationMinutes(formData.startTime, formData.endTime);
+      if (formData.endTime && !derivedDuration) {
+        toast.error('End time must be after start time');
+        setLoading(false);
+        return;
+      }
+
+      const startTimeIso = toISOStringFromLocalDateTime(formData.startTime);
+      if (!startTimeIso) {
+        toast.error('Please enter a valid start time');
+        setLoading(false);
+        return;
+      }
+
+      const endTimeIso = formData.endTime ? toISOStringFromLocalDateTime(formData.endTime) : null;
+      if (formData.endTime && !endTimeIso) {
+        toast.error('Please enter a valid end time');
+        setLoading(false);
+        return;
+      }
+
       const data = {
         ...formData,
-        endTime: formData.endTime || undefined
+        startTime: startTimeIso,
+        duration: derivedDuration ?? formData.duration,
+        endTime: endTimeIso || undefined
       };
 
       if (isEditing) {
@@ -106,11 +162,22 @@ export default function TestForm() {
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value, type } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked :
-              type === 'number' ? Number(value) : value
-    }));
+    setFormData((prev) => {
+      const next = {
+        ...prev,
+        [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked :
+                type === 'number' ? Number(value) : value
+      };
+
+      if ((name === 'startTime' || name === 'endTime') && next.startTime && next.endTime) {
+        const derivedDuration = calculateDurationMinutes(next.startTime, next.endTime);
+        if (derivedDuration) {
+          next.duration = derivedDuration;
+        }
+      }
+
+      return next;
+    });
   };
 
   return (
