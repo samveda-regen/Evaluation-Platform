@@ -208,6 +208,40 @@ export const adminApi = {
     tags?: string[];
   }) => api.post('/admin/repository/custom/behavioral', data),
 
+  updateCustomMCQ: (questionId: string, data: {
+    questionText?: string;
+    options?: string[];
+    correctAnswers?: number[];
+    isMultipleChoice?: boolean;
+    marks?: number;
+    difficulty?: 'easy' | 'medium' | 'hard';
+    topic?: string;
+    tags?: string[];
+    explanation?: string;
+  }) => api.put(`/admin/repository/custom/mcq/${questionId}`, data),
+
+  updateCustomCoding: (questionId: string, data: {
+    title?: string;
+    description?: string;
+    marks?: number;
+    difficulty?: 'easy' | 'medium' | 'hard';
+    topic?: string;
+    tags?: string[];
+    supportedLanguages?: string[];
+    timeLimit?: number;
+    memoryLimit?: number;
+  }) => api.put(`/admin/repository/custom/coding/${questionId}`, data),
+
+  updateCustomBehavioral: (questionId: string, data: {
+    title?: string;
+    description?: string;
+    expectedAnswer?: string;
+    marks?: number;
+    difficulty?: 'easy' | 'medium' | 'hard';
+    topic?: string;
+    tags?: string[];
+  }) => api.put(`/admin/repository/custom/behavioral/${questionId}`, data),
+
   enableCustomRepositoryQuestion: (questionId: string, category: RepositoryCategory) =>
     api.put(`/admin/repository/custom/${questionId}/enable?category=${category}`),
 
@@ -338,6 +372,12 @@ export const adminApi = {
 
   assignMediaToQuestion: (questionId: string, assetIds: string[]) =>
     api.post(`/media/question/${questionId}/assign`, { assetIds }),
+
+  getQuestionMedia: (questionId: string) =>
+    api.get<{ success: boolean; assets: Array<{ id: string; filename: string; originalName: string; mimeType: string; fileSize: number; storageUrl: string; mediaType: string; width?: number; height?: number; duration?: number; thumbnailUrl?: string }> }>(`/media/question/${questionId}`),
+
+  removeMediaFromQuestion: (assetId: string) =>
+    api.delete(`/media/${assetId}/unassign`),
 
   // Analytics - Admin
   getDashboardStats: () =>
