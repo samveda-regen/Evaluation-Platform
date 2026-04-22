@@ -75,7 +75,9 @@ function toNormalizedConfidence(confidence?: number | null): number {
   return Math.max(0, Math.min(1, raw / 100));
 }
 
-const TRUST_SCREENSHOT_EVIDENCE_WEIGHT = Number(process.env.TRUST_SCREENSHOT_EVIDENCE_WEIGHT || 1.5);
+// Weights match calculateTrustScore in proctorAIService.ts exactly so both
+// the list view and the detail page display the same trust percentage.
+const PHONE_DEDUCTION_MULTIPLIER = 1.5;
 const TRUST_EVENT_WEIGHT_MAP: Record<string, number> = {
   tab_switch: 3,
   window_blur: 3,
@@ -84,6 +86,13 @@ const TRUST_EVENT_WEIGHT_MAP: Record<string, number> = {
   devtools_open: 8,
   camera_blocked: 20,
   secondary_monitor_detected: 20,
+  multiple_faces: 15,
+  phone_detected: 20,
+  face_not_detected: 15,
+  looking_away: 1,
+  voice_detected: 15,
+  suspicious_audio: 10,
+  unauthorized_object_detected: 10,
 };
 
 function getEventMetadata(event: Pick<TrustEvent, 'metadata'>): Record<string, unknown> {
@@ -142,28 +151,25 @@ function calculateTrustFromEvents(events: TrustEvent[]): number {
   for (const event of events) {
     const confidence = toNormalizedConfidence(event.confidence);
     const weight = TRUST_EVENT_WEIGHT_MAP[event.eventType];
+    const phoneMultiplier = event.eventType === 'phone_detected' ? PHONE_DEDUCTION_MULTIPLIER : 1;
 
     if (typeof weight === 'number') {
-      deductions += weight * confidence;
+      deductions += weight * confidence * phoneMultiplier;
     } else {
       switch (event.severity) {
         case 'critical':
-          deductions += 20 * confidence;
+          deductions += 20 * confidence * phoneMultiplier;
           break;
         case 'high':
-          deductions += 10 * confidence;
+          deductions += 10 * confidence * phoneMultiplier;
           break;
         case 'medium':
-          deductions += 5 * confidence;
+          deductions += 5 * confidence * phoneMultiplier;
           break;
         default:
-          deductions += 2 * confidence;
+          deductions += 2 * confidence * phoneMultiplier;
           break;
       }
-    }
-
-    if (event.snapshotUrl) {
-      deductions += TRUST_SCREENSHOT_EVIDENCE_WEIGHT * confidence;
     }
   }
 
@@ -315,11 +321,10 @@ export async function getTrustReports(req: AuthenticatedRequest, res: Response):
     const reportRows = attempts.map(attempt => {
       const sessionId = attempt.proctorSession?.id;
       const rawSessionEvents = sessionId ? eventsBySession.get(sessionId) || [] : [];
-      const sessionEventsForTrust = filterNonAiTrustEvents(rawSessionEvents);
 
       const counts = buildViolationCounts(rawSessionEvents);
       const totalViolations = rawSessionEvents.length;
-      const trustScore = Number(calculateTrustFromEvents(sessionEventsForTrust).toFixed(1));
+      const trustScore = Number(calculateTrustFromEvents(rawSessionEvents).toFixed(1));
       const riskLevel = riskLevelFromTrustScore(trustScore);
       const parsedSummary = safeParseJSON<{ llmSummary?: string }>(attempt.analytics?.proctoringSummary || null);
       const latestEvent = rawSessionEvents[0];
@@ -342,7 +347,7 @@ export async function getTrustReports(req: AuthenticatedRequest, res: Response):
         trustScore,
         riskLevel,
         totalViolations,
-        trustRelevantViolations: sessionEventsForTrust.length,
+        trustRelevantViolations: rawSessionEvents.length,
         violations: counts,
         latestViolationAt: latestEvent?.timestamp || null,
         latestSnapshotUrl: latestSnapshotEvent?.snapshotUrl || null,
@@ -424,8 +429,7 @@ export async function reEvaluateTrustReport(req: AuthenticatedRequest, res: Resp
         })
       : [];
 
-    const eventsForTrust = filterNonAiTrustEvents(eventsRaw);
-    const trustScore = Number(calculateTrustFromEvents(eventsForTrust).toFixed(1));
+    const trustScore = Number(calculateTrustFromEvents(eventsRaw).toFixed(1));
     const riskLevel = riskLevelFromTrustScore(trustScore);
     const counts = buildViolationCounts(eventsRaw);
     const snapshotUrls = getSnapshotUrls(eventsRaw);
@@ -474,14 +478,12 @@ export async function reEvaluateTrustReport(req: AuthenticatedRequest, res: Resp
       trustScore,
       riskLevel,
       totalViolations: eventsRaw.length,
-      trustRelevantViolations: eventsForTrust.length,
+      trustRelevantViolations: eventsRaw.length,
       violations: counts,
       screenshotCount: counts.screenshotEvidence,
       snapshotUrls,
       llmSummary,
       reportEventTypes: REPORT_EVENT_TYPES,
-      trustScoringEventTypes: TRUST_SCORING_EVENT_TYPES,
-      excludedAiEventTypes: Array.from(AI_PROCTOR_EVENT_TYPES),
     };
 
     await prisma.performanceAnalytics.upsert({
@@ -504,7 +506,7 @@ export async function reEvaluateTrustReport(req: AuthenticatedRequest, res: Resp
       trustScore,
       riskLevel,
       totalViolations: eventsRaw.length,
-      trustRelevantViolations: eventsForTrust.length,
+      trustRelevantViolations: eventsRaw.length,
       violations: counts,
       screenshotCount: counts.screenshotEvidence,
       latestSnapshotUrl: snapshotUrls[0] || null,
