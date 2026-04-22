@@ -482,6 +482,177 @@ export async function deleteRepositoryQuestion(req: AuthenticatedRequest, res: R
 }
 
 // ==========================================
+// UPDATE CUSTOM QUESTIONS
+// ==========================================
+export async function updateCustomMCQ(req: AuthenticatedRequest, res: Response) {
+  try {
+    const { questionId } = req.params;
+
+    const existing = await prisma.mCQQuestion.findUnique({ where: { id: questionId } });
+    if (!existing) {
+      res.status(404).json({ error: 'Question not found' });
+      return;
+    }
+    if (existing.source !== QuestionSource.CUSTOM) {
+      res.status(400).json({ error: 'Only custom questions can be edited.' });
+      return;
+    }
+
+    const questionText = toStringOrUndefined(req.body.questionText);
+    const explanation = toStringOrUndefined(req.body.explanation);
+    const topic = toStringOrUndefined(req.body.topic);
+    const difficulty = parseDifficulty(req.body.difficulty);
+    const parsedTags = parseTagsInput(req.body.tags);
+    const marks = req.body.marks !== undefined ? Number.parseInt(String(req.body.marks), 10) : undefined;
+    const isMultipleChoice = req.body.isMultipleChoice !== undefined ? Boolean(req.body.isMultipleChoice) : undefined;
+
+    let options: string | undefined;
+    if (Array.isArray(req.body.options)) {
+      const filtered = (req.body.options as unknown[])
+        .filter((o): o is string => typeof o === 'string' && o.trim().length > 0)
+        .map((o) => sanitizeInput(o));
+      if (filtered.length < 2) {
+        res.status(400).json({ error: 'At least 2 options are required.' });
+        return;
+      }
+      options = JSON.stringify(filtered);
+    }
+
+    let correctAnswers: string | undefined;
+    if (Array.isArray(req.body.correctAnswers)) {
+      correctAnswers = JSON.stringify(req.body.correctAnswers);
+    }
+
+    if (marks !== undefined && (!Number.isFinite(marks) || marks < 1)) {
+      res.status(400).json({ error: 'Marks must be a positive integer.' });
+      return;
+    }
+
+    const updated = await prisma.mCQQuestion.update({
+      where: { id: questionId },
+      data: {
+        ...(questionText !== undefined && { questionText: sanitizeInput(questionText) }),
+        ...(options !== undefined && { options }),
+        ...(correctAnswers !== undefined && { correctAnswers }),
+        ...(isMultipleChoice !== undefined && { isMultipleChoice }),
+        ...(marks !== undefined && { marks }),
+        ...(difficulty !== undefined && { difficulty }),
+        ...(topic !== undefined && { topic: sanitizeInput(topic) }),
+        ...(parsedTags !== null && { tags: JSON.stringify(parsedTags) }),
+        ...(explanation !== undefined && { explanation: sanitizeInput(explanation) })
+      }
+    });
+
+    res.json({ message: 'MCQ question updated successfully', question: serializeMCQQuestion(updated) });
+  } catch (error) {
+    console.error('Update custom MCQ error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function updateCustomCoding(req: AuthenticatedRequest, res: Response) {
+  try {
+    const { questionId } = req.params;
+
+    const existing = await prisma.codingQuestion.findUnique({ where: { id: questionId } });
+    if (!existing) {
+      res.status(404).json({ error: 'Question not found' });
+      return;
+    }
+    if (existing.source !== QuestionSource.CUSTOM) {
+      res.status(400).json({ error: 'Only custom questions can be edited.' });
+      return;
+    }
+
+    const title = toStringOrUndefined(req.body.title);
+    const description = toStringOrUndefined(req.body.description);
+    const topic = toStringOrUndefined(req.body.topic);
+    const difficulty = parseDifficulty(req.body.difficulty);
+    const parsedTags = parseTagsInput(req.body.tags);
+    const marks = req.body.marks !== undefined ? Number.parseInt(String(req.body.marks), 10) : undefined;
+    const timeLimit = req.body.timeLimit !== undefined ? Number.parseInt(String(req.body.timeLimit), 10) : undefined;
+    const memoryLimit = req.body.memoryLimit !== undefined ? Number.parseInt(String(req.body.memoryLimit), 10) : undefined;
+
+    if (marks !== undefined && (!Number.isFinite(marks) || marks < 1)) {
+      res.status(400).json({ error: 'Marks must be a positive integer.' });
+      return;
+    }
+
+    let supportedLanguages: string | undefined;
+    if (Array.isArray(req.body.supportedLanguages)) {
+      supportedLanguages = JSON.stringify(req.body.supportedLanguages);
+    }
+
+    const updated = await prisma.codingQuestion.update({
+      where: { id: questionId },
+      data: {
+        ...(title !== undefined && { title: sanitizeInput(title) }),
+        ...(description !== undefined && { description: sanitizeInput(description) }),
+        ...(marks !== undefined && { marks }),
+        ...(difficulty !== undefined && { difficulty }),
+        ...(topic !== undefined && { topic: sanitizeInput(topic) }),
+        ...(parsedTags !== null && { tags: JSON.stringify(parsedTags) }),
+        ...(supportedLanguages !== undefined && { supportedLanguages }),
+        ...(timeLimit !== undefined && Number.isFinite(timeLimit) && { timeLimit }),
+        ...(memoryLimit !== undefined && Number.isFinite(memoryLimit) && { memoryLimit })
+      }
+    });
+
+    res.json({ message: 'Coding question updated successfully', question: serializeCodingQuestion(updated) });
+  } catch (error) {
+    console.error('Update custom coding error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function updateCustomBehavioral(req: AuthenticatedRequest, res: Response) {
+  try {
+    const { questionId } = req.params;
+
+    const existing = await prisma.behavioralQuestion.findUnique({ where: { id: questionId } });
+    if (!existing) {
+      res.status(404).json({ error: 'Question not found' });
+      return;
+    }
+    if (existing.source !== QuestionSource.CUSTOM) {
+      res.status(400).json({ error: 'Only custom questions can be edited.' });
+      return;
+    }
+
+    const title = toStringOrUndefined(req.body.title);
+    const description = toStringOrUndefined(req.body.description);
+    const expectedAnswer = toStringOrUndefined(req.body.expectedAnswer);
+    const topic = toStringOrUndefined(req.body.topic);
+    const difficulty = parseDifficulty(req.body.difficulty);
+    const parsedTags = parseTagsInput(req.body.tags);
+    const marks = req.body.marks !== undefined ? Number.parseInt(String(req.body.marks), 10) : undefined;
+
+    if (marks !== undefined && (!Number.isFinite(marks) || marks < 1)) {
+      res.status(400).json({ error: 'Marks must be a positive integer.' });
+      return;
+    }
+
+    const updated = await prisma.behavioralQuestion.update({
+      where: { id: questionId },
+      data: {
+        ...(title !== undefined && { title: sanitizeInput(title) }),
+        ...(description !== undefined && { description: sanitizeInput(description) }),
+        ...(expectedAnswer !== undefined && { expectedAnswer: sanitizeInput(expectedAnswer) }),
+        ...(marks !== undefined && { marks }),
+        ...(difficulty !== undefined && { difficulty }),
+        ...(topic !== undefined && { topic: sanitizeInput(topic) }),
+        ...(parsedTags !== null && { tags: JSON.stringify(parsedTags) })
+      }
+    });
+
+    res.json({ message: 'Behavioral question updated successfully', question: serializeBehavioralQuestion(updated) });
+  } catch (error) {
+    console.error('Update custom behavioral error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// ==========================================
 // WRAPPERS FOR CUSTOM CREATION
 // ==========================================
 export async function createCustomMCQ(req: AuthenticatedRequest, res: Response) {
