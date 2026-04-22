@@ -79,7 +79,8 @@ export default function TestInterface() {
     saveCodingAnswer,
     saveBehavioralAnswer,
     incrementViolations,
-    setSubmitted
+    setSubmitted,
+    violationPopupSettings,
   } = useTestStore();
 
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
@@ -188,12 +189,14 @@ export default function TestInterface() {
     showViolationWarning(message, newViolations);
     emitActivity();
 
-    if (TEMP_AI_PAUSE_EVENTS.has(normalizedEventType)) {
+    if (violationPopupSettings.enabled) {
+      triggerPolicyPause(message, violationPopupSettings.durationSeconds * 1000);
+    } else if (TEMP_AI_PAUSE_EVENTS.has(normalizedEventType)) {
       const pauseMs = normalizedEventType === 'phone_detected' ? 15000 : 10000;
       triggerPolicyPause(message, pauseMs);
     }
 
-  }, [incrementViolations, showViolationWarning, showTrustWarning, triggerPolicyPause, testId, attemptId, isSubmitted, isViolationEnabled]);
+  }, [incrementViolations, showViolationWarning, showTrustWarning, triggerPolicyPause, testId, attemptId, isSubmitted, isViolationEnabled, violationPopupSettings]);
 
   const {
     status: proctorStatus,
