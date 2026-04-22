@@ -67,7 +67,10 @@ import {
   deleteRepositoryQuestion,
   createCustomMCQ,
   createCustomCoding,
-  createCustomBehavioral
+  createCustomBehavioral,
+  updateCustomMCQ,
+  updateCustomCoding,
+  updateCustomBehavioral
 } from '../controllers/repository.js';
 const router = Router();
 const invitationUpload = multer({
@@ -173,6 +176,9 @@ router.get(
 router.post('/repository/custom/mcq', adminAuth, createMCQValidation, handleValidationErrors, createCustomMCQ);
 router.post('/repository/custom/coding', adminAuth, createCodingValidation, handleValidationErrors, createCustomCoding);
 router.post('/repository/custom/behavioral', adminAuth, createCustomBehavioral);
+router.put('/repository/custom/mcq/:questionId', adminAuth, updateCustomMCQ);
+router.put('/repository/custom/coding/:questionId', adminAuth, updateCustomCoding);
+router.put('/repository/custom/behavioral/:questionId', adminAuth, updateCustomBehavioral);
 router.put('/repository/custom/:questionId/enable', adminAuth, async (req, res) => {
   return toggleRepositoryQuestion(req, res, true);
 });
