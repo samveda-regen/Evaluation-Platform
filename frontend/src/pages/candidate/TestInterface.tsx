@@ -10,6 +10,10 @@ import {
   disconnectRealtimeSocket,
   ViolationDetectedPayload,
 } from '../../services/realtimeService';
+import {
+  normalizeAIViolationType,
+  normalizeCustomAIViolationSelection,
+} from '../../constants/customAIViolations';
 
 // High-priority: count toward violation limit, red banner, can trigger auto-submit
 const HIGH_PRIORITY_VIOLATIONS = new Set([
@@ -62,6 +66,7 @@ export default function TestInterface() {
     requireCamera,
     requireMicrophone,
     requireScreenShare,
+    customAIViolations,
     startTime,
     questions,
     currentQuestionIndex,
@@ -100,6 +105,14 @@ export default function TestInterface() {
   const policyPauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentQuestion = questions[currentQuestionIndex];
+  const enabledViolationSet = useMemo(
+    () => new Set(normalizeCustomAIViolationSelection(customAIViolations)),
+    [customAIViolations]
+  );
+  const isViolationEnabled = useCallback(
+    (eventType: string) => enabledViolationSet.has(normalizeAIViolationType(eventType)),
+    [enabledViolationSet]
+  );
 
   const showViolationWarning = useCallback((message: string, count: number) => {
     setWarningMessage(`Warning: ${message}. Violations: ${count}/${maxViolations}`);
@@ -128,21 +141,23 @@ export default function TestInterface() {
   }, []);
 
   const handleProctorViolationUI = useCallback((eventType: string, message: string) => {
+    const normalizedEventType = normalizeAIViolationType(eventType);
     if (!antiCheatArmedRef.current || isSubmitted) return;
-    if (!ALLOWED_CANDIDATE_VIOLATIONS.has(eventType)) return;
+    if (!ALLOWED_CANDIDATE_VIOLATIONS.has(normalizedEventType)) return;
+    if (!isViolationEnabled(normalizedEventType)) return;
     // These events are handled elsewhere or are no-ops here
-    if (['camera_resumed', 'tab_switch_resume', 'window_focus_return'].includes(eventType)) {
+    if (['camera_resumed', 'tab_switch_resume', 'window_focus_return'].includes(normalizedEventType)) {
       return;
     }
     const now = Date.now();
-    const last = lastViolationAtRef.current[eventType] || 0;
+    const last = lastViolationAtRef.current[normalizedEventType] || 0;
     if (now - last < 5000) return;
-    lastViolationAtRef.current[eventType] = now;
+    lastViolationAtRef.current[normalizedEventType] = now;
 
     // face_not_detected: freeze test until face is visible again and count violation
-    if (eventType === 'face_not_detected') {
+    if (normalizedEventType === 'face_not_detected') {
       setFaceFrozen(true);
-    } else if (eventType === 'camera_blocked') {
+    } else if (normalizedEventType === 'camera_blocked') {
       triggerPolicyPause(message, 12000);
     }
 
@@ -153,7 +168,7 @@ export default function TestInterface() {
           testId,
           activity: {
             attemptId,
-            eventType,
+            eventType: normalizedEventType,
             message,
             timestamp: new Date().toISOString(),
           },
@@ -161,7 +176,7 @@ export default function TestInterface() {
       }
     };
 
-    if (LOW_PRIORITY_AI_VIOLATIONS.has(eventType)) {
+    if (LOW_PRIORITY_AI_VIOLATIONS.has(normalizedEventType)) {
       // Low-priority: yellow banner, no violation count, logged for trust score only
       showTrustWarning(message);
       emitActivity();
@@ -173,12 +188,12 @@ export default function TestInterface() {
     showViolationWarning(message, newViolations);
     emitActivity();
 
-    if (TEMP_AI_PAUSE_EVENTS.has(eventType)) {
-      const pauseMs = eventType === 'phone_detected' ? 15000 : 10000;
+    if (TEMP_AI_PAUSE_EVENTS.has(normalizedEventType)) {
+      const pauseMs = normalizedEventType === 'phone_detected' ? 15000 : 10000;
       triggerPolicyPause(message, pauseMs);
     }
 
-  }, [incrementViolations, showViolationWarning, showTrustWarning, triggerPolicyPause, testId, attemptId, isSubmitted]);
+  }, [incrementViolations, showViolationWarning, showTrustWarning, triggerPolicyPause, testId, attemptId, isSubmitted, isViolationEnabled]);
 
   const {
     status: proctorStatus,
@@ -194,6 +209,7 @@ export default function TestInterface() {
     enableFaceDetection: true,
     enableAudioAnalysis: !TEMP_DISABLE_AUDIO_PROCTORING,
     enableMonitorDetection: true,
+    enabledViolationEvents: Array.from(enabledViolationSet),
     onViolation: (violation) => {
       handleProctorViolationUI(violation.eventType, violation.description);
       if (testId && attemptId) {
@@ -559,24 +575,26 @@ export default function TestInterface() {
   }, [currentQuestionIndex]);
 
   const handleViolation = useCallback(async (eventType: string, message: string) => {
+    const normalizedEventType = normalizeAIViolationType(eventType);
     // Ignore noisy startup events right after test boot.
     if (!antiCheatArmedRef.current || isSubmitted) return;
-    if (!ALLOWED_CANDIDATE_VIOLATIONS.has(eventType)) return;
+    if (!ALLOWED_CANDIDATE_VIOLATIONS.has(normalizedEventType)) return;
+    if (!isViolationEnabled(normalizedEventType)) return;
 
     const newViolations = incrementViolations();
     const violationEvidence = captureEvidenceFrame({ quality: 0.82, maxWidth: 1366 });
     const snapshotData = violationEvidence.snapshotData;
-    const confidence = eventType === 'devtools_open' ? 98 : 90;
+    const confidence = normalizedEventType === 'devtools_open' ? 98 : 90;
     const durationMs =
-      eventType === 'tab_switch'
+      normalizedEventType === 'tab_switch'
         ? (hiddenAtRef.current ? Date.now() - hiddenAtRef.current : 0)
-        : eventType === 'focus_loss' || eventType === 'window_exit'
+        : normalizedEventType === 'window_blur'
         ? (blurAtRef.current ? Date.now() - blurAtRef.current : 0)
         : 0;
 
     try {
       const response = await candidateApi.logActivity({
-        eventType,
+        eventType: normalizedEventType,
         eventData: {
           message,
           confidence,
@@ -601,7 +619,7 @@ export default function TestInterface() {
           testId,
           activity: {
             attemptId,
-            eventType,
+            eventType: normalizedEventType,
             message,
             timestamp: new Date().toISOString(),
           },
@@ -619,7 +637,7 @@ export default function TestInterface() {
     } catch (error) {
       console.error('Failed to log activity:', error);
     }
-  }, [incrementViolations, isSubmitted, captureEvidenceFrame]);
+  }, [incrementViolations, isSubmitted, captureEvidenceFrame, isViolationEnabled]);
 
   const handleReenterFullscreen = async () => {
     try {

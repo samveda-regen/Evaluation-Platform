@@ -140,6 +140,9 @@ export const adminApi = {
   deleteTest: (testId: string) =>
     api.delete(`/admin/tests/${testId}`),
 
+  tryTest: (testId: string) =>
+    api.post(`/admin/tests/${testId}/try`),
+
   sendInvitations: (testId: string, data: FormData) =>
     api.post(`/admin/tests/${testId}/send-invitations`, data),
 

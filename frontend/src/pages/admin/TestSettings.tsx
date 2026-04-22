@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
+import { useAuthStore } from '../../context/authStore';
 import { Test } from '../../types';
 
 type SettingsState = {
@@ -26,12 +27,24 @@ const defaultSettings: SettingsState = {
   allowMultipleAttempts: false
 };
 
+type TryTestResponse = {
+  token: string;
+  candidate: {
+    id: string;
+    email: string;
+    name: string;
+  };
+};
+
 export default function TestSettings() {
   const { testId } = useParams();
+  const navigate = useNavigate();
+  const setCandidate = useAuthStore((state) => state.setCandidate);
   const [test, setTest] = useState<Test | null>(null);
   const [settings, setSettings] = useState<SettingsState>(defaultSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [tryingTest, setTryingTest] = useState(false);
   const [activePanel, setActivePanel] = useState<'general' | 'test_integrity' | 'emails'>('test_integrity');
   const [generalForm, setGeneralForm] = useState({
     jobLink: '',
@@ -92,6 +105,28 @@ export default function TestSettings() {
     });
   };
 
+  const handleTryTest = async () => {
+    if (!testId) return;
+
+    setTryingTest(true);
+    try {
+      const { data } = await adminApi.tryTest(testId);
+      const payload = data as TryTestResponse;
+      if (!payload?.candidate || !payload?.token) {
+        toast.error('Preview session could not be created');
+        return;
+      }
+
+      setCandidate(payload.candidate, payload.token);
+      toast.success('Demo attempt started');
+      navigate('/test/instructions');
+    } catch (error) {
+      toast.error('Failed to start demo test');
+    } finally {
+      setTryingTest(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -129,8 +164,13 @@ export default function TestSettings() {
           <button className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
             Share
           </button>
-          <button className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-            Try Test
+          <button
+            type="button"
+            onClick={handleTryTest}
+            disabled={tryingTest}
+            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {tryingTest ? 'Starting...' : 'Try Test'}
           </button>
           <Link
             to={`/admin/tests/${testId}?tab=candidates`}
@@ -196,6 +236,12 @@ export default function TestSettings() {
             >
               Test Integrity
             </button>
+            <Link
+              to={`/admin/tests/${testId}/ai-proctoring`}
+              className="block py-2 text-slate-600 hover:text-slate-900"
+            >
+              AI Proctoring
+            </Link>
             <div className="py-2">Test Invites</div>
           </div>
         </aside>

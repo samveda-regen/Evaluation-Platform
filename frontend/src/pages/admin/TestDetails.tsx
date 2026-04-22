@@ -70,7 +70,6 @@ export default function TestDetails() {
   const [showSectionModal, setShowSectionModal] = useState(false);
   const [newSectionName, setNewSectionName] = useState('');
   const [creatingSection, setCreatingSection] = useState(false);
-  const [openSectionId, setOpenSectionId] = useState<string | null>(null);
 
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [savingCustom, setSavingCustom] = useState(false);
@@ -482,28 +481,6 @@ export default function TestDetails() {
     : null;
 
   const unsectionedQuestions = questions.filter((q) => !q.sectionId);
-  const questionSections = [
-    ...sections.map((section, index) => ({
-      id: section.id,
-      title: `Section ${index + 1}: ${section.name}`,
-      subtitle: `Picks 1 question per candidate (pool: ${section.questions?.length || 0})`,
-      questions: section.questions || [],
-      sectionId: section.id,
-      isGeneral: false
-    })),
-    ...(unsectionedQuestions.length > 0
-      ? [
-          {
-            id: 'general',
-            title: 'General Questions',
-            subtitle: 'These questions appear for every candidate.',
-            questions: unsectionedQuestions,
-            sectionId: null,
-            isGeneral: true
-          }
-        ]
-      : [])
-  ];
 
   const getQuestionKey = (q: TestQuestion) => {
     if (q.questionType === 'mcq' && q.mcqQuestion?.id) return `mcq:${q.mcqQuestion.id}`;
@@ -684,6 +661,12 @@ export default function TestDetails() {
         >
           Settings
         </Link>
+        <Link
+          to={`/admin/tests/${testId}/ai-proctoring`}
+          className="pb-3 font-semibold text-slate-500 hover:text-slate-900"
+        >
+          AI Proctoring
+        </Link>
       </div>
 
       {isCandidatesView ? (
@@ -811,7 +794,7 @@ export default function TestDetails() {
                               <span>Action</span>
                             </div>
                             <div className="divide-y divide-slate-200 bg-white">
-                              {section.questions.map((q, index) => {
+                              {section.questions.map((q) => {
                                 const questionKey = getQuestionKey(q);
                                 const usage = questionKey ? sectionUsageMap.get(questionKey) : null;
                                 const showUsage = usage && usage.length > 1;

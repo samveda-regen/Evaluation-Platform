@@ -5,6 +5,7 @@ import { candidateApi } from '../../services/api';
 import { useTestStore } from '../../context/testStore';
 import IDVerification from '../../components/IDVerification';
 import { clearCachedStreams, getCachedStreams, setCachedStreams } from '../../services/devicePermissionService';
+import { DEFAULT_CUSTOM_AI_VIOLATIONS, normalizeCustomAIViolationSelection } from '../../constants/customAIViolations';
 
 interface TestDetails {
   test: {
@@ -22,6 +23,7 @@ interface TestDetails {
     requireCamera: boolean;
     requireMicrophone: boolean;
     requireScreenShare: boolean;
+    customAIViolations?: string[];
   };
   attempt: {
     id: string;
@@ -144,6 +146,9 @@ export default function TestInstructions() {
         requireCamera: data.test.requireCamera,
         requireMicrophone: data.test.requireMicrophone && !TEMP_DISABLE_AUDIO_PROCTORING,
         requireScreenShare: data.test.requireScreenShare,
+        customAIViolations: normalizeCustomAIViolationSelection(
+          data.test.customAIViolations || DEFAULT_CUSTOM_AI_VIOLATIONS
+        ),
         startTime: new Date(data.startTime),
         questions: data.questions,
         initialViolations: 0,
