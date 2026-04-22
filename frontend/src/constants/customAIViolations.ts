@@ -2,79 +2,26 @@ export type CustomAIViolationOption = {
   eventType: string;
   label: string;
   description: string;
+  isAI: boolean; // true = camera/mic AI detection, false = browser-native detection
 };
 
 export const CUSTOM_AI_VIOLATION_OPTIONS: CustomAIViolationOption[] = [
-  {
-    eventType: 'phone_detected',
-    label: 'Mobile Detection',
-    description: 'Detects mobile phone usage in front of the candidate.',
-  },
-  {
-    eventType: 'multiple_faces',
-    label: 'Multiple Face Detection',
-    description: 'Flags when more than one face is visible.',
-  },
-  {
-    eventType: 'face_not_detected',
-    label: 'No Face Detection',
-    description: 'Flags when no person is visible in the camera feed.',
-  },
-  {
-    eventType: 'looking_away',
-    label: 'Off-Screen Gaze',
-    description: 'Detects sustained gaze away from the screen.',
-  },
-  {
-    eventType: 'camera_blocked',
-    label: 'Camera Blocked',
-    description: 'Detects camera obstruction or disabled camera feed.',
-  },
-  {
-    eventType: 'secondary_monitor_detected',
-    label: 'Secondary Monitor Detection',
-    description: 'Detects additional monitor or external screen usage.',
-  },
-  {
-    eventType: 'tab_switch',
-    label: 'Tab Switch',
-    description: 'Detects switching away from the active exam tab.',
-  },
-  {
-    eventType: 'window_blur',
-    label: 'Window Focus Lost',
-    description: 'Detects browser window focus loss.',
-  },
-  {
-    eventType: 'fullscreen_exit',
-    label: 'Fullscreen Exit',
-    description: 'Detects exiting fullscreen mode during the exam.',
-  },
-  {
-    eventType: 'copy_paste_attempt',
-    label: 'Copy/Paste Attempt',
-    description: 'Detects copy or paste attempts during the exam.',
-  },
-  {
-    eventType: 'devtools_open',
-    label: 'DevTools Open',
-    description: 'Detects developer tools opening attempts.',
-  },
-  {
-    eventType: 'voice_detected',
-    label: 'Voice Detection',
-    description: 'Detects voice activity when restricted.',
-  },
-  {
-    eventType: 'suspicious_audio',
-    label: 'Suspicious Audio',
-    description: 'Detects unusual noise patterns around the candidate.',
-  },
-  {
-    eventType: 'unauthorized_object_detected',
-    label: 'Unauthorized Object',
-    description: 'Detects unauthorized objects in the camera frame.',
-  },
+  // ── AI-powered (camera / microphone model inference) ──────────────────────
+  { eventType: 'phone_detected',              label: 'Mobile Detection',          description: 'Detects mobile phone usage in front of the candidate.',       isAI: true },
+  { eventType: 'multiple_faces',             label: 'Multiple Face Detection',    description: 'Flags when more than one face is visible.',                   isAI: true },
+  { eventType: 'face_not_detected',          label: 'No Face Detection',          description: 'Flags when no person is visible in the camera feed.',         isAI: true },
+  { eventType: 'looking_away',               label: 'Off-Screen Gaze',            description: 'Detects sustained gaze away from the screen.',                isAI: true },
+  { eventType: 'voice_detected',             label: 'Voice Detection',            description: 'Detects voice activity when restricted.',                     isAI: true },
+  { eventType: 'suspicious_audio',           label: 'Suspicious Audio',           description: 'Detects unusual noise patterns around the candidate.',        isAI: true },
+  { eventType: 'unauthorized_object_detected', label: 'Unauthorized Object',      description: 'Detects unauthorized objects in the camera frame.',           isAI: true },
+  // ── Browser-native (no model required) ───────────────────────────────────
+  { eventType: 'camera_blocked',             label: 'Camera Blocked',             description: 'Detects camera obstruction or disabled camera feed.',         isAI: false },
+  { eventType: 'secondary_monitor_detected', label: 'Secondary Monitor Detection',description: 'Detects additional monitor or external screen usage.',        isAI: false },
+  { eventType: 'tab_switch',                 label: 'Tab Switch',                 description: 'Detects switching away from the active exam tab.',            isAI: false },
+  { eventType: 'window_blur',                label: 'Window Focus Lost',          description: 'Detects browser window focus loss.',                          isAI: false },
+  { eventType: 'fullscreen_exit',            label: 'Fullscreen Exit',            description: 'Detects exiting fullscreen mode during the exam.',            isAI: false },
+  { eventType: 'copy_paste_attempt',         label: 'Copy/Paste Attempt',         description: 'Detects copy or paste attempts during the exam.',             isAI: false },
+  { eventType: 'devtools_open',              label: 'DevTools Open',              description: 'Detects developer tools opening attempts.',                   isAI: false },
 ];
 
 export const DEFAULT_CUSTOM_AI_VIOLATIONS = CUSTOM_AI_VIOLATION_OPTIONS.map(
