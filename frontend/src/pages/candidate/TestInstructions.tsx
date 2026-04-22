@@ -149,6 +149,16 @@ export default function TestInstructions() {
         customAIViolations: normalizeCustomAIViolationSelection(
           data.test.customAIViolations || DEFAULT_CUSTOM_AI_VIOLATIONS
         ),
+        violationPopupSettings: (() => {
+          try {
+            const raw = data.test.violationPopupSettings;
+            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (parsed && typeof parsed.enabled === 'boolean' && typeof parsed.durationSeconds === 'number') {
+              return { enabled: parsed.enabled, durationSeconds: parsed.durationSeconds };
+            }
+          } catch { /* ignore */ }
+          return { enabled: false, durationSeconds: 3 };
+        })(),
         startTime: new Date(data.startTime),
         questions: data.questions,
         initialViolations: 0,
