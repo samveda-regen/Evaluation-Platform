@@ -173,16 +173,6 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
         ? [...DEFAULT_CUSTOM_AI_VIOLATION_EVENTS]
         : normalizeCustomAIViolationEvents(customAIViolations);
 
-    const adminProfile = await prisma.admin.findUnique({
-      where: { id: req.admin!.id },
-      select: { companyId: true }
-    });
-
-    if (!adminProfile?.companyId) {
-      res.status(400).json({ error: 'Admin account is not mapped to a company.' });
-      return;
-    }
-
     const testCode = generateTestCode();
 
     const test = await prisma.test.create({
@@ -207,8 +197,7 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
         requireScreenShare: requireScreenShare || false,
         requireIdVerification: requireIdVerification || false,
         customAIViolations: JSON.stringify(enabledAIViolations),
-        adminId: req.admin!.id,
-        companyId: adminProfile.companyId
+        adminId: req.admin!.id
       }
     });
 
