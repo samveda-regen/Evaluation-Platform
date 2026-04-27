@@ -129,7 +129,7 @@ export default function TestForm() {
       const data = {
         ...formData,
         startTime: startTimeIso,
-        duration: derivedDuration ?? formData.duration,
+        duration: formData.duration,
         endTime: endTimeIso || undefined
       };
 
@@ -168,13 +168,6 @@ export default function TestForm() {
         [name]: type === 'checkbox' ? (e.target as HTMLInputElement).checked :
                 type === 'number' ? Number(value) : value
       };
-
-      if ((name === 'startTime' || name === 'endTime') && next.startTime && next.endTime) {
-        const derivedDuration = calculateDurationMinutes(next.startTime, next.endTime);
-        if (derivedDuration) {
-          next.duration = derivedDuration;
-        }
-      }
 
       return next;
     });
