@@ -113,10 +113,6 @@ function parseDateValue(value: unknown): Date | null {
   return parsed;
 }
 
-function calculateDurationMinutes(startTime: Date, endTime: Date): number {
-  return Math.ceil((endTime.getTime() - startTime.getTime()) / (60 * 1000));
-}
-
 function mapTestWithCustomAI<T extends { customAIViolations?: string | null }>(test: T): Omit<T, 'customAIViolations'> & { customAIViolations: string[] } {
   return {
     ...test,
@@ -172,13 +168,20 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
       return;
     }
 
-    const resolvedDuration = parsedEndTime
-      ? calculateDurationMinutes(parsedStartTime, parsedEndTime)
-      : requestedDuration;
     const enabledAIViolations =
       customAIViolations === undefined
         ? [...DEFAULT_CUSTOM_AI_VIOLATION_EVENTS]
         : normalizeCustomAIViolationEvents(customAIViolations);
+
+    const adminProfile = await prisma.admin.findUnique({
+      where: { id: req.admin!.id },
+      select: { companyId: true }
+    });
+
+    if (!adminProfile?.companyId) {
+      res.status(400).json({ error: 'Admin account is not mapped to a company.' });
+      return;
+    }
 
     const testCode = generateTestCode();
 
@@ -188,7 +191,7 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
         name: sanitizeInput(name),
         description: description ? sanitizeInput(description) : null,
         instructions: instructions ? sanitizeInput(instructions) : null,
-        duration: resolvedDuration,
+        duration: requestedDuration,
         startTime: parsedStartTime,
         endTime: parsedEndTime,
         totalMarks: parseInt(totalMarks),
@@ -204,7 +207,8 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
         requireScreenShare: requireScreenShare || false,
         requireIdVerification: requireIdVerification || false,
         customAIViolations: JSON.stringify(enabledAIViolations),
-        adminId: req.admin!.id
+        adminId: req.admin!.id,
+        companyId: adminProfile.companyId
       }
     });
 
@@ -490,10 +494,6 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
       return;
     }
 
-    if (!hasDurationUpdate && (hasStartTimeUpdate || hasEndTimeUpdate) && resolvedEndTime) {
-      sanitizedUpdates.duration = calculateDurationMinutes(resolvedStartTime, resolvedEndTime);
-    }
-
     if (updates.customAIViolations !== undefined) {
       const parsedCustomAIViolations = normalizeCustomAIViolationEvents(updates.customAIViolations);
       sanitizedUpdates.customAIViolations = JSON.stringify(parsedCustomAIViolations);
@@ -513,16 +513,9 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
     if (updates.requireScreenShare !== undefined) sanitizedUpdates.requireScreenShare = updates.requireScreenShare;
     if (updates.requireIdVerification !== undefined) sanitizedUpdates.requireIdVerification = updates.requireIdVerification;
 
-    if (updates.violationPopupSettings !== undefined) {
-      const popup = updates.violationPopupSettings;
-      const enabled = typeof popup?.enabled === 'boolean' ? popup.enabled : false;
-      const durationSeconds = Number.isFinite(Number(popup?.durationSeconds)) ? Math.max(1, Math.min(60, Number(popup.durationSeconds))) : 3;
-      sanitizedUpdates.violationPopupSettings = JSON.stringify({ enabled, durationSeconds });
-    }
-
     const updatedTest = await prisma.test.update({
       where: { id: testId },
-      data: sanitizedUpdates as Parameters<typeof prisma.test.update>[0]['data']
+      data: sanitizedUpdates
     });
 
     res.json({
