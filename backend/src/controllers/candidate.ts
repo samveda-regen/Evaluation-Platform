@@ -687,81 +687,9 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
 
     if (selectedTestQuestions.length === 0) {
       const baseQuestions = test.questions.filter((q) => !q.sectionId);
-      const sectionSelections: typeof test.questions = [];
+      const sectionQuestions = (test.sections || []).flatMap((section) => section.questions || []);
 
-      if (test.sections && test.sections.length > 0) {
-        type QuestionType = 'mcq' | 'coding' | 'behavioral';
-        const targetTypes: QuestionType[] = ['mcq', 'coding', 'behavioral'];
-
-        const sectionTypeMap = test.sections.map((section) => {
-          const typeSet = new Set<QuestionType>();
-          for (const q of section.questions || []) {
-            if (q.questionType === 'mcq' || q.questionType === 'coding' || q.questionType === 'behavioral') {
-              typeSet.add(q.questionType);
-            }
-          }
-          return { id: section.id, name: section.name, questions: section.questions || [], typeSet };
-        });
-
-        for (const section of sectionTypeMap) {
-          if (section.questions.length === 0) {
-            res.status(400).json({ error: `Section \"${section.name}\" has no questions yet.` });
-            return;
-          }
-        }
-
-        const sectionsByType = new Map<QuestionType, string[]>();
-        for (const type of targetTypes) {
-          sectionsByType.set(
-            type,
-            sectionTypeMap
-              .filter((section) => section.typeSet.has(type))
-              .map((section) => section.id)
-          );
-        }
-
-        const assignedTypeBySection = new Map<string, QuestionType>();
-        const assignedSectionByType = new Map<QuestionType, string>();
-
-        const typesByScarcity = [...targetTypes].sort((a, b) => {
-          const countA = sectionsByType.get(a)?.length || 0;
-          const countB = sectionsByType.get(b)?.length || 0;
-          return countA - countB;
-        });
-
-        const tryAssign = (type: QuestionType, visited: Set<string>): boolean => {
-          const candidates = sectionsByType.get(type) || [];
-          for (const sectionId of candidates) {
-            if (visited.has(sectionId)) continue;
-            visited.add(sectionId);
-            const currentType = assignedTypeBySection.get(sectionId);
-            if (!currentType || tryAssign(currentType, visited)) {
-              assignedTypeBySection.set(sectionId, type);
-              assignedSectionByType.set(type, sectionId);
-              return true;
-            }
-          }
-          return false;
-        };
-
-        for (const type of typesByScarcity) {
-          tryAssign(type, new Set<string>());
-        }
-
-        for (const section of sectionTypeMap) {
-          const preferredType = assignedTypeBySection.get(section.id);
-          if (preferredType) {
-            const typedQuestions = section.questions.filter((q) => q.questionType === preferredType);
-            const shuffled = shuffleArray(typedQuestions);
-            sectionSelections.push(shuffled[0]);
-          } else {
-            const shuffled = shuffleArray(section.questions);
-            sectionSelections.push(shuffled[0]);
-          }
-        }
-      }
-
-      selectedTestQuestions = [...baseQuestions, ...sectionSelections];
+      selectedTestQuestions = [...baseQuestions, ...sectionQuestions];
 
       if (test.shuffleQuestions) {
         selectedTestQuestions = shuffleArray(selectedTestQuestions);
