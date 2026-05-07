@@ -16,7 +16,11 @@ import verificationRoutes from './routes/verification.js';
 import analyticsRoutes from './routes/analytics.js';
 import filesRoutes from './routes/files.js';
 import invitationRoutes from './routes/invitations.js';
+import integrationRoutes from './routes/integration.js';
 import { setSocketServer } from './services/socketService.js';
+import { getProctorRuntimeStats } from './services/proctorRuntimeStatsService.js';
+import { getCVQueueStats } from './services/cvAsyncQueueService.js';
+import { getCVRedisStats } from './services/cvRedisStreamsService.js';
 import prisma from './utils/db.js';
 
 function applyEnvFile(envPath: string): boolean {
@@ -238,6 +242,27 @@ app.get('/api/health', async (_req, res) => {
   }
 });
 
+app.get('/api/health/proctoring', async (_req, res) => {
+  try {
+    const redis = await getCVRedisStats();
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      profile: (process.env.PROCTOR_PROFILE || 'strict').toLowerCase(),
+      cvMode: (process.env.PROCTOR_CV_MODE || 'sync').toLowerCase(),
+      stats: getProctorRuntimeStats(),
+      queue: getCVQueueStats(),
+      redis,
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      error: error instanceof Error ? error.message : 'unknown',
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
 // Routes
 app.use('/api/admin', adminRoutes);
 app.use('/api/candidate', candidateRoutes);
@@ -247,6 +272,7 @@ app.use('/api/verification', verificationRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/files', filesRoutes);
 app.use('/api/invitations', invitationRoutes);
+app.use('/api/integration', integrationRoutes);
 
 // WebSocket for real-time test monitoring and proctoring
 io.on('connection', (socket) => {
