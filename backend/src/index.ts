@@ -18,9 +18,6 @@ import filesRoutes from './routes/files.js';
 import invitationRoutes from './routes/invitations.js';
 import integrationRoutes from './routes/integration.js';
 import { setSocketServer } from './services/socketService.js';
-import { getProctorRuntimeStats } from './services/proctorRuntimeStatsService.js';
-import { getCVQueueStats } from './services/cvAsyncQueueService.js';
-import { getCVRedisStats } from './services/cvRedisStreamsService.js';
 import prisma from './utils/db.js';
 
 function applyEnvFile(envPath: string): boolean {
@@ -39,7 +36,6 @@ function applyEnvFile(envPath: string): boolean {
     let value = '';
 
     if (rawValue.startsWith('"') || rawValue.startsWith("'")) {
-      // Parse quoted values and allow trailing inline comments after closing quote.
       const quote = rawValue[0];
       for (let i = 1; i < rawValue.length; i += 1) {
         const ch = rawValue[i];
@@ -52,7 +48,6 @@ function applyEnvFile(envPath: string): boolean {
         value += ch;
       }
     } else {
-      // Support inline comments for unquoted values.
       const hashIndex = rawValue.indexOf('#');
       value = (hashIndex >= 0 ? rawValue.slice(0, hashIndex) : rawValue).trim();
     }
@@ -111,7 +106,6 @@ const allowedOrigins = parseAllowedOrigins(process.env.FRONTEND_URL);
 
 function isOriginAllowed(origin: string | undefined): boolean {
   if (!origin) {
-    // Allow non-browser and same-origin requests without Origin header.
     return true;
   }
 
@@ -134,7 +128,6 @@ function isOriginAllowed(origin: string | undefined): boolean {
 }
 
 const app = express();
-// ngrok/localtunnel add X-Forwarded-* headers; trust one upstream proxy.
 app.set('trust proxy', 1);
 const httpServer = createServer(app);
 const io = new SocketServer(httpServer, {
@@ -188,39 +181,34 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Rate limiting - adjusted for 100+ concurrent candidates
 const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10000, // higher ceiling for concurrent profiles from same IP
+  windowMs: 15 * 60 * 1000,
+  max: 10000,
   message: { error: 'Too many requests, please try again later' },
-  // Proctoring loop endpoints are high-frequency by design.
-  // Keep core anti-abuse limits for other routes.
   skip: (req) => isHighFrequencyProctoringPath(req.path),
 });
 
 const authLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000, // 5 minutes window
-  max: 2000, // allow mass login bursts when many candidates share one NAT IP
+  windowMs: 5 * 60 * 1000,
+  max: 2000,
   message: { error: 'Too many login attempts, please try again later' }
 });
 
 const submissionLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 5000, // avoid throttling autosave bursts for large concurrent cohorts
+  windowMs: 60 * 1000,
+  max: 5000,
   message: { error: 'Too many submissions, please slow down' }
 });
 
 app.use(generalLimiter);
-app.use(express.json({ limit: '50mb' })); // Increased for media uploads
+app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser());
 
-// Apply auth rate limiter to specific routes
 app.use('/api/admin/login', authLimiter);
 app.use('/api/admin/register', authLimiter);
 app.use('/api/candidate/login', authLimiter);
 
-// Apply submission rate limiter
 app.use('/api/candidate/answer', submissionLimiter);
 app.use('/api/candidate/test/submit', submissionLimiter);
 
@@ -242,25 +230,13 @@ app.get('/api/health', async (_req, res) => {
   }
 });
 
-app.get('/api/health/proctoring', async (_req, res) => {
-  try {
-    const redis = await getCVRedisStats();
-    res.json({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      profile: (process.env.PROCTOR_PROFILE || 'strict').toLowerCase(),
-      cvMode: (process.env.PROCTOR_CV_MODE || 'sync').toLowerCase(),
-      stats: getProctorRuntimeStats(),
-      queue: getCVQueueStats(),
-      redis,
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      error: error instanceof Error ? error.message : 'unknown',
-      timestamp: new Date().toISOString(),
-    });
-  }
+app.get('/api/health/proctoring', (_req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    profile: (process.env.PROCTOR_PROFILE || 'strict').toLowerCase(),
+    cvMode: (process.env.PROCTOR_CV_MODE || 'sync').toLowerCase(),
+  });
 });
 
 // Routes
@@ -274,7 +250,7 @@ app.use('/api/files', filesRoutes);
 app.use('/api/invitations', invitationRoutes);
 app.use('/api/integration', integrationRoutes);
 
-// WebSocket for real-time test monitoring and proctoring
+// WebSocket
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
@@ -288,17 +264,14 @@ io.on('connection', (socket) => {
     console.log(`Admin ${adminId} joined monitoring`);
   });
 
-  // Admin joins proctoring monitoring for a test
   socket.on('admin-proctor-join', (testId: string) => {
     socket.join(`proctor-${testId}`);
     console.log(`Admin joined proctoring for test ${testId}`);
   });
 
-  // Candidate joins proctoring session
   socket.on('candidate-proctor-join', (data: { attemptId: string; testId: string }) => {
     socket.join(`proctor-attempt-${data.attemptId}`);
     candidateSocketPresence.set(socket.id, data);
-    // Notify admin monitoring room
     io.to(`proctor-${data.testId}`).emit('candidate-online', {
       attemptId: data.attemptId,
       testId: data.testId,
@@ -306,7 +279,6 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Real-time proctoring violation event
   socket.on('proctor-violation', (data: {
     attemptId: string;
     testId: string;
@@ -317,11 +289,9 @@ io.on('connection', (socket) => {
       timestamp: string;
     };
   }) => {
-    // Broadcast to admin monitoring room
     io.to(`proctor-${data.testId}`).emit('violation-detected', data);
   });
 
-  // Real-time proctoring status update
   socket.on('proctor-status', (data: {
     attemptId: string;
     testId: string;
@@ -340,7 +310,6 @@ io.on('connection', (socket) => {
     io.to(`proctor-${data.testId}`).emit('activity-update', data);
   });
 
-  // Candidate live frame feed for admin proctor dashboard
   socket.on('candidate-live-frame', (data: {
     testId: string;
     attemptId: string;
@@ -377,7 +346,6 @@ app.use((_req, res) => {
 
 function validateDatabaseUrl(): void {
   const databaseUrl = process.env.DATABASE_URL || '';
-  // Detect common malformed DSN where '@' in password is not URL-encoded.
   const atMatches = databaseUrl.match(/@/g)?.length || 0;
   if (databaseUrl.startsWith('postgresql://') && atMatches > 1) {
     console.warn(
