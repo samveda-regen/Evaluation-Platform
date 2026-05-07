@@ -49,6 +49,20 @@ export interface SendInvitationSummary {
   failed: number;
 }
 
+export interface StructuredInvitationCandidate {
+  name: string;
+  email: string;
+  phone?: string;
+}
+
+export interface StructuredInvitationSummary extends SendInvitationSummary {
+  results: Array<{
+    email: string;
+    status: 'SENT' | 'FAILED';
+    reason?: string;
+  }>;
+}
+
 export class InvitationServiceError extends Error {
   statusCode: number;
 
@@ -481,6 +495,138 @@ export async function sendBulkTestInvitations(input: {
     total: rows.length + invalidRows,
     sent,
     failed
+  };
+}
+
+export async function sendStructuredTestInvitations(input: {
+  testId: string;
+  candidates: StructuredInvitationCandidate[];
+  customMessage?: string;
+}): Promise<StructuredInvitationSummary> {
+  const test = await prisma.test.findUnique({
+    where: { id: input.testId },
+    select: {
+      id: true,
+      name: true,
+      isActive: true,
+      endTime: true
+    }
+  });
+
+  if (!test) {
+    throw new InvitationServiceError('Test not found.', 404);
+  }
+
+  if (!test.isActive) {
+    throw new InvitationServiceError('Cannot send invitations for an inactive test.', 400);
+  }
+
+  if (test.endTime && new Date() > test.endTime) {
+    throw new InvitationServiceError('Cannot send invitations because this test has already ended.', 400);
+  }
+
+  const dedupedCandidates = new Map<string, StructuredInvitationCandidate>();
+  for (const candidate of input.candidates) {
+    const email = sanitizeInput(candidate.email).toLowerCase().trim();
+    const name = sanitizeInput(candidate.name).trim();
+    if (!email || !name || !isValidEmail(email)) {
+      continue;
+    }
+
+    const phone = candidate.phone ? sanitizeInput(candidate.phone).trim() : undefined;
+    dedupedCandidates.set(email, { email, name, phone });
+  }
+
+  const rows = Array.from(dedupedCandidates.values());
+  if (rows.length === 0) {
+    throw new InvitationServiceError('No valid candidates supplied.', 400);
+  }
+
+  const customMessage = input.customMessage ? sanitizeInput(input.customMessage.trim()) : undefined;
+  const results: StructuredInvitationSummary['results'] = [];
+  let sent = 0;
+  let failed = 0;
+
+  for (const row of rows) {
+    let invitationId: string | null = null;
+    try {
+      const token = randomBytes(32).toString('hex');
+      const invitation = await prisma.testInvitation.upsert({
+        where: {
+          testId_email: {
+            testId: test.id,
+            email: row.email
+          }
+        },
+        create: {
+          testId: test.id,
+          name: row.name,
+          email: row.email,
+          phone: row.phone ?? null,
+          token,
+          status: 'PENDING'
+        },
+        update: {
+          name: row.name,
+          phone: row.phone ?? null,
+          token,
+          status: 'PENDING',
+          sentAt: null,
+          error: null,
+          consumedAt: null
+        }
+      });
+
+      invitationId = invitation.id;
+
+      await sendInvitationEmailWithRetry({
+        to: row.email,
+        candidateName: row.name,
+        testName: test.name,
+        testLink: buildInviteLink(invitation.token),
+        customMessage,
+      }, row.email);
+
+      await prisma.testInvitation.update({
+        where: { id: invitation.id },
+        data: {
+          status: 'SENT',
+          sentAt: new Date(),
+          error: null
+        }
+      });
+
+      sent += 1;
+      results.push({ email: row.email, status: 'SENT' });
+    } catch (error) {
+      const failureMessage = extractErrorMessage(error);
+      failed += 1;
+      results.push({ email: row.email, status: 'FAILED', reason: failureMessage });
+
+      if (invitationId) {
+        try {
+          await prisma.testInvitation.update({
+            where: { id: invitationId },
+            data: {
+              status: 'FAILED',
+              error: failureMessage.slice(0, 500)
+            }
+          });
+        } catch (updateError) {
+          console.error('Failed to update invitation status after structured send failure:', {
+            invitationId,
+            error: extractErrorMessage(updateError)
+          });
+        }
+      }
+    }
+  }
+
+  return {
+    total: rows.length,
+    sent,
+    failed,
+    results
   };
 }
 
