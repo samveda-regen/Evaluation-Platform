@@ -15,9 +15,18 @@ export interface CandidatePayload {
   role: 'candidate';
 }
 
+export interface IntegrationPayload {
+  id: string;
+  email: string;
+  role: 'integration_admin';
+  companyId: string;
+  scopes: string[];
+}
+
 export interface AuthenticatedRequest extends Request {
   admin?: AdminPayload;
   candidate?: CandidatePayload;
+  integration?: IntegrationPayload;
 }
 
 export interface MCQOption {
