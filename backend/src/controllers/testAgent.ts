@@ -6,6 +6,7 @@ import {
   analyzeJobRequirements,
   suggestQuestionTags
 } from '../services/testAgentService.js';
+import prisma from '../utils/db.js';
 
 // POST /admin/agent/analyze-job
 export const analyzeJob = async (req: AuthenticatedRequest, res: Response) => {
@@ -117,6 +118,11 @@ export const createTestFromAgent = async (req: AuthenticatedRequest, res: Respon
       return res.status(400).json({ error: 'Test start time is required' });
     }
 
+    const adminRecord = await prisma.admin.findUnique({
+      where: { id: adminId },
+      select: { companyId: true }
+    });
+
     const result = await createTestFromSelection(
       adminId,
       {
@@ -137,7 +143,8 @@ export const createTestFromAgent = async (req: AuthenticatedRequest, res: Respon
         negativeMarking: testSettings.negativeMarking,
         shuffleQuestions: testSettings.shuffleQuestions,
         shuffleOptions: testSettings.shuffleOptions,
-        maxViolations: testSettings.maxViolations
+        maxViolations: testSettings.maxViolations,
+        companyId: adminRecord?.companyId ?? undefined
       }
     );
 
