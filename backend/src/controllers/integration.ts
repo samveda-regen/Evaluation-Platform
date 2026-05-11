@@ -693,10 +693,7 @@ export async function createTestWithAIAndInvite(req: AuthenticatedRequest, res: 
     );
 
     // Step 2: Create the test
-    const { testId, testCode } = await createTestFromSelection(adminId, selection, testSettings);
-
-    // Link test to integration company
-    await prisma.test.update({ where: { id: testId }, data: { companyId } });
+    const { testId, testCode } = await createTestFromSelection(adminId, selection, { ...testSettings, companyId });
 
     // Step 3: Send invitations if candidates were provided
     let invitationSummary = null;
