@@ -173,6 +173,21 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
         ? [...DEFAULT_CUSTOM_AI_VIOLATION_EVENTS]
         : normalizeCustomAIViolationEvents(customAIViolations);
 
+    const adminRecord = await prisma.admin.findUnique({
+      where: { id: req.admin!.id },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        companyId: true
+      }
+    });
+
+    if (!adminRecord) {
+      res.status(404).json({ error: 'Admin not found' });
+      return;
+    }
+
     const testCode = generateTestCode();
 
     const test = await prisma.test.create({
@@ -197,7 +212,8 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
         requireScreenShare: requireScreenShare || false,
         requireIdVerification: requireIdVerification || false,
         customAIViolations: JSON.stringify(enabledAIViolations),
-        adminId: req.admin!.id
+        adminId: req.admin!.id,
+        ...(adminRecord.companyId ? { companyId: adminRecord.companyId } : {})
       }
     });
 
