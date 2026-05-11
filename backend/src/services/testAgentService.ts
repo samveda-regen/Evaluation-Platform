@@ -170,6 +170,7 @@ export async function createTestFromSelection(
     shuffleQuestions?: boolean;
     shuffleOptions?: boolean;
     maxViolations?: number;
+    companyId?: string;
   }
 ): Promise<{ testId: string; testCode: string }> {
   // Calculate total marks
@@ -208,7 +209,8 @@ export async function createTestFromSelection(
         shuffleOptions: testSettings.shuffleOptions ?? false,
         maxViolations: testSettings.maxViolations ?? 3,
         customAIViolations: JSON.stringify(DEFAULT_CUSTOM_AI_VIOLATION_EVENTS),
-        adminId
+        adminId,
+        ...(testSettings.companyId ? { companyId: testSettings.companyId } : {})
       }
     });
 
