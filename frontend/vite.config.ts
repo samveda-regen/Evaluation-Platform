@@ -19,7 +19,13 @@ export default defineConfig({
       '/socket.io': {
         target: 'http://localhost:3000',
         changeOrigin: true,
-        ws: true
+        ws: true,
+        configure: (proxy) => {
+          proxy.on('error', (err: NodeJS.ErrnoException) => {
+            if (err.code === 'ECONNABORTED' || err.code === 'ECONNRESET') return;
+            console.error('[socket proxy error]', err.message);
+          });
+        }
       }
     }
   }
