@@ -45,7 +45,8 @@ import {
   deleteAttempt,
   reEvaluateAttempt,
   exportResults,
-  getDashboardStats
+  getDashboardStats,
+  getRecentCompletedAttempts
 } from '../controllers/results.js';
 import { getTrustReports, reEvaluateTrustReport } from '../controllers/trustReports.js';
 import {
@@ -87,6 +88,7 @@ router.get('/profile', adminAuth, getAdminProfile);
 
 // Dashboard
 router.get('/dashboard', adminAuth, getDashboardStats);
+router.get('/attempts/completed/recent', adminAuth, getRecentCompletedAttempts);
 router.get('/invitations/dashboard', adminAuth, getInvitationDashboard);
 
 // Test routes
