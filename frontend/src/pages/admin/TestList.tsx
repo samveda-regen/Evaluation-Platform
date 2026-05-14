@@ -505,10 +505,10 @@ export default function TestList() {
               <button
                 onClick={closeInvitationModal}
                 disabled={sendingInvitations}
-                className="text-gray-500 hover:text-gray-700 text-xl leading-none"
+                className="text-[0px] leading-none text-gray-500 hover:text-gray-700"
                 aria-label="Close"
               >
-                ×
+                <span aria-hidden="true" className="text-xl">&times;</span>
               </button>
             </div>
 
