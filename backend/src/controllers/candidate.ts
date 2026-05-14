@@ -5,7 +5,7 @@ import { AuthenticatedRequest } from '../types/index.js';
 import { sanitizeInput } from '../utils/sanitize.js';
 import { executeCode, compareOutput } from '../utils/codeExecutor.js';
 import prisma from '../utils/db.js';
-import { emitToTestProctorRoom, emitToProctorTargets } from '../services/socketService.js';
+import { emitToAdminRoom, emitToTestProctorRoom, emitToProctorTargets } from '../services/socketService.js';
 import { Prisma } from '@prisma/client';
 import {
   InvitationServiceError,
@@ -1200,7 +1200,8 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
         include: {
           mcqAnswers: true,
           codingAnswers: true,
-          behavioralAnswers: true
+          behavioralAnswers: true,
+          candidate: { select: { name: true, email: true } }
         }
       }),
       prisma.test.findUnique({
@@ -1376,6 +1377,19 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
       score: totalScore,
       totalMarks: test.totalMarks
     });
+
+    const submissionPayload = {
+      testId,
+      testName: test.name,
+      attemptId,
+      candidateName: attempt.candidate?.name ?? 'Unknown',
+      candidateEmail: attempt.candidate?.email ?? '',
+      autoSubmit: !!autoSubmit,
+      timestamp: new Date().toISOString(),
+    };
+
+    emitToTestProctorRoom(testId, 'test-submitted', submissionPayload);
+    emitToAdminRoom(test.adminId, 'test-submitted', submissionPayload);
   } catch (error) {
     console.error('Submit test error:', error);
     res.status(500).json({ error: 'Internal server error' });
