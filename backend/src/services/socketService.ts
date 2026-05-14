@@ -20,6 +20,11 @@ export function emitToAttemptProctorRoom(attemptId: string, event: string, paylo
   ioInstance.to(`proctor-attempt-${attemptId}`).emit(event, payload);
 }
 
+export function emitToAdminRoom(adminId: string, event: string, payload: unknown): void {
+  if (!ioInstance) return;
+  ioInstance.to(`admin-${adminId}`).emit(event, payload);
+}
+
 export function emitToProctorTargets(
   testId: string,
   attemptId: string,
