@@ -1,0 +1,253 @@
+Popup Submission Notification Report
+====================================
+
+Goal
+----
+Show an admin-facing popup when a candidate completes a test. The popup should be visible across the admin area, appear at the top-right, include candidate name, test name, and test ID, auto-dismiss after 8 seconds, support manual close, stack multiple notifications, slide in from the right, and use auto-submit wording when time runs out.
+
+
+Final Approach
+--------------
+The popup system was built in the shared admin layout so it can appear on any admin page, not only on the Tests page.
+
+The final design uses two notification paths:
+
+1. Polling from completed attempt status
+   - This is the reliable source of truth.
+   - The admin frontend polls a backend endpoint every 5 seconds.
+   - The endpoint returns recent attempts where status is submitted or auto_submitted.
+   - The frontend compares returned attempt IDs against IDs it has already seen.
+   - If a new completed attempt appears, the popup is shown.
+
+2. Socket event as an instant path
+   - The candidate submit endpoint emits a test-submitted event.
+   - The admin layout listens for that event.
+   - This can show the popup instantly when the socket connection is healthy.
+   - Polling remains the fallback, so the popup does not depend only on sockets.
+
+
+Changed Files
+-------------
+
+frontend/src/components/AdminLayout.tsx
+--------------------------------------
+Main popup implementation.
+
+Changes made:
+- Added popup state in the shared admin layout.
+- Added CompletionNotification and RecentCompletedAttempt types.
+- Added top-right popup rendering.
+- Added manual close button using a visible x entity.
+- Added 8 second auto-dismiss timers.
+- Added stacking behavior by rendering all active popup items.
+- Added slide-in animation class animate-slide-in-right.
+- Added auto-submit wording:
+  - normal submit: "completed"
+  - auto submit: "was auto-submitted for"
+- Added admin profile hydration after refresh.
+  - If the admin token exists but admin data is not loaded in Zustand, the layout calls adminApi.getProfile().
+  - This lets the layout know the admin ID.
+- Added socket listener:
+  - emits admin-join with admin.id
+  - fetches tests and emits admin-proctor-join for each test as a fallback
+  - listens for test-submitted events
+- Added polling listener:
+  - calls adminApi.getRecentCompletedAttempts(30) every 5 seconds
+  - first poll seeds old completed attempts so old completions do not spam the admin
+  - first poll still notifies for attempts submitted after the admin page opened
+  - later polls notify only for newly completed attempt IDs
+
+Important behavior:
+- Popup appears in fixed position: top-right.
+- Popup is rendered outside Outlet, so it is visible on all admin pages.
+- Known completed attempt IDs are tracked in a ref to prevent duplicate popups.
+- Socket notifications also add attempt IDs to the known set, preventing duplicates between socket and polling.
+
+
+frontend/src/services/api.ts
+----------------------------
+Added a new admin API helper:
+
+getRecentCompletedAttempts(limit = 20)
+
+This calls:
+
+/admin/attempts/completed/recent?limit={limit}
+
+The admin layout uses this endpoint for polling completed candidate submissions.
+
+
+frontend/src/services/realtimeService.ts
+----------------------------------------
+Updated realtime socket setup.
+
+Changes made:
+- Added Vite env handling.
+- Added VITE_SOCKET_URL override support.
+- In local dev, sockets connect directly to http://localhost:3000 instead of going through the Vite /socket.io proxy.
+- Added fallback transport polling alongside websocket.
+
+Reason:
+- Vite was logging websocket proxy ECONNABORTED errors.
+- Direct backend socket connection is more stable for local development.
+
+
+frontend/src/pages/admin/TestList.tsx
+-------------------------------------
+Removed the Tests-page-only popup implementation.
+
+Reason:
+- The popup needed to be visible across the whole admin area.
+- Keeping the listener in TestList would only work on /admin/tests.
+- The logic was moved into AdminLayout.
+
+The file still contains normal Tests page logic such as listing tests and sending invitations.
+
+
+backend/src/controllers/results.ts
+----------------------------------
+Added the backend endpoint controller:
+
+getRecentCompletedAttempts()
+
+What it does:
+- Reads the authenticated admin ID.
+- Finds recent TestAttempt records for that admin's tests.
+- Filters to status in:
+  - submitted
+  - auto_submitted
+- Requires submittedAt to be non-null.
+- Includes candidate name/email and test id/name.
+- Orders by submittedAt descending.
+- Limits results to a maximum of 50.
+
+Response shape:
+
+{
+  attempts: [
+    {
+      id,
+      status,
+      submittedAt,
+      candidate: { name, email },
+      test: { id, name }
+    }
+  ]
+}
+
+This is the polling source used by the popup system.
+
+
+backend/src/routes/admin.ts
+---------------------------
+Registered the new route:
+
+GET /api/admin/attempts/completed/recent
+
+It is protected with adminAuth and calls getRecentCompletedAttempts.
+
+
+backend/src/controllers/candidate.ts
+------------------------------------
+Updated candidate test submission to emit a reusable submission payload.
+
+Changes made:
+- Imported emitToAdminRoom.
+- After a successful test submit, builds submissionPayload with:
+  - testId
+  - testName
+  - attemptId
+  - candidateName
+  - candidateEmail
+  - autoSubmit
+  - timestamp
+- Emits test-submitted to:
+  - proctor room for the test
+  - admin room for the test owner
+
+This supports instant socket-based notifications.
+
+
+backend/src/services/socketService.ts
+-------------------------------------
+Added:
+
+emitToAdminRoom(adminId, event, payload)
+
+This emits socket events to the room:
+
+admin-{adminId}
+
+The candidate submit flow uses this to notify the owning admin.
+
+
+Popup UI Details
+----------------
+The popup is rendered by AdminLayout.
+
+It includes:
+- Title:
+  - "Test Completed" for manual submission
+  - "Test Auto-submitted" for auto submission
+- Body:
+  - "{candidateName} completed {testName}"
+  - "{candidateName} was auto-submitted for {testName}"
+- Test ID line:
+  - "Test ID: {testId}"
+- Manual close button.
+- Auto-dismiss after 8 seconds.
+- Multiple popups stack vertically.
+- CSS animation uses existing Tailwind animation:
+  - animate-slide-in-right
+
+
+Why Polling Was Added
+---------------------
+The original implementation used Socket.io only. The popup did not appear reliably for the user because socket delivery can fail or the admin layout may not join the right room after refresh.
+
+The requirement was clarified as:
+"If candidate status becomes completed, alert me."
+
+So polling recent completed attempts is a better source of truth:
+- It uses database status.
+- It works even if sockets fail.
+- It checks the same submitted/auto_submitted statuses that power completed candidate status.
+- It can alert within 5 seconds.
+
+
+Verification Performed
+----------------------
+Frontend build:
+
+npm.cmd run build
+
+Backend build:
+
+npm.cmd run build
+
+Both builds passed after the changes.
+
+
+Manual Test Steps
+-----------------
+1. Restart backend server.
+2. Restart frontend server.
+3. Log in as admin and keep any /admin page open.
+4. In another browser/session, submit a candidate test.
+5. Wait up to 5 seconds.
+6. Admin should see a popup at the top-right.
+
+Optional endpoint check while logged in as admin:
+
+http://localhost:5173/api/admin/attempts/completed/recent?limit=5
+
+Expected:
+- Recent submitted attempts should be returned.
+- If this endpoint returns the new completed attempt, the popup polling has data to display.
+
+
+Notes
+-----
+- Existing frontend/dist build artifacts may change when npm.cmd run build is executed.
+- If using ngrok or a non-local backend for sockets, set VITE_SOCKET_URL to the backend URL.
+- The polling path does not require sockets to work.
