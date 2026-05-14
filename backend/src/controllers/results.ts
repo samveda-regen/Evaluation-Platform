@@ -562,3 +562,37 @@ export async function getDashboardStats(req: AuthenticatedRequest, res: Response
     res.status(500).json({ error: 'Internal server error' });
   }
 }
+
+export async function getRecentCompletedAttempts(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const adminId = req.admin!.id;
+    const limit = Math.min(parseInt(req.query.limit as string, 10) || 20, 50);
+
+    const attempts = await prisma.testAttempt.findMany({
+      where: {
+        test: { adminId },
+        status: { in: ['submitted', 'auto_submitted'] },
+        submittedAt: { not: null }
+      },
+      include: {
+        candidate: { select: { name: true, email: true } },
+        test: { select: { id: true, name: true } }
+      },
+      orderBy: { submittedAt: 'desc' },
+      take: limit
+    });
+
+    res.json({
+      attempts: attempts.map((attempt) => ({
+        id: attempt.id,
+        status: attempt.status,
+        submittedAt: attempt.submittedAt,
+        candidate: attempt.candidate,
+        test: attempt.test
+      }))
+    });
+  } catch (error) {
+    console.error('Get recent completed attempts error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
