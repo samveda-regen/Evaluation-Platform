@@ -121,6 +121,9 @@ export const adminApi = {
   getDashboard: () =>
     api.get('/admin/dashboard'),
 
+  getRecentCompletedAttempts: (limit = 20) =>
+    api.get(`/admin/attempts/completed/recent?limit=${limit}`),
+
   getInvitationDashboard: () =>
     api.get('/admin/invitations/dashboard'),
 
