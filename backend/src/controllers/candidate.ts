@@ -14,6 +14,7 @@ import {
 } from '../services/invitationService.js';
 import { uploadSnapshot } from '../services/fileStorageService.js';
 import { parseStoredCustomAIViolationEvents } from '../utils/proctoringConfig.js';
+import { sendCandidateScoreWebhook } from '../services/candidateScoreWebhookService.js';
 
 export async function candidateLogin(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -1334,6 +1335,11 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
     }
 
     // Execute all database updates in a transaction for consistency
+    const attemptStatus = autoSubmit ? 'auto_submitted' : 'submitted';
+    const webhookStatus = attemptStatus === 'submitted' || attemptStatus === 'auto_submitted'
+      ? 'completed'
+      : attemptStatus;
+
     await prisma.$transaction([
       // Batch update MCQ answers
       ...mcqUpdates.map(update =>
@@ -1353,7 +1359,7 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
       prisma.testAttempt.update({
         where: { id: attemptId },
         data: {
-          status: autoSubmit ? 'auto_submitted' : 'submitted',
+          status: attemptStatus,
           endTime: new Date(),
           submittedAt: new Date(),
           score: totalScore
@@ -1390,6 +1396,14 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
 
     emitToTestProctorRoom(testId, 'test-submitted', submissionPayload);
     emitToAdminRoom(test.adminId, 'test-submitted', submissionPayload);
+
+    void sendCandidateScoreWebhook({
+      name: attempt.candidate?.name ?? 'Unknown',
+      emailid: attempt.candidate?.email ?? '',
+      score: totalScore,
+      testid: testId,
+      status: webhookStatus,
+    });
   } catch (error) {
     console.error('Submit test error:', error);
     res.status(500).json({ error: 'Internal server error' });
