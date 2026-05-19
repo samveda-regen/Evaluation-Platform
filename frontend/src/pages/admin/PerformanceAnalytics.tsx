@@ -69,6 +69,97 @@ interface TestAnalytics {
   scoreDistribution: Record<string, number>;
 }
 
+type ChartDatum = {
+  label: string;
+  value: number;
+  sublabel?: string;
+  colorClass?: string;
+};
+
+const clampPercent = (value: number) => Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
+
+const hasChartData = (items: ChartDatum[]) => items.some((item) => item.value > 0);
+
+function BarChart({
+  items,
+  emptyMessage,
+}: {
+  items: ChartDatum[];
+  emptyMessage: string;
+}) {
+  const maxValue = Math.max(...items.map((item) => item.value), 0);
+
+  return (
+    <div className="relative min-h-[260px] rounded-lg border border-slate-100 bg-slate-50/60 px-5 pb-5 pt-4">
+      <div className="absolute inset-x-5 top-8 bottom-16 grid grid-rows-4">
+        {[0, 1, 2, 3].map((line) => (
+          <div key={line} className="border-t border-slate-200" />
+        ))}
+      </div>
+      {!hasChartData(items) && (
+        <div className="absolute inset-x-0 top-20 z-10 text-center text-sm text-slate-500">
+          {emptyMessage}
+        </div>
+      )}
+      <div className="relative z-20 flex h-56 items-end gap-4">
+        {items.map((item) => {
+          const height = maxValue > 0 ? Math.max(8, (item.value / maxValue) * 170) : 4;
+          return (
+            <div key={item.label} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+              <div className="flex h-[178px] w-full items-end justify-center">
+                <div
+                  className={`w-full max-w-[72px] rounded-t-lg ${item.colorClass || 'bg-blue-500'} shadow-sm transition-all`}
+                  style={{ height: `${height}px`, opacity: item.value > 0 ? 1 : 0.35 }}
+                  title={`${item.label}: ${item.value}`}
+                />
+              </div>
+              <div className="min-h-[40px] text-center">
+                <p className="truncate text-sm font-semibold text-slate-800">{item.label}</p>
+                <p className="text-xs text-slate-500">{item.sublabel ?? item.value}</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function HorizontalMetricChart({
+  items,
+  emptyMessage,
+}: {
+  items: ChartDatum[];
+  emptyMessage: string;
+}) {
+  return (
+    <div className="space-y-4">
+      {!hasChartData(items) && (
+        <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
+          {emptyMessage}
+        </div>
+      )}
+      {items.map((item) => (
+        <div key={item.label} className="rounded-lg border border-slate-200 bg-white p-4">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-slate-900">{item.label}</p>
+              {item.sublabel && <p className="text-xs text-slate-500">{item.sublabel}</p>}
+            </div>
+            <span className="text-sm font-bold text-slate-900">{item.value.toFixed(1)}%</span>
+          </div>
+          <div className="h-2 rounded-full bg-slate-100">
+            <div
+              className={`h-2 rounded-full ${item.colorClass || 'bg-blue-500'}`}
+              style={{ width: `${clampPercent(item.value)}%` }}
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function PerformanceAnalytics() {
   const { testId } = useParams<{ testId: string }>();
   const navigate = useNavigate();
@@ -98,8 +189,8 @@ export default function PerformanceAnalytics() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [testRes, diffRes, topicRes, skillRes, comparisonRes] = await Promise.all([
-        api.get(`/analytics/test/${testId}`),
+      const testRes = await api.get(`/analytics/test/${testId}`);
+      const [diffRes, topicRes, skillRes, comparisonRes] = await Promise.all([
         api.get(`/analytics/test/${testId}/difficulty`),
         api.get(`/analytics/test/${testId}/topics`),
         api.get(`/analytics/test/${testId}/skills`),
@@ -162,6 +253,84 @@ export default function PerformanceAnalytics() {
       const bVal = b[sortBy] ?? 0;
       return sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
     });
+
+  const scoreDistributionItems: ChartDatum[] = Object.entries(testAnalytics?.scoreDistribution || {})
+    .sort((a, b) => {
+      const aStart = parseInt(a[0].split('-')[0], 10);
+      const bStart = parseInt(b[0].split('-')[0], 10);
+      return aStart - bStart;
+    })
+    .map(([range, count]) => ({
+      label: range,
+      value: count,
+      sublabel: `${count} candidate${count === 1 ? '' : 's'}`,
+      colorClass: 'bg-blue-600',
+    }));
+
+  const difficultyItems: ChartDatum[] = difficultyAnalysis
+    ? (['easy', 'medium', 'hard'] as const).map((level) => {
+        const colorClass = {
+          easy: 'bg-emerald-500',
+          medium: 'bg-amber-500',
+          hard: 'bg-red-500',
+        }[level];
+        const label = level.charAt(0).toUpperCase() + level.slice(1);
+
+        return {
+          label,
+          value: difficultyAnalysis[level].avgAccuracy,
+          sublabel: `${difficultyAnalysis[level].totalCorrect}/${difficultyAnalysis[level].totalQuestions} correct`,
+          colorClass,
+        };
+      })
+    : [];
+
+  const topicItems: ChartDatum[] = topicAnalysis.map((topic) => ({
+    label: topic.topic,
+    value: topic.avgAccuracy,
+    sublabel: `${topic.totalCorrect}/${topic.totalQuestions} correct across ${topic.candidateCount} candidate${topic.candidateCount === 1 ? '' : 's'}`,
+    colorClass: topic.avgAccuracy >= 70 ? 'bg-emerald-500' : topic.avgAccuracy >= 50 ? 'bg-amber-500' : 'bg-red-500',
+  }));
+
+  const skillItems: ChartDatum[] = skillAnalysis.map((skill) => ({
+    label: skill.skill,
+    value: skill.avgAccuracy,
+    sublabel: `${skill.totalCorrect}/${skill.totalQuestions} correct across ${skill.candidateCount} candidate${skill.candidateCount === 1 ? '' : 's'}`,
+    colorClass: skill.avgAccuracy >= 70 ? 'bg-emerald-500' : skill.avgAccuracy >= 50 ? 'bg-amber-500' : 'bg-red-500',
+  }));
+
+  const insightCards = testAnalytics
+    ? [
+        {
+          label: 'Score Health',
+          value:
+            testAnalytics.averageScore > 0
+              ? `Average score is ${testAnalytics.averageScore.toFixed(1)}, with a ${testAnalytics.passRate.toFixed(1)}% pass rate.`
+              : 'No scored performance yet. Charts will become more informative after evaluated submissions.',
+        },
+        {
+          label: 'Integrity Signal',
+          value:
+            testAnalytics.averageTrustScore > 0
+              ? `Average trust score is ${testAnalytics.averageTrustScore.toFixed(0)}%, with ${testAnalytics.flaggedAttempts} flagged attempt${testAnalytics.flaggedAttempts === 1 ? '' : 's'}.`
+              : 'No proctoring trust score has been recorded for these attempts yet.',
+        },
+        {
+          label: 'Focus Area',
+          value:
+            difficultyItems.length > 0
+              ? `${difficultyItems.reduce((lowest, item) => (item.value < lowest.value ? item : lowest), difficultyItems[0]).label} questions need the most attention based on current accuracy.`
+              : 'Difficulty insights will appear after attempt analytics are generated.',
+        },
+      ]
+    : [];
+
+  const comparisonChartItems: ChartDatum[] = filteredComparison.slice(0, 8).map((candidate) => ({
+    label: candidate.candidateName || candidate.candidateEmail,
+    value: candidate.percentage || 0,
+    sublabel: `${(candidate.percentage || 0).toFixed(0)}% score`,
+    colorClass: (candidate.percentage || 0) >= 70 ? 'bg-emerald-500' : (candidate.percentage || 0) >= 40 ? 'bg-amber-500' : 'bg-red-500',
+  }));
 
   if (loading) {
     return (
@@ -239,6 +408,24 @@ export default function PerformanceAnalytics() {
               </div>
             </div>
 
+            <div className="rounded-xl border border-blue-100 bg-white p-6 shadow-sm">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">AI Performance Summary</h2>
+                  <p className="text-sm text-slate-500">Generated from score, difficulty, and proctoring signals.</p>
+                </div>
+                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">Live insights</span>
+              </div>
+              <div className="grid gap-4 md:grid-cols-3">
+                {insightCards.map((insight) => (
+                  <div key={insight.label} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-sm font-semibold text-slate-900">{insight.label}</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">{insight.value}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Score Statistics */}
             <div className="card">
               <h2 className="text-lg font-semibold mb-4">Score Statistics</h2>
@@ -267,33 +454,16 @@ export default function PerformanceAnalytics() {
             </div>
 
             {/* Score Distribution Chart */}
-            {testAnalytics.scoreDistribution && Object.keys(testAnalytics.scoreDistribution).length > 0 && (
-              <div className="card">
-                <h2 className="text-lg font-semibold mb-4">Score Distribution</h2>
-                <div className="flex items-end gap-2 h-48">
-                  {Object.entries(testAnalytics.scoreDistribution)
-                    .sort((a, b) => {
-                      const aStart = parseInt(a[0].split('-')[0]);
-                      const bStart = parseInt(b[0].split('-')[0]);
-                      return aStart - bStart;
-                    })
-                    .map(([range, count]) => {
-                      const maxCount = Math.max(...Object.values(testAnalytics.scoreDistribution));
-                      const height = (count / maxCount) * 100;
-                      return (
-                        <div key={range} className="flex-1 flex flex-col items-center">
-                          <div
-                            className="w-full bg-primary-500 rounded-t transition-all hover:bg-primary-600"
-                            style={{ height: `${height}%` }}
-                            title={`${count} candidates`}
-                          />
-                          <span className="text-xs text-gray-500 mt-1">{range}</span>
-                        </div>
-                      );
-                    })}
-                </div>
+            <div className="card">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-lg font-semibold">Score Distribution</h2>
+                <span className="text-sm text-slate-500">{testAnalytics.totalAttempts} attempt{testAnalytics.totalAttempts === 1 ? '' : 's'}</span>
               </div>
-            )}
+              <BarChart
+                items={scoreDistributionItems.length > 0 ? scoreDistributionItems : [{ label: '0-9', value: 0, sublabel: '0 candidates', colorClass: 'bg-blue-600' }]}
+                emptyMessage="No scored submissions are available for distribution yet."
+              />
+            </div>
           </div>
         )}
 
@@ -344,96 +514,53 @@ export default function PerformanceAnalytics() {
             </div>
 
             <div className="card">
-              <h3 className="text-lg font-semibold mb-4">Difficulty Comparison</h3>
-              <div className="flex items-end gap-8 h-48 justify-center">
-                {(['easy', 'medium', 'hard'] as const).map(level => {
-                  const data = difficultyAnalysis[level];
-                  const colors = {
-                    easy: 'bg-green-500',
-                    medium: 'bg-yellow-500',
-                    hard: 'bg-red-500',
-                  };
-                  return (
-                    <div key={level} className="flex flex-col items-center">
-                      <div
-                        className={`w-20 ${colors[level]} rounded-t transition-all`}
-                        style={{ height: `${data.avgAccuracy * 1.5}px` }}
-                      />
-                      <span className="text-sm font-medium mt-2 capitalize">{level}</span>
-                      <span className="text-xs text-gray-500">{data.avgAccuracy.toFixed(1)}%</span>
-                    </div>
-                  );
-                })}
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-lg font-semibold">Difficulty Comparison</h3>
+                <span className="text-sm text-slate-500">{difficultyAnalysis.totalAttempts} analyzed attempt{difficultyAnalysis.totalAttempts === 1 ? '' : 's'}</span>
               </div>
+              <BarChart
+                items={difficultyItems.map((item) => ({
+                  ...item,
+                  sublabel: `${item.value.toFixed(1)}% - ${item.sublabel}`,
+                }))}
+                emptyMessage="Difficulty data exists, but no correct answers have been recorded yet."
+              />
             </div>
           </div>
         )}
 
         {/* Topics Tab */}
         {activeTab === 'topics' && (
-          <div className="card">
-            <h2 className="text-lg font-semibold mb-4">Topic-wise Performance</h2>
+          <div className="card space-y-6">
+            <div>
+              <h2 className="text-lg font-semibold">Topic-wise Performance</h2>
+              <p className="text-sm text-slate-500">Accuracy by topic across submitted attempts.</p>
+            </div>
             {topicAnalysis.length === 0 ? (
               <p className="text-gray-500 text-center py-8">No topic data available</p>
             ) : (
-              <div className="space-y-4">
-                {topicAnalysis.map(topic => (
-                  <div key={topic.topic} className="border rounded-lg p-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <h3 className="font-medium">{topic.topic}</h3>
-                      <span className={`font-bold ${topic.avgAccuracy >= 70 ? 'text-green-600' : topic.avgAccuracy >= 50 ? 'text-yellow-600' : 'text-red-600'}`}>
-                        {topic.avgAccuracy.toFixed(1)}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
-                      <div
-                        className={`h-2 rounded-full ${topic.avgAccuracy >= 70 ? 'bg-green-500' : topic.avgAccuracy >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                        style={{ width: `${topic.avgAccuracy}%` }}
-                      />
-                    </div>
-                    <div className="flex justify-between text-sm text-gray-500">
-                      <span>{topic.totalCorrect} / {topic.totalQuestions} correct</span>
-                      <span>{topic.candidateCount} candidates</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+              <HorizontalMetricChart
+                items={topicItems}
+                emptyMessage="Topic analytics are available, but no correct answers have been recorded yet."
+              />
             )}
           </div>
         )}
 
         {/* Skills Tab */}
         {activeTab === 'skills' && (
-          <div className="card">
-            <h2 className="text-lg font-semibold mb-4">Skill-wise Performance</h2>
+          <div className="card space-y-6">
+            <div>
+              <h2 className="text-lg font-semibold">Skill-wise Performance</h2>
+              <p className="text-sm text-slate-500">Accuracy by tags and skills detected from question metadata.</p>
+            </div>
             {skillAnalysis.length === 0 ? (
               <p className="text-gray-500 text-center py-8">No skill data available</p>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {skillAnalysis.map(skill => (
-                  <div key={skill.skill} className="border rounded-lg p-4">
-                    <div className="flex justify-between items-center mb-2">
-                      <h3 className="font-medium">{skill.skill}</h3>
-                      <span className={`px-2 py-1 rounded text-sm font-medium ${
-                        skill.avgAccuracy >= 70 ? 'bg-green-100 text-green-700' :
-                        skill.avgAccuracy >= 50 ? 'bg-yellow-100 text-yellow-700' :
-                        'bg-red-100 text-red-700'
-                      }`}>
-                        {skill.avgAccuracy.toFixed(0)}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-1.5">
-                      <div
-                        className={`h-1.5 rounded-full ${skill.avgAccuracy >= 70 ? 'bg-green-500' : skill.avgAccuracy >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                        style={{ width: `${skill.avgAccuracy}%` }}
-                      />
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">
-                      {skill.totalCorrect}/{skill.totalQuestions} across {skill.candidateCount} candidates
-                    </p>
-                  </div>
-                ))}
-              </div>
+              <HorizontalMetricChart
+                items={skillItems}
+                emptyMessage="Skill analytics are available, but no correct answers have been recorded yet."
+              />
             )}
           </div>
         )}
@@ -486,6 +613,19 @@ export default function PerformanceAnalytics() {
               <span className="text-sm text-gray-500 ml-auto">
                 Showing {filteredComparison.length} of {comparison.length} candidates
               </span>
+            </div>
+
+            <div className="card">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">Candidate Score Comparison</h2>
+                  <p className="text-sm text-slate-500">Top visible candidates based on the current filters.</p>
+                </div>
+              </div>
+              <BarChart
+                items={comparisonChartItems.length > 0 ? comparisonChartItems : [{ label: 'No candidates', value: 0, sublabel: '0% score', colorClass: 'bg-slate-400' }]}
+                emptyMessage="No candidate scores match the selected filters."
+              />
             </div>
 
             {/* Comparison Table */}
