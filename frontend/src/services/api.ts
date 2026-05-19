@@ -131,8 +131,18 @@ export const adminApi = {
   createTest: (data: Record<string, unknown>) =>
     api.post('/admin/tests', data),
 
-  getTests: (page = 1, limit = 10) =>
-    api.get(`/admin/tests?page=${page}&limit=${limit}`),
+  getTests: (page = 1, limit = 10, search = '') => {
+    const params = new URLSearchParams({
+      page: String(page),
+      limit: String(limit),
+    });
+
+    if (search.trim()) {
+      params.set('search', search.trim());
+    }
+
+    return api.get(`/admin/tests?${params.toString()}`);
+  },
 
   getTest: (testId: string) =>
     api.get(`/admin/tests/${testId}`),
