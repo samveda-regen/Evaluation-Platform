@@ -106,3 +106,209 @@ body {
     @apply bg-blue-100 text-blue-800;
   }
 }
+
+/* Dark admin exam-portal theme */
+.admin-dark {
+  color: #dbeafe;
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.18), transparent 32rem),
+    linear-gradient(180deg, #08111f 0%, #0b1220 45%, #0f172a 100%);
+}
+
+.admin-dark main {
+  background: transparent;
+}
+
+.admin-dark .bg-slate-50,
+.admin-dark .bg-gray-50 {
+  background-color: transparent;
+}
+
+.admin-dark .bg-white,
+.admin-dark .card {
+  background-color: #111827;
+  border: 1px solid #253248;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
+}
+
+.admin-dark .bg-slate-50\/60 {
+  background-color: rgba(15, 23, 42, 0.72);
+}
+
+.admin-dark .bg-white\/60,
+.admin-dark [class*="bg-white/60"],
+.admin-dark [class*="bg-[#f7f9fd]"] {
+  background-color: #162033;
+}
+
+.admin-dark .bg-blue-50\/60,
+.admin-dark [class*="bg-blue-50/60"] {
+  background-color: rgba(37, 99, 235, 0.18);
+}
+
+.admin-dark .bg-gray-100,
+.admin-dark .bg-slate-100,
+.admin-dark .bg-gray-200,
+.admin-dark .bg-slate-200 {
+  background-color: #1f2937;
+}
+
+.admin-dark .bg-gray-50,
+.admin-dark .bg-slate-50 {
+  background-color: #0f172a;
+}
+
+.admin-dark .text-slate-900,
+.admin-dark .text-gray-900,
+.admin-dark .text-gray-800,
+.admin-dark .text-slate-800,
+.admin-dark .text-gray-700,
+.admin-dark .text-slate-700 {
+  color: #f8fafc;
+}
+
+.admin-dark .text-slate-600,
+.admin-dark .text-gray-600,
+.admin-dark .text-slate-500,
+.admin-dark .text-gray-500 {
+  color: #94a3b8;
+}
+
+.admin-dark .text-slate-400,
+.admin-dark .text-gray-400 {
+  color: #64748b;
+}
+
+.admin-dark .border-slate-100,
+.admin-dark .border-slate-200,
+.admin-dark .border-gray-200,
+.admin-dark .border-gray-300,
+.admin-dark .border-slate-300 {
+  border-color: #253248;
+}
+
+.admin-dark .divide-gray-200 > :not([hidden]) ~ :not([hidden]),
+.admin-dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #253248;
+}
+
+.admin-dark .input,
+.admin-dark input,
+.admin-dark select,
+.admin-dark textarea {
+  border-color: #334155;
+  background-color: #0f172a;
+  color: #e2e8f0;
+  color-scheme: dark;
+}
+
+.admin-dark input[type="checkbox"] {
+  accent-color: #10b981;
+}
+
+.admin-dark input.bg-transparent,
+.admin-dark textarea.bg-transparent {
+  border-color: transparent;
+  background-color: transparent;
+}
+
+.admin-dark input::placeholder,
+.admin-dark textarea::placeholder {
+  color: #64748b;
+}
+
+.admin-dark .hover\:bg-slate-50:hover,
+.admin-dark .hover\:bg-gray-50:hover {
+  background-color: #172033;
+}
+
+.admin-dark .btn-secondary,
+.admin-dark button.bg-gray-200,
+.admin-dark a.bg-gray-200 {
+  background-color: #1f2937;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+}
+
+.admin-dark .btn-secondary:hover,
+.admin-dark button.bg-gray-200:hover,
+.admin-dark a.bg-gray-200:hover {
+  background-color: #273449;
+}
+
+.admin-dark table thead,
+.admin-dark thead tr {
+  background-color: #0f172a;
+}
+
+.admin-dark tr:hover {
+  background-color: #172033;
+}
+
+.admin-dark .rounded-2xl,
+.admin-dark .rounded-xl,
+.admin-dark .rounded-lg {
+  border-color: #253248;
+}
+
+.admin-dark .shadow-md,
+.admin-dark .shadow-lg,
+.admin-dark .shadow-sm {
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
+}
+
+.admin-dark .badge-success,
+.admin-dark .bg-green-100,
+.admin-dark .bg-emerald-50,
+.admin-dark .bg-emerald-100 {
+  background-color: rgba(16, 185, 129, 0.16);
+  color: #6ee7b7;
+}
+
+.admin-dark .badge-warning,
+.admin-dark .bg-yellow-100,
+.admin-dark .bg-amber-50,
+.admin-dark .bg-amber-100 {
+  background-color: rgba(245, 158, 11, 0.18);
+  color: #fcd34d;
+}
+
+.admin-dark .badge-danger,
+.admin-dark .bg-red-100,
+.admin-dark .bg-rose-50,
+.admin-dark .bg-rose-100,
+.admin-dark .badge-error {
+  background-color: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
+}
+
+.admin-dark .badge-info,
+.admin-dark .bg-blue-50,
+.admin-dark .bg-blue-100 {
+  background-color: rgba(37, 99, 235, 0.18);
+  color: #93c5fd;
+}
+
+.admin-dark .text-emerald-700,
+.admin-dark .text-emerald-600 {
+  color: #6ee7b7;
+}
+
+.admin-dark .text-blue-700,
+.admin-dark .text-blue-600 {
+  color: #93c5fd;
+}
+
+.admin-dark .text-rose-700,
+.admin-dark .text-rose-600,
+.admin-dark .text-red-700,
+.admin-dark .text-red-600 {
+  color: #fca5a5;
+}
+
+.admin-dark .text-amber-700,
+.admin-dark .text-amber-600,
+.admin-dark .text-yellow-700,
+.admin-dark .text-yellow-600 {
+  color: #fcd34d;
+}
