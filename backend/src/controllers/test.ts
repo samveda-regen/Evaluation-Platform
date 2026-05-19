@@ -234,11 +234,24 @@ export async function getTests(req: AuthenticatedRequest, res: Response): Promis
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
     const skip = (page - 1) * limit;
+    const where = {
+      adminId: req.admin!.id,
+      ...(search
+        ? {
+            OR: [
+              { name: { contains: search, mode: 'insensitive' as const } },
+              { description: { contains: search, mode: 'insensitive' as const } },
+              { testCode: { contains: search, mode: 'insensitive' as const } }
+            ]
+          }
+        : {})
+    };
 
     const [tests, total] = await Promise.all([
       prisma.test.findMany({
-        where: { adminId: req.admin!.id },
+        where,
         include: {
           _count: {
             select: {
@@ -251,7 +264,7 @@ export async function getTests(req: AuthenticatedRequest, res: Response): Promis
         skip,
         take: limit
       }),
-      prisma.test.count({ where: { adminId: req.admin!.id } })
+      prisma.test.count({ where })
     ]);
 
     res.json({
