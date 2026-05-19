@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
@@ -18,24 +18,51 @@ export default function TestList() {
   const [tests, setTests] = useState<Test[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
   const [selectedTestIds, setSelectedTestIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [selectedTestForInvites, setSelectedTestForInvites] = useState<Test | null>(null);
   const [invitationFile, setInvitationFile] = useState<File | null>(null);
   const [customMessage, setCustomMessage] = useState('');
   const [sendingInvitations, setSendingInvitations] = useState(false);
   const [invitationSummary, setInvitationSummary] = useState<InvitationSummary | null>(null);
+  const latestRequestIdRef = useRef(0);
+  const hasLoadedTestsRef = useRef(false);
   const ownerLabel = admin?.name || admin?.email || 'Admin';
 
   useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      const nextSearch = searchInput.trim();
+      setPage(1);
+      setAppliedSearch(nextSearch);
+    }, 350);
+
+    return () => clearTimeout(timeoutId);
+  }, [searchInput]);
+
+  useEffect(() => {
     loadTests();
-  }, [page]);
+  }, [page, appliedSearch]);
 
   const loadTests = async () => {
-    setLoading(true);
+    const requestId = latestRequestIdRef.current + 1;
+    latestRequestIdRef.current = requestId;
+
+    if (!hasLoadedTestsRef.current) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
+
     try {
-      const { data } = await adminApi.getTests(page);
+      const { data } = await adminApi.getTests(page, 10, appliedSearch);
+      if (latestRequestIdRef.current !== requestId) return;
+
+      hasLoadedTestsRef.current = true;
       setTests(data.tests);
       setPagination(data.pagination);
       setSelectedTestIds((prev) => {
@@ -48,10 +75,21 @@ export default function TestList() {
         return next;
       });
     } catch (error) {
-      toast.error('Failed to load tests');
+      if (latestRequestIdRef.current === requestId) {
+        toast.error('Failed to load tests');
+      }
     } finally {
-      setLoading(false);
+      if (latestRequestIdRef.current === requestId) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
+  };
+
+  const resetFilters = () => {
+    setSearchInput('');
+    setAppliedSearch('');
+    setPage(1);
   };
 
   const allSelected = tests.length > 0 && tests.every((test) => selectedTestIds.has(test.id));
@@ -118,6 +156,79 @@ export default function TestList() {
       await loadTests();
     } finally {
       setBulkDeleting(false);
+    }
+  };
+
+  const escapeCsvValue = (value: string | number | null | undefined) => {
+    const stringValue = value === null || value === undefined ? '' : String(value);
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  };
+
+  const downloadCsv = (rows: Test[]) => {
+    const headers = [
+      'Test Name',
+      'Description',
+      'Questions',
+      'Duration (minutes)',
+      'Owner',
+      'Start Date',
+      'Status',
+      'Not Attempted',
+      'Completed',
+      'To Evaluate',
+    ];
+
+    const csvRows = rows.map((test) => [
+      test.name,
+      test.description?.trim() || 'General',
+      test._count?.questions || 0,
+      test.duration,
+      ownerLabel,
+      format(new Date(test.startTime), 'yyyy/MM/dd'),
+      test.isActive ? 'Active' : 'Draft',
+      0,
+      test._count?.attempts || 0,
+      0,
+    ]);
+
+    const csvContent = [headers, ...csvRows]
+      .map((row) => row.map(escapeCsvValue).join(','))
+      .join('\n');
+    const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `tests-export-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExportTests = async () => {
+    setExporting(true);
+    try {
+      const limit = 100;
+      const { data } = await adminApi.getTests(1, limit, appliedSearch);
+      let testsToExport: Test[] = data.tests || [];
+      const totalPages = data.pagination?.totalPages || 1;
+
+      for (let nextPage = 2; nextPage <= totalPages; nextPage += 1) {
+        const pageResponse = await adminApi.getTests(nextPage, limit, appliedSearch);
+        testsToExport = [...testsToExport, ...(pageResponse.data.tests || [])];
+      }
+
+      if (testsToExport.length === 0) {
+        toast.error('No tests available to export');
+        return;
+      }
+
+      downloadCsv(testsToExport);
+      toast.success('Tests exported successfully');
+    } catch (error) {
+      toast.error('Failed to export tests');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -194,7 +305,11 @@ export default function TestList() {
               {bulkDeleting ? 'Deleting...' : `Delete Selected (${selectedTestIds.size})`}
             </button>
           )}
-          <button className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+          <button
+            onClick={handleExportTests}
+            disabled={exporting}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <path
                 d="M12 3v10m0 0l4-4m-4 4l-4-4M5 15v2a2 2 0 002 2h10a2 2 0 002-2v-2"
@@ -204,7 +319,7 @@ export default function TestList() {
                 strokeLinejoin="round"
               />
             </svg>
-            Export
+            {exporting ? 'Exporting...' : 'Export'}
           </button>
           <Link
             to="/admin/tests/agent"
@@ -233,32 +348,39 @@ export default function TestList() {
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
         </div>
-      ) : tests.length === 0 ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center">
-          <p className="text-slate-500 mb-4">No tests created yet</p>
-          <Link to="/admin/tests/new" className="btn btn-primary">
-            Create your first test
-          </Link>
-        </div>
       ) : (
         <>
           <div className="grid grid-cols-1 xl:grid-cols-[280px,1fr] gap-6">
             <aside className="rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M4 6h16M7 12h10M10 18h4"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                  />
-                </svg>
-                Filters
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-500">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M4 6h16M7 12h10M10 18h4"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </span>
+                  Filters
+                </div>
+                <button
+                  onClick={resetFilters}
+                  disabled={!searchInput && !appliedSearch}
+                  className="text-xs font-semibold text-emerald-600 hover:text-emerald-500 disabled:cursor-not-allowed disabled:text-slate-500"
+                >
+                  Reset all
+                </button>
               </div>
 
-              <div className="mt-4">
-                <label className="text-xs font-semibold text-slate-500">Search test</label>
-                <div className="mt-2 flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600">
+              <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Search test</label>
+                  {refreshing && <span className="text-[11px] font-medium text-emerald-500">Updating...</span>}
+                </div>
+                <div className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 focus-within:border-emerald-400 focus-within:ring-2 focus-within:ring-emerald-500/20">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                     <path
                       d="M21 21l-4.3-4.3m1.3-5.2a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z"
@@ -269,42 +391,28 @@ export default function TestList() {
                     />
                   </svg>
                   <input
+                    value={searchInput}
+                    onChange={(event) => setSearchInput(event.target.value)}
                     className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
                     placeholder="Search for a test.."
                   />
+                  {searchInput && (
+                    <button
+                      onClick={resetFilters}
+                      className="flex h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      aria-label="Clear search"
+                    >
+                      <span aria-hidden="true" className="text-lg leading-none">&times;</span>
+                    </button>
+                  )}
                 </div>
-              </div>
-
-              <div className="mt-4 space-y-3">
-                {['Labels', 'Owner', 'Role', 'Work Experience', 'Created At'].map((label) => (
-                  <button
-                    key={label}
-                    className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
-                  >
-                    <span>{label}</span>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M7 10l5 5 5-5"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
-                ))}
-              </div>
-
-              <div className="mt-4 flex items-center gap-2 text-sm text-slate-600">
-                <input type="checkbox" className="h-4 w-4 rounded border-slate-300" />
-                <span>Leaked Tests</span>
-                <span className="ml-auto inline-flex h-4 w-4 items-center justify-center rounded-full border border-slate-300 text-[10px] text-slate-500">
-                  i
-                </span>
+                <p className="mt-2 text-xs text-slate-500">
+                  Searches test name, description, and code.
+                </p>
               </div>
             </aside>
 
-            <section className="rounded-2xl border border-slate-200 bg-white">
+            <section className={`rounded-2xl border border-slate-200 bg-white transition-opacity ${refreshing ? 'opacity-70' : 'opacity-100'}`}>
               <div className="grid grid-cols-[minmax(320px,1fr)_110px_110px_110px_44px] gap-4 border-b border-slate-200 px-5 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
                 <span className="inline-flex items-center gap-2">
                   <input
@@ -323,7 +431,25 @@ export default function TestList() {
               </div>
 
               <div>
-                {tests.map((test) => (
+                {tests.length === 0 ? (
+                  <div className="px-6 py-14 text-center">
+                    <p className="text-sm text-slate-500">
+                      {appliedSearch ? 'No tests match your search.' : 'No tests created yet.'}
+                    </p>
+                    {appliedSearch ? (
+                      <button
+                        onClick={resetFilters}
+                        className="mt-4 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        Reset all
+                      </button>
+                    ) : (
+                      <Link to="/admin/tests/new" className="btn btn-primary mt-4 inline-flex">
+                        Create your first test
+                      </Link>
+                    )}
+                  </div>
+                ) : tests.map((test) => (
                   <div
                     key={test.id}
                     onClick={() => navigate(`/admin/tests/${test.id}`)}
