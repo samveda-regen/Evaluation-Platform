@@ -269,14 +269,17 @@ export default function AttemptDetails() {
                     return (
                       <div
                         key={optIdx}
-                        className={`p-2 rounded text-sm ${
-                          isCorrect ? 'bg-green-50 border border-green-200' :
-                          isSelected ? 'bg-red-50 border border-red-200' : 'bg-gray-50'
+                        className={`rounded-lg border p-3 text-sm ${
+                          isCorrect
+                            ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-100'
+                            : isSelected
+                              ? 'border-rose-500/40 bg-rose-500/15 text-rose-100'
+                              : 'border-slate-700 bg-slate-900/60 text-slate-200'
                         }`}
                       >
                         {isSelected && <span className="mr-2">✓</span>}
                         {opt}
-                        {isCorrect && <span className="ml-2 text-green-600">(Correct)</span>}
+                        {isCorrect && <span className="ml-2 text-emerald-300">(Correct)</span>}
                       </div>
                     );
                   })}
@@ -339,9 +342,9 @@ export default function AttemptDetails() {
                   </span>
                 </div>
                 <p className="text-sm text-gray-600 mb-3">{answer.description}</p>
-                <div className="bg-gray-50 border rounded-lg p-4">
+                <div className="rounded-lg border border-slate-700 bg-slate-900/60 p-4">
                   <p className="text-sm text-gray-500 mb-1">Candidate Response</p>
-                  <p className="whitespace-pre-wrap text-gray-800">
+                  <p className="whitespace-pre-wrap text-slate-100">
                     {answer.answerText || 'No response provided.'}
                   </p>
                 </div>
@@ -360,10 +363,10 @@ export default function AttemptDetails() {
               {activityLogs.map((log) => (
                 <div
                   key={log.id}
-                  className={`flex items-center gap-4 p-2 rounded ${
+                  className={`flex items-center gap-4 rounded border p-2 ${
                     ['tab_switch', 'focus_loss', 'fullscreen_exit'].includes(log.eventType)
-                      ? 'bg-red-50'
-                      : 'bg-gray-50'
+                      ? 'border-rose-500/30 bg-rose-500/15'
+                      : 'border-slate-700 bg-slate-900/60'
                   }`}
                 >
                   <span className="text-xs text-gray-500 w-40">
