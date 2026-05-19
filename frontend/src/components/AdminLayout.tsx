@@ -5,7 +5,7 @@ import { adminApi } from '../services/api';
 import { getRealtimeSocket } from '../services/realtimeService';
 
 const navItems = [
-  { path: '/admin/dashboard', label: 'Candidates', matchPrefix: '/admin/dashboard' },
+  { path: '/admin/dashboard', label: 'Dashboard', matchPrefix: '/admin/dashboard' },
   { path: '/admin/tests', label: 'Tests', matchPrefix: '/admin/tests' },
   { path: '/admin/repository/question-bank', label: 'Library', matchPrefix: '/admin/repository' },
   { path: '/admin/trust-reports', label: 'Insights', matchPrefix: '/admin/trust-reports' },
@@ -245,10 +245,10 @@ export default function AdminLayout() {
   const isActiveItem = (matchPrefix: string) => location.pathname.startsWith(matchPrefix);
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50">
-      <header className="sticky top-0 z-20 border-b border-[#111827] bg-[#0b1220] text-white">
+    <div className="admin-dark min-h-screen flex flex-col bg-[#08111f]">
+      <header className="sticky top-0 z-20 border-b border-slate-800 bg-[#07101e] text-white shadow-lg shadow-black/20">
         <div className="mx-auto flex w-full max-w-7xl items-center gap-6 px-6 py-3">
-          <Link to="/" className="flex items-center gap-2" aria-label="Home" title="Home">
+          <Link to="/admin/dashboard" className="flex items-center gap-2" aria-label="Dashboard" title="Dashboard">
             <div className="flex h-9 w-9 items-center justify-center rounded bg-emerald-500 text-xs font-bold text-[#0b1220]">
               R
             </div>
