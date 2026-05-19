@@ -507,6 +507,19 @@ export async function generatePerformanceEvaluation(attemptId: string): Promise<
  */
 export async function generateTestAnalytics(testId: string): Promise<void> {
   try {
+    const attemptsMissingAnalytics = await prisma.testAttempt.findMany({
+      where: {
+        testId,
+        status: { in: ['submitted', 'auto_submitted'] },
+        analytics: null,
+      },
+      select: { id: true },
+    });
+
+    for (const attempt of attemptsMissingAnalytics) {
+      await generatePerformanceEvaluation(attempt.id);
+    }
+
     const attempts = await prisma.testAttempt.findMany({
       where: {
         testId,
@@ -563,9 +576,11 @@ export async function generateTestAnalytics(testId: string): Promise<void> {
 
     const analytics = {
       totalAttempts: attempts.length,
-      completedAttempts: attempts.filter(a => a.status === 'submitted').length,
+      completedAttempts: attempts.filter(a => ['submitted', 'auto_submitted'].includes(a.status)).length,
       averageScore: scores.reduce((a, b) => a + b, 0) / scores.length,
-      medianScore: sortedScores[Math.floor(sortedScores.length / 2)],
+      medianScore: sortedScores.length % 2 === 0
+        ? (sortedScores[(sortedScores.length / 2) - 1] + sortedScores[sortedScores.length / 2]) / 2
+        : sortedScores[Math.floor(sortedScores.length / 2)],
       highestScore: Math.max(...scores),
       lowestScore: Math.min(...scores),
       passRate: (attempts.filter(a => (a.score || 0) >= (attempts[0]?.test?.passingMarks || 0)).length / attempts.length) * 100,
