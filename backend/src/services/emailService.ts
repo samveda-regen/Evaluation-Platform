@@ -21,7 +21,7 @@ interface SmtpConfiguration {
   zohoDataCenter: ZohoDataCenter;
 }
 
-type MailProvider = 'auto' | 'smtp' | 'sendgrid';
+type MailProvider = 'auto' | 'smtp' | 'sendgrid' | 'resend';
 type ZohoAccountType = 'personal' | 'organization';
 type ZohoDataCenter = 'us' | 'eu' | 'in' | 'au' | 'cn';
 interface SendGridConfiguration {
@@ -35,8 +35,8 @@ let cachedTransporter: { key: string; transporter: any } | null = null;
 
 function parseMailProvider(value: string | undefined): MailProvider {
   const normalized = (value || 'smtp').trim().toLowerCase();
-  if (normalized === 'smtp' || normalized === 'sendgrid' || normalized === 'auto') {
-    return normalized;
+  if (normalized === 'smtp' || normalized === 'sendgrid' || normalized === 'resend' || normalized === 'auto') {
+    return normalized as MailProvider;
   }
 
   console.warn(`Invalid MAIL_PROVIDER "${value}". Falling back to "auto".`);
@@ -44,11 +44,12 @@ function parseMailProvider(value: string | undefined): MailProvider {
 }
 
 function resolveProviderForAuto(): Exclude<MailProvider, 'auto'> {
-  const hasSendGridApiKey = Boolean(process.env.SENDGRID_API_KEY?.trim());
-  if (hasSendGridApiKey) {
+  if (process.env.RESEND_API_KEY?.trim()) {
+    return 'resend';
+  }
+  if (process.env.SENDGRID_API_KEY?.trim()) {
     return 'sendgrid';
   }
-
   return 'smtp';
 }
 
@@ -481,6 +482,64 @@ async function sendInvitationEmailViaSendGrid(payload: InvitationEmailPayload): 
   }
 }
 
+interface ResendConfiguration {
+  apiKey: string;
+  fromAddress: string;
+  timeoutMs: number;
+}
+
+function getResendConfiguration(): ResendConfiguration {
+  const apiKey = process.env.RESEND_API_KEY?.trim().replace(/\r/g, '') || '';
+  const fromAddress = (process.env.RESEND_FROM?.trim().replace(/\r/g, ''))
+    || (process.env.EMAIL_FROM?.trim().replace(/\r/g, ''))
+    || '';
+  const timeoutMs = parsePositiveInt(process.env.RESEND_TIMEOUT_MS, 12000);
+
+  if (!apiKey) {
+    throw new Error('Resend is not configured. Please set RESEND_API_KEY.');
+  }
+  if (!fromAddress) {
+    throw new Error('Resend "from" address is not configured. Please set RESEND_FROM or EMAIL_FROM.');
+  }
+
+  return { apiKey, fromAddress, timeoutMs };
+}
+
+async function sendInvitationEmailViaResend(payload: InvitationEmailPayload): Promise<void> {
+  const config = getResendConfiguration();
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      from: config.fromAddress,
+      to: [payload.to],
+      subject: 'AI Developer Assessment – ReGen',
+      text: buildInvitationBody(payload),
+      html: buildInvitationHtml(payload)
+    }),
+    signal: AbortSignal.timeout(config.timeoutMs)
+  });
+
+  if (!response.ok) {
+    const raw = await response.text();
+    let detail = raw.slice(0, 600);
+    try {
+      const parsed = JSON.parse(raw) as { message?: string; name?: string };
+      if (parsed.message) detail = parsed.message;
+    } catch {
+      // use raw text
+    }
+    throw new Error(`Resend send failed (${response.status}): ${detail}`);
+  }
+
+  const result = await response.json() as { id?: string };
+  console.log('Email sent via Resend:', result.id);
+}
+
 export async function sendInvitationEmail(payload: InvitationEmailPayload): Promise<void> {
   const provider = getMailProvider();
   const resolvedProvider = provider === 'auto' ? resolveProviderForAuto() : provider;
@@ -488,6 +547,11 @@ export async function sendInvitationEmail(payload: InvitationEmailPayload): Prom
   try {
     if (provider === 'auto') {
       console.warn(`MAIL_PROVIDER=auto resolved to ${resolvedProvider}.`);
+    }
+
+    if (resolvedProvider === 'resend') {
+      await sendInvitationEmailViaResend(payload);
+      return;
     }
 
     if (resolvedProvider === 'sendgrid') {
