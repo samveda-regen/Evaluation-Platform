@@ -127,7 +127,7 @@ export default function TestComplete() {
         className="w-full max-w-md bg-white rounded-2xl shadow-sm mb-4 overflow-hidden"
         style={{ border: '1px solid #E5E7EB' }}
       >
-        <div className="grid grid-cols-3 divide-x" style={{ divideColor: '#E5E7EB' }}>
+        <div className="grid grid-cols-3">
           {/* Answered */}
           <div className="flex flex-col items-center py-6 px-4 gap-2">
             <svg
