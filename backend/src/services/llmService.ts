@@ -38,7 +38,7 @@ export async function callLLM(
 
   const finalConfig: LLMConfig = {
     provider: provider as 'openai' | 'anthropic',
-    model: config?.model || (provider === 'anthropic' ? 'claude-sonnet-4-20250514' : 'gpt-4o-mini'),
+    model: config?.model || (provider === 'anthropic' ? 'claude-sonnet-4-6' : 'gpt-4o-mini'),
     apiKey,
     maxTokens: config?.maxTokens || defaultConfig.maxTokens!,
     temperature: config?.temperature ?? defaultConfig.temperature!
