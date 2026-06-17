@@ -12,7 +12,7 @@ import {
   createCodingValidation,
   paginationValidation
 } from '../middleware/validation.js';
-import { registerAdmin, loginAdmin, getAdminProfile } from '../controllers/adminAuth.js';
+import { registerAdmin, loginAdmin, getAdminProfile, updateAdminProfile, changeAdminPassword } from '../controllers/adminAuth.js';
 import {
   createTest,
   createAdminPreviewAttempt,
@@ -25,7 +25,9 @@ import {
   addQuestionToTest,
   addCustomQuestionToTest,
   removeQuestionFromTest,
-  reorderTestQuestions
+  reorderTestQuestions,
+  getEmailTemplates,
+  updateEmailTemplates,
 } from '../controllers/test.js';
 import {
   createMCQQuestion,
@@ -46,7 +48,8 @@ import {
   reEvaluateAttempt,
   exportResults,
   getDashboardStats,
-  getRecentCompletedAttempts
+  getRecentCompletedAttempts,
+  getAllAttempts
 } from '../controllers/results.js';
 import { getTrustReports, reEvaluateTrustReport } from '../controllers/trustReports.js';
 import {
@@ -73,6 +76,12 @@ import {
   updateCustomCoding,
   updateCustomBehavioral
 } from '../controllers/repository.js';
+import {
+  getNotifications,
+  markAllRead,
+  clearAllNotifications,
+  deleteOneNotification,
+} from '../controllers/notifications.js';
 const router = Router();
 const invitationUpload = multer({
   storage: multer.memoryStorage(),
@@ -85,6 +94,8 @@ const invitationUpload = multer({
 router.post('/register', adminRegisterValidation, handleValidationErrors, registerAdmin);
 router.post('/login', adminLoginValidation, handleValidationErrors, loginAdmin);
 router.get('/profile', adminAuth, getAdminProfile);
+router.put('/profile', adminAuth, updateAdminProfile);
+router.put('/change-password', adminAuth, changeAdminPassword);
 
 // Dashboard
 router.get('/dashboard', adminAuth, getDashboardStats);
@@ -103,6 +114,10 @@ router.get('/tests/:testId/invitations', adminAuth, getTestInvitationDashboard);
 router.delete('/tests/:testId/invitations/:invitationId', adminAuth, deleteTestInvitationCandidate);
 router.post('/tests/:testId/sections', adminAuth, createTestSection);
 router.delete('/tests/:testId/sections/:sectionId', adminAuth, deleteTestSection);
+
+// Email templates
+router.get('/tests/:testId/email-templates', adminAuth, getEmailTemplates);
+router.put('/tests/:testId/email-templates', adminAuth, updateEmailTemplates);
 
 // Test questions management
 router.post('/tests/:testId/questions', adminAuth, addQuestionToTest);
@@ -124,6 +139,7 @@ router.delete('/coding/:questionId', adminAuth, deleteCodingQuestion);
 router.get('/behavioral', adminAuth, paginationValidation, handleValidationErrors, getBehavioralQuestions);
 
 // Results routes
+router.get('/attempts', adminAuth, getAllAttempts);
 router.get('/tests/:testId/results', adminAuth, paginationValidation, handleValidationErrors, getTestResults);
 router.get('/attempts/:attemptId', adminAuth, getAttemptDetails);
 router.post('/attempts/:attemptId/flag', adminAuth, flagAttempt);
@@ -189,5 +205,11 @@ router.put('/repository/custom/:questionId/disable', adminAuth, async (req, res)
 });
 
 router.delete('/repository/custom/:questionId', adminAuth, deleteRepositoryQuestion);
+
+// Notifications
+router.get('/notifications', adminAuth, getNotifications);
+router.post('/notifications/read-all', adminAuth, markAllRead);
+router.delete('/notifications', adminAuth, clearAllNotifications);
+router.delete('/notifications/:id', adminAuth, deleteOneNotification);
 
 export default router;

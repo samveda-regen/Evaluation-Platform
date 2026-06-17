@@ -350,7 +350,7 @@ export async function sendBulkTestInvitations(input: {
   file: Express.Multer.File;
   customMessage?: string;
 }): Promise<SendInvitationSummary> {
-  const test = await prisma.test.findFirst({
+  const test = await (prisma.test as any).findFirst({
     where: {
       id: input.testId,
       adminId: input.adminId
@@ -359,7 +359,11 @@ export async function sendBulkTestInvitations(input: {
       id: true,
       name: true,
       isActive: true,
-      endTime: true
+      endTime: true,
+      duration: true,
+      inviteEmailSubject: true,
+      inviteEmailBody: true,
+      admin: { select: { company: { select: { name: true } } } }
     }
   });
 
@@ -376,7 +380,6 @@ export async function sendBulkTestInvitations(input: {
   }
 
   const { rows, invalidRows } = await parseInvitationFile(input.file);
-  const sanitizedCustomMessage = input.customMessage ? sanitizeInput(input.customMessage.trim()) : undefined;
 
   let sent = 0;
   let failed = invalidRows;
@@ -422,7 +425,10 @@ export async function sendBulkTestInvitations(input: {
           candidateName: row.name,
           testName: test.name,
           testLink: buildInviteLink(invitation.token),
-          customMessage: sanitizedCustomMessage
+          companyName: (test as any).admin?.company?.name ?? undefined,
+          estimatedTime: `${(test as any).duration ?? ''} minutes`,
+          inviteEmailSubject: (test as any).inviteEmailSubject ?? undefined,
+          inviteEmailBody: (test as any).inviteEmailBody ?? undefined,
         }, row.email);
 
         await prisma.testInvitation.update({
@@ -503,13 +509,17 @@ export async function sendStructuredTestInvitations(input: {
   candidates: StructuredInvitationCandidate[];
   customMessage?: string;
 }): Promise<StructuredInvitationSummary> {
-  const test = await prisma.test.findUnique({
+  const test = await (prisma.test as any).findUnique({
     where: { id: input.testId },
     select: {
       id: true,
       name: true,
       isActive: true,
-      endTime: true
+      endTime: true,
+      duration: true,
+      inviteEmailSubject: true,
+      inviteEmailBody: true,
+      admin: { select: { company: { select: { name: true } } } }
     }
   });
 
@@ -542,7 +552,6 @@ export async function sendStructuredTestInvitations(input: {
     throw new InvitationServiceError('No valid candidates supplied.', 400);
   }
 
-  const customMessage = input.customMessage ? sanitizeInput(input.customMessage.trim()) : undefined;
   const results: StructuredInvitationSummary['results'] = [];
   let sent = 0;
   let failed = 0;
@@ -584,7 +593,10 @@ export async function sendStructuredTestInvitations(input: {
         candidateName: row.name,
         testName: test.name,
         testLink: buildInviteLink(invitation.token),
-        customMessage,
+        companyName: (test as any).admin?.company?.name ?? undefined,
+        estimatedTime: `${(test as any).duration ?? ''} minutes`,
+        inviteEmailSubject: (test as any).inviteEmailSubject ?? undefined,
+        inviteEmailBody: (test as any).inviteEmailBody ?? undefined,
       }, row.email);
 
       await prisma.testInvitation.update({

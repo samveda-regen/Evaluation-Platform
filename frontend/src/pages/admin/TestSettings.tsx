@@ -1,498 +1,721 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
-import { useAuthStore } from '../../context/authStore';
 import { Test } from '../../types';
+import { ChevronRight, Calendar, Pencil, Check, Trash2 } from 'lucide-react';
 
-type SettingsState = {
-  proctorEnabled: boolean;
-  requireCamera: boolean;
-  requireMicrophone: boolean;
-  requireScreenShare: boolean;
+type Panel = 'general' | 'access' | 'behavior' | 'grading' | 'email' | 'danger';
+
+type EmailTab = 'invite' | 'confirm';
+
+interface EmailTemplates {
+  inviteEmailSubject: string;
+  inviteEmailBody: string;
+  confirmEmailSubject: string;
+  confirmEmailBody: string;
+}
+
+const AVAILABLE_VARS = [
+  { key: '{{candidate_name}}', desc: 'Candidate full name' },
+  { key: '{{test_name}}',      desc: 'Name of the test' },
+  { key: '{{company_name}}',   desc: 'Your company name' },
+  { key: '{{estimated_time}}', desc: 'Test duration' },
+  { key: '{{test_link}}',      desc: 'Invite URL (invite email only)' },
+];
+
+interface FormState {
+  /* General */
+  name: string;
+  description: string;
+  category: string;
+  language: string;
+  /* Access & scheduling */
+  startTime: string;
+  endTime: string;
+  requireInvitationLink: boolean;
+  limitToOneAttempt: boolean;
   requireIdVerification: boolean;
+  allowAccessCode: boolean;
+  /* Test behavior */
   shuffleQuestions: boolean;
   shuffleOptions: boolean;
-  allowMultipleAttempts: boolean;
-};
+  allowBackNavigation: boolean;
+  showTimer: boolean;
+  autoSubmitOnTimeout: boolean;
+  negativeMarkingEnabled: boolean;
+  /* Results & grading */
+  passingScorePercent: number;
+  gradingMode: string;
+  showScoreToCandidate: boolean;
+  sendResultEmail: boolean;
+  includeAnswerReview: boolean;
+  /* Internal */
+  totalMarks: number;
+  negativeMarking: number;
+}
 
-const defaultSettings: SettingsState = {
-  proctorEnabled: true,
-  requireCamera: true,
-  requireMicrophone: true,
-  requireScreenShare: false,
-  requireIdVerification: false,
-  shuffleQuestions: false,
-  shuffleOptions: false,
-  allowMultipleAttempts: false
-};
+const CATEGORIES = [
+  'Back-End Developer','Front-End Developer','Full-Stack Developer',
+  'Data Analyst','Data Scientist','DevOps Engineer','Mobile Developer',
+  'QA Engineer','Product Manager','UI/UX Designer',
+];
+const LANGUAGES = ['English','Spanish','German','French','Portuguese','Hindi'];
 
-type TryTestResponse = {
-  token: string;
-  candidate: {
-    id: string;
-    email: string;
-    name: string;
+function fmtForInput(iso?: string | null): string {
+  if (!iso) return '';
+  try { return new Date(iso).toISOString().slice(0,16); } catch { return ''; }
+}
+
+function toFormState(t: Test): FormState {
+  const ext = t as unknown as Record<string, unknown>;
+  const totalMarks = t.totalMarks ?? 100;
+  const passingMarks = t.passingMarks ?? 40;
+  return {
+    name:               t.name ?? '',
+    description:        t.description ?? '',
+    category:           (ext.category as string) ?? 'Back-End Developer',
+    language:           (ext.language as string) ?? 'English',
+    startTime:          fmtForInput(t.startTime),
+    endTime:            fmtForInput(t.endTime),
+    requireInvitationLink: (ext.requireInvitationLink as boolean) ?? true,
+    limitToOneAttempt:     !(t.allowMultipleAttempts ?? false),
+    requireIdVerification: t.requireIdVerification ?? false,
+    allowAccessCode:       (ext.allowAccessCode as boolean) ?? false,
+    shuffleQuestions:      t.shuffleQuestions ?? false,
+    shuffleOptions:        t.shuffleOptions ?? false,
+    allowBackNavigation:   (ext.allowBackNavigation as boolean) ?? false,
+    showTimer:             (ext.showTimer as boolean) ?? true,
+    autoSubmitOnTimeout:   (ext.autoSubmitOnTimeout as boolean) ?? true,
+    negativeMarkingEnabled:(t.negativeMarking ?? 0) > 0,
+    passingScorePercent:   totalMarks > 0 ? Math.round((passingMarks / totalMarks) * 100) : 60,
+    gradingMode:           (ext.gradingMode as string) ?? 'Automatic',
+    showScoreToCandidate:  (ext.showScoreToCandidate as boolean) ?? false,
+    sendResultEmail:       (ext.sendResultEmail as boolean) ?? true,
+    includeAnswerReview:   (ext.includeAnswerReview as boolean) ?? false,
+    totalMarks,
+    negativeMarking:       t.negativeMarking ?? 0,
   };
-};
+}
 
-export default function TestSettings() {
-  const { testId } = useParams();
-  const navigate = useNavigate();
-  const setCandidate = useAuthStore((state) => state.setCandidate);
-  const [test, setTest] = useState<Test | null>(null);
-  const [settings, setSettings] = useState<SettingsState>(defaultSettings);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [tryingTest, setTryingTest] = useState(false);
-  const [activePanel, setActivePanel] = useState<'general' | 'test_integrity' | 'emails'>('test_integrity');
-  const [generalForm, setGeneralForm] = useState({
-    jobLink: '',
-    role: 'Back-End Developer',
-    workExperience: '',
-    testLabel: '',
-    language: 'English (en)',
-    startTime: '',
-    endTime: ''
-  });
-
-  useEffect(() => {
-    if (!testId) return;
-    loadTest();
-  }, [testId]);
-
-  const loadTest = async () => {
-    setLoading(true);
-    try {
-      const { data } = await adminApi.getTest(testId!);
-      const loaded = data.test as Test;
-      setTest(loaded);
-      setSettings({
-        proctorEnabled: loaded.proctorEnabled ?? true,
-        requireCamera: loaded.requireCamera ?? true,
-        requireMicrophone: loaded.requireMicrophone ?? true,
-        requireScreenShare: loaded.requireScreenShare ?? false,
-        requireIdVerification: loaded.requireIdVerification ?? false,
-        shuffleQuestions: loaded.shuffleQuestions ?? false,
-        shuffleOptions: loaded.shuffleOptions ?? false,
-        allowMultipleAttempts: loaded.allowMultipleAttempts ?? false
-      });
-    } catch (error) {
-      toast.error('Failed to load test settings');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSave = async (nextSettings: SettingsState) => {
-    if (!testId) return;
-    setSaving(true);
-    try {
-      await adminApi.updateTest(testId, nextSettings);
-      toast.success('Settings updated');
-    } catch (error) {
-      toast.error('Failed to update settings');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const updateSetting = (key: keyof SettingsState) => {
-    setSettings((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
-      void handleSave(next);
-      return next;
-    });
-  };
-
-  const handleTryTest = async () => {
-    if (!testId) return;
-
-    setTryingTest(true);
-    try {
-      const { data } = await adminApi.tryTest(testId);
-      const payload = data as TryTestResponse;
-      if (!payload?.candidate || !payload?.token) {
-        toast.error('Preview session could not be created');
-        return;
-      }
-
-      setCandidate(payload.candidate, payload.token);
-      toast.success('Demo attempt started');
-      navigate('/test/instructions');
-    } catch (error) {
-      toast.error('Failed to start demo test');
-    } finally {
-      setTryingTest(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-600"></div>
-      </div>
-    );
-  }
-
-  if (!test) {
-    return <div className="text-center py-12 text-slate-500">Test not found.</div>;
-  }
-
+/* ── Toggle ── */
+function Toggle({ on, onChange }: { on: boolean; onChange: () => void }) {
   return (
-    <div className="space-y-6">
-      <div className="text-sm text-slate-500">
-        <Link to="/admin/tests" className="text-emerald-600 hover:underline">
-          Tests
-        </Link>
-        <span className="mx-2">›</span>
-        <Link to={`/admin/tests/${testId}`} className="text-slate-600 hover:underline">
-          {test.name}
-        </Link>
-        <span className="mx-2">›</span>
-        <span className="text-slate-600">Settings</span>
+    <button type="button" onClick={onChange}
+      style={{
+        position:'relative', flexShrink:0, width:'48px', height:'26px',
+        borderRadius:'13px', backgroundColor: on ? '#10B981' : '#D1D5DB',
+        border:'none', cursor:'pointer', transition:'background-color 0.2s',
+      }} aria-pressed={on}>
+      <span style={{
+        position:'absolute', top:'3px',
+        left: on ? '23px' : '3px',
+        width:'20px', height:'20px', borderRadius:'50%',
+        backgroundColor:'white', boxShadow:'0 1px 3px rgba(0,0,0,0.2)',
+        transition:'left 0.2s',
+      }} />
+    </button>
+  );
+}
+
+/* ── Toggle row ── */
+function ToggleRow({ label, desc, on, onChange, last }: {
+  label: string; desc: string; on: boolean; onChange: () => void; last?: boolean;
+}) {
+  return (
+    <div style={{
+      display:'flex', alignItems:'center', justifyContent:'space-between', gap:'16px',
+      padding:'18px 0', borderBottom: last ? 'none' : '1px solid #F3F4F6',
+    }}>
+      <div>
+        <p style={{ fontSize:'14px', fontWeight:500, color:'#111827', margin:'0 0 3px' }}>{label}</p>
+        <p style={{ fontSize:'12px', color:'#9CA3AF', margin:0 }}>{desc}</p>
       </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold text-slate-900">
-            {test.name}
-            <span className="ml-2 text-slate-400">✎</span>
-          </h1>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-            Share
-          </button>
-          <button
-            type="button"
-            onClick={handleTryTest}
-            disabled={tryingTest}
-            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {tryingTest ? 'Starting...' : 'Try Test'}
-          </button>
-          <Link
-            to={`/admin/tests/${testId}?tab=candidates`}
-            className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-          >
-            Invite
-          </Link>
-          <button className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 text-slate-500 hover:bg-slate-50">
-            ⋯
-          </button>
-          {saving && <span className="self-center text-xs text-slate-400">Saving…</span>}
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-6 border-b border-slate-200 text-sm">
-        <Link
-          to={`/admin/tests/${testId}`}
-          className="pb-3 font-semibold text-slate-500 hover:text-slate-900"
-        >
-          Questions
-        </Link>
-        <Link
-          to={`/admin/tests/${testId}?tab=candidates`}
-          className="pb-3 font-semibold text-slate-500 hover:text-slate-900"
-        >
-          Candidates
-        </Link>
-        <Link
-          to={`/admin/tests/${testId}/analytics`}
-          className="pb-3 font-semibold text-slate-500 hover:text-slate-900"
-        >
-          Insights
-        </Link>
-        <span className="relative pb-3 font-semibold text-slate-900 after:absolute after:-bottom-[1px] after:left-0 after:h-[3px] after:w-full after:bg-emerald-500">
-          Settings
-        </span>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-[260px,1fr]">
-        <aside className="border-r border-slate-200 pr-4">
-          <div className="space-y-3 text-sm text-slate-600">
-            <button
-              onClick={() => setActivePanel('general')}
-              className={`w-full py-2 text-left ${activePanel === 'general' ? 'rounded-lg bg-slate-50 px-3 text-slate-900 border-l-2 border-emerald-500' : ''}`}
-            >
-              General
-            </button>
-            <div className="py-2 font-semibold text-slate-900">Test Content</div>
-            <div className="py-2">Questions</div>
-            <div className="py-2">Sections</div>
-            <div className="py-2">Evaluation</div>
-            <div className="pt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">Test Administration</div>
-            <div className="py-2">Onboarding</div>
-            <button
-              onClick={() => setActivePanel('emails')}
-              className={`w-full py-2 text-left ${activePanel === 'emails' ? 'rounded-lg bg-slate-50 px-3 text-slate-900 border-l-2 border-emerald-500' : ''}`}
-            >
-              Emails
-            </button>
-            <button
-              onClick={() => setActivePanel('test_integrity')}
-              className={`w-full py-2 text-left ${activePanel === 'test_integrity' ? 'rounded-lg bg-slate-50 px-3 text-slate-900 border-l-2 border-emerald-500' : ''}`}
-            >
-              Test Integrity
-            </button>
-            <Link
-              to={`/admin/tests/${testId}/ai-proctoring`}
-              className="block py-2 text-slate-600 hover:text-slate-900"
-            >
-              AI Proctoring
-            </Link>
-            <div className="py-2">Test Invites</div>
-          </div>
-        </aside>
-
-        <div className="space-y-6">
-          {activePanel === 'general' && (
-            <div className="space-y-6">
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900">General</h2>
-              </div>
-
-              <div className="space-y-5 max-w-2xl">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Job Description Link</label>
-                  <input
-                    type="text"
-                    value={generalForm.jobLink}
-                    onChange={(event) => setGeneralForm((prev) => ({ ...prev, jobLink: event.target.value }))}
-                    placeholder="Add a link to the job description"
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">What role is this test for?</label>
-                  <select
-                    value={generalForm.role}
-                    onChange={(event) => setGeneralForm((prev) => ({ ...prev, role: event.target.value }))}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-                  >
-                    <option>Back-End Developer</option>
-                    <option>Front-End Developer</option>
-                    <option>Full-Stack Developer</option>
-                    <option>Data Analyst</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Work Experience</label>
-                  <select
-                    value={generalForm.workExperience}
-                    onChange={(event) => setGeneralForm((prev) => ({ ...prev, workExperience: event.target.value }))}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-                  >
-                    <option value="">Select a work experience</option>
-                    <option value="0-2">0-2 years</option>
-                    <option value="2-5">2-5 years</option>
-                    <option value="5-8">5-8 years</option>
-                    <option value="8+">8+ years</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Test label</label>
-                  <input
-                    type="text"
-                    value={generalForm.testLabel}
-                    onChange={(event) => setGeneralForm((prev) => ({ ...prev, testLabel: event.target.value }))}
-                    placeholder="Enter a custom label"
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Candidate facing language <span className="text-slate-400">ⓘ</span>
-                  </label>
-                  <select
-                    value={generalForm.language}
-                    onChange={(event) => setGeneralForm((prev) => ({ ...prev, language: event.target.value }))}
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-                  >
-                    <option>English (en)</option>
-                    <option>Spanish (es)</option>
-                    <option>German (de)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Test Expiration Time</label>
-                  <p className="text-xs text-slate-500 mb-3">Your account timezone: Asia/Calcutta</p>
-                  <div className="grid gap-3 sm:grid-cols-[1fr,auto,1fr] items-center">
-                    <input
-                      type="text"
-                      value={generalForm.startTime}
-                      onChange={(event) => setGeneralForm((prev) => ({ ...prev, startTime: event.target.value }))}
-                      placeholder="Start date & time"
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-                    />
-                    <span className="text-sm text-slate-500 text-center">to</span>
-                    <input
-                      type="text"
-                      value={generalForm.endTime}
-                      onChange={(event) => setGeneralForm((prev) => ({ ...prev, endTime: event.target.value }))}
-                      placeholder="End date & time"
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activePanel === 'test_integrity' && (
-            <>
-              <div>
-                <h2 className="text-xl font-semibold text-slate-900">Test Integrity</h2>
-                <p className="text-sm text-slate-500 mt-1">Select your Mode</p>
-                <p className="text-sm text-slate-500 mt-2">
-                  Choose a mode to set the level of test monitoring. Regardless of the selected mode, we always track
-                  copy/paste and tab switching for compliance.
-                </p>
-              </div>
-
-              <div className="space-y-6">
-                <ToggleRow
-                  label="Enable live AI proctoring"
-                  description="Includes AI-powered monitoring and anomaly detection."
-                  checked={settings.proctorEnabled}
-                  onToggle={() => updateSetting('proctorEnabled')}
-                />
-                <ToggleRow
-                  label="Require camera access"
-                  description="Require candidates to keep their camera on during the test."
-                  checked={settings.requireCamera}
-                  onToggle={() => updateSetting('requireCamera')}
-                />
-                <ToggleRow
-                  label="Require microphone access"
-                  description="Require candidates to keep their microphone on during the test."
-                  checked={settings.requireMicrophone}
-                  onToggle={() => updateSetting('requireMicrophone')}
-                />
-                <ToggleRow
-                  label="Require screen share"
-                  description="Ask candidates to share their screen while attempting the test."
-                  checked={settings.requireScreenShare}
-                  onToggle={() => updateSetting('requireScreenShare')}
-                />
-                <ToggleRow
-                  label="Require ID verification before test"
-                  description="Verify candidate identity before they can start the test."
-                  checked={settings.requireIdVerification}
-                  onToggle={() => updateSetting('requireIdVerification')}
-                />
-                <ToggleRow
-                  label="Shuffle questions for each candidate"
-                  description="Randomize the question order for every attempt."
-                  checked={settings.shuffleQuestions}
-                  onToggle={() => updateSetting('shuffleQuestions')}
-                />
-                <ToggleRow
-                  label="Shuffle MCQ options"
-                  description="Randomize the order of options for MCQs."
-                  checked={settings.shuffleOptions}
-                  onToggle={() => updateSetting('shuffleOptions')}
-                />
-                <ToggleRow
-                  label="Allow multiple attempts"
-                  description="Allow candidates to attempt this test multiple times."
-                  checked={settings.allowMultipleAttempts}
-                  onToggle={() => updateSetting('allowMultipleAttempts')}
-                />
-              </div>
-            </>
-          )}
-
-          {activePanel === 'emails' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold text-slate-900">Confirmation Email</h2>
-                  <p className="text-sm text-slate-500">
-                    This email will be sent to the candidate when they complete the test.
-                  </p>
-                </div>
-                <button className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 text-slate-600">
-                  ▾
-                </button>
-              </div>
-
-              <div className="rounded-2xl border border-slate-300 bg-white">
-                <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-3 text-sm text-slate-500">
-                  <span>↺</span>
-                  <span>↻</span>
-                  <span className="h-4 w-px bg-slate-200" />
-                  <span className="font-semibold">B</span>
-                  <span className="italic">I</span>
-                  <span className="underline">U</span>
-                  <span className="line-through">S</span>
-                  <span>🔗</span>
-                  <span className="h-4 w-px bg-slate-200" />
-                  <span>1·</span>
-                  <span>•</span>
-                  <span>≡</span>
-                  <span className="h-4 w-px bg-slate-200" />
-                  <span>Normal ▾</span>
-                  <span>Arial ▾</span>
-                  <span>14px ▾</span>
-                  <span>Add Field ▾</span>
-                  <span className="ml-auto">🖼</span>
-                </div>
-                <textarea
-                  className="min-h-[240px] w-full rounded-b-2xl px-5 py-4 text-sm text-slate-700 outline-none"
-                  defaultValue={`Hello,\n\nThanks for completing ${test.name}. We've sent your submission to .\n\nIn the meantime, you can go ahead and solve more of such code challenges on HackerRank. Solving code challenges is a great way to keep your skills sharp for interviews.\n\nWish you all the best for your test result!\n\nThis is an automated message. Please do not reply to this. You'll need to contact directly for any follow-up questions.\n\nThanks,\nRegen Team`}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      <Toggle on={on} onChange={onChange} />
     </div>
   );
 }
 
-function ToggleRow({
-  label,
-  description,
-  checked,
-  onToggle
-}: {
-  label: string;
-  description: string;
-  checked: boolean;
-  onToggle: () => void;
-}) {
+/* ── shared input style ── */
+const inputSx: React.CSSProperties = {
+  width:'100%', padding:'10px 14px', borderRadius:'10px',
+  border:'1px solid #E5E7EB', backgroundColor:'white', color:'#111827',
+  fontSize:'14px', outline:'none', fontFamily:'inherit', boxSizing:'border-box',
+};
+const labelSx: React.CSSProperties = {
+  display:'block', fontSize:'13px', fontWeight:500, color:'#374151', marginBottom:'6px',
+};
+
+export default function TestSettings() {
+  const { testId }   = useParams();
+  const navigate     = useNavigate();
+
+  const [loading,           setLoading]           = useState(true);
+  const [saving,            setSaving]             = useState(false);
+  const [deleting,          setDeleting]           = useState(false);
+  const [activePanel,       setActivePanel]        = useState<Panel>('general');
+  const [original,          setOriginal]           = useState<FormState | null>(null);
+  const [form,              setForm]               = useState<FormState | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm]  = useState(false);
+
+  // Email template state
+  const [emailTab,          setEmailTab]           = useState<EmailTab>('invite');
+  const [emailTemplates,    setEmailTemplates]     = useState<EmailTemplates | null>(null);
+  const [emailEditing,      setEmailEditing]       = useState<EmailTab | null>(null);
+  const [emailDraft,        setEmailDraft]         = useState<{ subject: string; body: string }>({ subject: '', body: '' });
+  const [emailSaving,       setEmailSaving]        = useState(false);
+  useEffect(() => { if (testId) void load(); }, [testId]);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [testRes, emailRes] = await Promise.all([
+        adminApi.getTest(testId!),
+        adminApi.getEmailTemplates(testId!),
+      ]);
+      const fs = toFormState(testRes.data.test as Test);
+      setOriginal(fs); setForm(fs);
+      setEmailTemplates(emailRes.data as EmailTemplates);
+    } catch { toast.error('Failed to load settings'); }
+    finally { setLoading(false); }
+  };
+
+  const openEmailEdit = (tab: EmailTab) => {
+    if (!emailTemplates) return;
+    setEmailDraft(tab === 'invite'
+      ? { subject: emailTemplates.inviteEmailSubject, body: emailTemplates.inviteEmailBody }
+      : { subject: emailTemplates.confirmEmailSubject, body: emailTemplates.confirmEmailBody });
+    setEmailEditing(tab);
+  };
+
+  const handleEmailSave = async () => {
+    if (!testId || !emailEditing || !emailTemplates) return;
+    setEmailSaving(true);
+    try {
+      const patch = emailEditing === 'invite'
+        ? { inviteEmailSubject: emailDraft.subject, inviteEmailBody: emailDraft.body }
+        : { confirmEmailSubject: emailDraft.subject, confirmEmailBody: emailDraft.body };
+      await adminApi.updateEmailTemplates(testId, patch);
+      setEmailTemplates(prev => prev ? {
+        ...prev,
+        ...(emailEditing === 'invite'
+          ? { inviteEmailSubject: emailDraft.subject, inviteEmailBody: emailDraft.body }
+          : { confirmEmailSubject: emailDraft.subject, confirmEmailBody: emailDraft.body }),
+      } : prev);
+      setEmailEditing(null);
+      toast.success('Email template saved');
+    } catch { toast.error('Failed to save email template'); }
+    finally { setEmailSaving(false); }
+  };
+
+  const patch = (p: Partial<FormState>) => setForm(prev => prev ? { ...prev, ...p } : prev);
+
+  const handleSave = async () => {
+    if (!testId || !form) return;
+    setSaving(true);
+    try {
+      await adminApi.updateTest(testId, {
+        name: form.name, description: form.description,
+        category: form.category, language: form.language,
+        startTime: form.startTime || undefined,
+        endTime:   form.endTime   || undefined,
+        requireInvitationLink: form.requireInvitationLink,
+        allowMultipleAttempts: !form.limitToOneAttempt,
+        requireIdVerification: form.requireIdVerification,
+        allowAccessCode:       form.allowAccessCode,
+        shuffleQuestions:      form.shuffleQuestions,
+        shuffleOptions:        form.shuffleOptions,
+        allowBackNavigation:   form.allowBackNavigation,
+        showTimer:             form.showTimer,
+        autoSubmitOnTimeout:   form.autoSubmitOnTimeout,
+        negativeMarking:       form.negativeMarkingEnabled ? 0.25 : 0,
+        passingMarks: form.totalMarks > 0
+          ? Math.round((form.passingScorePercent / 100) * form.totalMarks)
+          : form.passingScorePercent,
+        gradingMode:          form.gradingMode,
+        showScoreToCandidate: form.showScoreToCandidate,
+        sendResultEmail:      form.sendResultEmail,
+        includeAnswerReview:  form.includeAnswerReview,
+      });
+      setOriginal(form);
+      toast.success('Settings saved');
+    } catch { toast.error('Failed to save settings'); }
+    finally { setSaving(false); }
+  };
+
+  const handleDiscard = () => {
+    if (original) { setForm(original); toast('Changes discarded', { icon: '↺' }); }
+  };
+
+  const handleDeleteTest = async () => {
+    if (!testId) return;
+    setDeleting(true);
+    try {
+      await adminApi.deleteTest(testId);
+      toast.success('Test deleted');
+      navigate('/admin/tests');
+    } catch { toast.error('Failed to delete test'); setDeleting(false); }
+  };
+
+  if (loading) return (
+    <div style={{ display:'flex', justifyContent:'center', padding:'80px 0' }}>
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor:'#10B981' }} />
+    </div>
+  );
+  if (!form) return null;
+
+  const PANELS: { id: Panel; label: string }[] = [
+    { id:'general',  label:'General' },
+    { id:'access',   label:'Access & scheduling' },
+    { id:'behavior', label:'Test behavior' },
+    { id:'grading',  label:'Results & grading' },
+    { id:'email',    label:'Email' },
+    { id:'danger',   label:'Danger zone' },
+  ];
+
+  /* ── danger zone action row ── */
+  const DangerRow = ({ label, desc, btnLabel, btnRed, onClick, last }: {
+    label: string; desc: string; btnLabel: string; btnRed?: boolean; onClick: () => void; last?: boolean;
+  }) => (
+    <div style={{
+      display:'flex', alignItems:'center', justifyContent:'space-between', gap:'16px',
+      padding:'18px 0', borderBottom: last ? 'none' : '1px solid #F3F4F6',
+    }}>
+      <div>
+        <p style={{ fontSize:'14px', fontWeight:500, color:'#111827', margin:'0 0 3px' }}>{label}</p>
+        <p style={{ fontSize:'12px', color:'#9CA3AF', margin:0 }}>{desc}</p>
+      </div>
+      <button type="button" onClick={onClick}
+        style={{
+          padding:'7px 18px', borderRadius:'8px', cursor:'pointer',
+          fontSize:'13px', fontWeight:600, whiteSpace:'nowrap',
+          border: btnRed ? 'none' : '1.5px solid #E5E7EB',
+          backgroundColor: btnRed ? '#EF4444' : 'white',
+          color: btnRed ? 'white' : '#374151',
+        }}>
+        {btnLabel}
+      </button>
+    </div>
+  );
+
   return (
-    <div className="flex items-start justify-between gap-4 py-4">
-      <div className="flex items-start gap-3">
-        <div className="mt-1 flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-xs text-slate-400">
-          ⓘ
+    <div style={{ display:'flex', flexDirection:'column', minHeight:'500px' }}>
+
+      {/* ── MAIN GRID ── */}
+      <div style={{ display:'grid', gridTemplateColumns:'220px 1fr', gap:'0', flex:1 }}>
+
+        {/* LEFT SIDEBAR */}
+        <div style={{ paddingTop:'4px', paddingRight:'8px' }}>
+          {PANELS.map(p => {
+            const active = activePanel === p.id;
+            const isDanger = p.id === 'danger';
+            return (
+              <button key={p.id} type="button" onClick={() => setActivePanel(p.id)}
+                style={{
+                  display:'flex', alignItems:'center', justifyContent:'space-between',
+                  width:'100%', padding:'10px 14px', borderRadius:'10px',
+                  border:'none', cursor:'pointer', marginBottom:'2px',
+                  backgroundColor: active ? '#111827' : 'transparent',
+                  color: active ? 'white' : isDanger ? '#EF4444' : '#374151',
+                  fontSize:'14px', fontWeight: active ? 600 : 400,
+                  textAlign:'left', transition:'background-color 0.15s',
+                }}>
+                <span>{p.label}</span>
+                {active && <ChevronRight size={14} color="white" />}
+              </button>
+            );
+          })}
         </div>
-        <div>
-          <p className="text-sm font-semibold text-slate-900">{label}</p>
-          <p className="text-xs text-slate-500">{description}</p>
+
+        {/* RIGHT CONTENT CARD */}
+        <div style={{ paddingLeft:'8px', paddingBottom:'24px' }}>
+          <div style={{
+            backgroundColor:'white', borderRadius:'14px',
+            boxShadow:'0 1px 8px rgba(0,0,0,0.07)', padding:'28px 32px',
+          }}>
+
+            {/* ─── GENERAL ─── */}
+            {activePanel === 'general' && (
+              <div style={{ display:'flex', flexDirection:'column', gap:'20px' }}>
+                <p style={{ fontSize:'18px', fontWeight:700, color:'#111827', margin:0 }}>General</p>
+
+                <div>
+                  <label style={labelSx}>Test title</label>
+                  <input type="text" value={form.name}
+                    onChange={e => patch({ name: e.target.value })} style={inputSx} />
+                </div>
+
+                <div>
+                  <label style={labelSx}>Description</label>
+                  <textarea value={form.description}
+                    onChange={e => patch({ description: e.target.value })}
+                    rows={4} style={{ ...inputSx, lineHeight:'1.5' }} />
+                </div>
+
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px' }}>
+                  <div>
+                    <label style={labelSx}>Category</label>
+                    <select value={form.category} onChange={e => patch({ category: e.target.value })} style={inputSx}>
+                      {CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label style={labelSx}>Language</label>
+                    <select value={form.language} onChange={e => patch({ language: e.target.value })} style={inputSx}>
+                      {LANGUAGES.map(l => <option key={l}>{l}</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ─── ACCESS & SCHEDULING ─── */}
+            {activePanel === 'access' && (
+              <div>
+                <p style={{ fontSize:'18px', fontWeight:700, color:'#111827', margin:'0 0 24px' }}>
+                  Access &amp; scheduling
+                </p>
+
+                {/* Opens / Closes */}
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px', marginBottom:'4px' }}>
+                  <div>
+                    <label style={labelSx}>Opens</label>
+                    <div style={{ position:'relative' }}>
+                      <input type="datetime-local" value={form.startTime}
+                        onChange={e => patch({ startTime: e.target.value })}
+                        style={{ ...inputSx, paddingRight:'40px' }} />
+                      <Calendar size={16} color="#9CA3AF" style={{ position:'absolute', right:'12px', top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }} />
+                    </div>
+                  </div>
+                  <div>
+                    <label style={labelSx}>Closes</label>
+                    <div style={{ position:'relative' }}>
+                      <input type="datetime-local" value={form.endTime}
+                        onChange={e => patch({ endTime: e.target.value })}
+                        style={{ ...inputSx, paddingRight:'40px' }} />
+                      <Calendar size={16} color="#9CA3AF" style={{ position:'absolute', right:'12px', top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }} />
+                    </div>
+                  </div>
+                </div>
+
+                <ToggleRow label="Require invitation link"    desc="Only invited emails can start"          on={form.requireInvitationLink} onChange={() => patch({ requireInvitationLink: !form.requireInvitationLink })} />
+                <ToggleRow label="Limit to one attempt"       desc="Candidate can take the test once"       on={form.limitToOneAttempt}     onChange={() => patch({ limitToOneAttempt: !form.limitToOneAttempt })} />
+                <ToggleRow label="Require ID verification"    desc="Photo ID check before start"            on={form.requireIdVerification} onChange={() => patch({ requireIdVerification: !form.requireIdVerification })} />
+                <ToggleRow label="Allow access code"          desc="Candidates enter a code to join"        on={form.allowAccessCode}       onChange={() => patch({ allowAccessCode: !form.allowAccessCode })} last />
+              </div>
+            )}
+
+            {/* ─── TEST BEHAVIOR ─── */}
+            {activePanel === 'behavior' && (
+              <div>
+                <p style={{ fontSize:'18px', fontWeight:700, color:'#111827', margin:'0 0 4px' }}>Test behavior</p>
+
+                <ToggleRow label="Randomize question order"  desc="Shuffle per candidate"               on={form.shuffleQuestions}       onChange={() => patch({ shuffleQuestions: !form.shuffleQuestions })} />
+                <ToggleRow label="Randomize answer options"  desc="Shuffle MCQ choices"                 on={form.shuffleOptions}         onChange={() => patch({ shuffleOptions: !form.shuffleOptions })} />
+                <ToggleRow label="Allow back navigation"     desc="Revisit previous questions"          on={form.allowBackNavigation}    onChange={() => patch({ allowBackNavigation: !form.allowBackNavigation })} />
+                <ToggleRow label="Show timer"                desc="Visible countdown"                   on={form.showTimer}              onChange={() => patch({ showTimer: !form.showTimer })} />
+                <ToggleRow label="Auto-submit on timeout"    desc="Submit when time ends"               on={form.autoSubmitOnTimeout}    onChange={() => patch({ autoSubmitOnTimeout: !form.autoSubmitOnTimeout })} />
+                <ToggleRow label="Negative marking"          desc="Deduct points for wrong answers"     on={form.negativeMarkingEnabled} onChange={() => patch({ negativeMarkingEnabled: !form.negativeMarkingEnabled })} last />
+              </div>
+            )}
+
+            {/* ─── RESULTS & GRADING ─── */}
+            {activePanel === 'grading' && (
+              <div>
+                <p style={{ fontSize:'18px', fontWeight:700, color:'#111827', margin:'0 0 24px' }}>Results &amp; grading</p>
+
+                {/* Passing score + Grading mode */}
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px', marginBottom:'8px' }}>
+                  <div>
+                    <label style={labelSx}>Passing score (%)</label>
+                    <input type="number" min={0} max={100} value={form.passingScorePercent}
+                      onChange={e => patch({ passingScorePercent: Math.min(100, Math.max(0, Number(e.target.value))) })}
+                      style={inputSx} />
+                  </div>
+                  <div>
+                    <label style={labelSx}>Grading mode</label>
+                    <select value={form.gradingMode} onChange={e => patch({ gradingMode: e.target.value })} style={inputSx}>
+                      <option value="Automatic">Automatic</option>
+                      <option value="Manual">Manual</option>
+                    </select>
+                  </div>
+                </div>
+
+                <ToggleRow label="Show score to candidate" desc="Reveal result after submit"         on={form.showScoreToCandidate} onChange={() => patch({ showScoreToCandidate: !form.showScoreToCandidate })} />
+                <ToggleRow label="Send result email"       desc="Email candidate their outcome"      on={form.sendResultEmail}      onChange={() => patch({ sendResultEmail: !form.sendResultEmail })} />
+                <ToggleRow label="Include answer review"   desc="Show correct answers"               on={form.includeAnswerReview}  onChange={() => patch({ includeAnswerReview: !form.includeAnswerReview })} last />
+              </div>
+            )}
+
+            {/* ─── EMAIL ─── */}
+            {activePanel === 'email' && (
+              <div>
+                <p style={{ fontSize:'18px', fontWeight:700, color:'#111827', margin:'0 0 4px' }}>Email Insights</p>
+                <p style={{ fontSize:'13px', color:'#6B7280', margin:'0 0 20px' }}>
+                  Customize the emails sent to candidates during the assessment lifecycle.
+                </p>
+
+                {/* Tabs */}
+                <div style={{ display:'flex', borderBottom:'2px solid #F3F4F6', marginBottom:'24px' }}>
+                  {(['invite','confirm'] as EmailTab[]).map(tab => (
+                    <button key={tab} type="button"
+                      onClick={() => setEmailTab(tab)}
+                      style={{
+                        padding:'8px 18px', border:'none', background:'none', cursor:'pointer',
+                        fontSize:'13px', fontWeight: emailTab === tab ? 600 : 400,
+                        color: emailTab === tab ? '#10B981' : '#6B7280',
+                        borderBottom: emailTab === tab ? '2px solid #10B981' : '2px solid transparent',
+                        marginBottom:'-2px', transition:'color 0.15s',
+                      }}>
+                      {tab === 'invite' ? 'Invite Email' : 'Confirmation Email'}
+                    </button>
+                  ))}
+                </div>
+
+                {emailTemplates && (() => {
+                  const isInvite = emailTab === 'invite';
+                  const subject = isInvite ? emailTemplates.inviteEmailSubject : emailTemplates.confirmEmailSubject;
+                  const body    = isInvite ? emailTemplates.inviteEmailBody    : emailTemplates.confirmEmailBody;
+                  const editKey = emailTab;
+                  return (
+                    <div>
+                      {/* Description */}
+                      <p style={{ fontSize:'12px', color:'#9CA3AF', margin:'0 0 16px' }}>
+                        {isInvite
+                          ? 'This email is sent to candidates when you invite them to take the test.'
+                          : 'This email is sent to candidates when they complete the test.'}
+                      </p>
+
+                      {emailEditing === editKey ? (
+                        /* ── Edit mode ── */
+                        <div>
+                          <div style={{ marginBottom:'14px' }}>
+                            <label style={{ display:'block', fontSize:'12px', fontWeight:600, color:'#374151', marginBottom:'6px' }}>Subject</label>
+                            <input type="text"
+                              value={emailDraft.subject}
+                              onChange={e => setEmailDraft(d => ({ ...d, subject: e.target.value }))}
+                              style={{
+                                width:'100%', padding:'9px 12px', borderRadius:'8px',
+                                border:'1.5px solid #D1FAE5', backgroundColor:'#FAFFFE',
+                                fontSize:'13px', color:'#111827', outline:'none', boxSizing:'border-box',
+                              }}
+                            />
+                          </div>
+
+                          <div style={{ marginBottom:'14px' }}>
+                            <label style={{ display:'block', fontSize:'12px', fontWeight:600, color:'#374151', marginBottom:'6px' }}>Body</label>
+                            <textarea
+                              value={emailDraft.body}
+                              onChange={e => setEmailDraft(d => ({ ...d, body: e.target.value }))}
+                              rows={12}
+                              style={{
+                                width:'100%', padding:'10px 12px', borderRadius:'8px',
+                                border:'1.5px solid #D1FAE5', backgroundColor:'#FAFFFE',
+                                fontSize:'13px', color:'#111827', outline:'none', boxSizing:'border-box',
+                                fontFamily:'inherit', lineHeight:'1.7', maxHeight:'480px',
+                              }}
+                            />
+                          </div>
+
+                          <div style={{ marginBottom:'16px' }}>
+                            <p style={{ fontSize:'11px', fontWeight:600, color:'#9CA3AF', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'0.05em' }}>
+                              Click a variable to insert it
+                            </p>
+                            <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
+                              {AVAILABLE_VARS.filter(v => isInvite || v.key !== '{{test_link}}').map(v => (
+                                <button key={v.key} type="button" title={v.desc}
+                                  onClick={() => setEmailDraft(d => ({ ...d, body: d.body + v.key }))}
+                                  style={{
+                                    fontSize:'11px', fontWeight:600, color:'#059669',
+                                    backgroundColor:'#D1FAE5', padding:'2px 8px', borderRadius:'20px',
+                                    border:'none', cursor:'pointer',
+                                  }}>{v.key}</button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div style={{ display:'flex', justifyContent:'flex-end', gap:'10px' }}>
+                            <button type="button"
+                              onClick={() => setEmailEditing(null)}
+                              disabled={emailSaving}
+                              style={{
+                                padding:'8px 18px', borderRadius:'10px',
+                                border:'1.5px solid #E5E7EB', backgroundColor:'white',
+                                fontSize:'13px', fontWeight:500, color:'#374151',
+                                cursor: emailSaving ? 'not-allowed' : 'pointer',
+                              }}>Cancel</button>
+                            <button type="button"
+                              onClick={handleEmailSave}
+                              disabled={emailSaving}
+                              style={{
+                                padding:'8px 20px', borderRadius:'10px',
+                                border:'none', backgroundColor: emailSaving ? '#6EE7B7' : '#10B981',
+                                fontSize:'13px', fontWeight:600, color:'white',
+                                cursor: emailSaving ? 'not-allowed' : 'pointer',
+                              }}>
+                              {emailSaving ? 'Saving…' : 'Save Changes'}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        /* ── Preview mode ── */
+                        <div>
+                          <div style={{ marginBottom:'16px', backgroundColor:'#F9FAFB', borderRadius:'10px', padding:'12px 16px', border:'1px solid #E5E7EB' }}>
+                            <p style={{ fontSize:'11px', fontWeight:600, color:'#9CA3AF', margin:'0 0 4px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Subject</p>
+                            <p style={{ fontSize:'13px', color:'#374151', margin:0 }}>{subject}</p>
+                          </div>
+
+                          <div style={{ backgroundColor:'#F9FAFB', borderRadius:'10px', padding:'16px', border:'1px solid #E5E7EB', marginBottom:'16px' }}>
+                            <p style={{ fontSize:'11px', fontWeight:600, color:'#9CA3AF', margin:'0 0 10px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Body</p>
+                            <pre style={{ fontSize:'13px', color:'#374151', margin:0, whiteSpace:'pre-wrap', fontFamily:'inherit', lineHeight:'1.7' }}>
+                              {body}
+                            </pre>
+                          </div>
+
+                          <div style={{ marginBottom:'16px' }}>
+                            <p style={{ fontSize:'11px', fontWeight:600, color:'#9CA3AF', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Available variables</p>
+                            <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
+                              {AVAILABLE_VARS.filter(v => isInvite || v.key !== '{{test_link}}').map(v => (
+                                <span key={v.key} title={v.desc} style={{
+                                  fontSize:'11px', fontWeight:600, color:'#059669',
+                                  backgroundColor:'#D1FAE5', padding:'2px 8px', borderRadius:'20px',
+                                  cursor:'default',
+                                }}>{v.key}</span>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div style={{ display:'flex', justifyContent:'flex-end', gap:'10px' }}>
+                            <button type="button"
+                              onClick={() => openEmailEdit(editKey)}
+                              style={{
+                                display:'flex', alignItems:'center', gap:'6px',
+                                padding:'8px 18px', borderRadius:'10px',
+                                border:'1.5px solid #E5E7EB', backgroundColor:'white',
+                                fontSize:'13px', fontWeight:500, color:'#374151', cursor:'pointer',
+                              }}>
+                              <Pencil size={13} />
+                              Edit {isInvite ? 'Invite' : 'Confirmation'} Email
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {!emailTemplates && (
+                  <div style={{ display:'flex', justifyContent:'center', padding:'40px 0' }}>
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2" style={{ borderColor:'#10B981' }} />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ─── DANGER ZONE ─── */}
+            {activePanel === 'danger' && (
+              <div>
+                <p style={{ fontSize:'18px', fontWeight:700, color:'#EF4444', margin:'0 0 4px' }}>Danger zone</p>
+                <p style={{ fontSize:'13px', color:'#6B7280', margin:'0 0 8px' }}>These actions are irreversible.</p>
+
+                <DangerRow
+                  label="Archive test"   desc="Hide from candidates, keep data"
+                  btnLabel="Archive"
+                  onClick={() => toast('Archive coming soon', { icon: '📦' })}
+                />
+                <DangerRow
+                  label="Duplicate test" desc="Create an editable copy"
+                  btnLabel="Duplicate"
+                  onClick={() => toast('Duplicate coming soon', { icon: '📋' })}
+                />
+                <DangerRow
+                  label="Delete test"    desc="Permanently remove test & attempts"
+                  btnLabel="Delete"     btnRed
+                  onClick={() => setShowDeleteConfirm(true)}
+                  last
+                />
+              </div>
+            )}
+
+          </div>{/* end white card */}
         </div>
       </div>
-      <button
-        type="button"
-        onClick={onToggle}
-        className={`relative h-7 w-12 rounded-full transition ${
-          checked ? 'bg-emerald-500' : 'bg-slate-200'
-        }`}
-        aria-pressed={checked}
-      >
-        <span
-          className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition ${
-            checked ? 'left-6' : 'left-1'
-          }`}
-        />
-      </button>
+
+      {/* ── BOTTOM BAR ── */}
+      <div style={{
+        display:'flex', alignItems:'center', justifyContent:'flex-end', gap:'12px',
+        padding:'16px 0 4px',
+        borderTop:'1px solid #F3F4F6',
+        marginTop:'16px',
+      }}>
+        <button type="button" onClick={handleDiscard}
+          style={{
+            padding:'9px 22px', borderRadius:'10px',
+            border:'1.5px solid #E5E7EB', backgroundColor:'white',
+            fontSize:'14px', fontWeight:500, color:'#374151', cursor:'pointer',
+          }}>
+          Discard
+        </button>
+        <button type="button" onClick={handleSave} disabled={saving}
+          style={{
+            display:'flex', alignItems:'center', gap:'6px',
+            padding:'9px 22px', borderRadius:'10px',
+            border:'none', backgroundColor: saving ? '#A7F3D0' : '#10B981',
+            fontSize:'14px', fontWeight:600, color:'white',
+            cursor: saving ? 'not-allowed' : 'pointer',
+          }}>
+          {!saving && <Check size={14} color="white" />}
+          {saving ? 'Saving…' : 'Save changes'}
+        </button>
+      </div>
+
+      {/* ── DELETE CONFIRM MODAL ── */}
+      {showDeleteConfirm && (
+        <div style={{
+          position:'fixed', inset:0, zIndex:50,
+          display:'flex', alignItems:'center', justifyContent:'center',
+          backgroundColor:'rgba(0,0,0,0.45)',
+        }}>
+          <div style={{
+            backgroundColor:'white', borderRadius:'16px', padding:'28px',
+            width:'100%', maxWidth:'420px', boxShadow:'0 20px 60px rgba(0,0,0,0.2)',
+          }}>
+            <div style={{ display:'flex', alignItems:'center', gap:'12px', marginBottom:'12px' }}>
+              <div style={{
+                width:'40px', height:'40px', borderRadius:'50%',
+                backgroundColor:'#FEE2E2', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
+              }}>
+                <Trash2 size={18} color="#DC2626" />
+              </div>
+              <p style={{ fontSize:'16px', fontWeight:700, color:'#111827', margin:0 }}>Delete test?</p>
+            </div>
+            <p style={{ fontSize:'14px', color:'#6B7280', margin:'0 0 24px', lineHeight:'1.6' }}>
+              This will permanently delete the test and all candidate attempts, results, and invitations.
+              This action <strong style={{ color:'#374151' }}>cannot be undone</strong>.
+            </p>
+            <div style={{ display:'flex', gap:'10px' }}>
+              <button type="button" onClick={() => setShowDeleteConfirm(false)}
+                style={{
+                  flex:1, padding:'10px', borderRadius:'10px',
+                  border:'1.5px solid #E5E7EB', backgroundColor:'white',
+                  fontSize:'14px', fontWeight:500, color:'#374151', cursor:'pointer',
+                }}>
+                Cancel
+              </button>
+              <button type="button" onClick={handleDeleteTest} disabled={deleting}
+                style={{
+                  flex:1, padding:'10px', borderRadius:'10px',
+                  border:'none', backgroundColor: deleting ? '#FCA5A5' : '#DC2626',
+                  fontSize:'14px', fontWeight:600, color:'white',
+                  cursor: deleting ? 'not-allowed' : 'pointer',
+                }}>
+                {deleting ? 'Deleting…' : 'Yes, delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

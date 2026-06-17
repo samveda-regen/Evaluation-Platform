@@ -10,12 +10,14 @@
  */
 
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
+import { Image } from 'lucide-react';
 
 import api from '../../services/api';
 import { violationLabel } from '../../utils/violationLabels';
+import BackButton from '../../components/BackButton';
 
 const REPORT_EVENT_TYPES = new Set([
   'tab_switch',
@@ -77,7 +79,6 @@ interface ProctorEvent {
 
 export default function ProctorDashboard() {
   const { attemptId } = useParams<{ attemptId: string }>();
-  const navigate = useNavigate();
 
   const [session, setSession] = useState<ProctorSession | null>(null);
   const [events, setEvents] = useState<ProctorEvent[]>([]);
@@ -179,14 +180,9 @@ export default function ProctorDashboard() {
   if (!session) {
     return (
       <div className="text-center py-12">
+        <div className="flex justify-center mb-4"><BackButton mt="0" /></div>
         <h2 className="text-xl font-semibold text-gray-700">No Proctoring Data</h2>
         <p className="text-gray-500 mt-2">No proctoring session found for this attempt.</p>
-        <button
-          onClick={() => navigate(-1)}
-          className="mt-4 btn btn-primary"
-        >
-          Go Back
-        </button>
       </div>
     );
   }
@@ -194,17 +190,15 @@ export default function ProctorDashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-start">
+      <div className="flex items-start gap-3">
+        <BackButton mt="4px" />
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Trust Score Report</h1>
-            <p className="text-gray-500">
-              {session.attempt.candidate.name} - {session.attempt.test.name} (Matrix-aligned trust report)
-            </p>
-          </div>
-          <button onClick={() => navigate(-1)} className="btn btn-secondary">
-            Back
-          </button>
+          <p className="text-gray-500">
+            {session.attempt.candidate.name} - {session.attempt.test.name} (Matrix-aligned trust report)
+          </p>
         </div>
+      </div>
 
         {/* Overview Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -345,9 +339,7 @@ export default function ProctorDashboard() {
                           rel="noopener noreferrer"
                           className="text-primary-600 hover:text-primary-800"
                         >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
+                          <Image className="w-5 h-5" />
                         </a>
                       )}
                       {!event.reviewed && (

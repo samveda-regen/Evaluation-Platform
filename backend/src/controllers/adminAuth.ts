@@ -7,7 +7,7 @@ import prisma from '../utils/db.js';
 
 export async function registerAdmin(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
-    const { email, password, name } = req.body;
+    const { email, password, name, companyName, companyId } = req.body;
 
     const sanitizedEmail = sanitizeInput(email).toLowerCase();
     const sanitizedName = sanitizeInput(name);
@@ -25,12 +25,28 @@ export async function registerAdmin(req: AuthenticatedRequest, res: Response): P
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 12);
 
+    // Upsert company if both fields provided
+    let companyRecord: { id: string; name: string; externalCompanyId: string } | null = null;
+    if (companyId && companyName) {
+      companyRecord = await prisma.company.upsert({
+        where: { externalCompanyId: sanitizeInput(companyId) },
+        create: {
+          externalCompanyId: sanitizeInput(companyId),
+          name: sanitizeInput(companyName),
+        },
+        update: {
+          name: sanitizeInput(companyName),
+        },
+      });
+    }
+
     // Create admin
     const admin = await prisma.admin.create({
       data: {
         email: sanitizedEmail,
         password: hashedPassword,
-        name: sanitizedName
+        name: sanitizedName,
+        ...(companyRecord ? { companyId: companyRecord.id } : {}),
       }
     });
 
@@ -45,7 +61,9 @@ export async function registerAdmin(req: AuthenticatedRequest, res: Response): P
       admin: {
         id: admin.id,
         email: admin.email,
-        name: admin.name
+        name: admin.name,
+        companyName: companyRecord?.name ?? null,
+        companyExternalId: companyRecord?.externalCompanyId ?? null,
       },
       token
     });
@@ -61,9 +79,10 @@ export async function loginAdmin(req: AuthenticatedRequest, res: Response): Prom
 
     const sanitizedEmail = sanitizeInput(email).toLowerCase();
 
-    // Find admin
+    // Find admin with company
     const admin = await prisma.admin.findUnique({
-      where: { email: sanitizedEmail }
+      where: { email: sanitizedEmail },
+      include: { company: true }
     });
 
     if (!admin) {
@@ -90,7 +109,9 @@ export async function loginAdmin(req: AuthenticatedRequest, res: Response): Prom
       admin: {
         id: admin.id,
         email: admin.email,
-        name: admin.name
+        name: admin.name,
+        companyName: admin.company?.name ?? null,
+        companyExternalId: admin.company?.externalCompanyId ?? null,
       },
       token
     });
@@ -109,6 +130,7 @@ export async function getAdminProfile(req: AuthenticatedRequest, res: Response):
         email: true,
         name: true,
         createdAt: true,
+        company: { select: { name: true, externalCompanyId: true } },
         _count: {
           select: { tests: true }
         }
@@ -120,9 +142,75 @@ export async function getAdminProfile(req: AuthenticatedRequest, res: Response):
       return;
     }
 
-    res.json({ admin });
+    res.json({
+      admin: {
+        ...admin,
+        companyName: admin.company?.name ?? null,
+        companyExternalId: admin.company?.externalCompanyId ?? null,
+      }
+    });
   } catch (error) {
     console.error('Get admin profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function updateAdminProfile(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { name } = req.body;
+    if (!name || !name.trim()) {
+      res.status(400).json({ error: 'Name is required' });
+      return;
+    }
+
+    const admin = await prisma.admin.update({
+      where: { id: req.admin!.id },
+      data: { name: sanitizeInput(name.trim()) },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        company: { select: { name: true, externalCompanyId: true } },
+      },
+    });
+
+    res.json({
+      admin: {
+        ...admin,
+        companyName: admin.company?.name ?? null,
+        companyExternalId: admin.company?.externalCompanyId ?? null,
+      }
+    });
+  } catch (error) {
+    console.error('Update admin profile error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function changeAdminPassword(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      res.status(400).json({ error: 'Both current and new password are required' });
+      return;
+    }
+    if (newPassword.length < 8) {
+      res.status(400).json({ error: 'New password must be at least 8 characters' });
+      return;
+    }
+
+    const admin = await prisma.admin.findUnique({ where: { id: req.admin!.id } });
+    if (!admin) { res.status(404).json({ error: 'Admin not found' }); return; }
+
+    const valid = await bcrypt.compare(currentPassword, admin.password);
+    if (!valid) { res.status(401).json({ error: 'Current password is incorrect' }); return; }
+
+    const hashed = await bcrypt.hash(newPassword, 12);
+    await prisma.admin.update({ where: { id: admin.id }, data: { password: hashed } });
+
+    res.json({ message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('Change admin password error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }

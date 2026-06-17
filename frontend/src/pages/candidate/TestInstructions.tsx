@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { candidateApi } from '../../services/api';
 import { useTestStore } from '../../context/testStore';
+import { useAuthStore } from '../../context/authStore';
 import IDVerification from '../../components/IDVerification';
 import { clearCachedStreams, getCachedStreams, setCachedStreams } from '../../services/devicePermissionService';
 import { DEFAULT_CUSTOM_AI_VIOLATIONS, normalizeCustomAIViolationSelection } from '../../constants/customAIViolations';
@@ -24,6 +26,7 @@ interface TestDetails {
     requireMicrophone: boolean;
     requireScreenShare: boolean;
     customAIViolations?: string[];
+    questionCounts?: { mcq?: number; coding?: number; behavioral?: number };
   };
   attempt: {
     id: string;
@@ -34,6 +37,16 @@ interface TestDetails {
 }
 
 const TEMP_DISABLE_AUDIO_PROCTORING = true;
+
+function getInitials(name?: string | null): string {
+  if (!name) return 'U';
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((n) => n[0].toUpperCase())
+    .join('');
+}
 
 export default function TestInstructions() {
   const [testDetails, setTestDetails] = useState<TestDetails | null>(null);
@@ -51,20 +64,23 @@ export default function TestInstructions() {
     screenShare: false,
   });
   const [cameraPreviewStream, setCameraPreviewStream] = useState<MediaStream | null>(null);
+  const [connectionLatency, setConnectionLatency] = useState<number | null>(null);
   const cameraPreviewRef = useRef<HTMLVideoElement | null>(null);
   const navigate = useNavigate();
   const setTestData = useTestStore((state) => state.setTestData);
+  const candidate = useAuthStore((state) => state.candidate);
 
-  // Attach camera stream to preview video element whenever either changes
-  const setCameraPreviewVideo = useCallback((el: HTMLVideoElement | null) => {
-    cameraPreviewRef.current = el;
-    if (el && cameraPreviewStream) {
-      el.srcObject = cameraPreviewStream;
-      el.play().catch(() => {/* autoplay blocked – user interaction will trigger */});
-    }
-  }, [cameraPreviewStream]);
+  const setCameraPreviewVideo = useCallback(
+    (el: HTMLVideoElement | null) => {
+      cameraPreviewRef.current = el;
+      if (el && cameraPreviewStream) {
+        el.srcObject = cameraPreviewStream;
+        el.play().catch(() => {});
+      }
+    },
+    [cameraPreviewStream],
+  );
 
-  // Keep preview video in sync with stream whenever the video ref changes
   useEffect(() => {
     if (cameraPreviewRef.current && cameraPreviewStream) {
       cameraPreviewRef.current.srcObject = cameraPreviewStream;
@@ -73,11 +89,25 @@ export default function TestInstructions() {
   }, [cameraPreviewStream]);
 
   useEffect(() => {
-    // Fresh login/instructions flow should reset any previous stale streams.
     clearCachedStreams(true);
     loadTestDetails();
+    measureConnection();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const measureConnection = async () => {
+    const start = performance.now();
+    try {
+      const token = localStorage.getItem('candidateToken');
+      await fetch('/api/candidate/test', {
+        method: 'HEAD',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      setConnectionLatency(Math.round(performance.now() - start));
+    } catch {
+      setConnectionLatency(null);
+    }
+  };
 
   const loadTestDetails = async () => {
     try {
@@ -86,7 +116,7 @@ export default function TestInstructions() {
       const verification = await candidateApi.checkVerificationRequired(data.test.id);
       setVerificationRequired(verification.data.required);
       setVerificationComplete(verification.data.canProceed);
-    } catch (error) {
+    } catch {
       toast.error('Failed to load test details');
       navigate('/test/login');
     } finally {
@@ -100,24 +130,20 @@ export default function TestInstructions() {
       toast.error('Please accept the terms and conditions');
       return;
     }
-
     if (verificationRequired && !verificationComplete) {
       toast.error('Identity verification is required before starting this test');
       return;
     }
-
     if (testDetails?.test.proctorEnabled && !deviceReady) {
       toast.error('Complete required device permission checks before starting');
       return;
     }
-
     if (testDetails?.test.proctorEnabled) {
       const cached = getCachedStreams();
       const missingCamera = testDetails.test.requireCamera && !cached.cameraStream;
       const microphoneRequired = testDetails.test.requireMicrophone && !TEMP_DISABLE_AUDIO_PROCTORING;
       const missingMic = microphoneRequired && !cached.microphoneStream;
       const missingScreen = testDetails.test.requireScreenShare && !cached.screenStream;
-
       if (missingCamera || missingMic || missingScreen) {
         setDeviceReady(false);
         toast.error('Permissions expired or stopped. Run Device Readiness Check once before starting.');
@@ -126,13 +152,9 @@ export default function TestInstructions() {
     }
 
     setStarting(true);
-
     try {
       const { data } = await candidateApi.startTest();
-
-      // Load saved answers if any
       const savedAnswers = await candidateApi.getSavedAnswers();
-
       setTestData({
         testId: data.test.id,
         testCode: testDetails!.test.testCode,
@@ -147,36 +169,41 @@ export default function TestInstructions() {
         requireMicrophone: data.test.requireMicrophone && !TEMP_DISABLE_AUDIO_PROCTORING,
         requireScreenShare: data.test.requireScreenShare,
         customAIViolations: normalizeCustomAIViolationSelection(
-          data.test.customAIViolations || DEFAULT_CUSTOM_AI_VIOLATIONS
+          data.test.customAIViolations || DEFAULT_CUSTOM_AI_VIOLATIONS,
         ),
         violationPopupSettings: (() => {
           try {
             const raw = data.test.violationPopupSettings;
             const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-            if (parsed && typeof parsed.enabled === 'boolean' && typeof parsed.durationSeconds === 'number') {
+            if (
+              parsed &&
+              typeof parsed.enabled === 'boolean' &&
+              typeof parsed.durationSeconds === 'number'
+            ) {
               return { enabled: parsed.enabled, durationSeconds: parsed.durationSeconds };
             }
-          } catch { /* ignore */ }
+          } catch {
+            /* ignore */
+          }
           return { enabled: false, durationSeconds: 3 };
         })(),
         startTime: new Date(data.startTime),
         questions: data.questions,
         initialViolations: 0,
       });
-
-      // Load saved answers
       if (
         savedAnswers.data.mcqAnswers.length > 0 ||
         savedAnswers.data.codingAnswers.length > 0 ||
         savedAnswers.data.behavioralAnswers.length > 0
       ) {
-        useTestStore.getState().loadSavedAnswers(
-          savedAnswers.data.mcqAnswers,
-          savedAnswers.data.codingAnswers,
-          savedAnswers.data.behavioralAnswers
-        );
+        useTestStore
+          .getState()
+          .loadSavedAnswers(
+            savedAnswers.data.mcqAnswers,
+            savedAnswers.data.codingAnswers,
+            savedAnswers.data.behavioralAnswers,
+          );
       }
-
       navigate('/test/start');
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } } };
@@ -190,7 +217,6 @@ export default function TestInstructions() {
       setDeviceReady(true);
       return;
     }
-
     setCheckingDevices(true);
     const required = testDetails.test;
     const microphoneRequired = required.requireMicrophone && !TEMP_DISABLE_AUDIO_PROCTORING;
@@ -207,16 +233,16 @@ export default function TestInstructions() {
           video: required.requireCamera,
           audio: microphoneRequired,
         });
-
         cameraOk = required.requireCamera ? stream.getVideoTracks().length > 0 : true;
         microphoneOk = microphoneRequired ? stream.getAudioTracks().length > 0 : true;
         cameraStream = required.requireCamera ? new MediaStream(stream.getVideoTracks()) : null;
         micStream = microphoneRequired ? new MediaStream(stream.getAudioTracks()) : null;
       }
-    } catch (error) {
+    } catch {
       cameraOk = !required.requireCamera;
       microphoneOk = !microphoneRequired;
     }
+
     if (required.requireScreenShare) {
       try {
         const displayStream = await navigator.mediaDevices.getDisplayMedia({
@@ -225,29 +251,18 @@ export default function TestInstructions() {
         });
         screenOk = displayStream.getVideoTracks().length > 0;
         screenStream = screenOk ? displayStream : null;
-      } catch (error) {
+      } catch {
         screenOk = false;
       }
     }
 
-    setDeviceStatus({
-      camera: cameraOk,
-      microphone: microphoneOk,
-      screenShare: screenOk,
-    });
-
+    setDeviceStatus({ camera: cameraOk, microphone: microphoneOk, screenShare: screenOk });
     const ready = cameraOk && microphoneOk && screenOk;
     setDeviceReady(ready);
+
     if (ready) {
-      setCachedStreams({
-        cameraStream,
-        microphoneStream: micStream,
-        screenStream,
-      });
-      // Show camera preview so candidate can verify their position
-      if (cameraStream) {
-        setCameraPreviewStream(cameraStream);
-      }
+      setCachedStreams({ cameraStream, microphoneStream: micStream, screenStream });
+      if (cameraStream) setCameraPreviewStream(cameraStream);
     } else {
       clearCachedStreams(true);
       setCameraPreviewStream(null);
@@ -259,103 +274,72 @@ export default function TestInstructions() {
     setCheckingDevices(false);
   };
 
-  if (loading) {
+  if (loading || checkingVerification) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: '#F3F4F6' }}>
+        <div className="animate-spin rounded-full h-10 w-10 border-2 border-emerald-500 border-t-transparent" />
       </div>
     );
   }
 
   if (!testDetails) return null;
 
-  if (checkingVerification) {
-    return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-      </div>
-    );
-  }
-
   const { test } = testDetails;
   const microphoneRequired = test.requireMicrophone && !TEMP_DISABLE_AUDIO_PROCTORING;
+  const initials = getInitials(candidate?.name);
+  const totalQuestions =
+    (test.questionCounts?.mcq ?? 0) +
+    (test.questionCounts?.coding ?? 0) +
+    (test.questionCounts?.behavioral ?? 0);
+  const identityVerified = !verificationRequired || verificationComplete;
+
+  const canStart =
+    accepted &&
+    !starting &&
+    (!verificationRequired || verificationComplete) &&
+    (!test.proctorEnabled || deviceReady);
 
   return (
-    <div className="min-h-screen bg-gray-100 py-8 px-4">
-      <div className="max-w-3xl mx-auto">
-        <div className="card mb-6">
-          <h1 className="text-2xl font-bold text-gray-800 mb-2">{test.name}</h1>
-          {test.description && (
-            <p className="text-gray-600">{test.description}</p>
+    <div className="min-h-screen" style={{ background: '#F3F4F6' }}>
+      {/* ── Header ── */}
+      <header className="bg-white border-b border-gray-200">
+        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate(-1)}
+              className="flex items-center gap-1.5 text-sm font-medium transition-colors"
+              style={{ color: '#6B7280' }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#111827')}
+              onMouseLeave={e => (e.currentTarget.style.color = '#6B7280')}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+              Back
+            </button>
+            <div className="h-5 w-px bg-gray-200" />
+            <div className="flex items-center gap-3">
+              <span className="font-semibold text-gray-800 text-lg">TalentstaQ</span>
+            </div>
+          </div>
+          {identityVerified && (
+            <div className="flex items-center gap-2 text-sm font-medium" style={{ color: '#10B981' }}>
+              <span
+                className="w-2 h-2 rounded-full"
+                style={{ background: '#10B981' }}
+              />
+              Identity verified
+            </div>
           )}
         </div>
+      </header>
 
-        <div className="card mb-6">
-          <h2 className="text-lg font-semibold mb-4">Test Details</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <p className="text-sm text-gray-500">Duration</p>
-              <p className="text-xl font-bold text-primary-600">{test.duration} min</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Total Marks</p>
-              <p className="text-xl font-bold">{test.totalMarks}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Passing Marks</p>
-              <p className="text-xl font-bold">{test.passingMarks || 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Negative Marking</p>
-              <p className="text-xl font-bold">{test.negativeMarking > 0 ? `-${test.negativeMarking}` : 'None'}</p>
-            </div>
-          </div>
-        </div>
-
-        {test.instructions && (
-          <div className="card mb-6">
-            <h2 className="text-lg font-semibold mb-4">Instructions</h2>
-            <div className="prose prose-sm max-w-none">
-              <pre className="whitespace-pre-wrap font-sans text-gray-700">
-                {test.instructions}
-              </pre>
-            </div>
-          </div>
-        )}
-
-        <div className="card mb-6 bg-red-50 border border-red-200">
-          <h2 className="text-lg font-semibold mb-4 text-red-800">Important Rules</h2>
-          <ul className="space-y-2 text-red-700">
-            <li className="flex items-start gap-2">
-              <span className="text-red-500">⚠</span>
-              <span>The test must be taken in <strong>full-screen mode</strong>. Exiting full-screen will be logged.</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-red-500">⚠</span>
-              <span><strong>Tab switching</strong> and <strong>window changes</strong> will be monitored and logged.</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-red-500">⚠</span>
-              <span><strong>Copy, paste, and right-click</strong> are disabled during the test.</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-red-500">⚠</span>
-              <span>After <strong>{test.maxViolations} violations</strong>, your test will be auto-submitted.</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-red-500">⚠</span>
-              <span>The test will <strong>auto-submit</strong> when the time expires.</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-red-500">⚠</span>
-              <span>Ensure you have a <strong>stable internet connection</strong> throughout the test.</span>
-            </li>
-          </ul>
-        </div>
-
+      {/* ── Body ── */}
+      <main className="max-w-5xl mx-auto px-6 py-8">
+        {/* ID verification gate (shown inline if still pending) */}
         {verificationRequired && !verificationComplete && (
-          <div className="card mb-6">
-            <h2 className="text-lg font-semibold mb-4">ID Verification Required</h2>
+          <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
+            <h2 className="text-base font-semibold text-gray-800 mb-4">ID Verification Required</h2>
             <IDVerification
               onVerified={() => {
                 setVerificationComplete(true);
@@ -363,113 +347,489 @@ export default function TestInstructions() {
               }}
               onSkip={() => {
                 setVerificationComplete(true);
-                toast.error('ID verification was skipped with admin authorization. Proceed with strict review.');
+                toast.error(
+                  'ID verification was skipped with admin authorization. Proceed with strict review.',
+                );
               }}
               isOptional={false}
             />
           </div>
         )}
 
-        {test.proctorEnabled && (
-          <div className="card mb-6">
-            <h2 className="text-lg font-semibold mb-4">Device Readiness Check</h2>
-            <p className="text-sm text-gray-600 mb-4">
-              This test uses live AI proctoring. Grant required browser permissions before starting.
+        {/* ── Two-column grid ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
+          {/* ── Left: Instructions ── */}
+          <div className="bg-white rounded-2xl p-8 shadow-sm">
+            <h1 className="text-2xl font-bold text-gray-900">Before you begin</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              {test.name}
+              {test.duration ? ` · ${test.duration} minutes` : ''}
+              {totalQuestions > 0 ? ` · ${totalQuestions} questions` : ''}
             </p>
-            <div className="space-y-2 mb-4 text-sm">
-              <div className="flex justify-between">
-                <span>Camera</span>
-                <span className={deviceStatus.camera ? 'text-green-600' : 'text-red-600'}>
-                  {test.requireCamera ? (deviceStatus.camera ? 'Ready' : 'Required') : 'Not required'}
-                </span>
+
+            <div className="mt-6 space-y-5">
+              {/* Timed assessment */}
+              <div className="flex items-start gap-4">
+                <div
+                  className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: '#111827' }}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="w-5 h-5 text-white"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={1.8}
+                  >
+                    <circle cx="12" cy="12" r="9" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900 text-sm">Timed assessment</p>
+                  <p className="text-gray-500 text-sm mt-0.5">
+                    You have {test.duration} minutes. The test auto-submits when time runs out.
+                  </p>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span>Microphone</span>
-                <span className={deviceStatus.microphone ? 'text-green-600' : 'text-red-600'}>
-                  {microphoneRequired ? (deviceStatus.microphone ? 'Ready' : 'Required') : 'Not required'}
-                </span>
+
+              {/* Proctored session */}
+              <div className="flex items-start gap-4">
+                <div
+                  className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: '#111827' }}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="w-5 h-5 text-white"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={1.8}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900 text-sm">Proctored session</p>
+                  <p className="text-gray-500 text-sm mt-0.5">
+                    Your camera, microphone and screen are monitored by AI throughout.
+                  </p>
+                </div>
               </div>
-              <div className="flex justify-between">
-                <span>Screen Share</span>
-                <span className={deviceStatus.screenShare ? 'text-green-600' : 'text-red-600'}>
-                  {test.requireScreenShare
-                    ? (deviceStatus.screenShare ? 'Ready' : 'Required')
-                    : 'Not required'}
-                </span>
+
+              {/* Full-screen required */}
+              <div className="flex items-start gap-4">
+                <div
+                  className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: '#111827' }}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="w-5 h-5 text-white"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={1.8}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900 text-sm">Full-screen required</p>
+                  <p className="text-gray-500 text-sm mt-0.5">
+                    The test runs in full-screen. Leaving it is recorded as a violation.
+                  </p>
+                </div>
+              </div>
+
+              {/* No external help */}
+              <div className="flex items-start gap-4">
+                <div
+                  className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: '#111827' }}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="w-5 h-5 text-white"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={1.8}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900 text-sm">No external help</p>
+                  <p className="text-gray-500 text-sm mt-0.5">
+                    Switching tabs, copying, or a second person in frame will be flagged.
+                  </p>
+                </div>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={checkDevicePermissions}
-              disabled={checkingDevices}
-              className="btn btn-secondary w-full"
-            >
-              {checkingDevices ? 'Checking Devices...' : 'Check Camera/Mic/Screen Permissions'}
-            </button>
 
-            {/* Camera position preview – shown after permissions pass */}
-            {deviceReady && test.requireCamera && cameraPreviewStream && (
-              <div className="mt-4">
-                <p className="text-sm font-medium text-gray-700 mb-2">
-                  Camera Position Check
-                  <span className="ml-2 text-xs text-gray-500">Make sure your face is clearly visible and centred</span>
+            {/* Custom instructions */}
+            {test.instructions && (
+              <div className="mt-6 pt-6 border-t border-gray-100">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">
+                  Additional Instructions
                 </p>
-                <div className="relative rounded-lg overflow-hidden bg-black" style={{ maxWidth: 360, margin: '0 auto' }}>
+                <pre className="whitespace-pre-wrap font-sans text-sm text-gray-600">
+                  {test.instructions}
+                </pre>
+              </div>
+            )}
+          </div>
+
+          {/* ── Right: System check ── */}
+          <div className="bg-white rounded-2xl shadow-sm overflow-hidden flex flex-col">
+            {/* Camera area */}
+            <div
+              className="relative flex items-center justify-center"
+              style={{ background: '#111827', minHeight: 200 }}
+            >
+              {/* CAMERA OK badge */}
+              {deviceStatus.camera && (
+                <span
+                  className="absolute top-3 left-3 text-white text-xs font-semibold px-2 py-0.5 rounded"
+                  style={{ background: '#10B981', letterSpacing: '0.05em' }}
+                >
+                  CAMERA OK
+                </span>
+              )}
+
+              {cameraPreviewStream ? (
+                <div className="relative w-full" style={{ maxHeight: 200 }}>
                   <video
                     ref={setCameraPreviewVideo}
                     autoPlay
                     muted
                     playsInline
-                    className="w-full rounded-lg"
-                    style={{ transform: 'scaleX(-1)' /* mirror so it feels natural */ }}
+                    className="w-full object-cover"
+                    style={{ maxHeight: 200, transform: 'scaleX(-1)' }}
                   />
-                  {/* Face-positioning oval guide */}
-                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                  {/* Oval face guide */}
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div
-                      className="border-4 border-green-400 rounded-full opacity-70"
+                      className="border-2 border-emerald-400 rounded-full opacity-60"
                       style={{ width: '45%', height: '70%' }}
                     />
                   </div>
-                  {/* Tip badge */}
-                  <div className="absolute bottom-2 left-0 right-0 flex justify-center">
-                    <span className="bg-black bg-opacity-60 text-white text-xs px-3 py-1 rounded-full">
-                      Align face inside the oval
-                    </span>
-                  </div>
                 </div>
+              ) : (
+                <div
+                  className="w-16 h-16 rounded-full flex items-center justify-center"
+                  style={{ background: '#374151' }}
+                >
+                  <span className="text-white font-semibold text-xl">{initials}</span>
+                </div>
+              )}
+            </div>
+
+            {/* System check list */}
+            <div className="p-5 flex-1 flex flex-col">
+              <p className="font-semibold text-gray-800 text-sm mb-4">System check</p>
+
+              <div className="space-y-3">
+                {/* Webcam */}
+                <SystemCheckRow
+                  icon={
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.723v6.554a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
+                    </svg>
+                  }
+                  label="Webcam"
+                  status={
+                    !test.requireCamera
+                      ? 'not-required'
+                      : checkingDevices
+                        ? 'checking'
+                        : deviceStatus.camera
+                          ? 'ok'
+                          : 'pending'
+                  }
+                  okLabel="Connected"
+                  pendingLabel={test.requireCamera ? 'Pending' : 'Not required'}
+                />
+
+                {/* Microphone */}
+                <SystemCheckRow
+                  icon={
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4M12 3a4 4 0 014 4v4a4 4 0 01-8 0V7a4 4 0 014-4z" />
+                    </svg>
+                  }
+                  label="Microphone"
+                  status={
+                    !microphoneRequired
+                      ? 'not-required'
+                      : checkingDevices
+                        ? 'checking'
+                        : deviceStatus.microphone
+                          ? 'ok'
+                          : 'pending'
+                  }
+                  okLabel="Detected"
+                  pendingLabel={microphoneRequired ? 'Pending' : 'Not required'}
+                />
+
+                {/* Screen share */}
+                <SystemCheckRow
+                  icon={
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                  }
+                  label="Screen share"
+                  status={
+                    !test.requireScreenShare
+                      ? 'not-required'
+                      : checkingDevices
+                        ? 'checking'
+                        : deviceStatus.screenShare
+                          ? 'ok'
+                          : 'pending'
+                  }
+                  okLabel="Granted"
+                  pendingLabel={test.requireScreenShare ? 'Pending' : 'Not required'}
+                />
+
+                {/* Connection */}
+                <SystemCheckRow
+                  icon={
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
+                    </svg>
+                  }
+                  label="Connection"
+                  status={connectionLatency !== null ? 'ok' : 'checking'}
+                  okLabel={connectionLatency !== null ? `Stable · ${connectionLatency}ms` : 'Stable'}
+                  pendingLabel="Checking…"
+                />
               </div>
-            )}
+
+              {/* Device check button (only shown when proctoring required and not yet ready) */}
+              {test.proctorEnabled && !deviceReady && (
+                <button
+                  type="button"
+                  onClick={checkDevicePermissions}
+                  disabled={checkingDevices}
+                  className="mt-4 w-full text-sm font-medium py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  {checkingDevices ? 'Checking devices…' : 'Run System Check'}
+                </button>
+              )}
+
+              {/* Spacer */}
+              <div className="flex-1" />
+
+              {/* Divider */}
+              <div className="border-t border-gray-100 my-4" />
+
+              {/* Checkbox */}
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={accepted}
+                  onChange={(e) => setAccepted(e.target.checked)}
+                  className="w-4 h-4 mt-0.5 rounded accent-emerald-500 flex-shrink-0"
+                />
+                <span className="text-xs text-gray-600 leading-relaxed">
+                  I have read the instructions and I'm ready to start in full-screen mode.
+                </span>
+              </label>
+
+              {/* Start button */}
+              <button
+                onClick={handleStartTest}
+                disabled={!canStart}
+                className="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-opacity"
+                style={{
+                  background: canStart ? '#10B981' : '#9CA3AF',
+                  color: 'white',
+                  cursor: canStart ? 'pointer' : 'not-allowed',
+                }}
+              >
+                {starting ? (
+                  <>
+                    <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+                    Starting…
+                  </>
+                ) : (
+                  <>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                    Start assessment
+                  </>
+                )}
+              </button>
+
+              <p className="text-xs text-gray-400 text-center mt-2">
+                Timer starts when you click start
+              </p>
+            </div>
           </div>
-        )}
-
-        <div className="card">
-          <label className="flex items-start gap-3 mb-6">
-            <input
-              type="checkbox"
-              checked={accepted}
-              onChange={(e) => setAccepted(e.target.checked)}
-              className="w-5 h-5 mt-0.5"
-            />
-            <span className="text-gray-700">
-              I have read and understood the instructions. I agree to follow the test rules and understand
-              that any violations will be logged and may result in automatic submission of my test.
-            </span>
-          </label>
-
-          <button
-            onClick={handleStartTest}
-            disabled={
-              !accepted ||
-              starting ||
-              (verificationRequired && !verificationComplete) ||
-              (test.proctorEnabled && !deviceReady)
-            }
-            className="btn btn-primary w-full text-lg py-3"
-          >
-            {starting ? 'Starting Test...' : 'Start Test'}
-          </button>
         </div>
+
+        {/* ── Sections card ── */}
+        <div className="bg-white rounded-2xl p-6 mt-6 shadow-sm">
+          <p className="font-semibold text-gray-800 mb-5">Sections</p>
+          <div className="flex flex-wrap gap-8">
+            <SectionItem
+              icon={
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                </svg>
+              }
+              color="#3B82F6"
+              bg="#EFF6FF"
+              label="Multiple choice"
+              count={test.questionCounts?.mcq}
+            />
+            <SectionItem
+              icon={
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+                </svg>
+              }
+              color="#8B5CF6"
+              bg="#F5F3FF"
+              label="Coding"
+              count={test.questionCounts?.coding}
+            />
+            <SectionItem
+              icon={
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+              }
+              color="#F59E0B"
+              bg="#FFFBEB"
+              label="Behavioral"
+              count={test.questionCounts?.behavioral}
+            />
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+/* ── Helper components ── */
+
+type CheckStatus = 'ok' | 'pending' | 'checking' | 'not-required';
+
+function SystemCheckRow({
+  icon,
+  label,
+  status,
+  okLabel,
+  pendingLabel,
+}: {
+  icon: ReactNode;
+  label: string;
+  status: CheckStatus;
+  okLabel: string;
+  pendingLabel: string;
+}) {
+  const isOk = status === 'ok';
+  const isChecking = status === 'checking';
+  const isNotRequired = status === 'not-required';
+
+  return (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        {icon}
+        <span className="text-sm text-gray-600">{label}</span>
       </div>
+      <div className="flex items-center gap-2">
+        {isChecking ? (
+          <span className="text-xs text-gray-400">Checking…</span>
+        ) : isNotRequired ? (
+          <span className="text-xs text-gray-400">Not required</span>
+        ) : (
+          <span
+            className="text-xs font-medium"
+            style={{ color: isOk ? '#10B981' : '#9CA3AF' }}
+          >
+            {isOk ? okLabel : pendingLabel}
+          </span>
+        )}
+        {(isOk || isNotRequired) && (
+          <span
+            className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ background: isOk ? '#D1FAE5' : '#F3F4F6' }}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="w-3 h-3"
+              viewBox="0 0 20 20"
+              fill={isOk ? '#10B981' : '#9CA3AF'}
+            >
+              <path
+                fillRule="evenodd"
+                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </span>
+        )}
+        {!isOk && !isNotRequired && !isChecking && (
+          <span
+            className="w-5 h-5 rounded-full border-2 flex-shrink-0"
+            style={{ borderColor: '#E5E7EB' }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SectionItem({
+  icon,
+  color,
+  bg,
+  label,
+  count,
+}: {
+  icon: React.ReactNode;
+  color: string;
+  bg: string;
+  label: string;
+  count?: number;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div
+        className="w-12 h-12 rounded-full flex items-center justify-center"
+        style={{ background: bg, color }}
+      >
+        {icon}
+      </div>
+      <p className="text-sm font-medium text-gray-700 text-center">{label}</p>
+      {count !== undefined && (
+        <p className="text-xs text-gray-400">{count} Q</p>
+      )}
     </div>
   );
 }

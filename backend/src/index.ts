@@ -19,6 +19,7 @@ import invitationRoutes from './routes/invitations.js';
 import integrationRoutes from './routes/integration.js';
 import { setSocketServer } from './services/socketService.js';
 import prisma from './utils/db.js';
+import { ensureNotificationTable } from './controllers/notifications.js';
 
 function applyEnvFile(envPath: string): boolean {
   if (!fs.existsSync(envPath)) return false;
@@ -361,6 +362,18 @@ async function startServer(): Promise<void> {
     await prisma.$queryRaw`SELECT 1`;
     console.log('Database connectivity check: OK');
     console.log(`Allowed frontend origins: ${allowedOrigins.join(', ')}`);
+    // Ensure the Notification table exists (idempotent, safe to run every startup)
+    await ensureNotificationTable();
+    console.log('Notification table: ready');
+
+    // Ensure extended Test columns exist (idempotent)
+    await prisma.$executeRaw`ALTER TABLE "Test" ADD COLUMN IF NOT EXISTS "proctoringSettings" TEXT`;
+    await prisma.$executeRaw`ALTER TABLE "Test" ADD COLUMN IF NOT EXISTS "violationPopupSettings" TEXT`;
+    await prisma.$executeRaw`ALTER TABLE "Test" ADD COLUMN IF NOT EXISTS "confirmEmailSubject" TEXT`;
+    await prisma.$executeRaw`ALTER TABLE "Test" ADD COLUMN IF NOT EXISTS "confirmEmailBody" TEXT`;
+    await prisma.$executeRaw`ALTER TABLE "Test" ADD COLUMN IF NOT EXISTS "inviteEmailSubject" TEXT`;
+    await prisma.$executeRaw`ALTER TABLE "Test" ADD COLUMN IF NOT EXISTS "inviteEmailBody" TEXT`;
+    console.log('Test extended columns: ready');
   } catch (error) {
     console.error('Database connectivity check failed. Verify PostgreSQL and DATABASE_URL.', error);
     process.exit(1);

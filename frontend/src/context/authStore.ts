@@ -12,8 +12,17 @@ interface AuthState {
   logoutCandidate: () => void;
 }
 
+const storedAdmin = (() => {
+  try {
+    const raw = localStorage.getItem('adminUser');
+    return raw ? (JSON.parse(raw) as Admin) : null;
+  } catch {
+    return null;
+  }
+})();
+
 export const useAuthStore = create<AuthState>((set) => ({
-  admin: null,
+  admin: storedAdmin,
   candidate: null,
   isAdminAuthenticated: !!localStorage.getItem('adminToken'),
   isCandidateAuthenticated: !!localStorage.getItem('candidateToken'),
@@ -21,6 +30,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   setAdmin: (admin, token) => {
     if (token) {
       localStorage.setItem('adminToken', token);
+    }
+    if (admin) {
+      localStorage.setItem('adminUser', JSON.stringify(admin));
+    } else {
+      localStorage.removeItem('adminUser');
     }
     set({ admin, isAdminAuthenticated: !!admin });
   },
@@ -34,6 +48,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logoutAdmin: () => {
     localStorage.removeItem('adminToken');
+    localStorage.removeItem('adminUser');
     set({ admin: null, isAdminAuthenticated: false });
   },
 

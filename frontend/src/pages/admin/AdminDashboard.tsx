@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { format } from 'date-fns';
+import { Sparkles, ClipboardCheck, Activity, Users, Database, ShieldCheck, ChevronRight } from 'lucide-react';
+import BackButton from '../../components/BackButton';
 
 interface DashboardStats {
   totalTests: number;
@@ -20,128 +22,450 @@ interface RecentAttempt {
   test: { name: string };
 }
 
+const AVATAR_COLORS = [
+  '#8B5CF6', '#7C3AED', '#EF4444', '#3B82F6', '#F97316',
+  '#10B981', '#EC4899', '#0EA5E9', '#84CC16', '#F59E0B',
+];
+
+function getAvatarColor(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+function getInitials(name: string) {
+  return name.split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
+}
+
+function WeeklyBarChart({ data }: { data: { label: string; value: number }[] }) {
+  const [hovered, setHovered] = useState<number | null>(null);
+  const max = Math.max(...data.map(d => d.value), 1);
+  return (
+    <div className="flex items-end gap-2 mt-4" style={{ height: '140px' }}>
+      {data.map((day, i) => {
+        const barPct = (day.value / max) * 80;
+        return (
+          <div
+            key={day.label}
+            className="flex flex-col items-center justify-end flex-1 gap-1 h-full"
+            style={{ position: 'relative' }}
+            onMouseEnter={() => setHovered(i)}
+            onMouseLeave={() => setHovered(null)}
+          >
+            {hovered === i && (
+              <div style={{
+                position: 'absolute',
+                bottom: `calc(${barPct}% + 34px)`,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                backgroundColor: '#111827',
+                color: 'white',
+                borderRadius: '6px',
+                padding: '5px 10px',
+                fontSize: '11px',
+                fontWeight: 600,
+                whiteSpace: 'nowrap',
+                zIndex: 20,
+                pointerEvents: 'none',
+                lineHeight: 1.5,
+              }}>
+                <div style={{ textAlign: 'center' }}>{day.label}</div>
+                <div style={{ textAlign: 'center', color: '#6EE7B7' }}>{day.value} attempt{day.value !== 1 ? 's' : ''}</div>
+                <div style={{
+                  position: 'absolute', bottom: '-5px', left: '50%',
+                  transform: 'translateX(-50%)', width: 0, height: 0,
+                  borderLeft: '5px solid transparent', borderRight: '5px solid transparent',
+                  borderTop: '5px solid #111827',
+                }} />
+              </div>
+            )}
+            <div
+              className="w-full rounded-t-md"
+              style={{
+                height: `${barPct}%`,
+                backgroundColor: hovered === i ? '#059669' : '#10B981',
+                minHeight: '4px',
+                transition: 'background-color 0.1s',
+                cursor: 'default',
+              }}
+            />
+            <span className="text-xs" style={{ color: '#9CA3AF' }}>{day.label}</span>
+            <span className="text-[10px]" style={{ color: '#D1D5DB' }}>{day.value}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function IntegrityDonut({ percentage, clean, flagged }: { percentage: number; clean: number; flagged: number }) {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const r = 40;
+  const circumference = 2 * Math.PI * r;
+  const dash = (Math.min(percentage, 100) / 100) * circumference;
+  const total = clean + flagged;
+  const cleanPct = total > 0 ? Math.round((clean / total) * 100) : 0;
+  const flaggedPct = total > 0 ? Math.round((flagged / total) * 100) : 0;
+  return (
+    <div
+      className="relative inline-flex items-center justify-center"
+      style={{ cursor: 'default' }}
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+    >
+      {showTooltip && (
+        <div style={{
+          position: 'absolute',
+          bottom: '110px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: '#111827',
+          color: 'white',
+          borderRadius: '8px',
+          padding: '10px 14px',
+          fontSize: '11px',
+          fontWeight: 500,
+          whiteSpace: 'nowrap',
+          zIndex: 20,
+          pointerEvents: 'none',
+          lineHeight: '1.7',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+        }}>
+          <div style={{ fontWeight: 700, marginBottom: '4px', color: '#F3F4F6' }}>Integrity Breakdown</div>
+          <div><span style={{ color: '#34D399' }}>●</span> Clean: {clean.toLocaleString()} ({cleanPct}%)</div>
+          <div><span style={{ color: '#F87171' }}>●</span> Flagged: {flagged.toLocaleString()} ({flaggedPct}%)</div>
+          <div style={{ borderTop: '1px solid #374151', marginTop: '5px', paddingTop: '5px' }}>
+            Avg Trust Score: <span style={{ color: '#6EE7B7', fontWeight: 700 }}>{percentage}%</span>
+          </div>
+          <div style={{
+            position: 'absolute', bottom: '-5px', left: '50%',
+            transform: 'translateX(-50%)', width: 0, height: 0,
+            borderLeft: '5px solid transparent', borderRight: '5px solid transparent',
+            borderTop: '5px solid #111827',
+          }} />
+        </div>
+      )}
+      <svg width="100" height="100" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r={r} fill="none" stroke="#FEE2E2" strokeWidth="9"/>
+        <circle
+          cx="50" cy="50" r={r}
+          fill="none"
+          stroke="#10B981"
+          strokeWidth="9"
+          strokeDasharray={`${dash} ${circumference - dash}`}
+          strokeLinecap="round"
+          transform="rotate(-90 50 50)"
+        />
+      </svg>
+      <div className="absolute text-center">
+        <div className="text-xl font-bold" style={{ color: '#111827' }}>{percentage}%</div>
+        <div className="text-[9px] font-medium" style={{ color: '#9CA3AF' }}>AVG TRUST</div>
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const config: Record<string, { bg: string; color: string; dot: string; label: string; pulse?: boolean }> = {
+    submitted:      { bg: '#F0FDF4', color: '#16A34A', dot: '#22C55E', label: 'Submitted' },
+    auto_submitted: { bg: '#FFF7ED', color: '#C2410C', dot: '#F97316', label: 'Auto-submitted' },
+    in_progress:    { bg: '#EFF6FF', color: '#1D4ED8', dot: '#3B82F6', label: 'In progress', pulse: true },
+    flagged:        { bg: '#FFF1F2', color: '#DC2626', dot: '#EF4444', label: 'Flagged', pulse: true },
+  };
+  const c = config[status] ?? config.submitted;
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 text-xs font-medium rounded-full px-2.5 py-1"
+      style={{ backgroundColor: c.bg, color: c.color }}
+    >
+      <span
+        className={`h-1.5 w-1.5 rounded-full flex-shrink-0${c.pulse ? ' animate-pulse-dot' : ''}`}
+        style={{ backgroundColor: c.dot }}
+      />
+      {c.label}
+    </span>
+  );
+}
+
+const DEFAULT_WEEK: { label: string; value: number }[] = [
+  'Sun','Mon','Tue','Wed','Thu','Fri','Sat'
+].map(label => ({ label, value: 0 }));
+
 export default function AdminDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentAttempts, setRecentAttempts] = useState<RecentAttempt[]>([]);
+  const [weeklyData, setWeeklyData] = useState<{ label: string; value: number }[]>(DEFAULT_WEEK);
+  const [integrity, setIntegrity] = useState({ flagged: 0, clean: 0, avgTrustScore: 0 });
   const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
 
-  useEffect(() => {
-    loadDashboard();
-  }, []);
+  useEffect(() => { loadDashboard(); }, []);
 
   const loadDashboard = async () => {
     try {
       const { data } = await adminApi.getDashboard();
       setStats(data.stats);
-      setRecentAttempts(data.recentAttempts);
-    } catch (error) {
+      const attempts: RecentAttempt[] = data.recentAttempts ?? [];
+      setRecentAttempts(attempts);
+
+      if (data.weeklyAttempts?.length) {
+        setWeeklyData(data.weeklyAttempts);
+      } else {
+        // Fallback: bucket recentAttempts by day-of-week for the last 7 days
+        const DAY_LABELS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        const now = Date.now();
+        const fallback = Array.from({ length: 7 }, (_, i) => {
+          const d = new Date(now - (6 - i) * 86_400_000);
+          const dayStart = new Date(d); dayStart.setHours(0,0,0,0);
+          const dayEnd   = new Date(d); dayEnd.setHours(23,59,59,999);
+          const value = attempts.filter(a => {
+            const t = new Date(a.startTime).getTime();
+            return t >= dayStart.getTime() && t <= dayEnd.getTime();
+          }).length;
+          return { label: DAY_LABELS[d.getDay()], value };
+        });
+        if (fallback.some(d => d.value > 0)) setWeeklyData(fallback);
+      }
+
+      if (data.integrityStats) setIntegrity(data.integrityStats);
+    } catch {
       toast.error('Failed to load dashboard');
     } finally {
       setLoading(false);
     }
   };
 
+  const today = new Date();
+  const dateLabel = format(today, "EEEE, d MMMM yyyy");
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500" />
       </div>
     );
   }
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">Dashboard</h1>
+    <div style={{ backgroundColor: '#f4f6fb', margin: '-24px', padding: '24px', minHeight: 'calc(100vh - 52px)' }}>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div className="card bg-gradient-to-br from-blue-500 to-blue-600 text-white">
-          <h3 className="text-lg opacity-90">Total Tests</h3>
-          <p className="text-4xl font-bold mt-2">{stats?.totalTests || 0}</p>
-          <Link to="/admin/tests" className="text-sm opacity-80 hover:opacity-100 mt-2 inline-block">
-            View all →
+      {/* Page Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div className="flex items-start gap-3">
+          <BackButton />
+          <div>
+            <h1 className="text-2xl font-bold" style={{ color: '#111827' }}>Dashboard</h1>
+            <p className="text-sm mt-0.5" style={{ color: '#6B7280' }}>
+              {dateLabel} · Here's what's happening across your assessments.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate('/admin/tests/agent')}
+            className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors"
+            style={{ borderColor: '#D1D5DB', backgroundColor: 'white', color: '#374151' }}
+          >
+            <Sparkles size={13} />
+            AI Generate
+          </button>
+          <Link
+            to="/admin/tests/new"
+            className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white"
+            style={{ backgroundColor: '#10B981' }}
+          >
+            + Create Test
           </Link>
-        </div>
-
-        <div className="card bg-gradient-to-br from-green-500 to-green-600 text-white">
-          <h3 className="text-lg opacity-90">Active Tests</h3>
-          <p className="text-4xl font-bold mt-2">{stats?.activeTests || 0}</p>
-          <span className="text-sm opacity-80 mt-2 inline-block">Currently live</span>
-        </div>
-
-        <div className="card bg-gradient-to-br from-purple-500 to-purple-600 text-white">
-          <h3 className="text-lg opacity-90">Total Attempts</h3>
-          <p className="text-4xl font-bold mt-2">{stats?.totalAttempts || 0}</p>
-          <span className="text-sm opacity-80 mt-2 inline-block">All time</span>
-        </div>
-
-        <div className="card bg-gradient-to-br from-orange-500 to-orange-600 text-white">
-          <h3 className="text-lg opacity-90">Total Questions</h3>
-          <p className="text-4xl font-bold mt-2">{stats?.totalQuestions || 0}</p>
-          <span className="text-sm opacity-80 mt-2 inline-block">MCQ + Coding</span>
         </div>
       </div>
 
-      {/* Quick Actions */}
-      <div className="card mb-8">
-        <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
-        <div className="flex flex-wrap gap-3">
-          <Link to="/admin/tests/new" className="btn btn-primary">
-            Create Test
-          </Link>
-          <Link to="/admin/repository/question-bank" className="btn btn-secondary">
-            Open Library
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+
+        {/* Total Tests */}
+        <Link to="/admin/tests" className="stat-card block rounded-xl p-5" style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', textDecoration: 'none' }}>
+          <div className="flex items-start justify-between">
+            <div className="icon-wrap h-9 w-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}>
+              <ClipboardCheck size={18} color="#3B82F6" />
+            </div>
+          </div>
+          <div className="mt-4">
+            <p className="text-3xl font-bold" style={{ color: '#111827' }}>{stats?.totalTests ?? 0}</p>
+            <p className="text-sm mt-1" style={{ color: '#6B7280' }}>Total assessments</p>
+          </div>
+        </Link>
+
+        {/* Active Tests */}
+        <Link to="/admin/tests" className="stat-card block rounded-xl p-5" style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', textDecoration: 'none' }}>
+          <div className="flex items-start justify-between">
+            <div className="icon-wrap h-9 w-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#F0FDF4' }}>
+              <Activity size={18} color="#10B981" />
+            </div>
+          </div>
+          <div className="mt-4">
+            <p className="text-3xl font-bold" style={{ color: '#111827' }}>{stats?.activeTests ?? 0}</p>
+            <p className="text-sm mt-1" style={{ color: '#6B7280' }}>Active assessments</p>
+          </div>
+        </Link>
+
+        {/* Total Attempts */}
+        <Link to="/admin/analytics" className="stat-card block rounded-xl p-5" style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', textDecoration: 'none' }}>
+          <div className="flex items-start justify-between">
+            <div className="icon-wrap h-9 w-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#EEF2FF' }}>
+              <Users size={18} color="#6366F1" />
+            </div>
+          </div>
+          <div className="mt-4">
+            <p className="text-3xl font-bold" style={{ color: '#111827' }}>{(stats?.totalAttempts ?? 0).toLocaleString()}</p>
+            <p className="text-sm mt-1" style={{ color: '#6B7280' }}>Total attempts</p>
+          </div>
+        </Link>
+
+        {/* Question Library */}
+        <Link to="/admin/repository/question-bank" className="stat-card block rounded-xl p-5" style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', textDecoration: 'none' }}>
+          <div className="flex items-start justify-between">
+            <div className="icon-wrap h-9 w-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#FFF7ED' }}>
+              <Database size={18} color="#F97316" />
+            </div>
+          </div>
+          <div className="mt-4">
+            <p className="text-3xl font-bold" style={{ color: '#111827' }}>{stats?.totalQuestions ?? 0}</p>
+            <p className="text-sm mt-1" style={{ color: '#6B7280' }}>Question library</p>
+          </div>
+        </Link>
+      </div>
+
+      {/* Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-5">
+
+        {/* Attempts this week */}
+        <div
+          className="lg:col-span-2 rounded-xl p-5"
+          style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}
+        >
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="font-semibold" style={{ color: '#111827' }}>Attempts this week</p>
+              <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>Daily completed attempts</p>
+            </div>
+            <span
+              className="inline-flex items-center gap-1.5 text-xs font-medium rounded-full px-2.5 py-1"
+              style={{ backgroundColor: '#D1FAE5', color: '#059669' }}
+            >
+              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#10B981' }} />
+              Live
+            </span>
+          </div>
+          <WeeklyBarChart data={weeklyData} />
+        </div>
+
+        {/* Integrity Health */}
+        <div
+          className="rounded-xl p-5 flex flex-col"
+          style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}
+        >
+          <div className="flex items-center justify-between mb-3">
+            <p className="font-semibold" style={{ color: '#111827' }}>Integrity health</p>
+            <ShieldCheck size={20} color={integrity.avgTrustScore >= 70 ? '#10B981' : integrity.avgTrustScore >= 45 ? '#F59E0B' : '#EF4444'} />
+          </div>
+          <div className="flex justify-center my-2">
+            <IntegrityDonut percentage={integrity.avgTrustScore} clean={integrity.clean} flagged={integrity.flagged} />
+          </div>
+          <div className="grid grid-cols-2 gap-3 mt-3">
+            <div className="rounded-xl p-3 text-center" style={{ backgroundColor: '#F0FDF4' }}>
+              <p className="font-bold text-lg" style={{ color: '#059669' }}>{integrity.clean.toLocaleString()}</p>
+              <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>Clean</p>
+            </div>
+            <div className="rounded-xl p-3 text-center" style={{ backgroundColor: '#FFF1F2' }}>
+              <p className="font-bold text-lg" style={{ color: '#EF4444' }}>{integrity.flagged}</p>
+              <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>Flagged</p>
+            </div>
+          </div>
+          {/* View trust reports → /admin/trust-reports */}
+          <Link
+            to="/admin/trust-reports"
+            className="inline-flex items-center gap-1 text-sm font-medium mt-4"
+            style={{ color: '#10B981' }}
+          >
+            View trust reports →
           </Link>
         </div>
       </div>
 
       {/* Recent Attempts */}
-      <div className="card">
-        <h2 className="text-lg font-semibold mb-4">Recent Test Attempts</h2>
+      <div
+        className="rounded-xl p-5"
+        style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}
+      >
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <p className="font-semibold" style={{ color: '#111827' }}>Recent attempts</p>
+            <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>Latest candidate submissions across all tests</p>
+          </div>
+          <Link to="/admin/all-attempts" className="text-sm font-medium" style={{ color: '#10B981' }}>
+            View all →
+          </Link>
+        </div>
+
         {recentAttempts.length === 0 ? (
-          <p className="text-gray-500">No attempts yet</p>
+          <p className="text-sm py-4" style={{ color: '#6B7280' }}>No attempts yet</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="text-left border-b">
-                  <th className="pb-3 font-medium">Candidate</th>
-                  <th className="pb-3 font-medium">Test</th>
-                  <th className="pb-3 font-medium">Start Time</th>
-                  <th className="pb-3 font-medium">Status</th>
-                  <th className="pb-3 font-medium">Score</th>
+                <tr style={{ borderBottom: '1px solid #F3F4F6' }}>
+                  {['CANDIDATE', 'TEST', 'WHEN', 'STATUS', 'SCORE', ''].map((h, i) => (
+                    <th
+                      key={i}
+                      className="pb-3 text-left text-xs font-semibold tracking-wider"
+                      style={{ color: '#9CA3AF' }}
+                    >
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {recentAttempts.map((attempt) => (
-                  <tr key={attempt.id} className="border-b last:border-0">
-                    <td className="py-3">
-                      <div>
-                        <p className="font-medium">{attempt.candidate.name}</p>
-                        <p className="text-sm text-gray-500">{attempt.candidate.email}</p>
+                  <tr key={attempt.id} style={{ borderBottom: '1px solid #F9FAFB' }}>
+                    <td className="py-3 pr-4">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className="h-8 w-8 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
+                          style={{ backgroundColor: getAvatarColor(attempt.candidate.name) }}
+                        >
+                          {getInitials(attempt.candidate.name)}
+                        </div>
+                        <p className="text-sm font-medium whitespace-nowrap" style={{ color: '#111827' }}>
+                          {attempt.candidate.name}
+                        </p>
                       </div>
                     </td>
-                    <td className="py-3">{attempt.test.name}</td>
-                    <td className="py-3 text-sm">
-                      {format(new Date(attempt.startTime), 'MMM d, yyyy h:mm a')}
+                    <td className="py-3 pr-4">
+                      <p className="text-sm whitespace-nowrap" style={{ color: '#374151' }}>{attempt.test.name}</p>
                     </td>
+                    <td className="py-3 pr-4">
+                      <p className="text-sm whitespace-nowrap" style={{ color: '#6B7280' }}>
+                        {format(new Date(attempt.startTime), 'MMM d, h:mm a')}
+                      </p>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <StatusBadge status={attempt.status} />
+                    </td>
+                    <td className="py-3 pr-4">
+                      <p className="text-sm font-medium" style={{ color: '#111827' }}>
+                        {attempt.score != null ? `${attempt.score}%` : '—'}
+                      </p>
+                    </td>
+                    {/* Individual attempt → /admin/attempts/:id */}
                     <td className="py-3">
-                      <span
-                        className={`badge ${
-                          attempt.status === 'submitted'
-                            ? 'badge-success'
-                            : attempt.status === 'auto_submitted'
-                            ? 'badge-warning'
-                            : attempt.status === 'in_progress'
-                            ? 'badge-info'
-                            : 'badge-danger'
-                        }`}
+                      <Link
+                        to={`/admin/attempts/${attempt.id}`}
+                        className="flex items-center justify-center h-7 w-7 rounded-full transition-colors"
+                        style={{ backgroundColor: '#F9FAFB' }}
                       >
-                        {attempt.status.replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td className="py-3">
-                      {attempt.score !== null ? attempt.score : '-'}
+                        <ChevronRight size={13} color="#9CA3AF" />
+                      </Link>
                     </td>
                   </tr>
                 ))}

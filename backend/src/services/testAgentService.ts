@@ -3,6 +3,97 @@ import prisma from '../utils/db.js';
 import { Prisma } from '@prisma/client';
 import { DEFAULT_CUSTOM_AI_VIOLATION_EVENTS } from '../utils/proctoringConfig.js';
 
+/* ── local helpers (no LLM required) ─────────────────────────────────── */
+
+function hasLLMKey(): boolean {
+  return !!(process.env.LLM_API_KEY || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY);
+}
+
+function analyzeJobLocal(jobTitle: string, jobDescription?: string): {
+  suggestedSkills: string[];
+  suggestedDifficulty: 'easy' | 'medium' | 'hard' | 'mixed';
+  suggestedMcqCount: number;
+  suggestedCodingCount: number;
+  experienceLevel: string;
+} {
+  const text = `${jobTitle} ${jobDescription || ''}`;
+  const patterns: [RegExp, string][] = [
+    [/node\.?js/i, 'Node.js'], [/react\.?js|react\b/i, 'React'],
+    [/typescript/i, 'TypeScript'], [/javascript/i, 'JavaScript'],
+    [/python\b/i, 'Python'], [/\bjava\b/i, 'Java'],
+    [/sql|mysql|postgres/i, 'SQL'], [/rest.?api|express/i, 'REST APIs'],
+    [/mongodb|mongo\b/i, 'MongoDB'], [/docker|kubernetes/i, 'Docker'],
+    [/aws|azure|gcp|cloud/i, 'Cloud/AWS'], [/vue\.?js/i, 'Vue.js'],
+    [/angular\b/i, 'Angular'], [/django|flask/i, 'Django/Flask'],
+    [/machine.?learning|ml\b/i, 'Machine Learning'],
+    [/data.?struct|algorithm/i, 'Data Structures'],
+    [/testing|jest|mocha/i, 'Testing'], [/css|html/i, 'CSS/HTML'],
+    [/graphql/i, 'GraphQL'], [/redis/i, 'Redis'],
+  ];
+  const skills: string[] = [];
+  for (const [re, skill] of patterns) {
+    if (re.test(text)) skills.push(skill);
+  }
+  if ((skills.includes('Node.js') || skills.includes('React')) && !skills.includes('JavaScript')) {
+    skills.unshift('JavaScript');
+  }
+  if (skills.length === 0) skills.push('Problem Solving', 'Algorithms', 'Data Structures', 'System Design');
+
+  let experienceLevel = '2-5 years';
+  if (/junior|entry|graduate|intern/i.test(text)) experienceLevel = '0-2 years';
+  else if (/senior|lead|principal|staff/i.test(text)) experienceLevel = '5+ years';
+
+  const suggestedDifficulty: 'easy' | 'medium' | 'hard' | 'mixed' =
+    experienceLevel === '0-2 years' ? 'easy' :
+    experienceLevel === '5+ years'  ? 'hard'  : 'mixed';
+
+  return {
+    suggestedSkills: skills.slice(0, 8),
+    suggestedDifficulty,
+    suggestedMcqCount: 10,
+    suggestedCodingCount: 3,
+    experienceLevel,
+  };
+}
+
+function selectQuestionsLocally(
+  mcqSummaries: QuestionSummary[],
+  codingSummaries: QuestionSummary[],
+  skills: string[],
+  difficulty: string,
+  mcqCount: number,
+  codingCount: number,
+  jobTitle: string,
+  duration?: number
+): QuestionSelection {
+  const score = (q: QuestionSummary): number => {
+    const hay = `${q.topic || ''} ${q.tags.join(' ')} ${q.text}`.toLowerCase();
+    let s = 0;
+    for (const skill of skills) {
+      const kw = skill.toLowerCase().replace(/[^a-z0-9]/g, ' ').trim();
+      for (const word of kw.split(/\s+/)) {
+        if (word.length > 2 && hay.includes(word)) s++;
+      }
+    }
+    if (difficulty === 'mixed' || q.difficulty === difficulty) s += 0.5;
+    return s;
+  };
+
+  const pickedMcq = [...mcqSummaries].sort((a, b) => score(b) - score(a)).slice(0, mcqCount);
+  const pickedCoding = [...codingSummaries].sort((a, b) => score(b) - score(a)).slice(0, codingCount);
+
+  return {
+    mcqQuestionIds: pickedMcq.map(q => q.id),
+    codingQuestionIds: pickedCoding.map(q => q.id),
+    mcqPreviews: pickedMcq.map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic })),
+    codingPreviews: pickedCoding.map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic })),
+    reasoning: `Selected ${pickedMcq.length} MCQ and ${pickedCoding.length} coding questions matched against: ${skills.join(', ')}.`,
+    suggestedDuration: duration || pickedMcq.length * 2 + pickedCoding.length * 20,
+    suggestedTestName: `${jobTitle} Assessment`,
+    suggestedDescription: `Assessment for ${jobTitle} covering ${skills.slice(0, 3).join(', ')} and related topics.`,
+  };
+}
+
 interface JobProfile {
   title: string;
   experience: string; // e.g., "0-2 years", "3-5 years", "5+ years"
@@ -25,6 +116,8 @@ interface QuestionSelection {
   suggestedDuration: number;
   suggestedTestName: string;
   suggestedDescription: string;
+  mcqPreviews?: Array<{ id: string; text: string; difficulty: string; topic: string | null }>;
+  codingPreviews?: Array<{ id: string; text: string; difficulty: string; topic: string | null }>;
 }
 
 interface QuestionSummary {
@@ -41,10 +134,11 @@ export async function generateTestFromJobProfile(
   request: TestGenerationRequest,
   adminId: string
 ): Promise<QuestionSelection> {
-  // Fetch all questions from the database
+  void adminId; // adminId kept for signature compat — questions are pooled across all admins
+
+  // Fetch ALL questions from the database (no per-admin filter so the pool is as large as possible)
   const [mcqQuestions, codingQuestions] = await Promise.all([
     prisma.mCQQuestion.findMany({
-      where: { OR: [{ adminId }, { adminId: null }] },
       select: {
         id: true,
         questionText: true,
@@ -55,7 +149,6 @@ export async function generateTestFromJobProfile(
       }
     }),
     prisma.codingQuestion.findMany({
-      where: { OR: [{ adminId }, { adminId: null }] },
       select: {
         id: true,
         title: true,
@@ -68,7 +161,7 @@ export async function generateTestFromJobProfile(
     })
   ]);
 
-  // Format questions for the LLM
+  // Format questions for matching / LLM prompt
   const mcqSummaries: QuestionSummary[] = mcqQuestions.map((q: typeof mcqQuestions[number]) => ({
     id: q.id,
     type: 'mcq' as const,
@@ -89,18 +182,20 @@ export async function generateTestFromJobProfile(
     marks: q.marks
   }));
 
-  // Build the prompt for the LLM
-  const systemPrompt = `You are an expert test designer and HR consultant. Your task is to select the most appropriate questions from a library to create a test for evaluating candidates for a specific job role.
+  // Use local fallback when no LLM key is configured
+  if (!hasLLMKey()) {
+    return selectQuestionsLocally(
+      mcqSummaries, codingSummaries,
+      request.skills, request.difficulty,
+      request.mcqCount, request.codingCount,
+      request.jobProfile.title, request.duration
+    );
+  }
 
-You must select questions that:
-1. Match the required skills for the role
-2. Are appropriate for the experience level
-3. Cover a good range of topics relevant to the position
-4. Have the right difficulty distribution based on the specified difficulty level
+  try {
+    const systemPrompt = `You are an expert test designer and HR consultant. Select the most appropriate questions from the library to evaluate candidates for a specific job role. Always respond with a valid JSON object.`;
 
-Always respond with a valid JSON object containing your selections and reasoning.`;
-
-  const userPrompt = `Create a test for the following job profile:
+    const userPrompt = `Create a test for the following job profile:
 
 **Job Title:** ${request.jobProfile.title}
 **Experience Required:** ${request.jobProfile.experience}
@@ -108,52 +203,59 @@ ${request.jobProfile.description ? `**Job Description:** ${request.jobProfile.de
 
 **Required Skills:** ${request.skills.join(', ')}
 **Difficulty Level:** ${request.difficulty}
-**Number of MCQ Questions Needed:** ${request.mcqCount}
-**Number of Coding Questions Needed:** ${request.codingCount}
+**MCQ Questions Needed:** ${request.mcqCount}
+**Coding Questions Needed:** ${request.codingCount}
 
 ## Available MCQ Questions (${mcqSummaries.length} total):
-${mcqSummaries.map(q => `- ID: ${q.id} | Difficulty: ${q.difficulty} | Topic: ${q.topic || 'General'} | Tags: [${q.tags.join(', ')}] | Marks: ${q.marks}
-  Question: ${q.text}`).join('\n')}
+${mcqSummaries.map(q => `- ID: ${q.id} | Difficulty: ${q.difficulty} | Topic: ${q.topic || 'General'} | Tags: [${q.tags.join(', ')}] | Marks: ${q.marks}\n  Question: ${q.text}`).join('\n')}
 
 ## Available Coding Questions (${codingSummaries.length} total):
-${codingSummaries.map(q => `- ID: ${q.id} | Difficulty: ${q.difficulty} | Topic: ${q.topic || 'General'} | Tags: [${q.tags.join(', ')}] | Marks: ${q.marks}
-  ${q.text}`).join('\n')}
+${codingSummaries.map(q => `- ID: ${q.id} | Difficulty: ${q.difficulty} | Topic: ${q.topic || 'General'} | Tags: [${q.tags.join(', ')}] | Marks: ${q.marks}\n  ${q.text}`).join('\n')}
 
-Please select the most appropriate questions for this test. If there aren't enough questions matching the exact criteria, select the closest matches available.
-
-Respond with a JSON object in this exact format:
+Respond with JSON:
 {
-  "mcqQuestionIds": ["id1", "id2", ...],
-  "codingQuestionIds": ["id1", "id2", ...],
-  "reasoning": "Explanation of why these questions were selected",
-  "suggestedDuration": <suggested_duration_in_minutes>,
-  "suggestedTestName": "Suggested test name",
-  "suggestedDescription": "Suggested test description"
+  "mcqQuestionIds": ["id1", ...],
+  "codingQuestionIds": ["id1", ...],
+  "reasoning": "...",
+  "suggestedDuration": <minutes>,
+  "suggestedTestName": "...",
+  "suggestedDescription": "..."
 }`;
 
-  const response = await callLLM([
-    { role: 'system', content: systemPrompt },
-    { role: 'user', content: userPrompt }
-  ], {
-    temperature: 0.3 // Lower temperature for more consistent selection
-  });
+    const response = await callLLM([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ], { temperature: 0.3 });
 
-  const selection = parseJSONFromLLM(response.content) as QuestionSelection;
+    const selection = parseJSONFromLLM(response.content) as QuestionSelection;
 
-  // Validate that selected IDs exist
-  const validMcqIds = mcqSummaries.map(q => q.id);
-  const validCodingIds = codingSummaries.map(q => q.id);
+    // Validate IDs against known pool
+    const validMcqIds  = new Set(mcqSummaries.map(q => q.id));
+    const validCodingIds = new Set(codingSummaries.map(q => q.id));
+    selection.mcqQuestionIds    = selection.mcqQuestionIds.filter(id => validMcqIds.has(id));
+    selection.codingQuestionIds = selection.codingQuestionIds.filter(id => validCodingIds.has(id));
 
-  selection.mcqQuestionIds = selection.mcqQuestionIds.filter(id => validMcqIds.includes(id));
-  selection.codingQuestionIds = selection.codingQuestionIds.filter(id => validCodingIds.includes(id));
+    if (!selection.suggestedDuration || selection.suggestedDuration < 10) {
+      selection.suggestedDuration = request.duration ||
+        selection.mcqQuestionIds.length * 2 + selection.codingQuestionIds.length * 20;
+    }
 
-  // Apply fallback duration if not suggested
-  if (!selection.suggestedDuration || selection.suggestedDuration < 10) {
-    selection.suggestedDuration = request.duration ||
-      (selection.mcqQuestionIds.length * 2) + (selection.codingQuestionIds.length * 20);
+    // Attach summaries so the frontend can preview without a second fetch
+    const mcqIdSet    = new Set(selection.mcqQuestionIds);
+    const codingIdSet = new Set(selection.codingQuestionIds);
+    selection.mcqPreviews    = mcqSummaries.filter(q => mcqIdSet.has(q.id)).map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic }));
+    selection.codingPreviews = codingSummaries.filter(q => codingIdSet.has(q.id)).map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic }));
+
+    return selection;
+  } catch {
+    // LLM call failed — fall back to keyword matching
+    return selectQuestionsLocally(
+      mcqSummaries, codingSummaries,
+      request.skills, request.difficulty,
+      request.mcqCount, request.codingCount,
+      request.jobProfile.title, request.duration
+    );
   }
-
-  return selection;
 }
 
 export async function createTestFromSelection(
@@ -173,14 +275,14 @@ export async function createTestFromSelection(
     companyId?: string;
   }
 ): Promise<{ testId: string; testCode: string }> {
-  // Calculate total marks
+  // Calculate total marks — no adminId filter so we can tally marks for any selected question
   const [mcqQuestions, codingQuestions] = await Promise.all([
     prisma.mCQQuestion.findMany({
-      where: { id: { in: selection.mcqQuestionIds }, OR: [{ adminId }, { adminId: null }] },
+      where: { id: { in: selection.mcqQuestionIds } },
       select: { id: true, marks: true }
     }),
     prisma.codingQuestion.findMany({
-      where: { id: { in: selection.codingQuestionIds }, OR: [{ adminId }, { adminId: null }] },
+      where: { id: { in: selection.codingQuestionIds } },
       select: { id: true, marks: true }
     })
   ]);
@@ -264,36 +366,42 @@ export async function analyzeJobRequirements(
   suggestedCodingCount: number;
   experienceLevel: string;
 }> {
-  const systemPrompt = `You are an expert HR consultant and technical recruiter. Analyze job requirements and suggest appropriate assessment parameters.`;
+  if (!hasLLMKey()) {
+    return analyzeJobLocal(jobTitle, jobDescription);
+  }
 
-  const userPrompt = `Analyze this job posting and suggest assessment parameters:
+  try {
+    const systemPrompt = `You are an expert HR consultant and technical recruiter. Analyze job requirements and suggest appropriate assessment parameters.`;
+
+    const userPrompt = `Analyze this job posting and suggest assessment parameters:
 
 **Job Title:** ${jobTitle}
 ${jobDescription ? `**Job Description:** ${jobDescription}` : ''}
 
 Respond with a JSON object containing:
 {
-  "suggestedSkills": ["skill1", "skill2", ...], // Technical skills to assess (5-10 skills)
-  "suggestedDifficulty": "easy|medium|hard|mixed", // Appropriate difficulty
-  "suggestedMcqCount": <number>, // Suggested number of MCQ questions (5-20)
-  "suggestedCodingCount": <number>, // Suggested number of coding questions (1-5)
-  "experienceLevel": "0-1 years|1-3 years|3-5 years|5+ years" // Inferred experience level
+  "suggestedSkills": ["skill1", "skill2", ...],
+  "suggestedDifficulty": "easy|medium|hard|mixed",
+  "suggestedMcqCount": <number>,
+  "suggestedCodingCount": <number>,
+  "experienceLevel": "0-1 years|1-3 years|3-5 years|5+ years"
 }`;
 
-  const response = await callLLM([
-    { role: 'system', content: systemPrompt },
-    { role: 'user', content: userPrompt }
-  ], {
-    temperature: 0.5
-  });
+    const response = await callLLM([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ], { temperature: 0.5 });
 
-  return parseJSONFromLLM(response.content) as {
-    suggestedSkills: string[];
-    suggestedDifficulty: 'easy' | 'medium' | 'hard' | 'mixed';
-    suggestedMcqCount: number;
-    suggestedCodingCount: number;
-    experienceLevel: string;
-  };
+    return parseJSONFromLLM(response.content) as {
+      suggestedSkills: string[];
+      suggestedDifficulty: 'easy' | 'medium' | 'hard' | 'mixed';
+      suggestedMcqCount: number;
+      suggestedCodingCount: number;
+      experienceLevel: string;
+    };
+  } catch {
+    return analyzeJobLocal(jobTitle, jobDescription);
+  }
 }
 
 export async function suggestQuestionTags(

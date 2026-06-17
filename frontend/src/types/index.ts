@@ -2,6 +2,8 @@ export interface Admin {
   id: string;
   email: string;
   name: string;
+  companyName?: string | null;
+  companyExternalId?: string | null;
 }
 
 export interface Candidate {

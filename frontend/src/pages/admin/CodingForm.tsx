@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
+import BackButton from '../../components/BackButton';
 
 interface TestCase {
   input: string;
@@ -14,6 +15,11 @@ const LANGUAGES = ['python', 'javascript', 'java', 'cpp', 'c'];
 
 export default function CodingForm() {
   const navigate = useNavigate();
+  const { questionId } = useParams<{ questionId: string }>();
+  const location = useLocation();
+  const isEditing = Boolean(questionId);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const editQuestion = (location.state as any)?.question;
 
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -36,6 +42,35 @@ export default function CodingForm() {
     tags: [] as string[]
   });
   const [tagInput, setTagInput] = useState('');
+
+  useEffect(() => {
+    if (isEditing && editQuestion) {
+      setFormData({
+        title: editQuestion.title ?? '',
+        description: editQuestion.description ?? '',
+        inputFormat: editQuestion.inputFormat ?? '',
+        outputFormat: editQuestion.outputFormat ?? '',
+        constraints: editQuestion.constraints ?? '',
+        sampleInput: editQuestion.sampleInput ?? '',
+        sampleOutput: editQuestion.sampleOutput ?? '',
+        marks: editQuestion.marks ?? 20,
+        timeLimit: editQuestion.timeLimit ?? 2000,
+        memoryLimit: editQuestion.memoryLimit ?? 256,
+        supportedLanguages: Array.isArray(editQuestion.supportedLanguages)
+          ? editQuestion.supportedLanguages
+          : ['python', 'javascript'],
+        codeTemplates: editQuestion.codeTemplates ?? {},
+        partialScoring: editQuestion.partialScoring ?? false,
+        testCases: editQuestion.testCases?.length
+          ? editQuestion.testCases
+          : [{ input: '', expectedOutput: '', isHidden: false, marks: 10 }],
+        difficulty: editQuestion.difficulty ?? 'medium',
+        topic: editQuestion.topic ?? '',
+        tags: Array.isArray(editQuestion.tags) ? editQuestion.tags : [],
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const addTag = () => {
     const tag = tagInput.trim().toLowerCase();
@@ -63,9 +98,18 @@ export default function CodingForm() {
     setLoading(true);
 
     try {
-      await adminApi.createCoding(formData);
-      toast.success('Question created');
-      navigate('/admin/repository/custom');
+      if (isEditing && questionId) {
+        await adminApi.updateCustomCoding(questionId, {
+          ...formData,
+          difficulty: formData.difficulty as 'easy' | 'medium' | 'hard',
+        });
+        toast.success('Question updated');
+        navigate(-1);
+      } else {
+        await adminApi.createCoding(formData);
+        toast.success('Question created');
+        navigate('/admin/repository/custom');
+      }
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } } };
       toast.error(err.response?.data?.error || 'Failed to save question');
@@ -118,7 +162,10 @@ export default function CodingForm() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">Create Coding Question</h1>
+      <div className="flex items-center gap-3 mb-6">
+        <BackButton mt="0" />
+        <h1 className="text-2xl font-bold text-gray-800">{isEditing ? 'Edit Coding Question' : 'Create Coding Question'}</h1>
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
         <div className="card">
