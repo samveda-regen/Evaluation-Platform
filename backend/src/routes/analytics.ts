@@ -10,6 +10,7 @@ import {
   getLeaderboard,
   regenerateTestAnalytics,
   getDashboardStats,
+  getAdminOverview,
 } from '../controllers/analytics';
 
 const router = Router();
@@ -18,6 +19,9 @@ const router = Router();
 
 // Dashboard summary statistics
 router.get('/dashboard', adminAuth, getDashboardStats);
+
+// Admin-wide performance overview (no testId required)
+router.get('/admin/overview', adminAuth, getAdminOverview);
 
 // Attempt-level analytics
 router.get('/attempt/:attemptId', adminAuth, getAttemptAnalytics);

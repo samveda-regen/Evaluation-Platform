@@ -1,12 +1,84 @@
 const nodemailer = require('nodemailer');
 // Invitation email delivery via SMTP.
 
+// ── Default email templates ──────────────────────────────────────────────────
+export const DEFAULT_INVITE_SUBJECT = "You're invited to take a test on {{test_name}}";
+export const DEFAULT_INVITE_BODY = `Hello {{candidate_name}},
+
+You have been invited to take the test: {{test_name}}.
+This test is designed to evaluate your skills and experience.
+Click the button below to get started:
+
+{{test_link}}
+
+The test will take approximately {{estimated_time}} to complete.
+If you have any questions, feel free to reach out to us.
+
+Best regards,
+{{company_name}} Team`;
+
+export const DEFAULT_CONFIRM_SUBJECT = "Thanks for completing {{test_name}}";
+export const DEFAULT_CONFIRM_BODY = `Hello {{candidate_name}},
+
+Thank you for completing the test: {{test_name}}.
+We appreciate the time and effort you put into the assessment.
+Our team will review your results and get back to you soon.
+
+Best regards,
+{{company_name}} Team`;
+
+// ── Placeholder substitution ─────────────────────────────────────────────────
+interface TemplateVars {
+  candidate_name: string;
+  test_name: string;
+  company_name: string;
+  estimated_time: string;
+  test_link: string;
+}
+
+function applyTemplate(template: string, vars: TemplateVars): string {
+  return template
+    .replace(/\{\{candidate_name\}\}/g, vars.candidate_name)
+    .replace(/\{\{test_name\}\}/g,      vars.test_name)
+    .replace(/\{\{company_name\}\}/g,   vars.company_name)
+    .replace(/\{\{estimated_time\}\}/g, vars.estimated_time)
+    .replace(/\{\{test_link\}\}/g,      vars.test_link);
+}
+
+function textToHtml(text: string): string {
+  return escapeHtml(text)
+    .split('\n')
+    .map(line => {
+      if (!line.trim()) return '<br />';
+      // Detect URLs and linkify them
+      const urlRegex = /https?:\/\/[^\s<>"]+/g;
+      const linked = line.replace(urlRegex, url => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
+      return `<p style="margin:0 0 8px">${linked}</p>`;
+    })
+    .join('');
+}
+
+// ── Payload ───────────────────────────────────────────────────────────────────
 interface InvitationEmailPayload {
   to: string;
   candidateName: string;
   testName: string;
   testLink: string;
-  customMessage?: string;
+  companyName?: string;
+  estimatedTime?: string;
+  // custom templates (if set on the test)
+  inviteEmailSubject?: string | null;
+  inviteEmailBody?: string | null;
+}
+
+interface ConfirmationEmailPayload {
+  to: string;
+  candidateName: string;
+  testName: string;
+  companyName?: string;
+  // custom templates (if set on the test)
+  confirmEmailSubject?: string | null;
+  confirmEmailBody?: string | null;
 }
 
 interface SmtpConfiguration {
@@ -44,12 +116,8 @@ function parseMailProvider(value: string | undefined): MailProvider {
 }
 
 function resolveProviderForAuto(): Exclude<MailProvider, 'auto'> {
-  if (process.env.RESEND_API_KEY?.trim()) {
-    return 'resend';
-  }
-  if (process.env.SENDGRID_API_KEY?.trim()) {
-    return 'sendgrid';
-  }
+  if (process.env.RESEND_API_KEY?.trim()) return 'resend';
+  if (process.env.SENDGRID_API_KEY?.trim()) return 'sendgrid';
   return 'smtp';
 }
 
@@ -249,48 +317,6 @@ function extractEmailAddress(value: string): string {
   return (match?.[1] || value).trim().toLowerCase();
 }
 
-function buildInvitationBody(payload: InvitationEmailPayload): string {
-  const lines = [
-    `Hi ${payload.candidateName},`,
-    '',
-    'Thank you for your interest in the AI Developer role at ReGen.',
-    '',
-    'As discussed, you are invited to take the Online MCQ + Coding Assessment as the next step in our selection process.',
-    '',
-    'Your exam window will be from 4:00 PM to 6:00 PM. After this time, the portal will automatically close, so please ensure you complete your assessment within the given duration.',
-    '',
-    'Please use the below link to access the exam portal:',
-    payload.testLink,
-    '',
-    'EXAM INSTRUCTIONS:',
-    '1. Ensure you have a stable internet connection before starting the test.',
-    '2. Use a laptop/desktop for a better experience (avoid mobile devices).',
-    '3. Do not refresh or close the browser during the test.',
-    '4. Make sure you complete all questions within the given duration.',
-    '5. Avoid switching tabs or opening other applications during the assessment.',
-    '6. Any form of malpractice may lead to disqualification.',
-    '',
-    'Further updates regarding the next steps will be shared with candidates who successfully clear this round.',
-    '',
-    'If you face any issues accessing the portal, feel free to reply to this email.'
-  ];
-
-  if (payload.customMessage?.trim()) {
-    lines.push('', payload.customMessage.trim());
-  }
-
-  lines.push(
-    '',
-    'Wishing you all the best!',
-    '',
-    'Best Regards,',
-    'Kiran Penubakala',
-    'kiran@regenconsult.au',
-    '7658920525'
-  );
-  return lines.join('\n');
-}
-
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -300,41 +326,67 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-function buildInvitationHtml(payload: InvitationEmailPayload): string {
-  const candidateName = escapeHtml(payload.candidateName);
-  const testLink = escapeHtml(payload.testLink);
-  const customMessage = payload.customMessage?.trim();
-
-  const customMessageBlock = customMessage
-    ? `<p>${escapeHtml(customMessage).replace(/\n/g, '<br />')}</p>`
-    : '';
-
-  return [
-    `<p>Hi ${candidateName},</p>`,
-    '<p>Thank you for your interest in the AI Developer role at ReGen.</p>',
-    '<p>As discussed, you are invited to take the Online MCQ + Coding Assessment as the next step in our selection process.</p>',
-    '<p>Your exam window will be from 4:00 PM to 6:00 PM. After this time, the portal will automatically close, so please ensure you complete your assessment within the given duration.</p>',
-    '<p>Please use the below link to access the exam portal:</p>',
-    `<p><a href="${testLink}" target="_blank" rel="noopener noreferrer">${testLink}</a></p>`,
-    '<p><strong>Exam Instructions:</strong></p>',
-    '<ul>',
-    '<li>Ensure you have a stable internet connection before starting the test.</li>',
-    '<li>Use a laptop/desktop for a better experience (avoid mobile devices).</li>',
-    '<li>Do not refresh or close the browser during the test.</li>',
-    '<li>Make sure you complete all questions within the given duration.</li>',
-    '<li>Avoid switching tabs or opening other applications during the assessment.</li>',
-    '<li>Any form of malpractice may lead to disqualification.</li>',
-    '</ul>',
-    '<p>Further updates regarding the next steps will be shared with candidates who successfully clear this round.</p>',
-    '<p>If you face any issues accessing the portal, feel free to reply to this email.</p>',
-    customMessageBlock,
-    '<p>Wishing you all the best!</p>',
-    '<p>Best Regards,<br />Kiran Penubakala<br />kiran@regenconsult.au<br />7658920525</p>'
-  ]
-    .filter(Boolean)
-    .join('\n');
+// ── Build invite email from template ─────────────────────────────────────────
+function buildInviteText(payload: InvitationEmailPayload): string {
+  const templateBody = payload.inviteEmailBody || DEFAULT_INVITE_BODY;
+  return applyTemplate(templateBody, {
+    candidate_name: payload.candidateName,
+    test_name:      payload.testName,
+    company_name:   payload.companyName || 'Our Team',
+    estimated_time: payload.estimatedTime || 'some time',
+    test_link:      payload.testLink,
+  });
 }
 
+function buildInviteSubject(payload: InvitationEmailPayload): string {
+  const templateSubject = payload.inviteEmailSubject || DEFAULT_INVITE_SUBJECT;
+  return applyTemplate(templateSubject, {
+    candidate_name: payload.candidateName,
+    test_name:      payload.testName,
+    company_name:   payload.companyName || 'Our Team',
+    estimated_time: payload.estimatedTime || 'some time',
+    test_link:      payload.testLink,
+  });
+}
+
+function buildInviteHtml(payload: InvitationEmailPayload): string {
+  const text = buildInviteText(payload);
+  return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#374151;max-width:600px">
+${textToHtml(text)}
+</div>`;
+}
+
+// ── Build confirmation email from template ────────────────────────────────────
+function buildConfirmText(payload: ConfirmationEmailPayload): string {
+  const templateBody = payload.confirmEmailBody || DEFAULT_CONFIRM_BODY;
+  return applyTemplate(templateBody, {
+    candidate_name: payload.candidateName,
+    test_name:      payload.testName,
+    company_name:   payload.companyName || 'Our Team',
+    estimated_time: '',
+    test_link:      '',
+  });
+}
+
+function buildConfirmSubject(payload: ConfirmationEmailPayload): string {
+  const templateSubject = payload.confirmEmailSubject || DEFAULT_CONFIRM_SUBJECT;
+  return applyTemplate(templateSubject, {
+    candidate_name: payload.candidateName,
+    test_name:      payload.testName,
+    company_name:   payload.companyName || 'Our Team',
+    estimated_time: '',
+    test_link:      '',
+  });
+}
+
+function buildConfirmHtml(payload: ConfirmationEmailPayload): string {
+  const text = buildConfirmText(payload);
+  return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#374151;max-width:600px">
+${textToHtml(text)}
+</div>`;
+}
+
+// ── SMTP sending ──────────────────────────────────────────────────────────────
 function isRetryableZohoError(error: unknown): boolean {
   const err = error as { code?: string; responseCode?: number };
   return err.code === 'EAUTH'
@@ -345,7 +397,7 @@ function isRetryableZohoError(error: unknown): boolean {
     || err.code === 'EDNS';
 }
 
-async function sendInvitationEmailViaSmtp(payload: InvitationEmailPayload): Promise<void> {
+async function sendMailViaSmtp(subject: string, textBody: string, htmlBody: string, to: string): Promise<void> {
   const baseConfig = getSmtpConfiguration();
   const fromAddress = getFromAddressForSmtp();
 
@@ -357,7 +409,7 @@ async function sendInvitationEmailViaSmtp(payload: InvitationEmailPayload): Prom
     const fromEmail = extractEmailAddress(fromAddress);
     const userEmail = baseConfig.user.trim().toLowerCase();
     if (fromEmail && userEmail && fromEmail !== userEmail) {
-      console.warn('Zoho SMTP warning: SMTP_FROM does not match SMTP_USER. Ensure it is a valid alias for this mailbox.');
+      console.warn('Zoho SMTP warning: SMTP_FROM does not match SMTP_USER.');
     }
   }
 
@@ -374,54 +426,38 @@ async function sendInvitationEmailViaSmtp(payload: InvitationEmailPayload): Prom
 
   for (let index = 0; index < hostsToTry.length; index += 1) {
     const candidateHost = hostsToTry[index];
-    const candidateConfig: SmtpConfiguration = {
-      ...baseConfig,
-      host: candidateHost
-    };
-
+    const candidateConfig: SmtpConfiguration = { ...baseConfig, host: candidateHost };
     const transporter = getTransporter(candidateConfig);
     attemptedHosts.push(candidateHost);
 
     try {
       const info = await transporter.sendMail({
         from: fromAddress,
-        to: payload.to,
-        subject: 'AI Developer Assessment – ReGen',
-        text: buildInvitationBody(payload),
-        html: buildInvitationHtml(payload)
+        to,
+        subject,
+        text: textBody,
+        html: htmlBody
       });
-
       console.log('Email sent via SMTP:', info.messageId);
-      console.log('Accepted:', info.accepted);
-      console.log('Rejected:', info.rejected);
-      console.log('Response:', info.response);
       return;
     } catch (error) {
       lastError = error;
       const hasMoreHosts = index < hostsToTry.length - 1;
-
       if (baseConfig.isZoho && isRetryableZohoError(error) && hasMoreHosts) {
         console.warn(`Zoho SMTP attempt failed on ${candidateHost}. Trying fallback host...`);
         continue;
       }
-
       break;
     }
   }
 
   if (baseConfig.isZoho) {
     const err = lastError as { code?: string; responseCode?: number } | null;
-
     if (err?.code === 'EAUTH' || err?.responseCode === 535) {
-      throw new Error(
-        `Zoho SMTP authentication failed. Tried hosts: ${attemptedHosts.join(', ')}. Use the full Zoho mailbox in SMTP_USER, an app-specific password in SMTP_PASS (required with 2FA), and ensure SMTP_FROM matches the same account or an allowed alias.`
-      );
+      throw new Error(`Zoho SMTP authentication failed. Tried: ${attemptedHosts.join(', ')}.`);
     }
-
     if (err?.code === 'ECONNECTION' || err?.code === 'ETIMEDOUT' || err?.code === 'ESOCKET' || err?.code === 'EDNS') {
-      throw new Error(
-        `Zoho SMTP connection failed (initial ${baseConfig.host}:${baseConfig.port}, secure=${baseConfig.secure}, requireTLS=${baseConfig.requireTLS}). Tried hosts: ${attemptedHosts.join(', ')}. Check firewall/port access and set ZOHO_DATA_CENTER correctly (us/eu/in/au/cn).`
-      );
+      throw new Error(`Zoho SMTP connection failed. Tried: ${attemptedHosts.join(', ')}.`);
     }
   }
 
@@ -430,47 +466,29 @@ async function sendInvitationEmailViaSmtp(payload: InvitationEmailPayload): Prom
 
 async function readSendGridError(response: Response): Promise<string> {
   const raw = await response.text();
-  if (!raw) {
-    return `HTTP ${response.status}`;
-  }
-
+  if (!raw) return `HTTP ${response.status}`;
   try {
     const parsed = JSON.parse(raw) as { errors?: Array<{ message?: string }> };
     if (Array.isArray(parsed.errors) && parsed.errors.length > 0) {
-      const messages = parsed.errors
-        .map((item) => (item?.message || '').trim())
-        .filter(Boolean);
-      if (messages.length > 0) {
-        return messages.join('; ');
-      }
+      const messages = parsed.errors.map((item) => (item?.message || '').trim()).filter(Boolean);
+      if (messages.length > 0) return messages.join('; ');
     }
-  } catch {
-    // ignore JSON parse errors and return raw text below
-  }
-
+  } catch { }
   return raw.slice(0, 600);
 }
 
-async function sendInvitationEmailViaSendGrid(payload: InvitationEmailPayload): Promise<void> {
+async function sendMailViaSendGrid(subject: string, textBody: string, htmlBody: string, to: string): Promise<void> {
   const config = getSendGridConfiguration();
-
   const response = await fetch(config.apiUrl, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      'Content-Type': 'application/json'
-    },
+    headers: { Authorization: `Bearer ${config.apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      personalizations: [
-        {
-          to: [{ email: payload.to }]
-        }
-      ],
+      personalizations: [{ to: [{ email: to }] }],
       from: { email: config.fromAddress },
-      subject: 'AI Developer Assessment – ReGen',
+      subject,
       content: [
-        { type: 'text/plain', value: buildInvitationBody(payload) },
-        { type: 'text/html', value: buildInvitationHtml(payload) }
+        { type: 'text/plain', value: textBody },
+        { type: 'text/html',  value: htmlBody }
       ]
     }),
     signal: AbortSignal.timeout(config.timeoutMs)
@@ -505,66 +523,79 @@ function getResendConfiguration(): ResendConfiguration {
   return { apiKey, fromAddress, timeoutMs };
 }
 
-async function sendInvitationEmailViaResend(payload: InvitationEmailPayload): Promise<void> {
+async function sendMailViaResend(subject: string, textBody: string, htmlBody: string, to: string): Promise<void> {
   const config = getResendConfiguration();
-
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify({
       from: config.fromAddress,
-      to: [payload.to],
-      subject: 'AI Developer Assessment – ReGen',
-      text: buildInvitationBody(payload),
-      html: buildInvitationHtml(payload)
+      to: [to],
+      subject,
+      text: textBody,
+      html: htmlBody,
     }),
-    signal: AbortSignal.timeout(config.timeoutMs)
+    signal: AbortSignal.timeout(config.timeoutMs),
   });
 
   if (!response.ok) {
-    const raw = await response.text();
+    const raw = await response.text().catch(() => '');
     let detail = raw.slice(0, 600);
     try {
       const parsed = JSON.parse(raw) as { message?: string; name?: string };
       if (parsed.message) detail = parsed.message;
-    } catch {
-      // use raw text
-    }
+    } catch { }
     throw new Error(`Resend send failed (${response.status}): ${detail}`);
   }
 
-  const result = await response.json() as { id?: string };
-  console.log('Email sent via Resend:', result.id);
+  const data = await response.json() as { id?: string };
+  console.log('Email sent via Resend:', data.id);
 }
 
-export async function sendInvitationEmail(payload: InvitationEmailPayload): Promise<void> {
+async function sendMail(subject: string, textBody: string, htmlBody: string, to: string): Promise<void> {
   const provider = getMailProvider();
   const resolvedProvider = provider === 'auto' ? resolveProviderForAuto() : provider;
+  if (provider === 'auto') console.warn(`MAIL_PROVIDER=auto resolved to ${resolvedProvider}.`);
 
+  if (resolvedProvider === 'resend') {
+    await sendMailViaResend(subject, textBody, htmlBody, to);
+    return;
+  }
+  if (resolvedProvider === 'sendgrid') {
+    await sendMailViaSendGrid(subject, textBody, htmlBody, to);
+    return;
+  }
+  await sendMailViaSmtp(subject, textBody, htmlBody, to);
+}
+
+// ── Public API ────────────────────────────────────────────────────────────────
+export async function sendInvitationEmail(payload: InvitationEmailPayload): Promise<void> {
   try {
-    if (provider === 'auto') {
-      console.warn(`MAIL_PROVIDER=auto resolved to ${resolvedProvider}.`);
-    }
-
-    if (resolvedProvider === 'resend') {
-      await sendInvitationEmailViaResend(payload);
-      return;
-    }
-
-    if (resolvedProvider === 'sendgrid') {
-      await sendInvitationEmailViaSendGrid(payload);
-      return;
-    }
-
-    await sendInvitationEmailViaSmtp(payload);
+    await sendMail(
+      buildInviteSubject(payload),
+      buildInviteText(payload),
+      buildInviteHtml(payload),
+      payload.to
+    );
   } catch (error) {
-    console.error('Failed to send invitation email:', {
-      provider: resolvedProvider,
-      error
-    });
+    console.error('Failed to send invitation email:', { error });
+    throw error;
+  }
+}
+
+export async function sendConfirmationEmail(payload: ConfirmationEmailPayload): Promise<void> {
+  try {
+    await sendMail(
+      buildConfirmSubject(payload),
+      buildConfirmText(payload),
+      buildConfirmHtml(payload),
+      payload.to
+    );
+  } catch (error) {
+    console.error('Failed to send confirmation email:', { error });
     throw error;
   }
 }

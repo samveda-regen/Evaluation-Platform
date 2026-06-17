@@ -521,18 +521,24 @@ export async function getDashboardStats(req: AuthenticatedRequest, res: Response
   try {
     const adminId = req.admin!.id;
 
+    // Last 7 days window
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+
     const [
       totalTests,
       activeTests,
       totalAttempts,
       totalQuestions,
-      recentAttempts
+      recentAttempts,
+      weeklyRaw,
+      flaggedCount,
+      avgTrustRow,
     ] = await Promise.all([
       prisma.test.count({ where: { adminId } }),
       prisma.test.count({ where: { adminId, isActive: true } }),
-      prisma.testAttempt.count({
-        where: { test: { adminId } }
-      }),
+      prisma.testAttempt.count({ where: { test: { adminId } } }),
       Promise.all([
         prisma.mCQQuestion.count(),
         prisma.codingQuestion.count()
@@ -545,20 +551,121 @@ export async function getDashboardStats(req: AuthenticatedRequest, res: Response
         },
         orderBy: { startTime: 'desc' },
         take: 10
-      })
+      }),
+      // Raw attempts from last 7 days for weekly chart
+      prisma.testAttempt.findMany({
+        where: { test: { adminId }, startTime: { gte: sevenDaysAgo } },
+        select: { startTime: true }
+      }),
+      // Flagged attempts for integrity chart
+      prisma.testAttempt.count({ where: { test: { adminId }, isFlagged: true } }),
+      // Average trust score — fetch trust scores from attempts' analytics
+      prisma.testAttempt.findMany({
+        where: { test: { adminId } },
+        select: { analytics: { select: { trustScore: true } } }
+      }),
     ]);
 
+    // Build day-by-day counts for last 7 days
+    const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const weeklyAttempts = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      const dayStart = new Date(d); dayStart.setHours(0, 0, 0, 0);
+      const dayEnd   = new Date(d); dayEnd.setHours(23, 59, 59, 999);
+      const value = weeklyRaw.filter(a => {
+        const t = new Date(a.startTime);
+        return t >= dayStart && t <= dayEnd;
+      }).length;
+      return { label: DAY_LABELS[d.getDay()], value };
+    });
+
+    // Compute avg trust score from fetched rows
+    const trustScores = (avgTrustRow as { analytics: { trustScore: number | null } | null }[])
+      .map(a => a.analytics?.trustScore ?? null)
+      .filter((s): s is number => s !== null);
+    const avgTrustScore = trustScores.length
+      ? Math.round(trustScores.reduce((s, v) => s + v, 0) / trustScores.length)
+      : 0;
+
     res.json({
-      stats: {
-        totalTests,
-        activeTests,
-        totalAttempts,
-        totalQuestions
+      stats: { totalTests, activeTests, totalAttempts, totalQuestions },
+      recentAttempts,
+      weeklyAttempts,
+      integrityStats: {
+        flagged: flaggedCount,
+        clean: Math.max(0, totalAttempts - flaggedCount),
+        avgTrustScore,
       },
-      recentAttempts
     });
   } catch (error) {
     console.error('Get dashboard stats error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function getAllAttempts(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const adminId = req.admin!.id;
+    const page  = Math.max(1, parseInt(req.query.page  as string, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string, 10) || 50));
+    const skip  = (page - 1) * limit;
+    const testId = ((req.query.testId as string) || '').trim();
+    const status = ((req.query.status as string) || '').trim();
+    const search = ((req.query.search as string) || '').trim();
+
+    const where: Record<string, unknown> = { test: { adminId } };
+    if (testId)  where.testId = testId;
+    if (status)  where.status = status;
+    if (search) {
+      where.OR = [
+        { candidate: { name:  { contains: search } } },
+        { candidate: { email: { contains: search } } },
+        { test:      { name:  { contains: search } } },
+      ];
+    }
+
+    const [attempts, total, tests] = await Promise.all([
+      prisma.testAttempt.findMany({
+        where,
+        include: {
+          candidate: { select: { id: true, name: true, email: true } },
+          test:      { select: { id: true, name: true } },
+          analytics: { select: { trustScore: true } },
+        },
+        orderBy: { startTime: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.testAttempt.count({ where }),
+      prisma.test.findMany({
+        where: { adminId },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
+
+    res.json({
+      attempts: attempts.map(a => ({
+        id:            a.id,
+        startTime:     a.startTime,
+        endTime:       a.endTime,
+        submittedAt:   a.submittedAt,
+        status:        a.status,
+        score:         a.score,
+        violations:    a.violations,
+        isFlagged:     a.isFlagged,
+        candidate:     a.candidate,
+        test:          { id: a.test.id, name: a.test.name },
+        trustScore:    typeof a.analytics?.trustScore === 'number'
+                         ? a.analytics.trustScore
+                         : Math.max(0, 100 - a.violations * 8),
+      })),
+      tests,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    });
+  } catch (error) {
+    console.error('Get all attempts error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }

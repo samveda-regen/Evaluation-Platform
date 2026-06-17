@@ -5,6 +5,12 @@ import { adminApi } from '../../services/api';
 import { Test, Pagination } from '../../types';
 import { format } from 'date-fns';
 import { useAuthStore } from '../../context/authStore';
+import BackButton from '../../components/BackButton';
+import {
+  ChevronRight, ChevronLeft, ChevronDown, Download, Sparkles, Search,
+  LayoutGrid, List, ClipboardCheck, MoreVertical, Eye, Mail, Archive, Trash2,
+  Clock, AlignLeft, Users,
+} from 'lucide-react';
 
 interface InvitationSummary {
   total: number;
@@ -12,9 +18,37 @@ interface InvitationSummary {
   failed: number;
 }
 
+type TabFilter = 'all' | 'published' | 'draft' | 'scheduled' | 'archived';
+type ViewMode = 'grid' | 'list';
+type SortBy = 'recent' | 'name' | 'attempts';
+
+function getTestStatus(test: Test): 'Published' | 'Draft' | 'Scheduled' | 'Archived' {
+  const now = new Date();
+  if (test.endTime && new Date(test.endTime) < now) return 'Archived';
+  if (!test.isActive) return 'Draft';
+  if (new Date(test.startTime) > now) return 'Scheduled';
+  return 'Published';
+}
+
+function TestStatusBadge({ status }: { status: ReturnType<typeof getTestStatus> }) {
+  const cfg = {
+    Published: { dot: '#22C55E', color: '#16A34A', bg: 'transparent' },
+    Draft:     { dot: '#93C5FD', color: '#3B82F6', bg: 'transparent' },
+    Scheduled: { dot: '#FCD34D', color: '#D97706', bg: 'transparent' },
+    Archived:  { dot: '#9CA3AF', color: '#6B7280', bg: 'transparent' },
+  }[status];
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs font-medium" style={{ color: cfg.color }}>
+      <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: cfg.dot }} />
+      {status}
+    </span>
+  );
+}
+
 export default function TestList() {
   const admin = useAuthStore((state) => state.admin);
   const navigate = useNavigate();
+
   const [tests, setTests] = useState<Test[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
@@ -22,6 +56,8 @@ export default function TestList() {
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
+  const [activeTab, setActiveTab] = useState<TabFilter>('all');
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [selectedTestIds, setSelectedTestIds] = useState<Set<string>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -30,54 +66,42 @@ export default function TestList() {
   const [customMessage, setCustomMessage] = useState('');
   const [sendingInvitations, setSendingInvitations] = useState(false);
   const [invitationSummary, setInvitationSummary] = useState<InvitationSummary | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<SortBy>('recent');
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
+
   const latestRequestIdRef = useRef(0);
   const hasLoadedTestsRef = useRef(false);
   const ownerLabel = admin?.name || admin?.email || 'Admin';
 
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      const nextSearch = searchInput.trim();
+    const id = setTimeout(() => {
       setPage(1);
-      setAppliedSearch(nextSearch);
+      setAppliedSearch(searchInput.trim());
     }, 350);
-
-    return () => clearTimeout(timeoutId);
+    return () => clearTimeout(id);
   }, [searchInput]);
 
-  useEffect(() => {
-    loadTests();
-  }, [page, appliedSearch]);
+  useEffect(() => { loadTests(); }, [page, appliedSearch]);
 
   const loadTests = async () => {
     const requestId = latestRequestIdRef.current + 1;
     latestRequestIdRef.current = requestId;
-
-    if (!hasLoadedTestsRef.current) {
-      setLoading(true);
-    } else {
-      setRefreshing(true);
-    }
-
+    if (!hasLoadedTestsRef.current) setLoading(true);
+    else setRefreshing(true);
     try {
-      const { data } = await adminApi.getTests(page, 10, appliedSearch);
+      const { data } = await adminApi.getTests(page, 12, appliedSearch);
       if (latestRequestIdRef.current !== requestId) return;
-
       hasLoadedTestsRef.current = true;
       setTests(data.tests);
       setPagination(data.pagination);
-      setSelectedTestIds((prev) => {
+      setSelectedTestIds(prev => {
         const next = new Set<string>();
-        data.tests.forEach((test: Test) => {
-          if (prev.has(test.id)) {
-            next.add(test.id);
-          }
-        });
+        data.tests.forEach((t: Test) => { if (prev.has(t.id)) next.add(t.id); });
         return next;
       });
-    } catch (error) {
-      if (latestRequestIdRef.current === requestId) {
-        toast.error('Failed to load tests');
-      }
+    } catch {
+      if (latestRequestIdRef.current === requestId) toast.error('Failed to load tests');
     } finally {
       if (latestRequestIdRef.current === requestId) {
         setLoading(false);
@@ -86,621 +110,659 @@ export default function TestList() {
     }
   };
 
-  const resetFilters = () => {
-    setSearchInput('');
-    setAppliedSearch('');
-    setPage(1);
-  };
+  const filteredTests = tests.filter(test => {
+    if (activeTab === 'all') return true;
+    return getTestStatus(test).toLowerCase() === activeTab;
+  });
 
-  const allSelected = tests.length > 0 && tests.every((test) => selectedTestIds.has(test.id));
-
-  const toggleSelectAll = () => {
-    setSelectedTestIds(() => {
-      if (allSelected) {
-        return new Set<string>();
-      }
-      return new Set<string>(tests.map((test) => test.id));
-    });
-  };
+  const resetFilters = () => { setSearchInput(''); setAppliedSearch(''); setPage(1); };
 
   const toggleSelectTest = (testId: string) => {
-    setSelectedTestIds((prev) => {
+    setSelectedTestIds(prev => {
       const next = new Set(prev);
-      if (next.has(testId)) {
-        next.delete(testId);
-      } else {
-        next.add(testId);
-      }
+      next.has(testId) ? next.delete(testId) : next.add(testId);
       return next;
     });
   };
 
   const handleDeleteSelected = async () => {
-    if (selectedTestIds.size === 0) {
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Delete ${selectedTestIds.size} selected test${selectedTestIds.size > 1 ? 's' : ''}? This cannot be undone.`
-    );
-    if (!confirmed) {
-      return;
-    }
-
+    if (!selectedTestIds.size) return;
+    if (!window.confirm(`Delete ${selectedTestIds.size} selected test${selectedTestIds.size > 1 ? 's' : ''}? This cannot be undone.`)) return;
     setBulkDeleting(true);
-    const idsToDelete = Array.from(selectedTestIds);
-
+    const ids = Array.from(selectedTestIds);
     try {
-      const results = await Promise.allSettled(idsToDelete.map((testId) => adminApi.deleteTest(testId)));
-      const successIds = idsToDelete.filter((_, index) => results[index].status === 'fulfilled');
-      const failedCount = idsToDelete.length - successIds.length;
-
-      if (successIds.length > 0) {
+      const results = await Promise.allSettled(ids.map(id => adminApi.deleteTest(id)));
+      const successIds = ids.filter((_, i) => results[i].status === 'fulfilled');
+      const failedCount = ids.length - successIds.length;
+      if (successIds.length) {
         const successSet = new Set(successIds);
-        setTests((prev) => prev.filter((test) => !successSet.has(test.id)));
-        setSelectedTestIds((prev) => {
-          const next = new Set(prev);
-          successIds.forEach((id) => next.delete(id));
-          return next;
-        });
+        setTests(prev => prev.filter(t => !successSet.has(t.id)));
+        setSelectedTestIds(prev => { const next = new Set(prev); successIds.forEach(id => next.delete(id)); return next; });
       }
-
-      if (failedCount === 0) {
-        toast.success(`Deleted ${successIds.length} test${successIds.length > 1 ? 's' : ''}`);
-      } else if (successIds.length === 0) {
-        toast.error('Unable to delete selected test(s). Some tests may have dependencies.');
-      } else {
-        toast.success(`Deleted ${successIds.length} test(s). ${failedCount} could not be deleted.`);
-      }
-
+      if (failedCount === 0) toast.success(`Deleted ${successIds.length} test${successIds.length > 1 ? 's' : ''}`);
+      else if (!successIds.length) toast.error('Unable to delete selected test(s).');
+      else toast.success(`Deleted ${successIds.length} test(s). ${failedCount} could not be deleted.`);
       await loadTests();
-    } finally {
-      setBulkDeleting(false);
-    }
+    } finally { setBulkDeleting(false); }
   };
 
-  const escapeCsvValue = (value: string | number | null | undefined) => {
-    const stringValue = value === null || value === undefined ? '' : String(value);
-    return `"${stringValue.replace(/"/g, '""')}"`;
+  const handleDeleteSingle = async (testId: string, testName: string) => {
+    if (!window.confirm(`Delete "${testName}"? This cannot be undone.`)) return;
+    try {
+      await adminApi.deleteTest(testId);
+      setTests(prev => prev.filter(t => t.id !== testId));
+      toast.success('Test deleted');
+      await loadTests();
+    } catch { toast.error('Failed to delete test'); }
   };
+
+  const handleArchiveSingle = async (testId: string, testName: string) => {
+    if (!window.confirm(`Archive "${testName}"? It will no longer be accessible to candidates.`)) return;
+    try {
+      await adminApi.updateTest(testId, { endTime: new Date(Date.now() - 1000).toISOString() });
+      toast.success('Test archived');
+      await loadTests();
+    } catch { toast.error('Failed to archive test'); }
+  };
+
+  const escapeCsv = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
 
   const downloadCsv = (rows: Test[]) => {
-    const headers = [
-      'Test Name',
-      'Description',
-      'Questions',
-      'Duration (minutes)',
-      'Owner',
-      'Start Date',
-      'Status',
-      'Not Attempted',
-      'Completed',
-      'To Evaluate',
-    ];
-
-    const csvRows = rows.map((test) => [
-      test.name,
-      test.description?.trim() || 'General',
-      test._count?.questions || 0,
-      test.duration,
-      ownerLabel,
-      format(new Date(test.startTime), 'yyyy/MM/dd'),
-      test.isActive ? 'Active' : 'Draft',
-      0,
-      test._count?.attempts || 0,
-      0,
-    ]);
-
-    const csvContent = [headers, ...csvRows]
-      .map((row) => row.map(escapeCsvValue).join(','))
-      .join('\n');
-    const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
+    const headers = ['Test Name','Description','Questions','Duration (minutes)','Owner','Start Date','Status','Not Attempted','Completed','To Evaluate'];
+    const csvRows = rows.map(t => [t.name, t.description?.trim()||'General', t._count?.questions||0, t.duration, ownerLabel, format(new Date(t.startTime),'yyyy/MM/dd'), t.isActive?'Active':'Draft', 0, t._count?.attempts||0, 0]);
+    const csv = [headers,...csvRows].map(r => r.map(escapeCsv).join(',')).join('\n');
+    const blob = new Blob([`﻿${csv}`],{type:'text/csv;charset=utf-8;'});
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `tests-export-${format(new Date(), 'yyyy-MM-dd')}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    const a = document.createElement('a');
+    a.href = url; a.download = `tests-export-${format(new Date(),'yyyy-MM-dd')}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
   };
 
-  const handleExportTests = async () => {
+  const handleExport = async () => {
     setExporting(true);
     try {
-      const limit = 100;
-      const { data } = await adminApi.getTests(1, limit, appliedSearch);
-      let testsToExport: Test[] = data.tests || [];
+      const { data } = await adminApi.getTests(1, 100, appliedSearch);
+      let all: Test[] = data.tests || [];
       const totalPages = data.pagination?.totalPages || 1;
-
-      for (let nextPage = 2; nextPage <= totalPages; nextPage += 1) {
-        const pageResponse = await adminApi.getTests(nextPage, limit, appliedSearch);
-        testsToExport = [...testsToExport, ...(pageResponse.data.tests || [])];
+      for (let p = 2; p <= totalPages; p++) {
+        const r = await adminApi.getTests(p, 100, appliedSearch);
+        all = [...all, ...(r.data.tests||[])];
       }
-
-      if (testsToExport.length === 0) {
-        toast.error('No tests available to export');
-        return;
-      }
-
-      downloadCsv(testsToExport);
-      toast.success('Tests exported successfully');
-    } catch (error) {
-      toast.error('Failed to export tests');
-    } finally {
-      setExporting(false);
-    }
+      if (!all.length) { toast.error('No tests to export'); return; }
+      downloadCsv(all);
+      toast.success('Tests exported');
+    } catch { toast.error('Failed to export'); } finally { setExporting(false); }
   };
 
-  const openInvitationModal = (test: Test) => {
-    setSelectedTestForInvites(test);
-    setInvitationFile(null);
-    setCustomMessage('');
-    setInvitationSummary(null);
-  };
-
-  const closeInvitationModal = () => {
-    if (sendingInvitations) {
-      return;
-    }
-
-    setSelectedTestForInvites(null);
-    setInvitationFile(null);
-    setCustomMessage('');
-    setInvitationSummary(null);
-  };
+  const openInvite = (test: Test) => { setSelectedTestForInvites(test); setInvitationFile(null); setCustomMessage(''); setInvitationSummary(null); };
+  const closeInvite = () => { if (sendingInvitations) return; setSelectedTestForInvites(null); setInvitationFile(null); setCustomMessage(''); setInvitationSummary(null); };
 
   const handleSendInvitations = async () => {
-    if (!selectedTestForInvites) {
-      return;
-    }
-
-    if (!invitationFile) {
-      toast.error('Please upload a CSV or XLSX file');
-      return;
-    }
-
+    if (!selectedTestForInvites) return;
+    if (!invitationFile) { toast.error('Please upload a CSV or XLSX file'); return; }
     const formData = new FormData();
     formData.append('file', invitationFile);
-    if (customMessage.trim()) {
-      formData.append('customMessage', customMessage.trim());
-    }
-
-    setSendingInvitations(true);
-    setInvitationSummary(null);
-
+    if (customMessage.trim()) formData.append('customMessage', customMessage.trim());
+    setSendingInvitations(true); setInvitationSummary(null);
     try {
       const { data } = await adminApi.sendInvitations(selectedTestForInvites.id, formData);
       setInvitationSummary(data);
-      if (data.failed > 0 && data.sent > 0) {
-        toast.success(`Invitation batch completed with partial failures (${data.sent} sent, ${data.failed} failed)`);
-      } else {
-        toast.success('Invitation batch completed');
-      }
-    } catch (error: unknown) {
-      const typedError = error as { response?: { data?: { error?: string } } };
-      toast.error(typedError.response?.data?.error || 'Failed to send invitations');
-    } finally {
-      setSendingInvitations(false);
-    }
+      toast.success('Invitation batch completed');
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } } };
+      toast.error(e.response?.data?.error || 'Failed to send invitations');
+    } finally { setSendingInvitations(false); }
   };
 
+  const tabs: { key: TabFilter; label: string }[] = [
+    { key: 'all', label: 'All tests' },
+    { key: 'published', label: 'Published' },
+    { key: 'draft', label: 'Draft' },
+    { key: 'scheduled', label: 'Scheduled' },
+    { key: 'archived', label: 'Archived' },
+  ];
+
+  const tabCounts: Record<TabFilter, number> = {
+    all: tests.length,
+    published: tests.filter(t => getTestStatus(t) === 'Published').length,
+    draft: tests.filter(t => getTestStatus(t) === 'Draft').length,
+    scheduled: tests.filter(t => getTestStatus(t) === 'Scheduled').length,
+    archived: tests.filter(t => getTestStatus(t) === 'Archived').length,
+  };
+
+  const sortLabels: Record<SortBy, string> = {
+    recent: 'Recently updated',
+    name: 'Name A–Z',
+    attempts: 'Most attempts',
+  };
+
+  const sortedTests = sortBy === 'name'
+    ? [...filteredTests].sort((a, b) => a.name.localeCompare(b.name))
+    : sortBy === 'attempts'
+    ? [...filteredTests].sort((a, b) => (b._count?.attempts || 0) - (a._count?.attempts || 0))
+    : filteredTests;
+
   return (
-    <div className="space-y-6">
-      <div className="text-sm text-slate-500">
-        <span className="text-slate-700">Tests</span>
-        <span className="mx-2">›</span>
-        <span>Active</span>
+    <div style={{ backgroundColor: '#f4f6fb', margin: '-24px', padding: '24px', minHeight: 'calc(100vh - 52px)' }}>
+
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 text-sm mb-4" style={{ color: '#9CA3AF' }}>
+        <Link to="/admin/dashboard" style={{ color: '#9CA3AF' }} className="hover:underline">Workspace</Link>
+        <ChevronRight size={12} />
+        <span style={{ color: '#374151' }}>Assessments</span>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <h1 className="text-3xl font-semibold text-slate-900">Tests</h1>
-        <div className="flex flex-wrap items-center gap-3">
+      {/* Page Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
+        <div className="flex items-start gap-3">
+          <BackButton />
+          <div>
+            <h1 className="text-2xl font-bold" style={{ color: '#111827' }}>Assessments</h1>
+            <p className="text-sm mt-0.5" style={{ color: '#6B7280' }}>Create, configure and publish assessments.</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
           {selectedTestIds.size > 0 && (
             <button
               onClick={handleDeleteSelected}
               disabled={bulkDeleting}
-              className="inline-flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-60"
+              className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium"
+              style={{ borderColor: '#FCA5A5', backgroundColor: '#FFF1F2', color: '#DC2626' }}
             >
-              {bulkDeleting ? 'Deleting...' : `Delete Selected (${selectedTestIds.size})`}
+              {bulkDeleting ? 'Deleting...' : `Delete (${selectedTestIds.size})`}
             </button>
           )}
           <button
-            onClick={handleExportTests}
+            onClick={handleExport}
             disabled={exporting}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium"
+            style={{ borderColor: '#D1D5DB', backgroundColor: 'white', color: '#374151' }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M12 3v10m0 0l4-4m-4 4l-4-4M5 15v2a2 2 0 002 2h10a2 2 0 002-2v-2"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            <Download size={14} />
             {exporting ? 'Exporting...' : 'Export'}
           </button>
           <Link
             to="/admin/tests/agent"
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium"
+            style={{ borderColor: '#D1D5DB', backgroundColor: 'white', color: '#374151' }}
           >
-            AI Generate Test
+            <Sparkles size={13} />
+            AI Generate
           </Link>
           <Link
             to="/admin/tests/new"
-            className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
+            className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white"
+            style={{ backgroundColor: '#10B981' }}
           >
-            Create Test
+            + Create Test
           </Link>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-6 border-b border-slate-200 text-sm">
-        <button className="relative pb-3 font-semibold text-slate-900 after:absolute after:-bottom-[1px] after:left-0 after:h-[3px] after:w-full after:bg-emerald-500">
-          Active Tests
-        </button>
-        <button className="pb-3 text-slate-500">Archived Tests</button>
-        <button className="pb-3 text-slate-500">Starred Tests</button>
-      </div>
-
-      {loading ? (
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600"></div>
+      {/* Filter Bar */}
+      <div
+        className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-xl mb-5"
+        style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}
+      >
+        {/* Search */}
+        <div
+          className="flex items-center gap-2 rounded-lg px-3"
+          style={{ backgroundColor: '#F9FAFB', border: '1px solid #FFF7ED', height: '36px', minWidth: '200px' }}
+        >
+          <Search size={14} color="#9CA3AF" style={{ flexShrink: 0 }} />
+          <input
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
+            placeholder="Search tests..."
+            className="bg-transparent text-sm outline-none"
+            style={{ color: '#374151', width: '160px' }}
+          />
+          {searchInput && (
+            <button onClick={resetFilters} style={{ color: '#9CA3AF', fontSize: '18px', lineHeight: 1 }}>&times;</button>
+          )}
         </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-1 xl:grid-cols-[280px,1fr] gap-6">
-            <aside className="rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-500">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M4 6h16M7 12h10M10 18h4"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  </span>
-                  Filters
-                </div>
-                <button
-                  onClick={resetFilters}
-                  disabled={!searchInput && !appliedSearch}
-                  className="text-xs font-semibold text-emerald-600 hover:text-emerald-500 disabled:cursor-not-allowed disabled:text-slate-500"
+
+        {/* Tabs */}
+        <div className="flex items-center gap-1.5">
+          {tabs.map(tab => {
+            const isActive = activeTab === tab.key;
+            return (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all"
+              style={{
+                backgroundColor: isActive ? '#142340' : 'white',
+                color: isActive ? 'white' : '#6B7280',
+                border: isActive ? '1px solid #142340' : '1px solid #E5E7EB',
+              }}
+              onMouseEnter={e => {
+                if (!isActive) {
+                  (e.currentTarget as HTMLElement).style.backgroundColor = '#EDF0F7';
+                  (e.currentTarget as HTMLElement).style.color = '#142340';
+                  (e.currentTarget as HTMLElement).style.borderColor = '#C7CEDF';
+                }
+              }}
+              onMouseLeave={e => {
+                if (!isActive) {
+                  (e.currentTarget as HTMLElement).style.backgroundColor = 'white';
+                  (e.currentTarget as HTMLElement).style.color = '#6B7280';
+                  (e.currentTarget as HTMLElement).style.borderColor = '#E5E7EB';
+                }
+              }}
+            >
+              {tab.label}
+              {tabCounts[tab.key] > 0 && (
+                <span
+                  className="rounded-full px-1.5 text-[10px] font-semibold"
+                  style={{
+                    backgroundColor: isActive ? 'rgba(255,255,255,0.15)' : '#EDF0F7',
+                    color: isActive ? 'white' : '#142340',
+                  }}
                 >
-                  Reset all
-                </button>
-              </div>
-
-              <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Search test</label>
-                  {refreshing && <span className="text-[11px] font-medium text-emerald-500">Updating...</span>}
-                </div>
-                <div className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600 focus-within:border-emerald-400 focus-within:ring-2 focus-within:ring-emerald-500/20">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M21 21l-4.3-4.3m1.3-5.2a6.5 6.5 0 11-13 0 6.5 6.5 0 0113 0z"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                  <input
-                    value={searchInput}
-                    onChange={(event) => setSearchInput(event.target.value)}
-                    className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
-                    placeholder="Search for a test.."
-                  />
-                  {searchInput && (
-                    <button
-                      onClick={resetFilters}
-                      className="flex h-6 w-6 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                      aria-label="Clear search"
-                    >
-                      <span aria-hidden="true" className="text-lg leading-none">&times;</span>
-                    </button>
-                  )}
-                </div>
-                <p className="mt-2 text-xs text-slate-500">
-                  Searches test name, description, and code.
-                </p>
-              </div>
-            </aside>
-
-            <section className={`rounded-2xl border border-slate-200 bg-white transition-opacity ${refreshing ? 'opacity-70' : 'opacity-100'}`}>
-              <div className="grid grid-cols-[minmax(320px,1fr)_110px_110px_110px_44px] gap-4 border-b border-slate-200 px-5 py-4 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <span className="inline-flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    onChange={toggleSelectAll}
-                    className="h-4 w-4 rounded border-slate-300"
-                    aria-label="Select all tests"
-                  />
-                  <span>Tests</span>
+                  {tabCounts[tab.key]}
                 </span>
-                <span className="text-center">Not Attempted</span>
-                <span className="text-center">Completed</span>
-                <span className="text-center">To Evaluate</span>
-                <span />
-              </div>
+              )}
+            </button>
+          );})}
+        </div>
 
-              <div>
-                {tests.length === 0 ? (
-                  <div className="px-6 py-14 text-center">
-                    <p className="text-sm text-slate-500">
-                      {appliedSearch ? 'No tests match your search.' : 'No tests created yet.'}
-                    </p>
-                    {appliedSearch ? (
-                      <button
-                        onClick={resetFilters}
-                        className="mt-4 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                      >
-                        Reset all
-                      </button>
-                    ) : (
-                      <Link to="/admin/tests/new" className="btn btn-primary mt-4 inline-flex">
-                        Create your first test
-                      </Link>
-                    )}
-                  </div>
-                ) : tests.map((test) => (
-                  <div
-                    key={test.id}
-                    onClick={() => navigate(`/admin/tests/${test.id}`)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        navigate(`/admin/tests/${test.id}`);
-                      }
+        {/* Right: sort + view */}
+        <div className="flex items-center gap-2">
+          {refreshing && <span className="text-xs" style={{ color: '#10B981' }}>Updating...</span>}
+          <div className="relative">
+            <button
+              onClick={() => setSortMenuOpen(p => !p)}
+              className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm"
+              style={{ borderColor: '#FFF7ED', color: '#374151', backgroundColor: 'white' }}
+            >
+              <span>{sortLabels[sortBy]}</span>
+              <ChevronDown size={12} />
+            </button>
+            {sortMenuOpen && (
+              <div
+                className="absolute right-0 top-9 z-30 rounded-xl py-1"
+                style={{ backgroundColor: 'white', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', border: '1px solid #FFF7ED', minWidth: '168px' }}
+              >
+                {(['recent', 'name', 'attempts'] as SortBy[]).map(opt => (
+                  <button
+                    key={opt}
+                    onClick={() => { setSortBy(opt); setSortMenuOpen(false); }}
+                    className="flex w-full items-center text-sm text-left"
+                    style={{
+                      padding: '8px 14px',
+                      backgroundColor: sortBy === opt ? '#142340' : 'transparent',
+                      color: sortBy === opt ? 'white' : '#374151',
+                      borderRadius: sortBy === opt ? '8px' : '0',
+                      margin: sortBy === opt ? '2px 4px' : '0',
+                      width: sortBy === opt ? 'calc(100% - 8px)' : '100%',
+                      transition: 'background-color 0.13s',
                     }}
-                    className="grid cursor-pointer grid-cols-[minmax(320px,1fr)_110px_110px_110px_44px] gap-4 border-b border-slate-200 px-5 py-5 text-sm transition hover:bg-slate-50 last:border-b-0"
                   >
-                    <div className="flex items-start gap-3">
-                      <input
-                        type="checkbox"
-                        checked={selectedTestIds.has(test.id)}
-                        onClick={(event) => event.stopPropagation()}
-                        onKeyDown={(event) => event.stopPropagation()}
-                        onChange={() => toggleSelectTest(test.id)}
-                        className="mt-1 h-4 w-4 rounded border-slate-300"
-                        aria-label={`Select ${test.name}`}
-                      />
-                      <button
-                        onClick={(event) => event.stopPropagation()}
-                        className="mt-1 text-slate-300 transition hover:text-amber-400"
-                        aria-label="Star test"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                          <path
-                            d="M12 4l2.6 5.3 5.9.9-4.3 4.2 1 5.9-5.2-2.7-5.2 2.7 1-5.9-4.3-4.2 5.9-.9L12 4z"
-                            stroke="currentColor"
-                            strokeWidth="1.4"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      </button>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Link
-                            to={`/admin/tests/${test.id}`}
-                            className="font-semibold text-slate-900 hover:text-emerald-700"
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            {test.name}
-                          </Link>
-                          {!test.isActive && (
-                            <span className="rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700">
-                              Draft
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-slate-500">
-                          {test.description?.trim() ? test.description : 'General'}
-                        </p>
-                        <div className="mt-2 flex flex-wrap gap-4 text-xs text-slate-500">
-                          <span className="inline-flex items-center gap-1">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                              <path
-                                d="M7 7h10M7 12h10M7 17h6"
-                                stroke="currentColor"
-                                strokeWidth="1.6"
-                                strokeLinecap="round"
-                              />
-                            </svg>
-                            {test._count?.questions || 0}
-                          </span>
-                          <span className="inline-flex items-center gap-1">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                              <path
-                                d="M12 6v6l4 2"
-                                stroke="currentColor"
-                                strokeWidth="1.6"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              />
-                              <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.6" />
-                            </svg>
-                            {test.duration}m
-                          </span>
-                          <span className="inline-flex items-center gap-1">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                              <path
-                                d="M8 7a4 4 0 118 0 4 4 0 01-8 0zm-3 12a7 7 0 0114 0"
-                                stroke="currentColor"
-                                strokeWidth="1.6"
-                                strokeLinecap="round"
-                              />
-                            </svg>
-                            {ownerLabel}
-                          </span>
-                          <span className="inline-flex items-center gap-1">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-                              <path
-                                d="M7 3v4M17 3v4M4 9h16M5 13h6"
-                                stroke="currentColor"
-                                strokeWidth="1.6"
-                                strokeLinecap="round"
-                              />
-                              <rect x="4" y="5" width="16" height="15" rx="2" stroke="currentColor" strokeWidth="1.6" />
-                            </svg>
-                            {format(new Date(test.startTime), 'yyyy/MM/dd')}
-                          </span>
-                        </div>
-
-                      </div>
-                    </div>
-
-                    <div className="text-center text-slate-600">0</div>
-                    <div className="text-center text-slate-600">{test._count?.attempts || 0}</div>
-                    <div className="text-center text-slate-600">0</div>
-                    <div className="relative flex justify-end">
-                      <button
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          openInvitationModal(test);
-                        }}
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50"
-                        aria-label="Send Invitations"
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                          <path
-                            d="M16 11a4 4 0 10-8 0 4 4 0 008 0zM3 20a7 7 0 0114 0"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                            strokeLinecap="round"
-                          />
-                          <path
-                            d="M19 8v6M16 11h6"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                            strokeLinecap="round"
-                          />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
+                    {sortLabels[opt]}
+                  </button>
                 ))}
               </div>
-            </section>
+            )}
+          </div>
+          <div
+            className="flex items-center rounded-lg border"
+            style={{ borderColor: '#FFF7ED', overflow: 'hidden' }}
+          >
+            <button
+              onClick={() => setViewMode('grid')}
+              className="flex items-center justify-center px-2.5 py-1.5 transition-colors"
+              style={{ backgroundColor: viewMode === 'grid' ? '#EDF0F7' : 'white', color: viewMode === 'grid' ? '#142340' : '#9CA3AF', transition: 'background-color 0.13s' }}
+            >
+              <LayoutGrid size={14} />
+            </button>
+            <button
+              onClick={() => setViewMode('list')}
+              className="flex items-center justify-center px-2.5 py-1.5 transition-colors"
+              style={{ backgroundColor: viewMode === 'list' ? '#EDF0F7' : 'white', color: viewMode === 'list' ? '#142340' : '#9CA3AF', borderLeft: '1px solid #E5E7EB', transition: 'background-color 0.13s' }}
+            >
+              <List size={14} />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      {loading ? (
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500" />
+        </div>
+      ) : sortedTests.length === 0 ? (
+        <div
+          className="flex flex-col items-center justify-center rounded-xl py-20"
+          style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}
+        >
+          <div className="h-14 w-14 rounded-xl flex items-center justify-center mb-4" style={{ backgroundColor: '#ECFDF5' }}>
+            <ClipboardCheck size={24} color="#10B981" />
+          </div>
+          <p className="text-sm font-medium mb-1" style={{ color: '#374151' }}>
+            {appliedSearch ? 'No tests match your search' : activeTab !== 'all' ? `No ${activeTab} tests` : 'No tests yet'}
+          </p>
+          <p className="text-xs mb-4" style={{ color: '#9CA3AF' }}>
+            {appliedSearch ? 'Try a different search term' : 'Create your first test to get started'}
+          </p>
+          {appliedSearch ? (
+            <button onClick={resetFilters} className="rounded-lg border px-4 py-2 text-sm font-medium" style={{ borderColor: '#D1D5DB', color: '#374151' }}>
+              Clear search
+            </button>
+          ) : (
+            <Link to="/admin/tests/new" className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ backgroundColor: '#10B981' }}>
+              Create Test
+            </Link>
+          )}
+        </div>
+      ) : viewMode === 'grid' ? (
+        /* Grid View */
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {sortedTests.map(test => {
+            const status = getTestStatus(test);
+            const attempts = test._count?.attempts || 0;
+            return (
+              <div
+                key={test.id}
+                className="rounded-xl p-5 cursor-pointer relative"
+                style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', transition: 'background-color 0.15s' }}
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#EDF0F7')}
+                onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'white')}
+                onClick={() => navigate(`/admin/tests/${test.id}`)}
+              >
+                {/* Card header */}
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedTestIds.has(test.id)}
+                      onClick={e => e.stopPropagation()}
+                      onChange={() => toggleSelectTest(test.id)}
+                      className="h-4 w-4 rounded"
+                      style={{ accentColor: '#10B981' }}
+                    />
+                    <div
+                      className="icon-btn h-10 w-10 rounded-xl flex items-center justify-center"
+                      style={{
+                        background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                        boxShadow: '0 2px 8px rgba(16,185,129,0.35)',
+                      }}
+                    >
+                      <ClipboardCheck size={18} color="white" strokeWidth={2} />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <TestStatusBadge status={status} />
+                    {/* Context menu */}
+                    <div className="relative">
+                      <button
+                        onClick={e => { e.stopPropagation(); setOpenMenuId(openMenuId === test.id ? null : test.id); }}
+                        className="flex items-center justify-center h-6 w-6 rounded"
+                        style={{ color: '#9CA3AF' }}
+                      >
+                        <MoreVertical size={14} />
+                      </button>
+                      {openMenuId === test.id && (
+                        <div
+                          className="absolute right-0 top-7 z-20 rounded-xl py-1.5 w-44"
+                          style={{ backgroundColor: 'white', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', border: '1px solid #FFF7ED' }}
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <button
+                            className="flex w-full items-center gap-2 px-4 py-2 text-sm text-left hover:bg-gray-50"
+                            style={{ color: '#374151' }}
+                            onClick={() => { setOpenMenuId(null); navigate(`/admin/tests/${test.id}`); }}
+                          >
+                            <Eye size={14} />
+                            View details
+                          </button>
+                          <button
+                            className="flex w-full items-center gap-2 px-4 py-2 text-sm text-left hover:bg-gray-50"
+                            style={{ color: '#374151' }}
+                            onClick={() => { setOpenMenuId(null); openInvite(test); }}
+                          >
+                            <Mail size={14} />
+                            Send invitations
+                          </button>
+                          <button
+                            className="flex w-full items-center gap-2 px-4 py-2 text-sm text-left hover:bg-gray-50"
+                            style={{ color: '#374151' }}
+                            onClick={() => { setOpenMenuId(null); handleArchiveSingle(test.id, test.name); }}
+                          >
+                            <Archive size={14} />
+                            Archive
+                          </button>
+                          <button
+                            className="flex w-full items-center gap-2 px-4 py-2 text-sm text-left hover:bg-red-50"
+                            style={{ color: '#DC2626' }}
+                            onClick={() => { setOpenMenuId(null); handleDeleteSingle(test.id, test.name); }}
+                          >
+                            <Trash2 size={14} />
+                            Delete test
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Test name & code */}
+                <h3 className="font-semibold text-sm leading-snug mb-1" style={{ color: '#111827' }}>{test.name}</h3>
+                <p className="text-xs mb-4" style={{ color: '#9CA3AF' }}>{test.testCode || `#${test.id.slice(0,8).toUpperCase()}`}</p>
+
+                {/* Stats row */}
+                <div className="flex items-center gap-4 text-xs mb-4" style={{ color: '#6B7280' }}>
+                  <span className="flex items-center gap-1.5">
+                    <Clock size={12} />
+                    {test.duration}m
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <AlignLeft size={12} />
+                    {test._count?.questions || 0} Q
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <Users size={12} />
+                    {attempts}
+                  </span>
+                </div>
+
+                {/* Avg score / no attempts */}
+                {attempts === 0 ? (
+                  <p className="text-xs" style={{ color: '#9CA3AF' }}>No attempts yet</p>
+                ) : (
+                  <div>
+                    <div className="flex items-center justify-between text-xs mb-1.5">
+                      <span style={{ color: '#6B7280' }}>Avg score</span>
+                      <span className="font-medium" style={{ color: '#374151' }}>—</span>
+                    </div>
+                    <div className="h-1.5 rounded-full" style={{ backgroundColor: '#FFF7ED' }}>
+                      <div className="h-full rounded-full" style={{ backgroundColor: '#10B981', width: '0%' }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        /* List View */
+        <div className="rounded-xl overflow-hidden" style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+          {/* List header */}
+          <div
+            className="grid gap-4 px-5 py-3 text-xs font-semibold tracking-wide"
+            style={{
+              gridTemplateColumns: 'auto 1fr 100px 80px 80px 100px 40px',
+              borderBottom: '1px solid #FFF7ED',
+              color: '#9CA3AF',
+            }}
+          >
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded"
+              style={{ accentColor: '#10B981' }}
+              checked={tests.length > 0 && tests.every(t => selectedTestIds.has(t.id))}
+              onChange={() => {
+                if (tests.every(t => selectedTestIds.has(t.id))) setSelectedTestIds(new Set());
+                else setSelectedTestIds(new Set(tests.map(t => t.id)));
+              }}
+            />
+            <span>TEST</span>
+            <span>STATUS</span>
+            <span className="text-center">QUESTIONS</span>
+            <span className="text-center">ATTEMPTS</span>
+            <span>CREATED</span>
+            <span />
           </div>
 
-          {pagination && pagination.totalPages > 1 && (
-            <div className="flex justify-center gap-2 mt-6">
-              <button
-                onClick={() => setPage(page - 1)}
-                disabled={page === 1}
-                className="btn btn-secondary"
+          {sortedTests.map((test, idx) => {
+            const status = getTestStatus(test);
+            return (
+              <div
+                key={test.id}
+                className="grid gap-4 px-5 py-4 cursor-pointer items-center"
+                onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#EDF0F7')}
+                onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                style={{
+                  gridTemplateColumns: 'auto 1fr 100px 80px 80px 100px 40px',
+                  borderBottom: idx < filteredTests.length - 1 ? '1px solid #F9FAFB' : 'none',
+                }}
+                onClick={() => navigate(`/admin/tests/${test.id}`)}
               >
-                Previous
-              </button>
-              <span className="py-2 px-4">
-                Page {page} of {pagination.totalPages}
-              </span>
-              <button
-                onClick={() => setPage(page + 1)}
-                disabled={page === pagination.totalPages}
-                className="btn btn-secondary"
-              >
-                Next
-              </button>
-            </div>
-          )}
-        </>
+                <input type="checkbox" checked={selectedTestIds.has(test.id)} onClick={e => e.stopPropagation()} onChange={() => toggleSelectTest(test.id)} className="h-4 w-4 rounded" style={{ accentColor: '#10B981' }} />
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="icon-btn h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', boxShadow: '0 1px 5px rgba(16,185,129,0.3)' }}>
+                    <ClipboardCheck size={13} color="white" strokeWidth={2} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate" style={{ color: '#111827' }}>{test.name}</p>
+                    <p className="text-xs" style={{ color: '#9CA3AF' }}>{test.testCode}</p>
+                  </div>
+                </div>
+                <TestStatusBadge status={status} />
+                <p className="text-sm text-center" style={{ color: '#374151' }}>{test._count?.questions || 0}</p>
+                <p className="text-sm text-center" style={{ color: '#374151' }}>{test._count?.attempts || 0}</p>
+                <p className="text-xs" style={{ color: '#6B7280' }}>{format(new Date(test.startTime), 'MMM d, yyyy')}</p>
+                <button
+                  onClick={e => { e.stopPropagation(); openInvite(test); }}
+                  className="flex items-center justify-center h-7 w-7 rounded-full transition-colors hover:bg-gray-100"
+                  style={{ color: '#9CA3AF' }}
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
       )}
 
+      {/* Pagination */}
+      {pagination && pagination.totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 mt-6">
+          <button
+            onClick={() => setPage(p => p - 1)}
+            disabled={page === 1}
+            className="flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-40"
+            style={{ borderColor: '#FFF7ED', backgroundColor: 'white', color: '#374151' }}
+          >
+            <ChevronLeft size={14} />
+            Previous
+          </button>
+          <span className="text-sm px-3" style={{ color: '#6B7280' }}>Page {page} of {pagination.totalPages}</span>
+          <button
+            onClick={() => setPage(p => p + 1)}
+            disabled={page === pagination.totalPages}
+            className="flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-40"
+            style={{ borderColor: '#FFF7ED', backgroundColor: 'white', color: '#374151' }}
+          >
+            Next
+            <ChevronRight size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Click-away overlays */}
+      {sortMenuOpen && (
+        <div className="fixed inset-0 z-20" onClick={() => setSortMenuOpen(false)} />
+      )}
+      {openMenuId && (
+        <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
+      )}
+
+      {/* Send Invitations Modal */}
       {selectedTestForInvites && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="card w-full max-w-2xl">
-            <div className="flex items-start justify-between mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <div className="w-full max-w-lg rounded-2xl p-6" style={{ backgroundColor: 'white', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+            <div className="flex items-start justify-between mb-5">
               <div>
-                <h2 className="text-xl font-semibold text-gray-800">Send Invitations</h2>
-                <p className="text-sm text-gray-600 mt-1">
-                  Upload a CSV or XLSX file with <span className="font-mono">name,email</span> columns for{' '}
-                  <span className="font-medium">{selectedTestForInvites.name}</span>.
+                <h2 className="text-lg font-bold" style={{ color: '#111827' }}>Send Invitations</h2>
+                <p className="text-sm mt-0.5" style={{ color: '#6B7280' }}>
+                  Upload a CSV or XLSX with <code className="text-xs bg-gray-100 px-1 py-0.5 rounded">name,email</code> columns for{' '}
+                  <span className="font-medium" style={{ color: '#111827' }}>{selectedTestForInvites.name}</span>.
                 </p>
               </div>
               <button
-                onClick={closeInvitationModal}
+                onClick={closeInvite}
                 disabled={sendingInvitations}
-                className="text-[0px] leading-none text-gray-500 hover:text-gray-700"
-                aria-label="Close"
-              >
-                <span aria-hidden="true" className="text-xl">&times;</span>
-              </button>
+                style={{ color: '#9CA3AF', fontSize: '20px', lineHeight: 1 }}
+              >&times;</button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Candidate File
-                </label>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#374151' }}>Candidate File</label>
                 <input
                   type="file"
                   accept=".csv,.xlsx"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0] || null;
-                    setInvitationFile(file);
-                  }}
-                  className="input"
+                  onChange={e => setInvitationFile(e.target.files?.[0] || null)}
                   disabled={sendingInvitations}
+                  className="w-full text-sm rounded-lg border px-3 py-2"
+                  style={{ borderColor: '#FFF7ED', color: '#374151' }}
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  Supported formats: CSV, XLSX
-                </p>
+                <p className="text-xs mt-1" style={{ color: '#9CA3AF' }}>Supported: CSV, XLSX</p>
               </div>
-
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Optional Custom Message
-                </label>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#374151' }}>Custom Message (optional)</label>
                 <textarea
                   value={customMessage}
-                  onChange={(event) => setCustomMessage(event.target.value)}
-                  rows={4}
-                  className="input w-full"
-                  placeholder="Add a custom note included in invitation emails..."
+                  onChange={e => setCustomMessage(e.target.value)}
+                  rows={3}
+                  placeholder="Add a custom note for invitation emails..."
                   disabled={sendingInvitations}
+                  className="w-full text-sm rounded-lg border px-3 py-2 outline-none resize-none"
+                  style={{ borderColor: '#FFF7ED', color: '#374151' }}
                 />
               </div>
 
               {sendingInvitations && (
-                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
+                <div className="rounded-lg px-4 py-3 text-sm" style={{ backgroundColor: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }}>
                   Sending invitations in batches of 10. Please wait...
                 </div>
               )}
-
               {invitationSummary && (
-                <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">
-                  Total: {invitationSummary.total} | Sent: {invitationSummary.sent} | Failed: {invitationSummary.failed}
+                <div className="rounded-lg px-4 py-3 text-sm" style={{ backgroundColor: '#F0FDF4', color: '#16A34A', border: '1px solid #BBF7D0' }}>
+                  Total: {invitationSummary.total} · Sent: {invitationSummary.sent} · Failed: {invitationSummary.failed}
                 </div>
               )}
             </div>
 
-            <div className="flex gap-2 mt-6">
+            <div className="flex gap-3 mt-6">
               <button
-                type="button"
                 onClick={handleSendInvitations}
                 disabled={sendingInvitations}
-                className="btn btn-primary"
+                className="flex-1 rounded-lg py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                style={{ backgroundColor: '#10B981' }}
               >
                 {sendingInvitations ? 'Sending...' : 'Send Invitations'}
               </button>
               <button
-                type="button"
-                onClick={closeInvitationModal}
+                onClick={closeInvite}
                 disabled={sendingInvitations}
-                className="btn btn-secondary"
+                className="rounded-lg border px-5 py-2.5 text-sm font-medium disabled:opacity-60"
+                style={{ borderColor: '#FFF7ED', color: '#374151' }}
               >
-                Close
+                Cancel
               </button>
             </div>
           </div>

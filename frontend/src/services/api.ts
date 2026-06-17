@@ -109,7 +109,7 @@ const buildRepositoryQuery = (params: RepositoryQueryParams) => {
 
 // Admin API
 export const adminApi = {
-  register: (data: { email: string; password: string; name: string }) =>
+  register: (data: { email: string; password: string; name: string; companyName?: string; companyId?: string }) =>
     api.post('/admin/register', data),
 
   login: (data: { email: string; password: string }) =>
@@ -118,11 +118,33 @@ export const adminApi = {
   getProfile: () =>
     api.get('/admin/profile'),
 
+  updateProfile: (data: { name: string }) =>
+    api.put('/admin/profile', data),
+
+  changePassword: (data: { currentPassword: string; newPassword: string }) =>
+    api.put('/admin/change-password', data),
+
   getDashboard: () =>
     api.get('/admin/dashboard'),
 
   getRecentCompletedAttempts: (limit = 20) =>
     api.get(`/admin/attempts/completed/recent?limit=${limit}`),
+
+  getAllAttempts: (params: { testId?: string; status?: string; search?: string; page?: number; limit?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (params.testId)  q.set('testId',  params.testId);
+    if (params.status)  q.set('status',  params.status);
+    if (params.search)  q.set('search',  params.search);
+    if (params.page)    q.set('page',    String(params.page));
+    if (params.limit)   q.set('limit',   String(params.limit));
+    return api.get(`/admin/attempts?${q.toString()}`);
+  },
+
+  // Persistent notifications
+  getNotifications: () => api.get('/admin/notifications'),
+  markAllNotificationsRead: () => api.post('/admin/notifications/read-all', {}),
+  clearAllNotifications: () => api.delete('/admin/notifications'),
+  deleteNotification: (id: string) => api.delete(`/admin/notifications/${id}`),
 
   getInvitationDashboard: () =>
     api.get('/admin/invitations/dashboard'),
@@ -180,6 +202,16 @@ export const adminApi = {
   deleteTestSection: (testId: string, sectionId: string) =>
     api.delete(`/admin/tests/${testId}/sections/${sectionId}`),
 
+  getEmailTemplates: (testId: string) =>
+    api.get(`/admin/tests/${testId}/email-templates`),
+
+  updateEmailTemplates: (testId: string, data: {
+    inviteEmailSubject?: string;
+    inviteEmailBody?: string;
+    confirmEmailSubject?: string;
+    confirmEmailBody?: string;
+  }) => api.put(`/admin/tests/${testId}/email-templates`, data),
+
   // MCQ Questions
   createMCQ: (data: Record<string, unknown>) =>
     api.post('/admin/mcq', data),
@@ -236,13 +268,20 @@ export const adminApi = {
   updateCustomCoding: (questionId: string, data: {
     title?: string;
     description?: string;
+    inputFormat?: string;
+    outputFormat?: string;
+    sampleInput?: string;
+    sampleOutput?: string;
+    constraints?: string;
     marks?: number;
     difficulty?: 'easy' | 'medium' | 'hard';
     topic?: string;
     tags?: string[];
     supportedLanguages?: string[];
+    codeTemplates?: Record<string, string>;
     timeLimit?: number;
     memoryLimit?: number;
+    partialScoring?: boolean;
   }) => api.put(`/admin/repository/custom/coding/${questionId}`, data),
 
   updateCustomBehavioral: (questionId: string, data: {
@@ -395,6 +434,9 @@ export const adminApi = {
   // Analytics - Admin
   getDashboardStats: () =>
     api.get('/analytics/dashboard'),
+
+  getAdminAnalyticsOverview: (period: '7d' | '30d' | '90d' = '30d') =>
+    api.get(`/analytics/admin/overview?period=${period}`),
 
   getAttemptAnalytics: (attemptId: string, regenerate = false) =>
     api.get(`/analytics/attempt/${attemptId}`, { params: { regenerate } }),

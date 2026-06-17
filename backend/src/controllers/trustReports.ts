@@ -325,7 +325,7 @@ export async function getTrustReports(req: AuthenticatedRequest, res: Response):
       const counts = buildViolationCounts(rawSessionEvents);
       const totalViolations = rawSessionEvents.length;
       const trustScore = Number(calculateTrustFromEvents(rawSessionEvents).toFixed(1));
-      const riskLevel = riskLevelFromTrustScore(trustScore);
+      const riskLevel: TrustRiskLevel = attempt.isFlagged ? 'high' : riskLevelFromTrustScore(trustScore);
       const parsedSummary = safeParseJSON<{ llmSummary?: string }>(attempt.analytics?.proctoringSummary || null);
       const latestEvent = rawSessionEvents[0];
       const latestSnapshotEvent = rawSessionEvents.find(event => !!event.snapshotUrl);

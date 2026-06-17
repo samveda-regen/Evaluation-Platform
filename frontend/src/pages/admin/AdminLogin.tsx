@@ -3,13 +3,19 @@ import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { useAuthStore } from '../../context/authStore';
+import { ShieldCheck, Activity, BarChart2, Eye, EyeOff, ChevronRight } from 'lucide-react';
 
 export default function AdminLogin() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [companyName, setCompanyName] = useState('');
+  const [companyId, setCompanyId] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
+
   const navigate = useNavigate();
   const setAdmin = useAuthStore((state) => state.setAdmin);
 
@@ -22,19 +28,36 @@ export default function AdminLogin() {
         const { data } = await adminApi.login({ email, password });
         setAdmin(data.admin, data.token);
         toast.success('Login successful');
-        navigate('/admin/tests/new');
+        navigate('/admin/dashboard');
       } else {
-        const { data } = await adminApi.register({ email, password, name });
+        const { data } = await adminApi.register({
+          email,
+          password,
+          name,
+          companyName: companyName.trim() || undefined,
+          companyId: companyId.trim() || undefined,
+        });
+
         setAdmin(data.admin, data.token);
         toast.success('Registration successful');
-        navigate('/admin/tests/new');
+        navigate('/admin/dashboard');
       }
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { error?: string } }; message?: string };
+      const err = error as {
+        response?: { data?: { error?: string } };
+        message?: string;
+      };
+
       if (!err.response) {
-        toast.error('Cannot reach backend API. Start backend on port 3000 and verify database setup.');
+        toast.error(
+          'Cannot reach backend API. Start backend on port 3000 and verify database setup.'
+        );
       } else {
-        toast.error(err.response.data?.error || err.message || 'An error occurred');
+        toast.error(
+          err.response.data?.error ||
+            err.message ||
+            'An error occurred'
+        );
       }
     } finally {
       setLoading(false);
@@ -42,102 +65,261 @@ export default function AdminLogin() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#2b014f] via-[#3a0b62] to-[#23033f] p-4 md:p-6 flex items-center justify-center">
-      <div className="w-full max-w-[1100px] overflow-hidden rounded-2xl bg-[#3a0b62] shadow-[0_20px_60px_rgba(0,0,0,0.45)]">
-        <div className="relative grid min-h-[600px] grid-cols-1 md:min-h-[640px] md:grid-cols-2">
-          <div className="pointer-events-none absolute inset-0 opacity-20">
-            <div className="absolute -left-16 -top-14 h-72 w-72 rotate-12 rounded-3xl border border-violet-300/50" />
-            <div className="absolute left-1/3 top-10 h-64 w-64 -rotate-12 rounded-3xl border border-fuchsia-300/40" />
-            <div className="absolute bottom-0 right-0 h-64 w-64 -translate-x-12 translate-y-20 rotate-45 rounded-3xl bg-violet-900/50" />
+    <div className="min-h-screen w-full overflow-x-hidden bg-white text-gray-900 font-sans">
+      <div className="grid min-h-screen grid-cols-1 lg:grid-cols-[1.1fr_1fr]">
+
+        {/* LEFT SIDE: HERO PANEL */}
+        <section className="relative hidden min-h-screen overflow-hidden bg-[#060c13] px-10 py-10 text-white lg:flex lg:flex-col lg:justify-between xl:px-16 xl:py-12">
+          {/* Ambient Glows */}
+          <div className="pointer-events-none absolute right-0 top-0 h-[600px] w-[600px] rounded-full bg-gradient-to-b from-[#1b3831]/25 via-[#102320]/5 to-transparent blur-[100px] opacity-80" />
+          <div className="pointer-events-none absolute -left-20 -bottom-20 h-[500px] w-[500px] rounded-full bg-gradient-to-tr from-[#0a1e1b]/15 to-transparent blur-[120px] opacity-40" />
+
+          {/* Logo & Brand */}
+          <div className="relative flex items-center gap-3">
+            <span className="text-xl font-bold tracking-tight text-white select-none">
+              TalentstaQ
+            </span>
           </div>
 
-          <section className="relative z-10 px-8 py-10 text-white md:px-12 md:py-12 lg:px-14">
-            <div className="mb-8 text-3xl font-bold">Regen</div>
-            <h1 className="text-5xl font-extrabold leading-none md:text-6xl">Welcome!</h1>
-            <div className="mt-4 h-1 w-16 rounded-full bg-white/80" />
-            <p className="mt-6 max-w-md text-sm text-violet-100/85">
-              Secure admin access for tests, questions, and candidate monitoring.
-            </p>
-            <div className="mt-10">
-              <Link
-                to="/test/login"
-                className="inline-flex rounded-full bg-gradient-to-r from-orange-400 to-pink-500 px-5 py-2 text-xs font-semibold text-white"
-              >
-                Candidate Login
-              </Link>
-            </div>
-          </section>
+          {/* Hero Main Content */}
+          <div className="relative z-10 my-auto max-w-xl pr-4">
+            <h1 className="text-[42px] font-extrabold leading-[1.15] tracking-tight text-white xl:text-[48px]">
+              Hire on proof,
+              <br />
+              not guesswork.
+            </h1>
 
-          <section className="relative z-10 flex items-center justify-center px-6 py-10 md:px-10 md:py-12">
-            <div className="w-full max-w-[360px] border border-white/20 bg-white/12 p-8 text-white backdrop-blur-md">
-              <div className="mb-4 flex gap-2">
-                <button
-                  onClick={() => setIsLogin(true)}
-                  className={`rounded-full px-3 py-1 text-xs font-semibold transition ${isLogin ? 'bg-white/25' : 'bg-white/10'}`}
-                  type="button"
-                >
-                  Sign in
-                </button>
-                <button
-                  onClick={() => setIsLogin(false)}
-                  className={`rounded-full px-3 py-1 text-xs font-semibold transition ${!isLogin ? 'bg-white/25' : 'bg-white/10'}`}
-                  type="button"
-                >
-                  Register
-                </button>
+            <p className="mt-5 text-[16px] leading-relaxed text-[#9ca3af]">
+              Role-based assessments, AI proctoring and integrity analytics —
+              one platform from invite to scorecard.
+            </p>
+
+            <div className="mt-10 space-y-5">
+              {/* Feature 1 */}
+              <div className="flex items-center gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#1d3d36] bg-[#10231f] text-[#4fad7c]">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <span className="text-sm font-medium text-[#c9d1d9] xl:text-[15px]">
+                  AI proctoring with violation evidence &amp; trust scoring
+                </span>
               </div>
 
-              <h2 className="text-center text-5xl font-bold">{isLogin ? 'Sign in' : 'Register'}</h2>
+              {/* Feature 2 */}
+              <div className="flex items-center gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#1d3d36] bg-[#10231f] text-[#4fad7c]">
+                  <Activity className="h-5 w-5" />
+                </div>
+                <span className="text-sm font-medium text-[#c9d1d9] xl:text-[15px]">
+                  MCQ, coding &amp; behavioral question library
+                </span>
+              </div>
 
-              <form onSubmit={handleSubmit} className="mt-8 space-y-4">
-                {!isLogin && (
-                  <div>
-                    <label className="mb-1 block text-sm font-semibold">Name</label>
+              {/* Feature 3 */}
+              <div className="flex items-center gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-[#1d3d36] bg-[#10231f] text-[#4fad7c]">
+                  <BarChart2 className="h-5 w-5" />
+                </div>
+                <span className="text-sm font-medium text-[#c9d1d9] xl:text-[15px]">
+                  Skill, difficulty &amp; candidate comparison analytics
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="relative mt-8 flex items-center gap-2 text-xs font-semibold text-gray-500 select-none">
+            <span className="h-1.5 w-1.5 rounded-full bg-gray-500" />
+            <span>Regen Consult</span>
+          </div>
+        </section>
+
+        {/* RIGHT SIDE: FORM PANEL */}
+        <section className="bg-white flex flex-col items-center justify-center px-6 py-12 sm:px-12 lg:px-16 xl:px-20">
+          <div className="w-full max-w-[420px] space-y-6">
+
+            {/* Logo for mobile screens */}
+            <div className="flex items-center gap-3 lg:hidden">
+              <span className="text-xl font-bold tracking-tight text-gray-900 select-none">
+                TalentstaQ
+              </span>
+            </div>
+
+            {/* Header Titles */}
+            <div className="space-y-1.5">
+              <h2 className="text-[30px] font-bold tracking-tight text-gray-900 leading-tight">
+                {isLogin ? 'Welcome back' : 'Create your account'}
+              </h2>
+              <p className="text-sm text-gray-500 font-medium">
+                Admin &amp; recruiter console access.
+              </p>
+            </div>
+
+            {/* Sign in / Register Switcher */}
+            <div className="inline-flex rounded-xl bg-[#eef2f6] p-1 text-sm font-semibold w-fit">
+              <button
+                onClick={() => setIsLogin(true)}
+                type="button"
+                className={`px-5 py-2 rounded-lg transition-all duration-200 ${
+                  isLogin
+                    ? 'bg-white shadow-sm text-gray-900 font-bold'
+                    : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                Sign in
+              </button>
+              <button
+                onClick={() => setIsLogin(false)}
+                type="button"
+                className={`px-5 py-2 rounded-lg transition-all duration-200 ${
+                  !isLogin
+                    ? 'bg-white shadow-sm text-gray-900 font-bold'
+                    : 'text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                Register
+              </button>
+            </div>
+
+            {/* Form Fields */}
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {!isLogin && (
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Full name
+                    </label>
                     <input
                       type="text"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      className="w-full rounded-full border border-white/20 bg-white/20 px-4 py-2 text-sm text-white placeholder-white/70 outline-none focus:border-orange-300"
-                      placeholder="Admin name"
+                      placeholder="Priya Nair"
                       required={!isLogin}
+                      className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none transition duration-150 focus:border-[#4fad7c] focus:ring-2 focus:ring-[#4fad7c]/20"
                     />
                   </div>
-                )}
-                <div>
-                  <label className="mb-1 block text-sm font-semibold">User Name</label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full rounded-full border border-white/20 bg-white/20 px-4 py-2 text-sm text-white placeholder-white/70 outline-none focus:border-orange-300"
-                    placeholder="admin@example.com"
-                    required
-                  />
+
+                  <div className="space-y-1.5">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Company name <span className="text-gray-400 font-normal">(optional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      placeholder="Regen Consult"
+                      className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none transition duration-150 focus:border-[#4fad7c] focus:ring-2 focus:ring-[#4fad7c]/20"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Company ID <span className="text-gray-400 font-normal">(optional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={companyId}
+                      onChange={(e) => setCompanyId(e.target.value)}
+                      placeholder="REGEN-001"
+                      className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none transition duration-150 focus:border-[#4fad7c] focus:ring-2 focus:ring-[#4fad7c]/20"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="mb-1 block text-sm font-semibold">Password</label>
+              )}
+
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-gray-700">
+                  Work email
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="priya@regenconsult.au"
+                  required
+                  className="w-full rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none transition duration-150 focus:border-[#4fad7c] focus:ring-2 focus:ring-[#4fad7c]/20"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium text-gray-700">
+                  Password
+                </label>
+                <div className="relative">
                   <input
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full rounded-full border border-white/20 bg-white/20 px-4 py-2 text-sm text-white placeholder-white/70 outline-none focus:border-orange-300"
-                    placeholder="••••••••••"
+                    placeholder="••••••••"
                     required
                     minLength={isLogin ? 6 : 8}
+                    className="w-full rounded-lg border border-gray-200 bg-white pl-4 pr-10 py-2.5 text-sm text-gray-900 placeholder-gray-400 outline-none transition duration-150 focus:border-[#4fad7c] focus:ring-2 focus:ring-[#4fad7c]/20"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 focus:outline-none"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-5 h-5" />
+                    ) : (
+                      <Eye className="w-5 h-5" />
+                    )}
+                  </button>
                 </div>
+              </div>
 
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="mt-3 w-full rounded-full bg-gradient-to-r from-orange-400 to-pink-500 py-2.5 text-sm font-bold text-white transition hover:brightness-110 disabled:opacity-70"
-                >
-                  {loading ? 'Please wait...' : 'Submit'}
-                </button>
-              </form>
+              {isLogin && (
+                <div className="flex items-center justify-between text-sm pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="rounded border-gray-300 text-[#4fad7c] focus:ring-[#4fad7c] h-4 w-4"
+                    />
+                    <span className="text-gray-600 font-medium">Remember me</span>
+                  </label>
+                  <Link
+                    to="/admin/forgot-password"
+                    className="text-[#4fad7c] hover:text-[#3e9a68] font-semibold transition-colors duration-150"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#4fad7c] hover:bg-[#3e9a68] text-white py-3 text-sm font-semibold transition-all duration-150 disabled:cursor-not-allowed disabled:opacity-50 shadow-sm"
+              >
+                <span>{loading ? 'Please wait...' : isLogin ? 'Sign in' : 'Create account'}</span>
+                {!loading && (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </button>
+            </form>
+
+            {/* Separator Divider */}
+            <div className="flex items-center py-2 select-none">
+              <div className="flex-1 border-t border-gray-200/80" />
+              <span className="px-4 text-xs font-semibold text-gray-400">candidate?</span>
+              <div className="flex-1 border-t border-gray-200/80" />
             </div>
-          </section>
-        </div>
+
+            {/* Ghost Invitation Button */}
+            <Link
+              to="/test/login"
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white py-3 text-sm font-semibold text-gray-700 transition duration-150 hover:bg-gray-50 hover:text-gray-900 shadow-sm"
+            >
+              <span>I have a test invitation</span>
+              <ChevronRight className="h-4 w-4" />
+            </Link>
+
+          </div>
+        </section>
+
       </div>
     </div>
   );

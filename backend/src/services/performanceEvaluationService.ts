@@ -520,6 +520,9 @@ export async function generateTestAnalytics(testId: string): Promise<void> {
       await generatePerformanceEvaluation(attempt.id);
     }
 
+    // Count ALL attempts (any status) so completion% is accurate
+    const totalAllAttempts = await prisma.testAttempt.count({ where: { testId } });
+
     const attempts = await prisma.testAttempt.findMany({
       where: {
         testId,
@@ -538,13 +541,13 @@ export async function generateTestAnalytics(testId: string): Promise<void> {
         where: { testId },
         create: {
           testId,
-          totalAttempts: 0,
+          totalAttempts: totalAllAttempts,
           completedAttempts: 0,
-          averageScore: 0,
-          medianScore: 0,
-          highestScore: 0,
-          lowestScore: 0,
-          passRate: 0,
+          averageScore: null,
+          medianScore: null,
+          highestScore: null,
+          lowestScore: null,
+          passRate: null,
           totalViolations: 0,
           flaggedAttempts: 0,
           averageTrustScore: null,
@@ -553,13 +556,13 @@ export async function generateTestAnalytics(testId: string): Promise<void> {
           lastCalculatedAt: new Date(),
         },
         update: {
-          totalAttempts: 0,
+          totalAttempts: totalAllAttempts,
           completedAttempts: 0,
-          averageScore: 0,
-          medianScore: 0,
-          highestScore: 0,
-          lowestScore: 0,
-          passRate: 0,
+          averageScore: null,
+          medianScore: null,
+          highestScore: null,
+          lowestScore: null,
+          passRate: null,
           totalViolations: 0,
           flaggedAttempts: 0,
           averageTrustScore: null,
@@ -574,28 +577,40 @@ export async function generateTestAnalytics(testId: string): Promise<void> {
     const scores = attempts.map(a => a.score || 0);
     const sortedScores = [...scores].sort((a, b) => a - b);
 
+    const completedCount = attempts.length;
+    const passingMarks = attempts[0]?.test?.passingMarks || 0;
+    const trustScoredAttempts = attempts.filter(a => a.analytics?.trustScore != null);
     const analytics = {
-      totalAttempts: attempts.length,
-      completedAttempts: attempts.filter(a => ['submitted', 'auto_submitted'].includes(a.status)).length,
-      averageScore: scores.reduce((a, b) => a + b, 0) / scores.length,
+      totalAttempts: totalAllAttempts,   // all started (any status)
+      completedAttempts: completedCount, // submitted/auto_submitted with a score
+      averageScore: scores.reduce((a, b) => a + b, 0) / completedCount,
       medianScore: sortedScores.length % 2 === 0
         ? (sortedScores[(sortedScores.length / 2) - 1] + sortedScores[sortedScores.length / 2]) / 2
         : sortedScores[Math.floor(sortedScores.length / 2)],
       highestScore: Math.max(...scores),
       lowestScore: Math.min(...scores),
-      passRate: (attempts.filter(a => (a.score || 0) >= (attempts[0]?.test?.passingMarks || 0)).length / attempts.length) * 100,
+      passRate: (attempts.filter(a => (a.score || 0) >= passingMarks).length / completedCount) * 100,
       flaggedAttempts: attempts.filter(a => a.isFlagged).length,
-      averageTrustScore: attempts.filter(a => a.analytics?.trustScore != null)
-        .reduce((sum, a) => sum + (a.analytics?.trustScore || 0), 0) /
-        Math.max(attempts.filter(a => a.analytics?.trustScore != null).length, 1),
+      averageTrustScore: trustScoredAttempts.length > 0
+        ? trustScoredAttempts.reduce((sum, a) => sum + (a.analytics?.trustScore || 0), 0) / trustScoredAttempts.length
+        : null,
       totalViolations: attempts.reduce((sum, a) => sum + a.violations, 0),
     };
 
-    // Calculate score distribution
+    // Calculate score distribution in percentage bands
+    const totalMarks = attempts[0]?.test?.totalMarks || 100;
+    const BANDS = [
+      { label: '0-40',   min: 0,  max: 40  },
+      { label: '40-55',  min: 40, max: 55  },
+      { label: '55-70',  min: 55, max: 70  },
+      { label: '70-85',  min: 70, max: 85  },
+      { label: '85-100', min: 85, max: 101 },
+    ];
     const distribution: Record<string, number> = {};
     for (const score of scores) {
-      const bucket = `${Math.floor(score / 10) * 10}-${Math.floor(score / 10) * 10 + 9}`;
-      distribution[bucket] = (distribution[bucket] || 0) + 1;
+      const pct = totalMarks > 0 ? (score / totalMarks) * 100 : 0;
+      const band = BANDS.find(b => pct >= b.min && pct < b.max) ?? BANDS[BANDS.length - 1];
+      distribution[band.label] = (distribution[band.label] || 0) + 1;
     }
 
     await prisma.testAnalytics.upsert({

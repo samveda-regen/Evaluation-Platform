@@ -6,6 +6,12 @@ import { sanitizeInput } from '../utils/sanitize.js';
 import prisma from '../utils/db.js';
 import { generateCandidateToken } from '../utils/jwt.js';
 import {
+  DEFAULT_INVITE_SUBJECT,
+  DEFAULT_INVITE_BODY,
+  DEFAULT_CONFIRM_SUBJECT,
+  DEFAULT_CONFIRM_BODY,
+} from '../services/emailService.js';
+import {
   DEFAULT_CUSTOM_AI_VIOLATION_EVENTS,
   normalizeCustomAIViolationEvents,
   parseStoredCustomAIViolationEvents,
@@ -332,7 +338,26 @@ export async function getTestById(req: AuthenticatedRequest, res: Response): Pro
       return;
     }
 
-    res.json({ test: mapTestWithCustomAI(test) });
+    // Also fetch the raw JSON columns not yet in the generated Prisma client
+    let proctoringSettingsRaw: string | null = null;
+    let violationPopupSettingsRaw: string | null = null;
+    try {
+      const rows = await prisma.$queryRaw<Array<{ proctoringSettings: string | null; violationPopupSettings: string | null }>>`
+        SELECT "proctoringSettings", "violationPopupSettings" FROM "Test" WHERE id = ${testId}
+      `;
+      if (rows.length > 0) {
+        proctoringSettingsRaw = rows[0].proctoringSettings;
+        violationPopupSettingsRaw = rows[0].violationPopupSettings;
+      }
+    } catch { /* columns not yet added — safe to ignore */ }
+
+    res.json({
+      test: {
+        ...mapTestWithCustomAI(test),
+        proctoringSettings: proctoringSettingsRaw ? JSON.parse(proctoringSettingsRaw) : undefined,
+        violationPopupSettings: violationPopupSettingsRaw ? JSON.parse(violationPopupSettingsRaw) : undefined,
+      },
+    });
   } catch (error) {
     console.error('Get test error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -531,14 +556,74 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
     if (updates.requireScreenShare !== undefined) sanitizedUpdates.requireScreenShare = updates.requireScreenShare;
     if (updates.requireIdVerification !== undefined) sanitizedUpdates.requireIdVerification = updates.requireIdVerification;
 
+    // When proctoringSettings is sent (from the AI Proctoring tab), extract the
+    // device-require flags so they're reflected on the candidate instructions page.
+    if (updates.proctoringSettings && typeof updates.proctoringSettings === 'object') {
+      const ps = updates.proctoringSettings as Record<string, unknown>;
+      if (typeof ps.webcamOn === 'boolean') sanitizedUpdates.requireCamera = ps.webcamOn;
+      if (typeof ps.micOn === 'boolean') sanitizedUpdates.requireMicrophone = ps.micOn;
+      if (typeof ps.screenOn === 'boolean') sanitizedUpdates.requireScreenShare = ps.screenOn;
+    }
+
+    // If the master proctoring switch is explicitly turned OFF, clear all device requirements
+    // so the candidate instructions page correctly shows "Not required".
+    if (updates.proctorEnabled === false) {
+      sanitizedUpdates.requireCamera = false;
+      sanitizedUpdates.requireMicrophone = false;
+      sanitizedUpdates.requireScreenShare = false;
+    }
+
     const updatedTest = await prisma.test.update({
       where: { id: testId },
       data: sanitizedUpdates
     });
 
+    // Persist proctoringSettings and violationPopupSettings via raw SQL
+    // (these columns are not in the generated Prisma schema yet)
+    try {
+      const psJson = updates.proctoringSettings !== undefined
+        ? JSON.stringify(updates.proctoringSettings)
+        : null;
+      const vpJson = updates.violationPopupSettings !== undefined
+        ? JSON.stringify(updates.violationPopupSettings)
+        : null;
+      if (psJson !== null || vpJson !== null) {
+        if (psJson !== null && vpJson !== null) {
+          await prisma.$executeRaw`
+            UPDATE "Test"
+            SET "proctoringSettings" = ${psJson}, "violationPopupSettings" = ${vpJson}
+            WHERE id = ${testId}
+          `;
+        } else if (psJson !== null) {
+          await prisma.$executeRaw`UPDATE "Test" SET "proctoringSettings" = ${psJson} WHERE id = ${testId}`;
+        } else if (vpJson !== null) {
+          await prisma.$executeRaw`UPDATE "Test" SET "violationPopupSettings" = ${vpJson} WHERE id = ${testId}`;
+        }
+      }
+    } catch {
+      // columns not yet created — safe to ignore (settings still work via requireCamera etc.)
+    }
+
+    // Re-fetch with the raw JSON columns included in the response
+    let proctoringSettingsRaw: string | null = null;
+    let violationPopupSettingsRaw: string | null = null;
+    try {
+      const rows = await prisma.$queryRaw<Array<{ proctoringSettings: string | null; violationPopupSettings: string | null }>>`
+        SELECT "proctoringSettings", "violationPopupSettings" FROM "Test" WHERE id = ${testId}
+      `;
+      if (rows.length > 0) {
+        proctoringSettingsRaw = rows[0].proctoringSettings;
+        violationPopupSettingsRaw = rows[0].violationPopupSettings;
+      }
+    } catch { /* ignore */ }
+
     res.json({
       message: 'Test updated successfully',
-      test: mapTestWithCustomAI(updatedTest)
+      test: {
+        ...mapTestWithCustomAI(updatedTest),
+        proctoringSettings: proctoringSettingsRaw ? JSON.parse(proctoringSettingsRaw) : undefined,
+        violationPopupSettings: violationPopupSettingsRaw ? JSON.parse(violationPopupSettingsRaw) : undefined,
+      },
     });
   } catch (error) {
     console.error('Update test error:', error);
@@ -1326,6 +1411,80 @@ export async function reorderTestQuestions(req: AuthenticatedRequest, res: Respo
     res.json({ message: 'Questions reordered successfully' });
   } catch (error) {
     console.error('Reorder questions error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+
+type EmailTemplateRow = {
+  inviteEmailSubject: string | null;
+  inviteEmailBody: string | null;
+  confirmEmailSubject: string | null;
+  confirmEmailBody: string | null;
+};
+
+export async function getEmailTemplates(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { testId } = req.params;
+    // cast needed until `prisma generate` is re-run after schema migration
+    const test = await (prisma.test as any).findFirst({
+      where: { id: testId, adminId: req.admin!.id },
+      select: {
+        inviteEmailSubject: true,
+        inviteEmailBody: true,
+        confirmEmailSubject: true,
+        confirmEmailBody: true,
+      }
+    }) as EmailTemplateRow | null;
+
+    if (!test) {
+      res.status(404).json({ error: 'Test not found' });
+      return;
+    }
+
+    res.json({
+      inviteEmailSubject:  test.inviteEmailSubject  ?? DEFAULT_INVITE_SUBJECT,
+      inviteEmailBody:     test.inviteEmailBody     ?? DEFAULT_INVITE_BODY,
+      confirmEmailSubject: test.confirmEmailSubject ?? DEFAULT_CONFIRM_SUBJECT,
+      confirmEmailBody:    test.confirmEmailBody    ?? DEFAULT_CONFIRM_BODY,
+    });
+  } catch (error) {
+    console.error('Get email templates error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function updateEmailTemplates(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { testId } = req.params;
+    const { inviteEmailSubject, inviteEmailBody, confirmEmailSubject, confirmEmailBody } = req.body as {
+      inviteEmailSubject?: string;
+      inviteEmailBody?: string;
+      confirmEmailSubject?: string;
+      confirmEmailBody?: string;
+    };
+
+    const exists = await prisma.test.findFirst({
+      where: { id: testId, adminId: req.admin!.id },
+      select: { id: true }
+    });
+
+    if (!exists) {
+      res.status(404).json({ error: 'Test not found' });
+      return;
+    }
+
+    const data: Record<string, string> = {};
+    if (inviteEmailSubject  !== undefined) data.inviteEmailSubject  = sanitizeInput(inviteEmailSubject);
+    if (inviteEmailBody     !== undefined) data.inviteEmailBody     = sanitizeInput(inviteEmailBody);
+    if (confirmEmailSubject !== undefined) data.confirmEmailSubject = sanitizeInput(confirmEmailSubject);
+    if (confirmEmailBody    !== undefined) data.confirmEmailBody    = sanitizeInput(confirmEmailBody);
+
+    await (prisma.test as any).update({ where: { id: testId }, data });
+
+    res.json({ message: 'Email templates saved' });
+  } catch (error) {
+    console.error('Update email templates error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }

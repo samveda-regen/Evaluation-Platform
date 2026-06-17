@@ -9,8 +9,60 @@
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  background: #F8FAFC;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Minimalistic animations ── */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.45; transform: scale(0.75); }
+}
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes icon-pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+.animate-pulse-dot  { animation: pulse-dot  1.4s ease-in-out infinite; }
+.animate-fade-in-up { animation: fade-in-up 0.22s ease-out both; }
+
+/* Admin-wide hover tint — lighter shade of sidebar (#142340) */
+:root { --admin-hover: #EDF0F7; }
+
+/* Override every Tailwind gray hover inside the admin shell */
+.admin-shell .hover\:bg-gray-50:hover,
+.admin-shell .hover\:bg-gray-100:hover,
+.admin-shell .hover\:bg-gray-200:hover { background-color: #EDF0F7 !important; }
+
+/* Icon-only button animation — mirrors back-button behaviour */
+.icon-btn {
+  transition: transform 0.18s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  cursor: pointer;
+}
+.icon-btn:hover  { transform: scale(1.1); }
+.icon-btn:active { transform: scale(0.93); }
+
+/* Stat card hover lift */
+.stat-card {
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.15s;
+}
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.10) !important;
+}
+
+/* Icon container subtle scale on parent hover */
+.icon-wrap {
+  transition: transform 0.18s ease;
+}
+.stat-card:hover .icon-wrap {
+  transform: scale(1.1);
 }
 
 /* Custom scrollbar */
@@ -30,6 +82,14 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #555;
+}
+
+/* Textarea — no resize handle, bounded height, scrollable content */
+textarea {
+  resize: none !important;
+  min-height: 80px;
+  max-height: 320px;
+  overflow-y: auto;
 }
 
 /* Hide scrollbar for specific containers while preserving scroll behavior */
@@ -79,12 +139,21 @@ body {
   }
 
   .input {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-colors;
-  }
+  width: 100%;
+  height: 48px;
+  border: 1px solid #CBD5E1;
+  border-radius: 12px;
+  padding: 0 16px;
+  background: white;
+  color: #0F172A;
+}
 
   .card {
-    @apply bg-white rounded-xl shadow-md p-6;
-  }
+  @apply bg-white p-6;
+  border: 1px solid #E2E8F0;
+  border-radius: 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.04);
+}
 
   .badge {
     @apply px-2 py-1 text-xs font-medium rounded-full;
@@ -311,4 +380,55 @@ body {
 .admin-dark .text-yellow-700,
 .admin-dark .text-yellow-600 {
   color: #fcd34d;
+}
+.not-dark .bg-white {
+  background: white !important;
+}
+
+.not-dark input,
+.not-dark textarea,
+.not-dark select {
+  background: white !important;
+  color: #0F172A !important;
+}
+
+.not-dark .card {
+  background: white !important;
+  border: 1px solid #E2E8F0 !important;
+}
+.create-test-page label,
+.create-test-page h1,
+.create-test-page h2,
+.create-test-page h3,
+.create-test-page p,
+.create-test-page span {
+  color: #0F172A !important;
+}
+
+.create-test-page input,
+.create-test-page textarea,
+.create-test-page select {
+  background: white !important;
+  color: #0F172A !important;
+  border: 1px solid #CBD5E1 !important;
+}
+
+.create-test-page .bg-white {
+  background: white !important;
+}
+
+.create-test-page .text-slate-500 {
+  color: #64748B !important;
+}
+
+.create-test-page .text-slate-400 {
+  color: #94A3B8 !important;
+}
+.create-test-page,
+.create-test-page * {
+  color: #0F172A !important;
+}
+
+.create-test-page .required {
+  color: #EF4444 !important;
 }

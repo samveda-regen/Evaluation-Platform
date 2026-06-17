@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import type { Test } from '../../types';
@@ -8,46 +8,85 @@ import {
   DEFAULT_CUSTOM_AI_VIOLATIONS,
   normalizeCustomAIViolationSelection,
 } from '../../constants/customAIViolations';
+import { Camera, Mic, MonitorPlay, Maximize2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
-function IncognitoIcon() {
+/* ── Severity config per violation ── */
+type Severity = 'High' | 'Medium' | 'Low';
+const VIOLATION_META: Record<string, { label: string; desc: string; severity: Severity }> = {
+  face_not_detected:             { label: 'Face not detected',      desc: 'No faces in frame for 5s',                 severity: 'High'   },
+  multiple_faces:                { label: 'Multiple faces',         desc: 'More than one person detected',             severity: 'High'   },
+  looking_away:                  { label: 'Looking away',           desc: 'Gaze off-screen repeatedly',                severity: 'Medium' },
+  tab_switch:                    { label: 'Tab / window switch',    desc: 'Candidate leaves the test tab',             severity: 'High'   },
+  phone_detected:                { label: 'Phone detected',         desc: 'Mobile device in frame',                    severity: 'High'   },
+  voice_detected:                { label: 'Background voice',       desc: 'Speech detected from another person',       severity: 'Medium' },
+  copy_paste_attempt:            { label: 'Copy / paste',           desc: 'Clipboard used in answers',                 severity: 'Low'    },
+  fullscreen_exit:               { label: 'Full-screen exit',       desc: 'Candidate leaves full-screen',              severity: 'Medium' },
+  suspicious_audio:              { label: 'Suspicious audio',       desc: 'Unusual noise patterns around candidate',   severity: 'Medium' },
+  unauthorized_object_detected:  { label: 'Unauthorized object',    desc: 'Unauthorized objects in camera frame',      severity: 'High'   },
+  camera_blocked:                { label: 'Camera blocked',         desc: 'Camera obstructed or disabled',             severity: 'High'   },
+  secondary_monitor_detected:    { label: 'Secondary monitor',      desc: 'Additional external screen detected',       severity: 'High'   },
+  window_blur:                   { label: 'Window focus lost',      desc: 'Browser window lost focus',                 severity: 'Medium' },
+  devtools_open:                 { label: 'DevTools open',          desc: 'Developer tools detected',                  severity: 'High'   },
+};
+
+const SEV_COLOR: Record<Severity, string> = {
+  High:   '#EF4444',
+  Medium: '#F59E0B',
+  Low:    '#6B7280',
+};
+
+/* ── Small reusable toggle ── */
+function Toggle({ on, onChange, disabled }: { on: boolean; onChange: () => void; disabled?: boolean }) {
   return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5 text-emerald-700" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <path d="M4 8h16l-1.2-3.5a1.2 1.2 0 0 0-1.1-.8H6.3c-.5 0-.9.3-1.1.8L4 8Z" />
-      <path d="M6 13h3.2a2 2 0 0 1 2 2v1.5H6V13Z" />
-      <path d="M18 13h-3.2a2 2 0 0 0-2 2v1.5H18V13Z" />
-      <path d="M9.2 15h5.6" />
-      <path d="M9 13v-.5a3 3 0 0 1 6 0v.5" />
-      <path d="M8 20h8" />
-    </svg>
+    <button
+      type="button"
+      onClick={onChange}
+      disabled={disabled}
+      style={{
+        position: 'relative', flexShrink: 0,
+        width: '44px', height: '24px', borderRadius: '12px',
+        backgroundColor: on ? '#10B981' : '#D1D5DB',
+        border: 'none', cursor: disabled ? 'default' : 'pointer',
+        transition: 'background-color 0.2s',
+      }}
+      aria-pressed={on}
+    >
+      <span style={{
+        position: 'absolute', top: '2px',
+        left: on ? '22px' : '2px',
+        width: '20px', height: '20px', borderRadius: '50%',
+        backgroundColor: 'white',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+        transition: 'left 0.2s',
+      }} />
+    </button>
   );
 }
-
-function PauseIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5 text-violet-700" fill="none" stroke="currentColor" strokeWidth="1.8">
-      <rect x="6" y="4" width="4" height="16" rx="1" />
-      <rect x="14" y="4" width="4" height="16" rx="1" />
-    </svg>
-  );
-}
-
-const AI_OPTIONS = CUSTOM_AI_VIOLATION_OPTIONS.filter((o) => o.isAI);
-const NON_AI_OPTIONS = CUSTOM_AI_VIOLATION_OPTIONS.filter((o) => !o.isAI);
 
 export default function TestAIProctoring() {
   const { testId } = useParams();
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [test, setTest] = useState<Test | null>(null);
-  const [proctorEnabled, setProctorEnabled] = useState(false);
-  const [selectedEvents, setSelectedEvents] = useState<string[]>([...DEFAULT_CUSTOM_AI_VIOLATIONS]);
-  const [violationPopupEnabled, setViolationPopupEnabled] = useState(false);
-  const [violationPopupDuration, setViolationPopupDuration] = useState(3);
 
-  useEffect(() => {
-    if (!testId) return;
-    void loadTest();
-  }, [testId]);
+  const [loading, setLoading]   = useState(true);
+  const [saving, setSaving]     = useState(false);
+  const [test, setTest]         = useState<Test | null>(null);
+
+  /* ── Core proctoring state ── */
+  const [proctorEnabled, setProctorEnabled]   = useState(false);
+  const [selectedEvents, setSelectedEvents]   = useState<string[]>([...DEFAULT_CUSTOM_AI_VIOLATIONS]);
+
+  /* ── Monitoring modes ── */
+  const [webcamOn,     setWebcamOn]     = useState(true);
+  const [micOn,        setMicOn]        = useState(true);
+  const [screenOn,     setScreenOn]     = useState(true);
+  const [fullscreenOn, setFullscreenOn] = useState(true);
+
+  /* ── Trust scoring ── */
+  const [autoFlagThreshold, setAutoFlagThreshold] = useState(60);
+  const [warnOnViolation,   setWarnOnViolation]   = useState(true);
+  const [captureSnapshot,   setCaptureSnapshot]   = useState(true);
+  const [autoSubmit,        setAutoSubmit]         = useState(false);
+
+  useEffect(() => { if (testId) void loadTest(); }, [testId]);
 
   const loadTest = async () => {
     setLoading(true);
@@ -56,17 +95,31 @@ export default function TestAIProctoring() {
       const loaded = data.test as Test;
       setTest(loaded);
       setProctorEnabled(Boolean(loaded.proctorEnabled));
-      setSelectedEvents(
-        normalizeCustomAIViolationSelection(loaded.customAIViolations || DEFAULT_CUSTOM_AI_VIOLATIONS)
-      );
+      setSelectedEvents(normalizeCustomAIViolationSelection(loaded.customAIViolations || DEFAULT_CUSTOM_AI_VIOLATIONS));
+
+      /* restore extended proctoring settings */
       try {
-        const raw = (loaded as unknown as { violationPopupSettings?: unknown }).violationPopupSettings;
-        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-        if (parsed && typeof parsed.enabled === 'boolean' && typeof parsed.durationSeconds === 'number') {
-          setViolationPopupEnabled(parsed.enabled);
-          setViolationPopupDuration(Math.max(1, Math.min(60, parsed.durationSeconds)));
+        const raw = (loaded as unknown as Record<string, unknown>).proctoringSettings;
+        const p = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (p && typeof p === 'object') {
+          if (typeof p.autoFlagThreshold === 'number') setAutoFlagThreshold(p.autoFlagThreshold);
+          if (typeof p.warnOnViolation   === 'boolean') setWarnOnViolation(p.warnOnViolation);
+          if (typeof p.captureSnapshot   === 'boolean') setCaptureSnapshot(p.captureSnapshot);
+          if (typeof p.autoSubmit        === 'boolean') setAutoSubmit(p.autoSubmit);
+          if (typeof p.webcamOn          === 'boolean') setWebcamOn(p.webcamOn);
+          if (typeof p.micOn             === 'boolean') setMicOn(p.micOn);
+          if (typeof p.screenOn          === 'boolean') setScreenOn(p.screenOn);
+          if (typeof p.fullscreenOn      === 'boolean') setFullscreenOn(p.fullscreenOn);
         }
       } catch { /* ignore */ }
+
+      /* backward compat: violationPopupSettings */
+      try {
+        const raw = (loaded as unknown as Record<string, unknown>).violationPopupSettings;
+        const p = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (p && typeof p.enabled === 'boolean') setWarnOnViolation(p.enabled);
+      } catch { /* ignore */ }
+
     } catch {
       toast.error('Failed to load AI proctoring settings');
     } finally {
@@ -77,39 +130,36 @@ export default function TestAIProctoring() {
   const selectedSet = useMemo(() => new Set(selectedEvents), [selectedEvents]);
 
   const toggleEvent = (eventType: string) => {
-    setSelectedEvents((prev) =>
+    setSelectedEvents(prev =>
       prev.includes(eventType)
-        ? prev.filter((item) => item !== eventType)
+        ? prev.filter(e => e !== eventType)
         : [...prev, eventType]
     );
-  };
-
-  const selectAll = () => {
-    setSelectedEvents([...DEFAULT_CUSTOM_AI_VIOLATIONS]);
-  };
-
-  const clearAll = () => {
-    setSelectedEvents([]);
   };
 
   const saveSettings = async () => {
     if (!testId) return;
     setSaving(true);
     try {
-      const payload = {
+      await adminApi.updateTest(testId, {
         proctorEnabled,
+        // Explicitly send device requirements so the candidate "Before you begin"
+        // page always reflects the current monitoring tile settings.
+        requireCamera: proctorEnabled && webcamOn,
+        requireMicrophone: proctorEnabled && micOn,
+        requireScreenShare: proctorEnabled && screenOn,
         customAIViolations: selectedEvents,
-        violationPopupSettings: {
-          enabled: violationPopupEnabled,
-          durationSeconds: violationPopupDuration,
+        proctoringSettings: {
+          autoFlagThreshold, warnOnViolation, captureSnapshot, autoSubmit,
+          webcamOn, micOn, screenOn, fullscreenOn,
         },
-      };
-      await adminApi.updateTest(testId, payload);
-      toast.success('AI proctoring settings updated');
+        violationPopupSettings: { enabled: warnOnViolation, durationSeconds: 3 },
+      });
+      toast.success('AI proctoring settings saved');
       await loadTest();
-    } catch (error: unknown) {
-      const err = error as { response?: { data?: { error?: string } } };
-      toast.error(err.response?.data?.error || 'Failed to update AI proctoring settings');
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } } };
+      toast.error(e.response?.data?.error || 'Failed to save settings');
     } finally {
       setSaving(false);
     }
@@ -117,267 +167,202 @@ export default function TestAIProctoring() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-600"></div>
+      <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: '#10B981' }} />
       </div>
     );
   }
 
-  if (!test) {
-    return <div className="text-center py-12 text-slate-500">Test not found.</div>;
-  }
+  const monitorModes = [
+    { label: 'Webcam',      icon: <Camera size={22} />,      on: webcamOn,     toggle: () => setWebcamOn(p => !p) },
+    { label: 'Microphone',  icon: <Mic size={22} />,         on: micOn,        toggle: () => setMicOn(p => !p) },
+    { label: 'Screen',      icon: <MonitorPlay size={22} />, on: screenOn,     toggle: () => setScreenOn(p => !p) },
+    { label: 'Full-screen', icon: <Maximize2 size={22} />,   on: fullscreenOn, toggle: () => setFullscreenOn(p => !p) },
+  ];
 
   return (
-    <div className="space-y-6">
-      <div className="text-sm text-slate-500">
-        <Link to="/admin/tests" className="text-emerald-600 hover:underline">
-          Tests
-        </Link>
-        <span className="mx-2">›</span>
-        <Link to={`/admin/tests/${testId}`} className="text-slate-600 hover:underline">
-          {test.name}
-        </Link>
-        <span className="mx-2">›</span>
-        <span className="text-slate-600">AI Proctoring</span>
-      </div>
+    <div style={{ paddingTop: '4px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 272px', gap: '20px', alignItems: 'start' }}>
 
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-semibold text-slate-900">{test.name}</h1>
-          <p className="text-sm text-slate-500 mt-1">Customize which AI violations are active for this test.</p>
-        </div>
-        <button
-          type="button"
-          onClick={saveSettings}
-          disabled={saving}
-          className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {saving ? 'Saving…' : 'Save AI Settings'}
-        </button>
-      </div>
+          {/* ═══════════ LEFT COLUMN ═══════════ */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-      <div className="flex flex-wrap items-center gap-6 border-b border-slate-200 text-sm">
-        <Link to={`/admin/tests/${testId}`} className="pb-3 font-semibold text-slate-500 hover:text-slate-900">
-          Questions
-        </Link>
-        <Link to={`/admin/tests/${testId}?tab=candidates`} className="pb-3 font-semibold text-slate-500 hover:text-slate-900">
-          Candidates
-        </Link>
-        <Link to={`/admin/tests/${testId}/analytics`} className="pb-3 font-semibold text-slate-500 hover:text-slate-900">
-          Insights
-        </Link>
-        <Link to={`/admin/tests/${testId}/settings`} className="pb-3 font-semibold text-slate-500 hover:text-slate-900">
-          Settings
-        </Link>
-        <span className="relative pb-3 font-semibold text-slate-900 after:absolute after:-bottom-[1px] after:left-0 after:h-[3px] after:w-full after:bg-emerald-500">
-          AI Proctoring
-        </span>
-      </div>
+            {/* ── AI proctoring master card ── */}
+            <div style={{ backgroundColor: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '16px' }}>
+                <div>
+                  <p style={{ fontSize: '15px', fontWeight: 700, color: '#111827', margin: 0 }}>AI proctoring</p>
+                  <p style={{ fontSize: '12px', color: '#6B7280', marginTop: '4px', margin: '4px 0 0' }}>
+                    Webcam + screen monitoring with automatic violation detection.
+                  </p>
+                </div>
+                <Toggle on={proctorEnabled} onChange={() => setProctorEnabled(p => !p)} />
+              </div>
 
-      {/* Master toggle */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-6">
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="mt-1 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 border border-emerald-200">
-              <IncognitoIcon />
+              {/* Monitoring mode tiles */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
+                {monitorModes.map(({ label, icon, on, toggle }) => {
+                  const active = on && proctorEnabled;
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={proctorEnabled ? toggle : undefined}
+                      style={{
+                        backgroundColor: active ? '#F0FDF4' : '#F9FAFB',
+                        border: `1.5px solid ${active ? '#A7F3D0' : '#E5E7EB'}`,
+                        borderRadius: '12px',
+                        padding: '14px 8px',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px',
+                        cursor: proctorEnabled ? 'pointer' : 'default',
+                        transition: 'all 0.15s',
+                      }}>
+                      <span style={{ color: active ? '#10B981' : '#9CA3AF' }}>{icon}</span>
+                      <span style={{ fontSize: '12px', fontWeight: 500, color: '#374151' }}>{label}</span>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: active ? '#10B981' : '#9CA3AF' }}>
+                        {active ? 'On' : 'Off'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">AI Proctoring Panel</h2>
-              <p className="text-sm text-slate-500">Enable or disable AI monitoring for this test.</p>
+
+            {/* ── Violation rules card ── */}
+            <div style={{ backgroundColor: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <p style={{ fontSize: '15px', fontWeight: 700, color: '#111827', margin: 0 }}>Violation rules</p>
+              </div>
+              <p style={{ fontSize: '12px', color: '#6B7280', marginTop: '4px', marginBottom: '16px' }}>
+                Toggle what counts against the trust score.
+              </p>
+
+              {/* Violation rows */}
+              <div>
+                {CUSTOM_AI_VIOLATION_OPTIONS.map((opt, idx) => {
+                  const meta = VIOLATION_META[opt.eventType] ?? {
+                    label: opt.label, desc: opt.description, severity: 'Medium' as Severity,
+                  };
+                  const on = selectedSet.has(opt.eventType);
+                  const sevColor = SEV_COLOR[meta.severity];
+                  const isLast = idx === CUSTOM_AI_VIOLATION_OPTIONS.length - 1;
+
+                  return (
+                    <div key={opt.eventType} style={{
+                      display: 'flex', alignItems: 'center', gap: '12px',
+                      padding: '12px 0',
+                      borderBottom: isLast ? 'none' : '1px solid #F9FAFB',
+                    }}>
+                      <AlertTriangle size={16} style={{ flexShrink: 0, color: '#F59E0B' }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ fontSize: '13px', fontWeight: 600, color: '#111827', margin: 0 }}>{meta.label}</p>
+                        <p style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '2px', margin: '2px 0 0' }}>{meta.desc}</p>
+                      </div>
+                      <span style={{
+                        fontSize: '12px', fontWeight: 600, color: sevColor,
+                        whiteSpace: 'nowrap', width: '105px', textAlign: 'right',
+                      }}>
+                        {meta.severity} severity
+                      </span>
+                      <Toggle on={on} onChange={() => toggleEvent(opt.eventType)} />
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setProctorEnabled((prev) => !prev)}
-            className={`relative h-7 w-12 rounded-full transition ${proctorEnabled ? 'bg-emerald-500' : 'bg-slate-200'}`}
-            aria-pressed={proctorEnabled}
-          >
-            <span
-              className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition ${proctorEnabled ? 'left-6' : 'left-1'}`}
-            />
-          </button>
-        </div>
-      </div>
 
-      {proctorEnabled && (
-        <>
-          {/* Custom AI violations — two sections */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-semibold text-slate-900">CUSTOM AI</h3>
-                <p className="text-sm text-slate-500">
-                  Select exactly which violations should be active during this exam.
+          {/* ═══════════ RIGHT SIDEBAR ═══════════ */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+            {/* Trust scoring card */}
+            <div style={{ backgroundColor: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+              <p style={{ fontSize: '14px', fontWeight: 700, color: '#111827', margin: '0 0 16px' }}>Trust scoring</p>
+
+              {/* Auto-flag slider */}
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 500, color: '#374151' }}>Auto-flag threshold</span>
+                  <span style={{ fontSize: '14px', fontWeight: 700, color: '#111827' }}>{autoFlagThreshold}</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={autoFlagThreshold}
+                  onChange={e => setAutoFlagThreshold(Number(e.target.value))}
+                  style={{ width: '100%', accentColor: '#10B981', cursor: 'pointer' }}
+                />
+                <p style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '6px' }}>
+                  Attempts below this trust score are flagged for review
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={selectAll}
-                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  Select All
-                </button>
-                <button
-                  type="button"
-                  onClick={clearAll}
-                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  Clear All
-                </button>
+
+              <div style={{ borderTop: '1px solid #F3F4F6', margin: '0 0 14px' }} />
+
+              {/* On violation checkboxes */}
+              <p style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#6B7280', margin: '0 0 12px' }}>
+                On violation
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {[
+                  { label: 'Warn candidate on screen',    state: warnOnViolation, set: setWarnOnViolation },
+                  { label: 'Capture evidence snapshot',  state: captureSnapshot,  set: setCaptureSnapshot },
+                  { label: 'Auto-submit after 3 warnings', state: autoSubmit,     set: setAutoSubmit },
+                ].map(({ label, state, set }) => (
+                  <label key={label} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                    <div
+                      onClick={() => set(p => !p)}
+                      style={{
+                        width: '16px', height: '16px', borderRadius: '4px', flexShrink: 0,
+                        border: state ? 'none' : '1.5px solid #D1D5DB',
+                        backgroundColor: state ? '#10B981' : 'white',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: 'pointer', transition: 'all 0.15s',
+                      }}>
+                      {state && (
+                        <CheckCircle2 width={10} height={10} style={{ color: 'white' }} />
+                      )}
+                    </div>
+                    <span style={{ fontSize: '12px', color: '#374151' }}>{label}</span>
+                  </label>
+                ))}
               </div>
             </div>
 
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-              Enabled violations: <span className="font-semibold text-slate-900">{selectedEvents.length}</span> / {CUSTOM_AI_VIOLATION_OPTIONS.length}
-            </div>
-
-            {/* AI-Powered Events */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-700">
-                  <svg viewBox="0 0 16 16" className="h-3 w-3" fill="currentColor">
-                    <circle cx="8" cy="8" r="7" opacity=".2"/>
-                    <path d="M8 3a5 5 0 1 0 0 10A5 5 0 0 0 8 3Zm0 1.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Z"/>
-                  </svg>
-                  AI-Powered Events
-                </span>
-                <span className="text-xs text-slate-400">Requires camera / microphone model inference</span>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                {AI_OPTIONS.map((option) => {
-                  const checked = selectedSet.has(option.eventType);
-                  return (
-                    <label
-                      key={option.eventType}
-                      className={`cursor-pointer rounded-xl border p-4 transition ${
-                        checked
-                          ? 'border-violet-400 bg-violet-50'
-                          : 'border-slate-200 bg-white hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleEvent(option.eventType)}
-                          className="mt-1 h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
-                        />
-                        <div>
-                          <div className="text-sm font-semibold text-slate-900">{option.label}</div>
-                          <p className="mt-1 text-xs text-slate-500">{option.description}</p>
-                        </div>
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Browser-Based Events */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-                  <svg viewBox="0 0 16 16" className="h-3 w-3" fill="currentColor">
-                    <rect x="2" y="3" width="12" height="9" rx="1.5" opacity=".25"/>
-                    <path d="M2 4.5A1.5 1.5 0 0 1 3.5 3h9A1.5 1.5 0 0 1 14 4.5v7A1.5 1.5 0 0 1 12.5 13h-9A1.5 1.5 0 0 1 2 11.5v-7Zm1.5 0v7h9v-7h-9ZM6 14h4v-1H6v1Z"/>
-                  </svg>
-                  Browser-Based Events
-                </span>
-                <span className="text-xs text-slate-400">No model required — browser-native detection</span>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                {NON_AI_OPTIONS.map((option) => {
-                  const checked = selectedSet.has(option.eventType);
-                  return (
-                    <label
-                      key={option.eventType}
-                      className={`cursor-pointer rounded-xl border p-4 transition ${
-                        checked
-                          ? 'border-emerald-400 bg-emerald-50'
-                          : 'border-slate-200 bg-white hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-start gap-3">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleEvent(option.eventType)}
-                          className="mt-1 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                        />
-                        <div>
-                          <div className="text-sm font-semibold text-slate-900">{option.label}</div>
-                          <p className="mt-1 text-xs text-slate-500">{option.description}</p>
-                        </div>
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Violation Pop-up Freeze */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 space-y-5">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <div className="mt-1 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-violet-50 border border-violet-200">
-                  <PauseIcon />
-                </div>
+            {/* Candidate consent card */}
+            <div style={{
+              borderRadius: '14px', padding: '16px',
+              backgroundColor: '#FFFBEB', border: '1px solid #FDE68A',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
+                <AlertTriangle size={16} style={{ flexShrink: 0, color: '#D97706' }} />
                 <div>
-                  <h3 className="text-lg font-semibold text-slate-900">Violation Pop-up Freeze</h3>
-                  <p className="text-sm text-slate-500">
-                    Freeze the candidate's screen for a set duration when a violation pop-up appears.
+                  <p style={{ fontSize: '12px', fontWeight: 700, color: '#92400E', margin: '0 0 4px' }}>Candidate consent</p>
+                  <p style={{ fontSize: '11px', color: '#92400E', lineHeight: '1.6', margin: 0 }}>
+                    Candidates must accept camera &amp; screen recording before starting. Required by privacy policy.
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setViolationPopupEnabled((prev) => !prev)}
-                className={`relative h-7 w-12 rounded-full transition ${violationPopupEnabled ? 'bg-violet-500' : 'bg-slate-200'}`}
-                aria-pressed={violationPopupEnabled}
-              >
-                <span
-                  className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition ${violationPopupEnabled ? 'left-6' : 'left-1'}`}
-                />
-              </button>
             </div>
 
-            {violationPopupEnabled && (
-              <div className="flex items-center gap-4 rounded-xl border border-violet-200 bg-violet-50 px-5 py-4">
-                <label htmlFor="popup-duration" className="text-sm font-medium text-slate-700 whitespace-nowrap">
-                  Screen freeze duration
-                </label>
-                <input
-                  id="popup-duration"
-                  type="number"
-                  min={1}
-                  max={60}
-                  value={violationPopupDuration}
-                  onChange={(e) => {
-                    const val = Math.max(1, Math.min(60, Number(e.target.value)));
-                    setViolationPopupDuration(Number.isFinite(val) ? val : 3);
-                  }}
-                  className="w-20 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 focus:border-violet-500 focus:outline-none focus:ring-1 focus:ring-violet-500"
-                />
-                <span className="text-sm text-slate-500">seconds (1 – 60)</span>
-              </div>
-            )}
-
-            {!violationPopupEnabled && (
-              <p className="text-sm text-slate-400">
-                Enable to configure how long the screen freezes when a violation popup appears.
-              </p>
-            )}
+            {/* Save button */}
+            <button
+              type="button"
+              onClick={saveSettings}
+              disabled={saving}
+              style={{
+                width: '100%', padding: '10px',
+                borderRadius: '12px', border: 'none',
+                backgroundColor: saving ? '#A7F3D0' : '#10B981',
+                color: 'white', fontSize: '14px', fontWeight: 600,
+                cursor: saving ? 'not-allowed' : 'pointer',
+                transition: 'background-color 0.15s',
+              }}>
+              {saving ? 'Saving…' : 'Save Settings'}
+            </button>
           </div>
-        </>
-      )}
-
-      {!proctorEnabled && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800">
-          Enable AI proctoring to configure the <span className="font-semibold">CUSTOM AI</span> violation checkboxes and pop-up freeze settings.
         </div>
-      )}
     </div>
   );
 }

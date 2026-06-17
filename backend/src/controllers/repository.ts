@@ -228,13 +228,14 @@ export async function getRepositoryQuestions(req: AuthenticatedRequest, res: Res
             where,
             skip,
             take: limit,
-            orderBy: { createdAt: 'desc' }
+            orderBy: { createdAt: 'desc' },
+            include: { _count: { select: { testQuestions: true } } }
           }),
           prisma.mCQQuestion.count({ where })
         ]);
 
         res.json({
-          questions: questions.map(serializeMCQQuestion),
+          questions: questions.map(q => ({ ...serializeMCQQuestion(q), usageCount: q._count.testQuestions })),
           pagination: buildPagination(page, limit, total)
         });
         return;
@@ -267,13 +268,14 @@ export async function getRepositoryQuestions(req: AuthenticatedRequest, res: Res
             where,
             skip,
             take: limit,
-            orderBy: { createdAt: 'desc' }
+            orderBy: { createdAt: 'desc' },
+            include: { _count: { select: { testQuestions: true } } }
           }),
           prisma.codingQuestion.count({ where })
         ]);
 
         res.json({
-          questions: questions.map(serializeCodingQuestion),
+          questions: questions.map(q => ({ ...serializeCodingQuestion(q), usageCount: q._count.testQuestions })),
           pagination: buildPagination(page, limit, total)
         });
         return;
@@ -307,13 +309,14 @@ export async function getRepositoryQuestions(req: AuthenticatedRequest, res: Res
             where,
             skip,
             take: limit,
-            orderBy: { createdAt: 'desc' }
+            orderBy: { createdAt: 'desc' },
+            include: { _count: { select: { testQuestions: true } } }
           }),
           prisma.behavioralQuestion.count({ where })
         ]);
 
         res.json({
-          questions: questions.map(serializeBehavioralQuestion),
+          questions: questions.map(q => ({ ...serializeBehavioralQuestion(q), usageCount: q._count.testQuestions })),
           pagination: buildPagination(page, limit, total)
         });
       }
@@ -566,12 +569,20 @@ export async function updateCustomCoding(req: AuthenticatedRequest, res: Respons
 
     const title = toStringOrUndefined(req.body.title);
     const description = toStringOrUndefined(req.body.description);
+    const inputFormat = toStringOrUndefined(req.body.inputFormat);
+    const outputFormat = toStringOrUndefined(req.body.outputFormat);
+    const sampleInput = req.body.sampleInput !== undefined ? String(req.body.sampleInput) : undefined;
+    const sampleOutput = req.body.sampleOutput !== undefined ? String(req.body.sampleOutput) : undefined;
+    const constraints = req.body.constraints !== undefined
+      ? (req.body.constraints ? String(req.body.constraints) : null)
+      : undefined;
     const topic = toStringOrUndefined(req.body.topic);
     const difficulty = parseDifficulty(req.body.difficulty);
     const parsedTags = parseTagsInput(req.body.tags);
     const marks = req.body.marks !== undefined ? Number.parseInt(String(req.body.marks), 10) : undefined;
     const timeLimit = req.body.timeLimit !== undefined ? Number.parseInt(String(req.body.timeLimit), 10) : undefined;
     const memoryLimit = req.body.memoryLimit !== undefined ? Number.parseInt(String(req.body.memoryLimit), 10) : undefined;
+    const partialScoring = req.body.partialScoring !== undefined ? Boolean(req.body.partialScoring) : undefined;
 
     if (marks !== undefined && (!Number.isFinite(marks) || marks < 1)) {
       res.status(400).json({ error: 'Marks must be a positive integer.' });
@@ -583,18 +594,32 @@ export async function updateCustomCoding(req: AuthenticatedRequest, res: Respons
       supportedLanguages = JSON.stringify(req.body.supportedLanguages);
     }
 
+    let codeTemplates: string | null | undefined;
+    if (req.body.codeTemplates !== undefined) {
+      codeTemplates = req.body.codeTemplates && Object.keys(req.body.codeTemplates).length > 0
+        ? JSON.stringify(req.body.codeTemplates)
+        : null;
+    }
+
     const updated = await prisma.codingQuestion.update({
       where: { id: questionId },
       data: {
         ...(title !== undefined && { title: sanitizeInput(title) }),
         ...(description !== undefined && { description: sanitizeInput(description) }),
+        ...(inputFormat !== undefined && { inputFormat: sanitizeInput(inputFormat) }),
+        ...(outputFormat !== undefined && { outputFormat: sanitizeInput(outputFormat) }),
+        ...(sampleInput !== undefined && { sampleInput }),
+        ...(sampleOutput !== undefined && { sampleOutput }),
+        ...(constraints !== undefined && { constraints }),
         ...(marks !== undefined && { marks }),
         ...(difficulty !== undefined && { difficulty }),
         ...(topic !== undefined && { topic: sanitizeInput(topic) }),
         ...(parsedTags !== null && { tags: JSON.stringify(parsedTags) }),
         ...(supportedLanguages !== undefined && { supportedLanguages }),
+        ...(codeTemplates !== undefined && { codeTemplates }),
         ...(timeLimit !== undefined && Number.isFinite(timeLimit) && { timeLimit }),
-        ...(memoryLimit !== undefined && Number.isFinite(memoryLimit) && { memoryLimit })
+        ...(memoryLimit !== undefined && Number.isFinite(memoryLimit) && { memoryLimit }),
+        ...(partialScoring !== undefined && { partialScoring }),
       }
     });
 

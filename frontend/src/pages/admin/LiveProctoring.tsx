@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { getRealtimeSocket } from '../../services/realtimeService';
+import BackButton from '../../components/BackButton';
 
 interface LiveCandidate {
   sessionId: string;
@@ -46,7 +47,6 @@ interface ViolationFeedItem {
 
 export default function LiveProctoring() {
   const { testId } = useParams<{ testId: string }>();
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [candidates, setCandidates] = useState<LiveCandidate[]>([]);
   const [violations, setViolations] = useState<ViolationFeedItem[]>([]);
@@ -234,9 +234,9 @@ export default function LiveProctoring() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex items-center gap-3">
+        <BackButton mt="0" />
         <h1 className="text-2xl font-bold text-gray-800">Live Proctoring</h1>
-        <button onClick={() => navigate(-1)} className="btn btn-secondary">Back</button>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

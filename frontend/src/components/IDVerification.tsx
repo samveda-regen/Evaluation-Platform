@@ -9,6 +9,7 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { toast } from 'react-hot-toast';
+import { ShieldCheck, CheckCircle2, ImageIcon, X } from 'lucide-react';
 import api from '../services/api';
 
 interface IDVerificationProps {
@@ -161,9 +162,7 @@ export default function IDVerification({
         return (
           <div className="text-center space-y-6">
             <div className="w-20 h-20 bg-primary-100 rounded-full flex items-center justify-center mx-auto">
-              <svg className="w-10 h-10 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V8a2 2 0 00-2-2h-5m-4 0V5a2 2 0 114 0v1m-4 0a2 2 0 104 0m-5 8a2 2 0 100-4 2 2 0 000 4zm0 0c1.306 0 2.417.835 2.83 2M9 14a3.001 3.001 0 00-2.83 2M15 11h3m-3 4h2" />
-              </svg>
+              <ShieldCheck className="w-10 h-10 text-primary-600" />
             </div>
 
             <div>
@@ -177,21 +176,15 @@ export default function IDVerification({
               <p className="font-medium text-gray-700">You will need:</p>
               <ul className="space-y-2 text-sm text-gray-600">
                 <li className="flex items-center gap-2">
-                  <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
+                  <CheckCircle2 className="w-5 h-5 text-green-500" />
                   A valid government-issued ID (National ID, Passport, or Driver's License)
                 </li>
                 <li className="flex items-center gap-2">
-                  <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
+                  <CheckCircle2 className="w-5 h-5 text-green-500" />
                   A working webcam for taking a selfie
                 </li>
                 <li className="flex items-center gap-2">
-                  <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
+                  <CheckCircle2 className="w-5 h-5 text-green-500" />
                   Good lighting conditions
                 </li>
               </ul>
@@ -278,9 +271,7 @@ export default function IDVerification({
                 </div>
               ) : (
                 <>
-                  <svg className="w-12 h-12 mx-auto text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
+                  <ImageIcon className="w-12 h-12 mx-auto text-gray-400" />
                   <p className="mt-2 text-gray-600">
                     Click to upload or drag and drop
                   </p>
@@ -420,9 +411,7 @@ export default function IDVerification({
             {result?.success ? (
               <>
                 <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-                  <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+                  <CheckCircle2 className="w-10 h-10 text-green-600" />
                 </div>
                 <div>
                   <h2 className="text-2xl font-bold text-green-600">Verification Successful</h2>
@@ -455,9 +444,7 @@ export default function IDVerification({
             ) : (
               <>
                 <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto">
-                  <svg className="w-10 h-10 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                  <X className="w-10 h-10 text-red-600" />
                 </div>
                 <div>
                   <h2 className="text-2xl font-bold text-red-600">Verification Failed</h2>

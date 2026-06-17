@@ -1,342 +1,447 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
+import { CreditCard, Camera, CheckCircle2, XCircle, Info } from 'lucide-react';
 
-type DocumentType = 'id_front' | 'id_back' | 'selfie' | 'face_reference';
+/* ── Types ── */
+interface VerificationStats {
+  verified: number;
+  pending: number;
+  mismatch: number;
+  avgConfidence: number;
+}
 
-interface IdDocumentRecord {
-  fileId: string;
-  filename: string;
-  originalName: string;
-  mimeType: string;
-  fileSize: number;
-  createdAt: string;
+interface VerificationCandidate {
   candidateId: string;
   candidateName: string;
-  testCode: string;
   documentType: string;
-  relativePath?: string;
+  status: 'verified' | 'pending' | 'mismatch';
 }
 
-const documentTypeOptions: Array<{ value: '' | DocumentType; label: string }> = [
-  { value: '', label: 'All Types' },
-  { value: 'id_front', label: 'ID Front' },
-  { value: 'id_back', label: 'ID Back' },
-  { value: 'selfie', label: 'Selfie' },
-  { value: 'face_reference', label: 'Face Reference' },
+interface VerificationDetail extends VerificationCandidate {
+  idDocumentUrl?: string;
+  webcamCaptureUrl?: string;
+  confidence?: number;
+  checks?: {
+    nameMatch?: boolean;
+    photoMatch?: boolean;
+    documentValid?: boolean;
+    notExpired?: boolean;
+  };
+}
+
+/* ── Avatar helpers ── */
+const AVATAR_BG: string[] = [
+  '#374151','#1E40AF','#065F46','#92400E','#7C3AED','#B91C1C','#0E7490','#4D7C0F',
 ];
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+function avatarBg(name: string): string {
+  let sum = 0;
+  for (let i = 0; i < name.length; i++) sum += name.charCodeAt(i);
+  return AVATAR_BG[sum % AVATAR_BG.length];
+}
+function initials(name: string): string {
+  const parts = name.trim().split(' ');
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
 }
 
-function formatDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
-}
+/* ── Status config ── */
+type StatusKey = 'verified' | 'pending' | 'mismatch';
+const STATUS_CFG: Record<StatusKey, { label: string; dot: string; color: string }> = {
+  verified: { label: 'Verified',        dot: '#10B981', color: '#059669' },
+  pending:  { label: 'Pending review',  dot: '#F59E0B', color: '#D97706' },
+  mismatch: { label: 'Mismatch',        dot: '#EF4444', color: '#DC2626' },
+};
 
-export default function IDVerificationData() {
-  const [loading, setLoading] = useState(false);
-  const [items, setItems] = useState<IdDocumentRecord[]>([]);
-  const [search, setSearch] = useState('');
-  const [candidateName, setCandidateName] = useState('');
-  const [testCode, setTestCode] = useState('');
-  const [documentType, setDocumentType] = useState<'' | DocumentType>('');
-  const [selectedCandidateFolder, setSelectedCandidateFolder] = useState<string>('all');
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkDeleting, setBulkDeleting] = useState(false);
-
-  const loadItems = async () => {
-    setLoading(true);
-    try {
-      const { data } = await adminApi.getIdVerificationDocuments({
-        search: search.trim() || undefined,
-        candidateName: candidateName.trim() || undefined,
-        testCode: testCode.trim() || undefined,
-        documentType: documentType || undefined,
-      });
-      setItems(data.items || []);
-      setSelectedIds(new Set());
-    } catch (error) {
-      toast.error('Failed to load ID verification files');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadItems();
-  }, []);
-
-  const folders = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const item of items) {
-      counts.set(item.candidateName, (counts.get(item.candidateName) || 0) + 1);
-    }
-    return Array.from(counts.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }, [items]);
-
-  const visibleItems = useMemo(() => {
-    if (selectedCandidateFolder === 'all') return items;
-    return items.filter(item => item.candidateName === selectedCandidateFolder);
-  }, [items, selectedCandidateFolder]);
-
-  const allVisibleSelected =
-    visibleItems.length > 0 && visibleItems.every(item => selectedIds.has(item.fileId));
-
-  const toggleSelectAll = () => {
-    if (allVisibleSelected) {
-      setSelectedIds(prev => {
-        const next = new Set(prev);
-        visibleItems.forEach(item => next.delete(item.fileId));
-        return next;
-      });
-    } else {
-      setSelectedIds(prev => {
-        const next = new Set(prev);
-        visibleItems.forEach(item => next.add(item.fileId));
-        return next;
-      });
-    }
-  };
-
-  const toggleSelect = (fileId: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(fileId)) next.delete(fileId);
-      else next.add(fileId);
-      return next;
-    });
-  };
-
-  const handleDelete = async (fileId: string) => {
-    const confirmed = window.confirm('Delete this ID file?');
-    if (!confirmed) return;
-
-    try {
-      await adminApi.deleteIdVerificationDocument(fileId);
-      setItems(prev => prev.filter(item => item.fileId !== fileId));
-      setSelectedIds(prev => { const next = new Set(prev); next.delete(fileId); return next; });
-      toast.success('ID file deleted');
-    } catch (error) {
-      toast.error('Failed to delete ID file');
-    }
-  };
-
-  const handleBulkDelete = async () => {
-    if (selectedIds.size === 0) return;
-    const confirmed = window.confirm(
-      `Delete ${selectedIds.size} selected file${selectedIds.size > 1 ? 's' : ''}? This cannot be undone.`
-    );
-    if (!confirmed) return;
-
-    setBulkDeleting(true);
-    let successCount = 0;
-    let failCount = 0;
-    const toDelete = Array.from(selectedIds);
-
-    for (const fileId of toDelete) {
-      try {
-        await adminApi.deleteIdVerificationDocument(fileId);
-        successCount++;
-      } catch {
-        failCount++;
-      }
-    }
-
-    setItems(prev => prev.filter(item => !toDelete.includes(item.fileId)));
-    setSelectedIds(new Set());
-    setBulkDeleting(false);
-
-    if (failCount === 0) {
-      toast.success(`Deleted ${successCount} file${successCount > 1 ? 's' : ''}`);
-    } else {
-      toast.error(`Deleted ${successCount}, failed ${failCount}`);
-    }
-  };
-
+/* ── Image placeholder ── */
+function ImgPlaceholder({ icon }: { icon: 'document' | 'camera' }) {
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-800">ID Verification Data</h1>
-        <p className="text-gray-600 mt-1">
-          Explore uploaded candidate ID documents. You can view, save, and delete files.
-        </p>
-      </div>
+    <div style={{
+      flex: 1, backgroundColor: '#F3F4F6', borderRadius: '10px', minHeight: '140px',
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px',
+    }}>
+      {icon === 'document' ? (
+        <CreditCard width={32} height={32} style={{ color: '#CBD5E1' }} />
+      ) : (
+        <Camera width={32} height={32} style={{ color: '#CBD5E1' }} />
+      )}
+    </div>
+  );
+}
 
-      <div className="card">
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search by file/candidate/test"
-            className="input"
-          />
-          <input
-            type="text"
-            value={candidateName}
-            onChange={e => setCandidateName(e.target.value)}
-            placeholder="Candidate name"
-            className="input"
-          />
-          <input
-            type="text"
-            value={testCode}
-            onChange={e => setTestCode(e.target.value)}
-            placeholder="Test code"
-            className="input"
-          />
-          <select
-            value={documentType}
-            onChange={e => setDocumentType(e.target.value as '' | DocumentType)}
-            className="input"
-          >
-            {documentTypeOptions.map(option => (
-              <option key={option.value || 'all'} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <button onClick={loadItems} className="btn btn-primary" disabled={loading}>
-            {loading ? 'Loading...' : 'Apply Filters'}
+/* ── Check row ── */
+function CheckRow({ label, pass }: { label: string; pass: boolean }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+      {pass ? (
+        <CheckCircle2 width={14} height={14} style={{ color: '#10B981', flexShrink: 0 }} />
+      ) : (
+        <XCircle width={14} height={14} style={{ color: '#EF4444', flexShrink: 0 }} />
+      )}
+      <span style={{ fontSize: '12px', color: '#374151' }}>{label}</span>
+    </div>
+  );
+}
+
+/* ── Reject reason modal ── */
+function RejectModal({ onConfirm, onCancel }: { onConfirm: (reason: string) => void; onCancel: () => void }) {
+  const [reason, setReason] = useState('');
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 50,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }}>
+      <div style={{ backgroundColor: 'white', borderRadius: '14px', padding: '28px', width: '400px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#111827', margin: '0 0 8px' }}>Reject Verification</h3>
+        <p style={{ fontSize: '13px', color: '#6B7280', margin: '0 0 16px' }}>Please provide a reason for rejection.</p>
+        <textarea
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+          placeholder="Enter rejection reason..."
+          rows={3}
+          style={{
+            width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1.5px solid #E5E7EB',
+            fontSize: '13px', color: '#374151', outline: 'none', boxSizing: 'border-box',
+            backgroundColor: 'white',
+          }}
+        />
+        <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+          <button onClick={onCancel}
+            style={{ flex: 1, padding: '9px', borderRadius: '8px', border: '1.5px solid #E5E7EB', backgroundColor: 'white', fontSize: '13px', fontWeight: 500, color: '#374151', cursor: 'pointer' }}>
+            Cancel
+          </button>
+          <button onClick={() => onConfirm(reason || 'Rejected by admin')} disabled={!reason.trim()}
+            style={{ flex: 1, padding: '9px', borderRadius: '8px', border: 'none', backgroundColor: reason.trim() ? '#EF4444' : '#FCA5A5', fontSize: '13px', fontWeight: 600, color: 'white', cursor: reason.trim() ? 'pointer' : 'not-allowed' }}>
+            Confirm Reject
           </button>
         </div>
       </div>
+    </div>
+  );
+}
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        <div className="card lg:col-span-1">
-          <p className="text-sm font-semibold text-gray-700 mb-3">Folders</p>
-          <div className="space-y-1">
-            <button
-              onClick={() => setSelectedCandidateFolder('all')}
-              className={`w-full text-left px-3 py-2 rounded ${
-                selectedCandidateFolder === 'all' ? 'bg-primary-50 text-primary-700' : 'hover:bg-gray-100'
-              }`}
-            >
-              all ({items.length})
-            </button>
-            {folders.map(folder => (
-              <button
-                key={folder.name}
-                onClick={() => setSelectedCandidateFolder(folder.name)}
-                className={`w-full text-left px-3 py-2 rounded truncate ${
-                  selectedCandidateFolder === folder.name
-                    ? 'bg-primary-50 text-primary-700'
-                    : 'hover:bg-gray-100'
-                }`}
-                title={folder.name}
-              >
-                {folder.name} ({folder.count})
-              </button>
-            ))}
+export default function IDVerificationData() {
+  const navigate = useNavigate();
+
+  const [stats,         setStats]         = useState<VerificationStats | null>(null);
+  const [queue,         setQueue]         = useState<VerificationCandidate[]>([]);
+  const [selected,      setSelected]      = useState<VerificationDetail | null>(null);
+  const [loadingQueue,  setLoadingQueue]  = useState(true);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [approving,     setApproving]     = useState(false);
+  const [rejecting,     setRejecting]     = useState(false);
+  const [showReject,    setShowReject]    = useState(false);
+
+  /* load stats + queue on mount */
+  useEffect(() => {
+    void loadStats();
+    void loadQueue();
+  }, []);
+
+  const loadStats = async () => {
+    try {
+      const { data } = await adminApi.getVerificationStats();
+      setStats({
+        verified:      data.verified      ?? data.total_verified      ?? 0,
+        pending:       data.pending       ?? data.total_pending        ?? 0,
+        mismatch:      data.mismatch      ?? data.total_mismatch       ?? 0,
+        avgConfidence: data.avgConfidence ?? data.avg_confidence       ?? 0,
+      });
+    } catch { /* silent */ }
+  };
+
+  const loadQueue = async () => {
+    setLoadingQueue(true);
+    try {
+      const { data } = await adminApi.getVerificationList({ limit: 50 });
+      const items: VerificationCandidate[] = (data.verifications ?? data.items ?? data.list ?? []).map(
+        (v: Record<string, unknown>) => ({
+          candidateId:   String(v.candidateId   ?? v.candidate_id   ?? v.id ?? ''),
+          candidateName: String(v.candidateName ?? v.candidate_name ?? v.name ?? 'Unknown'),
+          documentType:  String(v.documentType  ?? v.document_type  ?? v.docType ?? 'ID'),
+          status:        normaliseStatus(String(v.status ?? 'pending')),
+        })
+      );
+      setQueue(items);
+      /* auto-select first pending/mismatch, else first item */
+      const first = items.find(i => i.status === 'pending' || i.status === 'mismatch') ?? items[0];
+      if (first) void loadDetail(first.candidateId);
+    } catch { toast.error('Failed to load verification queue'); }
+    finally { setLoadingQueue(false); }
+  };
+
+  const normaliseStatus = (s: string): StatusKey => {
+    if (s === 'verified' || s === 'approved') return 'verified';
+    if (s === 'mismatch' || s === 'rejected') return 'mismatch';
+    return 'pending';
+  };
+
+  const loadDetail = async (candidateId: string) => {
+    setLoadingDetail(true);
+    try {
+      const { data } = await adminApi.getVerificationDetails(candidateId);
+      const d = data.verification ?? data;
+      setSelected({
+        candidateId,
+        candidateName: String(d.candidateName ?? d.candidate_name ?? d.name ?? 'Unknown'),
+        documentType:  String(d.documentType  ?? d.document_type  ?? d.docType ?? 'ID'),
+        status:        normaliseStatus(String(d.status ?? 'pending')),
+        idDocumentUrl:    d.idDocumentUrl    ?? d.id_document_url    ?? d.documentUrl ?? undefined,
+        webcamCaptureUrl: d.webcamCaptureUrl ?? d.webcam_capture_url ?? d.selfieUrl   ?? undefined,
+        confidence:    typeof d.confidence === 'number'  ? d.confidence
+                     : typeof d.faceMatchScore === 'number' ? d.faceMatchScore
+                     : typeof d.score === 'number' ? d.score : undefined,
+        checks: {
+          nameMatch:     !!(d.checks?.nameMatch     ?? d.name_match     ?? d.checks?.name_match     ?? true),
+          photoMatch:    !!(d.checks?.photoMatch    ?? d.photo_match    ?? d.checks?.photo_match    ?? false),
+          documentValid: !!(d.checks?.documentValid ?? d.document_valid ?? d.checks?.document_valid ?? true),
+          notExpired:    !!(d.checks?.notExpired    ?? d.not_expired    ?? d.checks?.not_expired    ?? true),
+        },
+      });
+    } catch { toast.error('Failed to load candidate details'); }
+    finally { setLoadingDetail(false); }
+  };
+
+  const handleSelectCandidate = (c: VerificationCandidate) => {
+    void loadDetail(c.candidateId);
+  };
+
+  const handleApprove = async () => {
+    if (!selected) return;
+    setApproving(true);
+    try {
+      await adminApi.approveVerification(selected.candidateId);
+      toast.success(`${selected.candidateName} verified successfully`);
+      setQueue(q => q.map(c => c.candidateId === selected.candidateId ? { ...c, status: 'verified' } : c));
+      setSelected(s => s ? { ...s, status: 'verified' } : s);
+      void loadStats();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } } };
+      toast.error(e.response?.data?.error ?? 'Failed to approve');
+    } finally { setApproving(false); }
+  };
+
+  const handleReject = async (reason: string) => {
+    if (!selected) return;
+    setShowReject(false);
+    setRejecting(true);
+    try {
+      await adminApi.rejectVerification(selected.candidateId, reason);
+      toast.success(`${selected.candidateName} rejected`);
+      setQueue(q => q.map(c => c.candidateId === selected.candidateId ? { ...c, status: 'mismatch' } : c));
+      setSelected(s => s ? { ...s, status: 'mismatch' } : s);
+      void loadStats();
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } } };
+      toast.error(e.response?.data?.error ?? 'Failed to reject');
+    } finally { setRejecting(false); }
+  };
+
+  const conf     = selected?.confidence ?? 0;
+  const confColor = conf >= 80 ? '#10B981' : conf >= 60 ? '#F59E0B' : '#EF4444';
+  const selStatus = selected ? STATUS_CFG[selected.status] : null;
+
+  return (
+    <div style={{ backgroundColor: '#F9FAFB', minHeight: '100%' }}>
+
+      {/* ── HEADER ── */}
+      <div style={{ marginBottom: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#9CA3AF', marginBottom: '6px' }}>
+          <span style={{ cursor: 'pointer', color: '#6B7280' }} onClick={() => navigate('/admin/dashboard')}>Workspace</span>
+          <span>›</span>
+          <span>ID Verification</span>
+        </div>
+        <h1 style={{ fontSize: '26px', fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>ID Verification</h1>
+        <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>Photo ID checks matched against webcam capture before test start.</p>
+      </div>
+
+      {/* ── KPI CARDS ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '22px' }}>
+        {[
+          { value: stats?.verified      ?? '—', label: 'Verified',        bar: '#10B981' },
+          { value: stats?.pending       ?? '—', label: 'Pending',         bar: '#F59E0B' },
+          { value: stats?.mismatch      ?? '—', label: 'Mismatch',        bar: '#EF4444' },
+          { value: stats ? `${Math.round(stats.avgConfidence)}%` : '—', label: 'Avg confidence', bar: '#3B82F6' },
+        ].map(kpi => (
+          <div key={kpi.label} style={{
+            backgroundColor: 'white', borderRadius: '14px', padding: '20px 22px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.06)', display: 'flex', alignItems: 'flex-start', gap: '14px',
+          }}>
+            <div style={{ width: '4px', height: '44px', borderRadius: '4px', backgroundColor: kpi.bar, flexShrink: 0 }} />
+            <div>
+              <p style={{ fontSize: '26px', fontWeight: 700, color: '#111827', margin: 0, lineHeight: 1 }}>{String(kpi.value)}</p>
+              <p style={{ fontSize: '12px', color: '#6B7280', margin: '4px 0 0' }}>{kpi.label}</p>
+            </div>
           </div>
+        ))}
+      </div>
+
+      {/* ── 2-COLUMN LAYOUT ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 400px', gap: '16px', alignItems: 'start' }}>
+
+        {/* ── LEFT: Verification queue ── */}
+        <div style={{ backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', padding: '24px' }}>
+          <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#111827', margin: '0 0 6px' }}>Verification queue</h2>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', marginBottom: '16px', padding: '3px 10px', borderRadius: '20px', backgroundColor: '#FEF3C7', border: '1px solid #FDE68A' }}>
+            <Info width={10} height={10} style={{ color: '#D97706' }} />
+            <span style={{ fontSize: '11px', fontWeight: 600, color: '#92400E' }}>Coming soon</span>
+          </div>
+
+          {loadingQueue ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: '#10B981' }} />
+            </div>
+          ) : queue.length === 0 ? (
+            <p style={{ color: '#9CA3AF', fontSize: '14px', textAlign: 'center', padding: '40px 0' }}>No verifications found</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+              {queue.map(c => {
+                const isActive = selected?.candidateId === c.candidateId;
+                const cfg      = STATUS_CFG[c.status];
+                const bg       = avatarBg(c.candidateName);
+                return (
+                  <button key={c.candidateId} onClick={() => handleSelectCandidate(c)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 16px', borderRadius: '12px',
+                      border: 'none', backgroundColor: isActive ? '#F0FDF4' : 'white',
+                      cursor: 'pointer', textAlign: 'left', width: '100%', transition: 'background-color 0.12s',
+                    }}
+                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = '#EDF0F7'; }}
+                    onMouseLeave={e => { if (!isActive) e.currentTarget.style.backgroundColor = 'white'; }}>
+
+                    {/* Avatar */}
+                    <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: 'white' }}>{initials(c.candidateName)}</span>
+                    </div>
+
+                    {/* Name + doc type */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: '14px', fontWeight: 600, color: '#111827', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.candidateName}</p>
+                      <p style={{ fontSize: '12px', color: '#9CA3AF', margin: '2px 0 0' }}>{c.documentType}</p>
+                    </div>
+
+                    {/* Status */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
+                      <div style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: cfg.dot }} />
+                      <span style={{ fontSize: '12px', fontWeight: 500, color: cfg.color }}>{cfg.label}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        <div className="card lg:col-span-3 overflow-x-auto">
-          {visibleItems.length === 0 ? (
-            <p className="text-gray-500">No ID files found for current filters.</p>
+        {/* ── RIGHT: Detail panel ── */}
+        <div style={{ backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', padding: '24px' }}>
+          {loadingDetail ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: '#10B981' }} />
+            </div>
+          ) : !selected ? (
+            <p style={{ color: '#9CA3AF', fontSize: '14px', textAlign: 'center', padding: '80px 0' }}>Select a candidate</p>
           ) : (
             <>
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-sm text-gray-600">
-                  {selectedIds.size > 0
-                    ? `${selectedIds.size} selected`
-                    : `${visibleItems.length} file${visibleItems.length !== 1 ? 's' : ''}`}
-                </span>
-                {selectedIds.size > 0 && (
-                  <button
-                    onClick={handleBulkDelete}
-                    disabled={bulkDeleting}
-                    className="btn text-xs bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
-                  >
-                    {bulkDeleting ? 'Deleting...' : `Delete Selected (${selectedIds.size})`}
-                  </button>
+              {/* Candidate header */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '50%', backgroundColor: avatarBg(selected.candidateName), display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <span style={{ fontSize: '14px', fontWeight: 700, color: 'white' }}>{initials(selected.candidateName)}</span>
+                  </div>
+                  <div>
+                    <p style={{ fontSize: '15px', fontWeight: 700, color: '#111827', margin: 0 }}>{selected.candidateName}</p>
+                    <p style={{ fontSize: '12px', color: '#9CA3AF', margin: '2px 0 0' }}>{selected.documentType}</p>
+                  </div>
+                </div>
+                {selStatus && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 10px', borderRadius: '20px', backgroundColor: selected.status === 'verified' ? '#ECFDF5' : selected.status === 'mismatch' ? '#FEF2F2' : '#FFFBEB' }}>
+                    <div style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: selStatus.dot }} />
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: selStatus.color }}>{selStatus.label}</span>
+                  </div>
                 )}
               </div>
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-gray-600">
-                    <th className="py-2 pr-3">
-                      <input
-                        type="checkbox"
-                        checked={allVisibleSelected}
-                        onChange={toggleSelectAll}
-                        title="Select all"
-                      />
-                    </th>
-                    <th className="py-2 pr-3">Name</th>
-                    <th className="py-2 pr-3">Candidate</th>
-                    <th className="py-2 pr-3">Test</th>
-                    <th className="py-2 pr-3">Type</th>
-                    <th className="py-2 pr-3">Size</th>
-                    <th className="py-2 pr-3">Uploaded</th>
-                    <th className="py-2 pr-3">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleItems.map(item => (
-                    <tr
-                      key={item.fileId}
-                      className={`border-b align-top ${selectedIds.has(item.fileId) ? 'bg-blue-50' : ''}`}
-                    >
-                      <td className="py-2 pr-3">
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(item.fileId)}
-                          onChange={() => toggleSelect(item.fileId)}
-                        />
-                      </td>
-                      <td className="py-2 pr-3 max-w-xs">
-                        <p className="font-medium truncate" title={item.filename}>
-                          {item.filename}
-                        </p>
-                        <p className="text-xs text-gray-500 truncate" title={item.relativePath || ''}>
-                          {item.relativePath || item.originalName}
-                        </p>
-                      </td>
-                      <td className="py-2 pr-3">{item.candidateName}</td>
-                      <td className="py-2 pr-3">{item.testCode}</td>
-                      <td className="py-2 pr-3">{item.documentType}</td>
-                      <td className="py-2 pr-3">{formatSize(item.fileSize)}</td>
-                      <td className="py-2 pr-3">{formatDate(item.createdAt)}</td>
-                      <td className="py-2 pr-3">
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => window.open(`/api/files/${item.fileId}`, '_blank')}
-                            className="btn btn-secondary text-xs"
-                          >
-                            View
-                          </button>
-                          <a
-                            href={`/api/files/${item.fileId}/download`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="btn btn-secondary text-xs"
-                          >
-                            Save
-                          </a>
-                          <button
-                            onClick={() => handleDelete(item.fileId)}
-                            className="btn text-xs bg-red-600 text-white hover:bg-red-700"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+
+              {/* Images */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '20px' }}>
+                <div>
+                  <p style={{ fontSize: '10px', fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.08em', margin: '0 0 8px' }}>ID DOCUMENT</p>
+                  {selected.idDocumentUrl ? (
+                    <img src={selected.idDocumentUrl} alt="ID Document" style={{ width: '100%', borderRadius: '10px', objectFit: 'cover', minHeight: '140px' }} />
+                  ) : (
+                    <ImgPlaceholder icon="document" />
+                  )}
+                </div>
+                <div>
+                  <p style={{ fontSize: '10px', fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.08em', margin: '0 0 8px' }}>WEBCAM CAPTURE</p>
+                  {selected.webcamCaptureUrl ? (
+                    <img src={selected.webcamCaptureUrl} alt="Webcam capture" style={{ width: '100%', borderRadius: '10px', objectFit: 'cover', minHeight: '140px' }} />
+                  ) : (
+                    <ImgPlaceholder icon="camera" />
+                  )}
+                </div>
+              </div>
+
+              {/* Face match confidence */}
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>Face match confidence</span>
+                  <span style={{ fontSize: '16px', fontWeight: 700, color: confColor }}>{conf > 0 ? `${Math.round(conf)}%` : '—'}</span>
+                </div>
+                <div style={{ height: '6px', borderRadius: '3px', backgroundColor: '#F3F4F6', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: `${Math.min(100, conf)}%`, backgroundColor: confColor, borderRadius: '3px', transition: 'width 0.4s ease' }} />
+                </div>
+              </div>
+
+              {/* Checks */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '22px' }}>
+                <CheckRow label="Name match"     pass={selected.checks?.nameMatch     ?? true} />
+                <CheckRow label="Photo match"    pass={selected.checks?.photoMatch    ?? false} />
+                <CheckRow label="Document valid" pass={selected.checks?.documentValid ?? true} />
+                <CheckRow label="Not expired"    pass={selected.checks?.notExpired    ?? true} />
+              </div>
+
+              {/* Action buttons */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <button
+                  onClick={() => setShowReject(true)}
+                  disabled={rejecting || selected.status === 'mismatch'}
+                  style={{
+                    padding: '12px', borderRadius: '10px', border: 'none',
+                    backgroundColor: selected.status === 'mismatch' ? '#FCA5A5' : '#EF4444',
+                    color: 'white', fontSize: '14px', fontWeight: 600, cursor: selected.status === 'mismatch' ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                    opacity: rejecting ? 0.7 : 1,
+                  }}>
+                  <XCircle width={16} height={16} />
+                  {rejecting ? 'Rejecting…' : 'Reject'}
+                </button>
+                <button
+                  onClick={handleApprove}
+                  disabled={approving || selected.status === 'verified'}
+                  style={{
+                    padding: '12px', borderRadius: '10px', border: 'none',
+                    backgroundColor: selected.status === 'verified' ? '#6EE7B7' : '#10B981',
+                    color: 'white', fontSize: '14px', fontWeight: 600, cursor: selected.status === 'verified' ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                    opacity: approving ? 0.7 : 1,
+                  }}>
+                  <CheckCircle2 width={14} height={14} />
+                  {approving ? 'Approving…' : 'Approve & verify'}
+                </button>
+              </div>
             </>
           )}
         </div>
       </div>
+
+      {/* ── Reject modal ── */}
+      {showReject && (
+        <RejectModal
+          onConfirm={handleReject}
+          onCancel={() => setShowReject(false)}
+        />
+      )}
     </div>
   );
 }

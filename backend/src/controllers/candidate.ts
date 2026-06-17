@@ -15,6 +15,8 @@ import {
 import { uploadSnapshot } from '../services/fileStorageService.js';
 import { parseStoredCustomAIViolationEvents } from '../utils/proctoringConfig.js';
 import { sendCandidateScoreWebhook } from '../services/candidateScoreWebhookService.js';
+import { sendConfirmationEmail } from '../services/emailService.js';
+import { saveNotification, ensureNotificationTable } from './notifications.js';
 
 export async function candidateLogin(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -534,9 +536,34 @@ export async function getTestDetails(req: AuthenticatedRequest, res: Response): 
       return;
     }
 
+    // Derive device requirements from proctoringSettings JSON when available.
+    // This ensures the candidate "Before you begin" page always reflects what
+    // the admin actually configured in the AI Proctoring tab, even if the
+    // requireCamera/requireMicrophone/requireScreenShare fields are stale.
+    let requireCamera = test.requireCamera;
+    let requireMicrophone = test.requireMicrophone;
+    let requireScreenShare = test.requireScreenShare;
+
+    if (test.proctorEnabled) {
+      try {
+        const psRows = await prisma.$queryRaw<Array<{ proctoringSettings: string | null }>>`
+          SELECT "proctoringSettings" FROM "Test" WHERE id = ${testId}
+        `;
+        if (psRows.length > 0 && psRows[0].proctoringSettings) {
+          const ps = JSON.parse(psRows[0].proctoringSettings) as Record<string, unknown>;
+          if (typeof ps.webcamOn === 'boolean') requireCamera = ps.webcamOn;
+          if (typeof ps.micOn === 'boolean') requireMicrophone = ps.micOn;
+          if (typeof ps.screenOn === 'boolean') requireScreenShare = ps.screenOn;
+        }
+      } catch { /* column not yet created — use DB fields as-is */ }
+    }
+
     res.json({
       test: {
         ...test,
+        requireCamera,
+        requireMicrophone,
+        requireScreenShare,
         customAIViolations: parseStoredCustomAIViolationEvents(test.customAIViolations),
       },
       attempt: {
@@ -566,6 +593,7 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
             customAIViolations: true,
           },
         },
+        candidate: { select: { name: true, email: true } },
       },
     });
 
@@ -810,6 +838,32 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
       }
     }
 
+    // Fetch proctoringSettings + violationPopupSettings from raw SQL columns
+    let proctoringSettingsRawForStart: string | null = null;
+    let violationPopupSettingsRaw: string | null = null;
+    try {
+      const rawRows = await prisma.$queryRaw<Array<{ proctoringSettings: string | null; violationPopupSettings: string | null }>>`
+        SELECT "proctoringSettings", "violationPopupSettings" FROM "Test" WHERE id = ${testId}
+      `;
+      if (rawRows.length > 0) {
+        proctoringSettingsRawForStart = rawRows[0].proctoringSettings;
+        violationPopupSettingsRaw = rawRows[0].violationPopupSettings;
+      }
+    } catch { /* columns not yet created — safe to ignore */ }
+
+    // Derive device requirements from proctoringSettings JSON (same as getTestDetails)
+    let startRequireCamera = test.requireCamera;
+    let startRequireMicrophone = test.requireMicrophone;
+    let startRequireScreenShare = test.requireScreenShare;
+    if (test.proctorEnabled && proctoringSettingsRawForStart) {
+      try {
+        const ps = JSON.parse(proctoringSettingsRawForStart) as Record<string, unknown>;
+        if (typeof ps.webcamOn === 'boolean') startRequireCamera = ps.webcamOn;
+        if (typeof ps.micOn === 'boolean') startRequireMicrophone = ps.micOn;
+        if (typeof ps.screenOn === 'boolean') startRequireScreenShare = ps.screenOn;
+      } catch { /* ignore malformed JSON */ }
+    }
+
     res.json({
       test: {
         id: test.id,
@@ -818,15 +872,39 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
         totalMarks: test.totalMarks,
         negativeMarking: test.negativeMarking,
         proctorEnabled: test.proctorEnabled,
-        requireCamera: test.requireCamera,
-        requireMicrophone: test.requireMicrophone,
-        requireScreenShare: test.requireScreenShare,
+        requireCamera: startRequireCamera,
+        requireMicrophone: startRequireMicrophone,
+        requireScreenShare: startRequireScreenShare,
         maxViolations: test.maxViolations,
         customAIViolations: parseStoredCustomAIViolationEvents(test.customAIViolations),
+        violationPopupSettings: violationPopupSettingsRaw || undefined,
       },
       questions,
       startTime: attempt.startTime
     });
+
+    // Notify admin that a candidate has started the exam
+    emitToAdminRoom(test.adminId, 'test-started', {
+      testId,
+      testName: test.name,
+      attemptId,
+      candidateName: (attempt as any).candidate?.name ?? 'Unknown',
+      candidateEmail: (attempt as any).candidate?.email ?? '',
+      timestamp: new Date().toISOString(),
+    });
+
+    // Persist notification to DB
+    void ensureNotificationTable().then(() =>
+      saveNotification({
+        adminId: test.adminId,
+        type: 'started',
+        attemptId,
+        testId,
+        testName: test.name,
+        candidateName: (attempt as any).candidate?.name ?? 'Unknown',
+        autoSubmit: false,
+      })
+    ).catch(err => console.error('Notification save error (start):', err));
   } catch (error) {
     console.error('Start test error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1054,14 +1132,18 @@ export async function logActivity(req: AuthenticatedRequest, res: Response): Pro
 
     // Update violation count for certain events
     const violationEventMap: Record<string, string> = {
+      // Canonical names (frontend sends these after normalizing)
       tab_switch: 'tab_switch',
-      focus_loss: 'window_blur',
+      window_blur: 'window_blur',
       fullscreen_exit: 'fullscreen_exit',
+      copy_paste_attempt: 'copy_paste_attempt',
+      devtools_open: 'devtools_open',
+      // Legacy aliases (pre-normalized names, kept for compatibility)
+      focus_loss: 'window_blur',
       window_exit: 'window_blur',
       copy_attempt: 'copy_paste_attempt',
       paste_attempt: 'copy_paste_attempt',
       copy_paste: 'copy_paste_attempt',
-      devtools_open: 'devtools_open',
     };
     const violationSeverityMap: Record<string, 'low' | 'medium' | 'high' | 'critical'> = {
       tab_switch: 'medium', // Warning
@@ -1397,6 +1479,19 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
     emitToTestProctorRoom(testId, 'test-submitted', submissionPayload);
     emitToAdminRoom(test.adminId, 'test-submitted', submissionPayload);
 
+    // Persist notification to DB
+    void ensureNotificationTable().then(() =>
+      saveNotification({
+        adminId: test.adminId,
+        type: 'completed',
+        attemptId,
+        testId,
+        testName: test.name,
+        candidateName: attempt.candidate?.name ?? 'Unknown',
+        autoSubmit: !!autoSubmit,
+      })
+    ).catch(err => console.error('Notification save error (submit):', err));
+
     void sendCandidateScoreWebhook({
       name: attempt.candidate?.name ?? 'Unknown',
       emailid: attempt.candidate?.email ?? '',
@@ -1404,6 +1499,70 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
       testid: testId,
       status: webhookStatus,
     });
+
+    // Send confirmation email — fire-and-forget, never blocks or breaks submission
+    const candidateEmail = attempt.candidate?.email;
+    const candidateName  = attempt.candidate?.name ?? 'Candidate';
+    if (!candidateEmail) {
+      console.warn(`Confirmation email skipped: no email on candidate for attempt ${attemptId}`);
+    }
+    if (candidateEmail) {
+      void (async () => {
+        try {
+          // Fetch known fields via the generated Prisma client (always safe)
+          const testRow = await prisma.test.findUnique({
+            where: { id: testId },
+            select: { name: true, companyId: true },
+          });
+          if (!testRow) {
+            console.error(`Confirmation email: test ${testId} not found`);
+            return;
+          }
+
+          // Resolve company name
+          let companyName = 'Our Team';
+          if (testRow.companyId) {
+            try {
+              const company = await prisma.company.findUnique({
+                where: { id: testRow.companyId },
+                select: { name: true },
+              });
+              if (company?.name) companyName = company.name;
+            } catch { /* company name is optional */ }
+          }
+
+          // Try to read custom email templates via raw SQL.
+          // These columns may not exist if the migration hasn't been applied yet —
+          // in that case we fall back silently to the default templates.
+          let confirmEmailSubject: string | undefined;
+          let confirmEmailBody: string | undefined;
+          try {
+            const rows = await prisma.$queryRaw<Array<{
+              confirmEmailSubject: string | null;
+              confirmEmailBody: string | null;
+            }>>`SELECT "confirmEmailSubject", "confirmEmailBody" FROM "Test" WHERE id = ${testId}`;
+            if (rows.length > 0) {
+              confirmEmailSubject = rows[0].confirmEmailSubject ?? undefined;
+              confirmEmailBody    = rows[0].confirmEmailBody    ?? undefined;
+            }
+          } catch {
+            // columns not in DB yet — use default templates (safe to continue)
+          }
+
+          await sendConfirmationEmail({
+            to: candidateEmail,
+            candidateName,
+            testName: testRow.name,
+            companyName,
+            confirmEmailSubject,
+            confirmEmailBody,
+          });
+          console.log(`Confirmation email sent to ${candidateEmail} for test "${testRow.name}"`);
+        } catch (err) {
+          console.error('Confirmation email error:', err);
+        }
+      })();
+    }
   } catch (error) {
     console.error('Submit test error:', error);
     res.status(500).json({ error: 'Internal server error' });
