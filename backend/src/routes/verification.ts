@@ -10,7 +10,14 @@ import {
   approveVerification,
   rejectVerification,
   getVerificationStats,
+  deleteVerificationImages,
+  deleteVerificationRecord,
 } from '../controllers/verification';
+import {
+  createPhoneSession,
+  getPhoneSessionStatus,
+  uploadPhoneImage,
+} from '../controllers/phoneSession';
 
 const router = Router();
 
@@ -28,6 +35,17 @@ router.get('/required/:testId', candidateAuth, checkTestVerificationRequired);
 // Upload face reference for proctoring
 router.post('/face-reference', candidateAuth, uploadFaceReference);
 
+// ==================== PHONE CAMERA SESSION ENDPOINTS ====================
+
+// Create a phone session (returns sessionId; desktop builds the QR URL)
+router.post('/phone-session', candidateAuth, createPhoneSession);
+
+// Poll session status — public (phone page also uses this to validate session)
+router.get('/phone-session/:id', getPhoneSessionStatus);
+
+// Phone uploads captured image — public (session ID acts as one-time token)
+router.post('/phone-upload/:id', uploadPhoneImage);
+
 // ==================== ADMIN VERIFICATION ENDPOINTS ====================
 
 // Get all verifications with filtering
@@ -44,5 +62,11 @@ router.post('/admin/:candidateId/approve', adminAuth, approveVerification);
 
 // Reject verification
 router.post('/admin/:candidateId/reject', adminAuth, rejectVerification);
+
+// Admin-triggered image deletion (keeps verification record, removes stored files)
+router.delete('/admin/:candidateId/images', adminAuth, deleteVerificationImages);
+
+// Admin deletes entire verification record (images + DB row)
+router.delete('/admin/:candidateId', adminAuth, deleteVerificationRecord);
 
 export default router;
