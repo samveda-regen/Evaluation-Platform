@@ -181,9 +181,13 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
         const res = await api.get<{ status: string; identity?: { rejectionReason?: string | null } }>(
           '/verification/status'
         );
-        const { status } = res.data;
-        const reason = res.data.identity?.rejectionReason ?? null;
-        if (status === 'verified') {
+        const { status, identity } = res.data;
+        const reason = identity?.rejectionReason ?? null;
+
+        // No identity record means no prior submission — show normal flow
+        if (!identity) {
+          // fall through to setInitialCheckDone below
+        } else if (status === 'verified') {
           onVerified();
           setInitialCheckDone(true);
           return;
@@ -197,7 +201,7 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
           setResult({ success: false, status: 'rejected', error: reason ?? undefined });
           setStep('result');
         }
-        // no record / expired → show normal flow
+        // expired / unknown → show normal flow
       } catch { /* ignore — show normal flow */ }
       setInitialCheckDone(true);
     })();
