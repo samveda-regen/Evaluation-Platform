@@ -63,6 +63,7 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
   const [pendingPollState, setPendingPollState] = useState<'idle' | 'polling' | 'verified' | 'rejected'>('idle');
   const [pollRejectionReason, setPollRejectionReason] = useState('');
   const [initialCheckDone, setInitialCheckDone] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   // ── Camera helpers ──────────────────────────────────────────────────────────
 
@@ -733,6 +734,27 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
 
     // ── Pending — waiting for admin ─────────────────────────────────────────
     if (result?.status === 'pending') {
+      const handleResubmit = async () => {
+        setCancelling(true);
+        try {
+          await api.delete('/verification/my-submission');
+          // Stop polling and reset all state back to intro
+          if (statusPollerRef.current) { clearInterval(statusPollerRef.current); statusPollerRef.current = null; }
+          setResult(null);
+          setPendingPollState('idle');
+          setPollRejectionReason('');
+          setDocumentImage(null);
+          setSelfieImage(null);
+          setLivenessFrames([]);
+          setCapturePhase('idle');
+          setStep('intro');
+        } catch {
+          toast.error('Could not cancel submission — please try again');
+        } finally {
+          setCancelling(false);
+        }
+      };
+
       return (
         <div className="text-center space-y-6">
           <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto">
@@ -749,8 +771,15 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
             <div className="w-4 h-4 rounded-full border-2 border-t-transparent border-yellow-500 animate-spin" />
             Waiting for admin approval…
           </div>
+          <button
+            onClick={handleResubmit}
+            disabled={cancelling}
+            className="text-sm text-gray-400 hover:text-gray-600 underline underline-offset-2 transition-colors disabled:opacity-50"
+          >
+            {cancelling ? 'Cancelling…' : 'Uploaded the wrong photo? Re-submit'}
+          </button>
           {isOptional && onSkip && (
-            <button onClick={onSkip} className="btn btn-secondary w-full mt-2">
+            <button onClick={onSkip} className="btn btn-secondary w-full">
               Continue without verification
             </button>
           )}
