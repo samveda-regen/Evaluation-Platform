@@ -10,14 +10,16 @@ export interface PhoneSession {
   createdAt:   number;
 }
 
-const TTL_MS = 5 * 60 * 1000; // 5 minutes
-const store  = new Map<string, PhoneSession>();
+const WAITING_TTL_MS  = 5  * 60 * 1000;        // 5 min — waiting sessions expire quickly
+const COMPLETE_TTL_MS = 24 * 60 * 60 * 1000;   // 24 h  — keep so phone can poll for admin result
+const store = new Map<string, PhoneSession>();
 
-// Prune sessions older than TTL every minute
+// Prune expired sessions every minute
 setInterval(() => {
   const now = Date.now();
   for (const [id, s] of store) {
-    if (now - s.createdAt > TTL_MS) store.delete(id);
+    const ttl = s.status === 'waiting' ? WAITING_TTL_MS : COMPLETE_TTL_MS;
+    if (now - s.createdAt > ttl) store.delete(id);
   }
 }, 60_000).unref();
 
@@ -35,7 +37,8 @@ export function createSession(candidateId: string): PhoneSession {
 export function getSession(id: string): PhoneSession | null {
   const s = store.get(id);
   if (!s) return null;
-  if (Date.now() - s.createdAt > TTL_MS) {
+  const ttl = s.status === 'waiting' ? WAITING_TTL_MS : COMPLETE_TTL_MS;
+  if (Date.now() - s.createdAt > ttl) {
     store.delete(id);
     return { ...s, status: 'expired' };
   }
