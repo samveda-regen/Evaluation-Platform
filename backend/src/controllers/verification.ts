@@ -6,6 +6,7 @@ import {
   adminVerify,
   adminDeleteImages,
   adminDeleteRecord,
+  cancelPendingVerification,
   checkVerificationRequired,
   DocumentType,
 } from '../services/verificationService';
@@ -76,6 +77,22 @@ export const getMyVerificationStatus = async (req: Request, res: Response): Prom
   } catch (error) {
     console.error('Error getting verification status:', error);
     res.status(500).json({ error: 'Failed to get verification status' });
+  }
+};
+
+/**
+ * Candidate cancels their own pending submission so they can re-upload
+ */
+export const cancelMyPendingVerification = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const candidateId = (req as any).candidate?.id;
+    if (!candidateId) { res.status(401).json({ error: 'Candidate authentication required' }); return; }
+    const result = await cancelPendingVerification(candidateId);
+    if (!result.success) { res.status(400).json({ error: result.error }); return; }
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error cancelling pending verification:', error);
+    res.status(500).json({ error: 'Failed to cancel verification' });
   }
 };
 
