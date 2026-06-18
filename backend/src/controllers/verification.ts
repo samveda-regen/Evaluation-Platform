@@ -4,6 +4,8 @@ import {
   submitVerification,
   getVerificationStatus,
   adminVerify,
+  adminDeleteImages,
+  adminDeleteRecord,
   checkVerificationRequired,
   DocumentType,
 } from '../services/verificationService';
@@ -281,6 +283,42 @@ export const rejectVerification = async (req: Request, res: Response): Promise<v
   } catch (error) {
     console.error('Error rejecting verification:', error);
     res.status(500).json({ error: 'Failed to reject verification' });
+  }
+};
+
+/**
+ * Admin manually deletes stored ID images (keeps verification record intact)
+ */
+export const deleteVerificationImages = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { candidateId } = req.params;
+    const result = await adminDeleteImages(candidateId);
+    if (!result.success) {
+      res.status(400).json({ error: result.error });
+      return;
+    }
+    res.json({ success: true, message: 'Images deleted' });
+  } catch (error) {
+    console.error('Error deleting verification images:', error);
+    res.status(500).json({ error: 'Failed to delete images' });
+  }
+};
+
+/**
+ * Admin deletes the entire verification record (images + DB row)
+ */
+export const deleteVerificationRecord = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { candidateId } = req.params;
+    const result = await adminDeleteRecord(candidateId);
+    if (!result.success) {
+      res.status(400).json({ error: result.error });
+      return;
+    }
+    res.json({ success: true, message: 'Verification record deleted' });
+  } catch (error) {
+    console.error('Error deleting verification record:', error);
+    res.status(500).json({ error: 'Failed to delete record' });
   }
 };
 
