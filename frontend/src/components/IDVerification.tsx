@@ -774,9 +774,16 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
           <button
             onClick={handleResubmit}
             disabled={cancelling}
-            className="text-sm text-gray-400 hover:text-gray-600 underline underline-offset-2 transition-colors disabled:opacity-50"
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg border border-gray-300 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:border-gray-400 transition-colors disabled:opacity-50"
           >
-            {cancelling ? 'Cancelling…' : 'Uploaded the wrong photo? Re-submit'}
+            {cancelling ? (
+              <>
+                <div className="w-3.5 h-3.5 rounded-full border-2 border-t-transparent border-gray-500 animate-spin" />
+                Cancelling…
+              </>
+            ) : (
+              'Submit a different photo'
+            )}
           </button>
           {isOptional && onSkip && (
             <button onClick={onSkip} className="btn btn-secondary w-full">
