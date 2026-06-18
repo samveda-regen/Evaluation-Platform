@@ -188,6 +188,26 @@ export async function adminDeleteRecord(
   }
 }
 
+// Candidate-triggered: cancel a pending submission so they can re-upload.
+// Only works when status is 'pending' or 'rejected' — not if already verified.
+export async function cancelPendingVerification(
+  candidateId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const identity = await prisma.candidateIdentity.findUnique({ where: { candidateId } });
+    if (!identity) return { success: false, error: 'No verification record found' };
+    if (identity.verificationStatus === 'verified') {
+      return { success: false, error: 'Cannot cancel an already-verified submission' };
+    }
+    await deleteVerificationImages(identity.idDocumentUrl, identity.faceReferenceUrl);
+    await prisma.candidateIdentity.delete({ where: { candidateId } });
+    return { success: true };
+  } catch (error) {
+    console.error('Cancel pending verification error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Cancel failed' };
+  }
+}
+
 // ─── Submit verification ──────────────────────────────────────────────────────
 
 export async function submitVerification(
