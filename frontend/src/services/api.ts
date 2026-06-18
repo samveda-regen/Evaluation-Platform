@@ -518,6 +518,9 @@ export const candidateApi = {
   getVerificationStatus: () =>
     api.get('/verification/status'),
 
+  cancelMyPendingVerification: () =>
+    api.delete('/verification/my-submission'),
+
   checkVerificationRequired: (testId: string) =>
     api.get(`/verification/required/${testId}`),
 
