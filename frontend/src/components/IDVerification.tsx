@@ -57,6 +57,12 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
   const canvasRef   = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const captureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const statusPollerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Admin decision polling state
+  const [pendingPollState, setPendingPollState] = useState<'idle' | 'polling' | 'verified' | 'rejected'>('idle');
+  const [pollRejectionReason, setPollRejectionReason] = useState('');
+  const [initialCheckDone, setInitialCheckDone] = useState(false);
 
   // ── Camera helpers ──────────────────────────────────────────────────────────
 
@@ -136,6 +142,66 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
     return () => {
       if (phonePollerRef.current) clearInterval(phonePollerRef.current);
     };
+  }, []);
+
+  // ── Admin decision polling ─────────────────────────────────────────────────
+
+  const startStatusPolling = useCallback(() => {
+    if (statusPollerRef.current) return;
+    setPendingPollState('polling');
+    statusPollerRef.current = setInterval(async () => {
+      try {
+        const res = await api.get<{ status: string; identity?: { rejectionReason?: string | null } }>(
+          '/verification/status'
+        );
+        const { status } = res.data;
+        const reason = res.data.identity?.rejectionReason ?? null;
+        if (status === 'verified') {
+          clearInterval(statusPollerRef.current!);
+          statusPollerRef.current = null;
+          setPendingPollState('verified');
+        } else if (status === 'rejected') {
+          clearInterval(statusPollerRef.current!);
+          statusPollerRef.current = null;
+          setPollRejectionReason(reason ?? 'Your verification was not approved.');
+          setPendingPollState('rejected');
+        }
+      } catch { /* retry next tick */ }
+    }, 5000);
+  }, []);
+
+  useEffect(() => {
+    return () => { if (statusPollerRef.current) clearInterval(statusPollerRef.current); };
+  }, []);
+
+  // Check existing verification status on mount — skip re-submission if already pending/rejected
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.get<{ status: string; identity?: { rejectionReason?: string | null } }>(
+          '/verification/status'
+        );
+        const { status } = res.data;
+        const reason = res.data.identity?.rejectionReason ?? null;
+        if (status === 'verified') {
+          onVerified();
+          setInitialCheckDone(true);
+          return;
+        } else if (status === 'pending') {
+          setResult({ success: true, status: 'pending' });
+          setStep('result');
+          startStatusPolling();
+        } else if (status === 'rejected') {
+          setPollRejectionReason(reason ?? '');
+          setPendingPollState('rejected');
+          setResult({ success: false, status: 'rejected', error: reason ?? undefined });
+          setStep('result');
+        }
+        // no record / expired → show normal flow
+      } catch { /* ignore — show normal flow */ }
+      setInitialCheckDone(true);
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const captureFrame = useCallback((): string | null => {
@@ -247,11 +313,10 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
       setResult(response.data);
       setStep('result');
 
-      if (response.data.success) {
-        toast.success('Identity verified successfully!');
-      } else if (response.data.status === 'pending') {
-        toast('Your verification is under review', { icon: '⏳' });
-      } else {
+      if (response.data.status === 'pending') {
+        toast('Your ID has been submitted — waiting for admin review', { icon: '⏳' });
+        startStatusPolling();
+      } else if (!response.data.success) {
         toast.error(response.data.error ?? 'Verification failed');
       }
     } catch (error) {
@@ -592,20 +657,18 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
   );
 
   const renderResult = () => {
-    const isPending = result?.status === 'pending';
-
-    if (result?.success) {
+    // ── Admin approved ──────────────────────────────────────────────────────
+    if (pendingPollState === 'verified') {
       return (
         <div className="text-center space-y-6">
           <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-            <CheckCircle2 className="w-10 h-10 text-green-600" />
+            <ShieldCheck className="w-10 h-10 text-green-600" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-green-600">Verification Successful</h2>
-            <p className="text-gray-600 mt-2">Your identity has been verified. You may now begin the test.</p>
+            <h2 className="text-2xl font-bold text-green-600">Identity Verified!</h2>
+            <p className="text-gray-600 mt-2">Admin has approved your identity. You may now begin the test.</p>
           </div>
-
-          {result.scores && (
+          {result?.scores && (
             <div className="bg-gray-50 rounded-lg p-4 grid grid-cols-3 gap-4 text-sm">
               {[
                 { label: 'Document', value: result.scores.documentAuth },
@@ -619,7 +682,6 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
               ))}
             </div>
           )}
-
           <button onClick={onVerified} className="btn btn-primary w-full">
             Continue to Test
           </button>
@@ -627,21 +689,64 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
       );
     }
 
-    if (isPending) {
+    // ── Admin rejected ──────────────────────────────────────────────────────
+    if (pendingPollState === 'rejected' || result?.status === 'rejected') {
+      const reason = pollRejectionReason || result?.error;
+      return (
+        <div className="text-center space-y-6">
+          <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto">
+            <X className="w-10 h-10 text-red-600" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold text-red-600">Verification Rejected</h2>
+            <p className="text-gray-600 mt-2">
+              {reason ?? 'Your verification was not approved. Please try again.'}
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                setDocumentImage(null);
+                setSelfieImage(null);
+                setLivenessFrames([]);
+                setResult(null);
+                setCapturePhase('idle');
+                setPendingPollState('idle');
+                setPollRejectionReason('');
+                setStep('intro');
+              }}
+              className="btn btn-primary flex-1"
+            >
+              Try Again
+            </button>
+            {isOptional && onSkip && (
+              <button onClick={onSkip} className="btn btn-secondary">Skip</button>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ── Pending — waiting for admin ─────────────────────────────────────────
+    if (result?.status === 'pending') {
       return (
         <div className="text-center space-y-6">
           <div className="w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mx-auto">
-            <Clock className="w-10 h-10 text-yellow-600" />
+            <Clock className="w-10 h-10 text-yellow-600 animate-pulse" />
           </div>
           <div>
             <h2 className="text-2xl font-bold text-yellow-600">Under Review</h2>
             <p className="text-gray-600 mt-2">
-              Your verification needs a quick manual review. An admin will approve it shortly.
-              You will be notified when it's ready.
+              Your ID has been submitted and is awaiting admin approval.
+              This page will update automatically when a decision is made.
             </p>
           </div>
+          <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+            <div className="w-4 h-4 rounded-full border-2 border-t-transparent border-yellow-500 animate-spin" />
+            Waiting for admin approval…
+          </div>
           {isOptional && onSkip && (
-            <button onClick={onSkip} className="btn btn-secondary w-full">
+            <button onClick={onSkip} className="btn btn-secondary w-full mt-2">
               Continue without verification
             </button>
           )}
@@ -649,6 +754,7 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
       );
     }
 
+    // ── Generic failure ─────────────────────────────────────────────────────
     return (
       <div className="text-center space-y-6">
         <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto">
@@ -660,7 +766,6 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
             {result?.error ?? 'We could not verify your identity. Please try again.'}
           </p>
         </div>
-
         <div className="flex gap-3">
           <button
             onClick={() => {
@@ -687,6 +792,14 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
 
   const stepIndex: Record<Step, number> = { intro: 0, document: 1, selfie: 2, processing: 3, result: 4 };
   const current = stepIndex[step];
+
+  if (!initialCheckDone) {
+    return (
+      <div className="bg-white rounded-xl shadow-lg p-8 max-w-lg mx-auto flex items-center justify-center" style={{ minHeight: 200 }}>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-xl shadow-lg p-8 max-w-lg mx-auto">
