@@ -4,6 +4,7 @@ import {
   getSession,
   completeSession,
 } from '../services/phoneSessionService';
+import prisma from '../utils/db';
 
 // POST /api/verification/phone-session
 // Creates a session and returns the sessionId. The frontend builds the QR URL.
@@ -20,9 +21,9 @@ export function createPhoneSession(req: Request, res: Response): void {
 }
 
 // GET /api/verification/phone-session/:id
-// Public — both the desktop (polling) and phone page use this.
-// Returns status + imageData when complete so desktop can auto-fill.
-export function getPhoneSessionStatus(req: Request, res: Response): void {
+// Public — desktop polls for image; phone polls for admin decision after upload.
+// When session is complete, also returns the candidate's verification status from DB.
+export async function getPhoneSessionStatus(req: Request, res: Response): Promise<void> {
   const session = getSession(req.params.id);
 
   if (!session) {
@@ -30,9 +31,25 @@ export function getPhoneSessionStatus(req: Request, res: Response): void {
     return;
   }
 
+  let verificationStatus: string | null = null;
+  let rejectionReason: string | null = null;
+
+  if (session.status === 'complete') {
+    try {
+      const identity = await prisma.candidateIdentity.findUnique({
+        where:  { candidateId: session.candidateId },
+        select: { verificationStatus: true, rejectionReason: true },
+      });
+      verificationStatus = identity?.verificationStatus ?? null;
+      rejectionReason    = identity?.rejectionReason    ?? null;
+    } catch { /* non-fatal */ }
+  }
+
   res.json({
-    status:    session.status,
-    imageData: session.status === 'complete' ? session.imageData : undefined,
+    status:             session.status,
+    imageData:          session.status === 'complete' ? session.imageData : undefined,
+    verificationStatus,
+    rejectionReason,
   });
 }
 
