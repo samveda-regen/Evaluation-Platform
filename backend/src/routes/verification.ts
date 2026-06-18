@@ -3,6 +3,7 @@ import { candidateAuth, adminAuth } from '../middleware/auth';
 import {
   submitVerificationDocuments,
   getMyVerificationStatus,
+  cancelMyPendingVerification,
   checkTestVerificationRequired,
   uploadFaceReference,
   getPendingVerifications,
@@ -28,6 +29,9 @@ router.post('/submit', candidateAuth, submitVerificationDocuments);
 
 // Get my verification status
 router.get('/status', candidateAuth, getMyVerificationStatus);
+
+// Cancel a pending/rejected submission so the candidate can re-upload
+router.delete('/my-submission', candidateAuth, cancelMyPendingVerification);
 
 // Check if verification is required for a specific test
 router.get('/required/:testId', candidateAuth, checkTestVerificationRequired);
