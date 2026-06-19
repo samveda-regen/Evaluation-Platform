@@ -49,6 +49,10 @@ CV_DEBUG = os.getenv("CV_DEBUG", "false").strip().lower() == "true"
 class AnalyzeRequest(BaseModel):
     frame: str
     sessionId: Optional[str] = None
+    # Unix epoch milliseconds when the frame was captured in the browser.
+    # Used to measure violation durations from capture time, not arrival time,
+    # so network delays and backoff gaps don't inflate timers and fire false violations.
+    capturedAt: Optional[float] = None
 
 
 def _env_float(name: str, default: float) -> float:
@@ -115,6 +119,9 @@ def _new_session_state() -> Dict[str, Any]:
         "away_count": 0,
         "blocked_start": None,
         "last_phone_emit": 0.0,
+        # Capture time (seconds) of the last successfully processed frame.
+        # Used to detect network gaps and reset timers when continuity breaks.
+        "last_frame_capture_ts": None,
     }
 
 
@@ -175,16 +182,15 @@ if YOLO is not None:
 
 _face_detector = mp.solutions.face_detection.FaceDetection(
     model_selection=1,
-    min_detection_confidence=FACE_MIN_CONF,
+    min_detection_confidence=max(FACE_MIN_CONF, 0.65),
 )
 _face_mesh = mp.solutions.face_mesh.FaceMesh(
     static_image_mode=False,
-    max_num_faces=5,
+    max_num_faces=3,
     refine_landmarks=True,
-    min_detection_confidence=FACE_MIN_CONF,
-    min_tracking_confidence=FACE_MIN_CONF,
+    min_detection_confidence=max(FACE_MIN_CONF, 0.65),
+    min_tracking_confidence=max(FACE_MIN_CONF, 0.65),
 )
-_haar_face = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
 
 
 def _resize_for_inference(img_bgr: np.ndarray) -> np.ndarray:
@@ -209,13 +215,18 @@ def _enhance_frame(img_bgr: np.ndarray) -> np.ndarray:
 
 def _face_count_with_details(img_bgr: np.ndarray) -> Tuple[int, Dict[str, int], Any]:
     """Returns (face_count, detail_dict, mesh_result).
-    mesh_result is returned so _gaze_signal can reuse it without a second FaceMesh call."""
+
+    Face count uses consensus between FaceDetection and FaceMesh:
+    - For presence (0 vs >=1): either model seeing a face is enough (avoid false negatives).
+    - For multiple faces: BOTH models must agree count > 1 (avoids Haar/scale false positives).
+    Haar Cascade is intentionally excluded — it double-detects the same face at different
+    scales and is the primary source of single-person false multi-face violations.
+    """
     try:
         img = _enhance_frame(img_bgr)
         rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         det_count = 0
         mesh_count = 0
-        haar_count = 0
 
         result = _face_detector.process(rgb)
         if result and result.detections:
@@ -225,14 +236,22 @@ def _face_count_with_details(img_bgr: np.ndarray) -> Tuple[int, Dict[str, int], 
         if mesh and mesh.multi_face_landmarks:
             mesh_count = len(mesh.multi_face_landmarks)
 
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        faces = _haar_face.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(30, 30))
-        haar_count = len(faces)
+        # Presence: if either model sees a face, a face is there.
+        # Count: use the lower of the two to avoid false multi-face triggers.
+        # If one model says 1 and the other says 2, we trust the conservative answer (1).
+        if det_count == 0 and mesh_count == 0:
+            face_count = 0
+        elif det_count == 0 or mesh_count == 0:
+            # One model sees a face, the other doesn't — a face is present but count is 1.
+            face_count = max(det_count, mesh_count)
+            face_count = min(face_count, 1)
+        else:
+            # Both models agree a face exists; take the minimum to avoid false multiples.
+            face_count = min(det_count, mesh_count)
 
-        best = max(det_count, mesh_count, haar_count)
-        return best, {"mediapipeFaceDetection": det_count, "mediapipeFaceMesh": mesh_count, "haar": haar_count}, mesh
+        return face_count, {"mediapipeFaceDetection": det_count, "mediapipeFaceMesh": mesh_count}, mesh
     except Exception:
-        return 0, {"mediapipeFaceDetection": 0, "mediapipeFaceMesh": 0, "haar": 0}, None
+        return 0, {"mediapipeFaceDetection": 0, "mediapipeFaceMesh": 0}, None
 
 
 def _gaze_signal(img_bgr: np.ndarray, mesh_result: Any = None) -> Tuple[bool, str, float]:
@@ -364,7 +383,35 @@ def analyze_request(req: AnalyzeRequest) -> Dict[str, Any]:
 
     sid = req.sessionId or "default"
     state = _session_state[sid]
-    now = time.time()
+
+    # Use the browser's frame capture time (seconds) as the authoritative clock.
+    # This prevents network delays and backoff gaps from inflating violation timers.
+    # If capturedAt is absent or unreasonably far from server time (>60s drift), fall back to now.
+    server_now = time.time()
+    if req.capturedAt is not None:
+        # capturedAt arrives as milliseconds
+        frame_ts = req.capturedAt / 1000.0
+        if abs(frame_ts - server_now) <= 60.0:
+            now = frame_ts
+        else:
+            now = server_now
+    else:
+        now = server_now
+
+    # If the gap between this frame's capture time and the previous frame's capture time
+    # exceeds the longest violation threshold, the candidate's state during that gap is
+    # unknown (network drop, backoff, tab hidden). Reset all duration-based timers so
+    # the gap doesn't count toward any violation window.
+    GAP_RESET_THRESHOLD = max(NO_FACE_SECONDS, MULTI_FACE_SECONDS, LOOK_AWAY_SECONDS) + 2.0
+    last_ts = state.get("last_frame_capture_ts")
+    if last_ts is not None and (now - float(last_ts)) > GAP_RESET_THRESHOLD:
+        state["no_face_start"] = None
+        state["multi_face_start"] = None
+        state["away_start"] = None
+        state["blocked_start"] = None
+        if CV_DEBUG:
+            logger.info("[PROCTOR_CV] session=%s gap=%.1fs > %.1fs — timers reset", sid, now - float(last_ts), GAP_RESET_THRESHOLD)
+    state["last_frame_capture_ts"] = now
 
     violations: List[Dict[str, Any]] = []
     objects: List[Dict[str, Any]] = []
