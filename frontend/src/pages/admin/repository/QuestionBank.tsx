@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../../services/api';
@@ -17,6 +17,8 @@ import {
   Check,
   Pencil,
 } from 'lucide-react';
+import Icon from '../../../components/Icon';
+import CustomSelect from '../../../components/CustomSelect';
 import type {
   Pagination,
   RepositoryCategory,
@@ -52,34 +54,34 @@ function qTitle(q: RepositoryQuestion): string {
   return (q as { title: string }).title || '';
 }
 
-/* ── Type icon ── */
+/* ── Type icon — gradient orange theme ── */
 function TypeIcon({ cat }: { cat: RepositoryCategory }) {
   if (cat === 'MCQ') return (
-    <div style={{ width:'32px', height:'32px', borderRadius:'8px', backgroundColor:'#EFF6FF', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-      <CheckSquare width={14} height={14} stroke="#3B82F6" strokeWidth={2} />
+    <div style={{ width:'38px', height:'38px', borderRadius:'10px', background:'linear-gradient(135deg,#F59E0B,#D97706)', boxShadow:'0 2px 6px rgba(245,158,11,0.35)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+      <CheckSquare width={18} height={18} stroke="white" strokeWidth={2} />
     </div>
   );
   if (cat === 'CODING') return (
-    <div style={{ width:'32px', height:'32px', borderRadius:'8px', backgroundColor:'#F5F3FF', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-      <Code2 width={14} height={14} stroke="#7C3AED" strokeWidth={2} />
+    <div style={{ width:'38px', height:'38px', borderRadius:'10px', background:'linear-gradient(135deg,#FB923C,#F59E0B)', boxShadow:'0 2px 6px rgba(251,146,60,0.35)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+      <Code2 width={18} height={18} stroke="white" strokeWidth={2} />
     </div>
   );
   return (
-    <div style={{ width:'32px', height:'32px', borderRadius:'8px', backgroundColor:'#FFFBEB', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-      <Brain width={14} height={14} stroke="#F59E0B" strokeWidth={2} />
+    <div style={{ width:'38px', height:'38px', borderRadius:'10px', background:'linear-gradient(135deg,#D97706,#B45309)', boxShadow:'0 2px 6px rgba(180,83,9,0.3)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+      <Brain width={18} height={18} stroke="white" strokeWidth={2} />
     </div>
   );
 }
 
 /* ── Difficulty badge ── */
 const DIFF_CFG: Record<Difficulty, { bg: string; color: string }> = {
-  easy:   { bg:'#ECFDF5', color:'#059669' },
+  easy:   { bg:'#FFFBEB', color:'#D97706' },
   medium: { bg:'#FEF3C7', color:'#D97706' },
   hard:   { bg:'#FEF2F2', color:'#DC2626' },
 };
 const CAT_CFG: Record<RepositoryCategory, { bg: string; color: string }> = {
-  MCQ:        { bg:'#EFF6FF', color:'#1D4ED8' },
-  CODING:     { bg:'#F5F3FF', color:'#7C3AED' },
+  MCQ:        { bg:'#FFFBEB', color:'#D97706' },
+  CODING:     { bg:'#FFF7ED', color:'#C2410C' },
   BEHAVIORAL: { bg:'#FEF3C7', color:'#92400E' },
 };
 function Badge({ label, bg, color }: { label: string; bg: string; color: string }) {
@@ -93,7 +95,7 @@ function Badge({ label, bg, color }: { label: string; bg: string; color: string 
 /* ── Toggle icon ── */
 function ToggleIcon({ enabled }: { enabled: boolean }) {
   return enabled
-    ? <ToggleRight width={22} height={22} stroke="#10B981" strokeWidth={1.5} />
+    ? <ToggleRight width={22} height={22} stroke="#F59E0B" strokeWidth={1.5} />
     : <ToggleLeft  width={22} height={22} stroke="#D1D5DB" strokeWidth={1.5} />;
 }
 
@@ -116,6 +118,8 @@ export default function QuestionBank() {
   const [draftSearch,  setDraftSearch]  = useState('');
   const [selectedDiffs,setSelectedDiffs]= useState<Set<Difficulty>>(new Set(['easy','medium','hard']));
   const [showNewDrop,  setShowNewDrop]  = useState(false);
+  const [sortOrder,    setSortOrder]    = useState<'most-used'|'newest'|'marks'>('most-used');
+  const [showSortDrop, setShowSortDrop] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
   const [editBeh, setEditBeh] = useState({
     open: false, id: '', title: '', description: '', marks: 5,
@@ -395,17 +399,24 @@ export default function QuestionBank() {
         <div style={{
           display:'flex', alignItems:'center', justifyContent:'space-between',
           padding:'10px 16px', marginBottom:'16px', borderRadius:'10px',
-          backgroundColor:'#EFF6FF', border:'1.5px solid #BFDBFE',
+          backgroundColor:'#FFFBEB', border:'1.5px solid #FDE68A',
         }}>
           <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-            <LibraryBig width={16} height={16} stroke="#3B82F6" strokeWidth={1.5} />
-            <span style={{ fontSize:'13px', color:'#1E40AF', fontWeight:500 }}>
+            <LibraryBig width={16} height={16} stroke="#D97706" strokeWidth={1.5} />
+            <span style={{ fontSize:'13px', color:'#D97706', fontWeight:500 }}>
               Adding questions to: <strong>{fromTestName ?? 'test'}</strong>
-              <span style={{ color:'#3B82F6', fontWeight:400, marginLeft:'6px' }}>— click Add on any question to add it directly</span>
+              <span style={{ color:'#F59E0B', fontWeight:400, marginLeft:'6px' }}>— click Add on any question to add it directly</span>
             </span>
           </div>
         </div>
       )}
+
+      {/* ── Breadcrumb ── */}
+      <div style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'12px', color:'#98A2B5', marginBottom:'16px' }}>
+        <span style={{ cursor:'pointer', color:'#6A7387' }} onClick={() => navigate('/admin/dashboard')}>Workspace</span>
+        <span>›</span>
+        <span>Question Library</span>
+      </div>
 
       {/* ── HEADER ── */}
       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:'20px' }}>
@@ -416,36 +427,30 @@ export default function QuestionBank() {
             title="Go back"
             className="back-circle-btn"
             style={{
-              width:'34px', height:'34px', borderRadius:'50%', border:'1.5px solid #E5E7EB',
+              width:'34px', height:'34px', borderRadius:'50%', border:'1.5px solid #FDE68A',
               backgroundColor:'white', display:'flex', alignItems:'center', justifyContent:'center',
               cursor:'pointer', flexShrink:0, marginTop:'4px',
               transition:'background-color 0.18s, border-color 0.18s, transform 0.18s',
             }}
             onMouseEnter={e => {
-              e.currentTarget.style.backgroundColor = '#F3F4F6';
-              e.currentTarget.style.borderColor = '#9CA3AF';
+              e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.1)';
+              e.currentTarget.style.borderColor = '#F59E0B';
               e.currentTarget.style.transform = 'scale(1.1)';
             }}
             onMouseLeave={e => {
               e.currentTarget.style.backgroundColor = 'white';
-              e.currentTarget.style.borderColor = '#E5E7EB';
+              e.currentTarget.style.borderColor = '#FDE68A';
               e.currentTarget.style.transform = 'scale(1)';
             }}
             onMouseDown={e => { e.currentTarget.style.transform = 'scale(0.93)'; }}
             onMouseUp={e => { e.currentTarget.style.transform = 'scale(1.1)'; }}
           >
-            <ArrowLeft width={15} height={15} stroke="#6B7280" strokeWidth={2} />
+            <ArrowLeft width={15} height={15} stroke="#D97706" strokeWidth={2} />
           </button>
 
           <div>
-            {/* Breadcrumb */}
-            <div style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'12px', color:'#9CA3AF', marginBottom:'6px' }}>
-              <span style={{ cursor:'pointer', color:'#6B7280' }} onClick={() => navigate('/admin/dashboard')}>Workspace</span>
-              <span>›</span>
-              <span>Question Library</span>
-            </div>
-            <h1 style={{ fontSize:'26px', fontWeight:700, color:'#111827', margin:'0 0 4px' }}>Question Library</h1>
-            <p style={{ fontSize:'13px', color:'#6B7280', margin:0 }}>Reusable question bank across all tests.</p>
+            <h1 style={{ fontSize:'32px', fontWeight:700, letterSpacing:'-0.02em', color:'#11162A', margin:'0 0 4px', lineHeight:1.2 }}>Question Library</h1>
+            <p style={{ fontSize:'13px', color:'#6A7387', margin:0 }}>Reusable question bank across all tests.</p>
           </div>
         </div>
 
@@ -456,9 +461,9 @@ export default function QuestionBank() {
             style={{
               display:'flex', alignItems:'center', gap:'5px', padding:'8px 16px',
               border:'1.5px solid #E5E7EB', borderRadius:'9px', backgroundColor:'white',
-              fontSize:'13px', fontWeight:500, color:'#374151', cursor:'pointer',
+              fontSize:'13px', fontWeight:500, color:'#434B5E', cursor:'pointer',
             }}>
-            <FileDown width={14} height={14} strokeWidth={2} />
+            <FileDown width={14} height={14} strokeWidth={2} color="#F59E0B" />
             Import CSV
           </button>
 
@@ -469,7 +474,7 @@ export default function QuestionBank() {
                 onClick={() => navigate('/admin/mcq/new')}
                 style={{
                   display:'flex', alignItems:'center', gap:'5px', padding:'8px 16px',
-                  border:'none', backgroundColor:'#10B981', fontSize:'13px', fontWeight:600,
+                  border:'none', backgroundColor:'#F59E0B', fontSize:'13px', fontWeight:600,
                   color:'white', cursor:'pointer',
                 }}>
                 <Plus width={13} height={13} stroke="white" strokeWidth={2.5} />
@@ -478,8 +483,8 @@ export default function QuestionBank() {
               <button
                 onClick={() => setShowNewDrop(p=>!p)}
                 style={{
-                  padding:'8px 10px', border:'none', borderLeft:'1px solid #059669',
-                  backgroundColor:'#10B981', color:'white', cursor:'pointer',
+                  padding:'8px 10px', border:'none', borderLeft:'1px solid #D97706',
+                  backgroundColor:'#F59E0B', color:'white', cursor:'pointer',
                 }}>
                 <ChevronDown width={12} height={12} stroke="white" strokeWidth={2} />
               </button>
@@ -496,10 +501,10 @@ export default function QuestionBank() {
                   { label:'Behavioral question', icon:'💬',   path:'/admin/behavioral/new' },
                 ].map(opt => (
                   <button key={opt.label} onClick={() => { setShowNewDrop(false); navigate(opt.path); }}
-                    style={{ width:'100%', textAlign:'left', padding:'10px 14px', border:'none', backgroundColor:'white', fontSize:'13px', color:'#374151', cursor:'pointer', borderBottom:'1px solid #F3F4F6', display:'flex', alignItems:'center', gap:'8px' }}
-                    onMouseEnter={e=>(e.currentTarget.style.backgroundColor='#EDF0F7')}
+                    style={{ width:'100%', textAlign:'left', padding:'10px 14px', border:'none', backgroundColor:'white', fontSize:'13px', color:'#434B5E', cursor:'pointer', borderBottom:'1px solid #F3F4F6', display:'flex', alignItems:'center', gap:'8px' }}
+                    onMouseEnter={e=>(e.currentTarget.style.backgroundColor='rgba(245,158,11,0.06)')}
                     onMouseLeave={e=>(e.currentTarget.style.backgroundColor='white')}>
-                    <span style={{ fontSize:'11px', color:'#9CA3AF', width:'22px' }}>{opt.icon}</span>
+                    <span style={{ fontSize:'11px', color:'#98A2B5', width:'22px' }}>{opt.icon}</span>
                     {opt.label}
                   </button>
                 ))}
@@ -515,7 +520,7 @@ export default function QuestionBank() {
         {/* ── LEFT SIDEBAR ── */}
         <div style={{ minWidth:0, position:'sticky', top:0, maxHeight:'calc(100vh - 140px)', overflowY:'auto', paddingRight:'4px' }}>
           {/* CATEGORIES */}
-          <p style={{ fontSize:'10px', fontWeight:700, color:'#9CA3AF', letterSpacing:'0.08em', margin:'0 0 8px', paddingLeft:'4px' }}>
+          <p style={{ fontSize:'10px', fontWeight:700, color:'#98A2B5', letterSpacing:'0.08em', margin:'0 0 8px', paddingLeft:'4px' }}>
             CATEGORIES
           </p>
           {SIDEBAR_ITEMS.map(item => {
@@ -527,20 +532,26 @@ export default function QuestionBank() {
               <button key={item.id} onClick={() => handleSidebarClick(item)}
                 style={{
                   width:'100%', textAlign:'left', padding:'8px 10px', border:'none', borderRadius:'8px',
-                  backgroundColor: isActive ? '#111827' : 'transparent',
-                  color: isActive ? 'white' : '#374151',
+                  backgroundColor: isActive ? '#F59E0B' : 'transparent',
+                  color: isActive ? 'white' : '#434B5E',
                   fontSize:'13px', fontWeight: isActive ? 600 : 400,
                   cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between',
                   marginBottom:'2px', transition:'background-color 0.12s',
                 }}
-                onMouseEnter={e=>{ if(!isActive) e.currentTarget.style.backgroundColor='#EDF0F7'; }}
+                onMouseEnter={e=>{ if(!isActive) e.currentTarget.style.backgroundColor='rgba(245,158,11,0.08)'; }}
                 onMouseLeave={e=>{ if(!isActive) e.currentTarget.style.backgroundColor='transparent'; }}>
-                <span>{item.label}</span>
+                <span style={{ display:'flex', alignItems:'center', gap:'7px' }}>
+                  {item.id === 'MCQ'       && <Icon name="mcq-questions"          size={19} style={{ opacity: isActive ? 1 : 0.65 }} />}
+                  {item.id === 'CODING'    && <Icon name="coding"                 size={19} style={{ opacity: isActive ? 1 : 0.65 }} />}
+                  {item.id === 'BEHAVIORAL'&& <Icon name="behavioural-questions"  size={19} style={{ opacity: isActive ? 1 : 0.65 }} />}
+                  {item.id === 'all'       && <Icon name="question-library"       size={19} style={{ opacity: isActive ? 1 : 0.65 }} />}
+                  {item.label}
+                </span>
                 {cnt !== undefined && (
                   <span style={{
                     fontSize:'11px', padding:'1px 7px', borderRadius:'20px', fontWeight:600,
-                    backgroundColor: isActive ? '#374151' : '#F3F4F6',
-                    color: isActive ? 'white' : '#6B7280',
+                    backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : '#F3F4F6',
+                    color: isActive ? 'white' : '#6A7387',
                   }}>{cnt}</span>
                 )}
               </button>
@@ -549,24 +560,24 @@ export default function QuestionBank() {
 
           {/* FILTERS section */}
           <div style={{ height:'1px', backgroundColor:'#E5E7EB', margin:'16px 0 12px' }} />
-          <p style={{ fontSize:'10px', fontWeight:700, color:'#9CA3AF', letterSpacing:'0.08em', margin:'0 0 12px', paddingLeft:'4px' }}>
+          <p style={{ fontSize:'10px', fontWeight:700, color:'#98A2B5', letterSpacing:'0.08em', margin:'0 0 12px', paddingLeft:'4px' }}>
             FILTERS
           </p>
 
           {/* Skills filter */}
           <div style={{ marginBottom:'16px' }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'7px' }}>
-              <span style={{ fontSize:'12px', fontWeight:600, color:'#374151' }}>Skills</span>
+              <span style={{ fontSize:'12px', fontWeight:600, color:'#434B5E' }}>Skills</span>
               {selectedSkills.size > 0 && (
                 <button onClick={() => setSelectedSkills(new Set())}
-                  style={{ fontSize:'11px', fontWeight:500, color:'#10B981', border:'none', background:'none', cursor:'pointer', padding:0 }}>
+                  style={{ fontSize:'11px', fontWeight:500, color:'#F59E0B', border:'none', background:'none', cursor:'pointer', padding:0 }}>
                   Clear
                 </button>
               )}
             </div>
             <div style={{ position:'relative', marginBottom:'6px' }}>
               <Search style={{ position:'absolute', left:'7px', top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}
-                width={11} height={11} stroke="#9CA3AF" strokeWidth={1.5} />
+                width={11} height={11} stroke="#98A2B5" strokeWidth={1.5} />
               <input
                 value={skillSearch}
                 onChange={e => setSkillSearch(e.target.value)}
@@ -574,38 +585,38 @@ export default function QuestionBank() {
                 style={{
                   width:'100%', padding:'5px 8px 5px 23px', borderRadius:'7px',
                   border:'1px solid #E5E7EB', backgroundColor:'white', fontSize:'11px',
-                  color:'#374151', outline:'none', boxSizing:'border-box',
+                  color:'#434B5E', outline:'none', boxSizing:'border-box',
                 }}
               />
             </div>
             {filteredSkillsList.slice(0, showAllSkills ? undefined : 8).map(skill => (
               <label key={skill.name} onClick={() => toggleSkill(skill.name)}
                 style={{ display:'flex', alignItems:'center', gap:'7px', padding:'3px 10px', cursor:'pointer', borderRadius:'6px', marginBottom:'1px' }}
-                onMouseEnter={e=>(e.currentTarget.style.backgroundColor='#EDF0F7')}
+                onMouseEnter={e=>(e.currentTarget.style.backgroundColor='rgba(245,158,11,0.08)')}
                 onMouseLeave={e=>(e.currentTarget.style.backgroundColor='transparent')}>
                 <div style={{
                   width:'14px', height:'14px', borderRadius:'3px', flexShrink:0,
-                  border: selectedSkills.has(skill.name) ? '2px solid #10B981' : '2px solid #D1D5DB',
-                  backgroundColor: selectedSkills.has(skill.name) ? '#10B981' : 'white',
+                  border: selectedSkills.has(skill.name) ? '2px solid #F59E0B' : '2px solid #D1D5DB',
+                  backgroundColor: selectedSkills.has(skill.name) ? '#F59E0B' : 'white',
                   display:'flex', alignItems:'center', justifyContent:'center',
                 }}>
                   {selectedSkills.has(skill.name) && (
                     <Check width={8} height={8} stroke="white" strokeWidth={2.5} />
                   )}
                 </div>
-                <span style={{ fontSize:'12px', color:'#374151', flex:1, userSelect:'none', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{skill.name}</span>
-                <span style={{ fontSize:'11px', color:'#9CA3AF', flexShrink:0 }}>({skill.count})</span>
+                <span style={{ fontSize:'12px', color:'#434B5E', flex:1, userSelect:'none', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{skill.name}</span>
+                <span style={{ fontSize:'11px', color:'#98A2B5', flexShrink:0 }}>({skill.count})</span>
               </label>
             ))}
             {filteredSkillsList.length === 0 && skillSearch.trim() && (
-              <p style={{ fontSize:'11px', color:'#9CA3AF', padding:'4px 10px', margin:0 }}>No skills found</p>
+              <p style={{ fontSize:'11px', color:'#98A2B5', padding:'4px 10px', margin:0 }}>No skills found</p>
             )}
             {!skillSearch.trim() && filteredSkillsList.length === 0 && (
-              <p style={{ fontSize:'11px', color:'#9CA3AF', padding:'4px 10px', margin:0 }}>No topics yet</p>
+              <p style={{ fontSize:'11px', color:'#98A2B5', padding:'4px 10px', margin:0 }}>No topics yet</p>
             )}
             {filteredSkillsList.length > 8 && (
               <button onClick={() => setShowAllSkills(v=>!v)}
-                style={{ marginTop:'4px', marginLeft:'10px', fontSize:'11px', color:'#10B981', border:'none', background:'none', cursor:'pointer', padding:0, fontWeight:500 }}>
+                style={{ marginTop:'4px', marginLeft:'10px', fontSize:'11px', color:'#F59E0B', border:'none', background:'none', cursor:'pointer', padding:0, fontWeight:500 }}>
                 {showAllSkills ? '− Show less' : `+ ${filteredSkillsList.length - 8} more`}
               </button>
             )}
@@ -614,10 +625,10 @@ export default function QuestionBank() {
           {/* Difficulty filter */}
           <div>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'7px' }}>
-              <span style={{ fontSize:'12px', fontWeight:600, color:'#374151' }}>Difficulty</span>
+              <span style={{ fontSize:'12px', fontWeight:600, color:'#434B5E' }}>Difficulty</span>
               {selectedDiffs.size < 3 && (
                 <button onClick={() => setSelectedDiffs(new Set(['easy','medium','hard']))}
-                  style={{ fontSize:'11px', fontWeight:500, color:'#10B981', border:'none', background:'none', cursor:'pointer', padding:0 }}>
+                  style={{ fontSize:'11px', fontWeight:500, color:'#F59E0B', border:'none', background:'none', cursor:'pointer', padding:0 }}>
                   Clear
                 </button>
               )}
@@ -625,20 +636,20 @@ export default function QuestionBank() {
             {(['easy','medium','hard'] as Difficulty[]).map(d => (
               <label key={d} onClick={() => toggleDiff(d)}
                 style={{ display:'flex', alignItems:'center', gap:'7px', padding:'3px 10px', cursor:'pointer', borderRadius:'6px', marginBottom:'1px' }}
-                onMouseEnter={e=>(e.currentTarget.style.backgroundColor='#EDF0F7')}
+                onMouseEnter={e=>(e.currentTarget.style.backgroundColor='rgba(245,158,11,0.08)')}
                 onMouseLeave={e=>(e.currentTarget.style.backgroundColor='transparent')}>
                 <div style={{
                   width:'14px', height:'14px', borderRadius:'3px', flexShrink:0,
-                  border: selectedDiffs.has(d) ? '2px solid #10B981' : '2px solid #D1D5DB',
-                  backgroundColor: selectedDiffs.has(d) ? '#10B981' : 'white',
+                  border: selectedDiffs.has(d) ? '2px solid #F59E0B' : '2px solid #D1D5DB',
+                  backgroundColor: selectedDiffs.has(d) ? '#F59E0B' : 'white',
                   display:'flex', alignItems:'center', justifyContent:'center',
                 }}>
                   {selectedDiffs.has(d) && (
                     <Check width={8} height={8} stroke="white" strokeWidth={2.5} />
                   )}
                 </div>
-                <span style={{ fontSize:'12px', color:'#374151', textTransform:'capitalize', flex:1, userSelect:'none' }}>{d}</span>
-                <span style={{ fontSize:'11px', color:'#9CA3AF', flexShrink:0 }}>({diffCounts[d] || 0})</span>
+                <span style={{ fontSize:'12px', color:'#434B5E', textTransform:'capitalize', flex:1, userSelect:'none' }}>{d}</span>
+                <span style={{ fontSize:'11px', color:'#98A2B5', flexShrink:0 }}>({diffCounts[d] || 0})</span>
               </label>
             ))}
           </div>
@@ -651,7 +662,7 @@ export default function QuestionBank() {
             {/* Search */}
             <div style={{ position:'relative', flex:1 }}>
               <Search style={{ position:'absolute', left:'12px', top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}
-                width={14} height={14} stroke="#9CA3AF" strokeWidth={1.5} />
+                width={14} height={14} stroke="#98A2B5" strokeWidth={1.5} />
               <input
                 value={draftSearch}
                 onChange={e => setDraftSearch(e.target.value)}
@@ -660,33 +671,59 @@ export default function QuestionBank() {
                 style={{
                   width:'100%', padding:'9px 12px 9px 36px', borderRadius:'9px',
                   border:'1px solid #E5E7EB', backgroundColor:'white', fontSize:'13px',
-                  color:'#374151', outline:'none', boxSizing:'border-box',
+                  color:'#434B5E', outline:'none', boxSizing:'border-box',
                 }}
               />
             </div>
             {/* Count badge */}
-            <div style={{ padding:'6px 14px', borderRadius:'20px', backgroundColor:'#F3F4F6', fontSize:'12px', fontWeight:500, color:'#374151', whiteSpace:'nowrap', flexShrink:0 }}>
+            <div style={{ padding:'6px 14px', borderRadius:'20px', backgroundColor:'#F3F4F6', fontSize:'12px', fontWeight:500, color:'#434B5E', whiteSpace:'nowrap', flexShrink:0 }}>
               {loading ? '…' : totalShown} questions
             </div>
             {/* Sort */}
-            <select
-              style={{
-                padding:'8px 12px', borderRadius:'9px', border:'1px solid #E5E7EB',
-                backgroundColor:'white', fontSize:'13px', color:'#374151', cursor:'pointer', flexShrink:0,
-              }}>
-              <option value="most-used">Most used</option>
-              <option value="newest">Newest</option>
-              <option value="marks">By marks</option>
-            </select>
+            {showSortDrop && <div className="fixed inset-0 z-20" onClick={() => setShowSortDrop(false)} />}
+            <div style={{ position:'relative', flexShrink:0, zIndex:21 }}>
+              <button
+                onClick={() => setShowSortDrop(v => !v)}
+                style={{
+                  display:'flex', alignItems:'center', gap:'6px', padding:'8px 12px',
+                  borderRadius:'9px', border:'1px solid #E5E7EB', backgroundColor:'white',
+                  fontSize:'13px', color:'#434B5E', cursor:'pointer', whiteSpace:'nowrap',
+                }}>
+                {sortOrder === 'most-used' ? 'Most used' : sortOrder === 'newest' ? 'Newest' : 'By marks'}
+                <ChevronDown width={13} height={13} stroke="#98A2B5" strokeWidth={2} />
+              </button>
+              {showSortDrop && (
+                <div style={{
+                  position:'absolute', right:0, top:'calc(100% + 6px)', zIndex:30,
+                  backgroundColor:'white', borderRadius:'10px', padding:'4px',
+                  boxShadow:'0 8px 24px rgba(0,0,0,0.12)', border:'1px solid #E5E7EB', minWidth:'140px',
+                }}>
+                  {([['most-used','Most used'],['newest','Newest'],['marks','By marks']] as const).map(([val, label]) => (
+                    <button key={val}
+                      onClick={() => { setSortOrder(val); setShowSortDrop(false); }}
+                      style={{
+                        width:'100%', textAlign:'left', padding:'8px 12px', border:'none',
+                        borderRadius:'7px', fontSize:'13px', cursor:'pointer',
+                        backgroundColor: sortOrder === val ? '#F59E0B' : 'transparent',
+                        color: sortOrder === val ? 'white' : '#434B5E',
+                        fontWeight: sortOrder === val ? 600 : 400,
+                      }}
+                      onMouseEnter={e => { if (sortOrder !== val) e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.08)'; }}
+                      onMouseLeave={e => { if (sortOrder !== val) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                    >{label}</button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Question list */}
           {loading ? (
             <div style={{ display:'flex', justifyContent:'center', padding:'60px 0' }}>
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor:'#10B981' }} />
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor:'#F59E0B' }} />
             </div>
           ) : visibleQuestions.length === 0 ? (
-            <div style={{ textAlign:'center', padding:'60px 0', color:'#9CA3AF', fontSize:'14px' }}>
+            <div style={{ textAlign:'center', padding:'60px 0', color:'#98A2B5', fontSize:'14px' }}>
               No questions found
             </div>
           ) : (
@@ -714,19 +751,19 @@ export default function QuestionBank() {
 
                     {/* Question content */}
                     <div style={{ flex:1, minWidth:0 }}>
-                      <p style={{ fontSize:'14px', fontWeight:600, color:'#111827', margin:'0 0 6px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      <p style={{ fontSize:'14px', fontWeight:600, color:'#11162A', margin:'0 0 6px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                         {qTitle(q)}
                       </p>
                       <div style={{ display:'flex', flexWrap:'wrap', gap:'5px', alignItems:'center' }}>
                         <Badge label={catLabel} {...CAT_CFG[cat]} />
                         <Badge label={diff.charAt(0).toUpperCase()+diff.slice(1)} {...DIFF_CFG[diff]} />
                         {q.topic && (
-                          <span style={{ fontSize:'11px', color:'#6B7280', padding:'2px 8px', borderRadius:'20px', backgroundColor:'#F3F4F6' }}>
+                          <span style={{ fontSize:'11px', color:'#6A7387', padding:'2px 8px', borderRadius:'20px', backgroundColor:'#F3F4F6' }}>
                             {q.topic}
                           </span>
                         )}
                         {q.tags.slice(0,2).map(tag => (
-                          <span key={tag} style={{ fontSize:'11px', color:'#6B7280', padding:'2px 8px', borderRadius:'20px', backgroundColor:'#F3F4F6' }}>
+                          <span key={tag} style={{ fontSize:'11px', color:'#6A7387', padding:'2px 8px', borderRadius:'20px', backgroundColor:'#F3F4F6' }}>
                             {tag}
                           </span>
                         ))}
@@ -737,21 +774,21 @@ export default function QuestionBank() {
                     <div style={{ display:'flex', alignItems:'center', gap:'16px', flexShrink:0 }}>
                       {/* Uses */}
                       <div style={{ textAlign:'right' }}>
-                        <p style={{ fontSize:'15px', fontWeight:700, color:'#111827', margin:0, lineHeight:1 }}>{uses}</p>
-                        <p style={{ fontSize:'10px', color:'#9CA3AF', margin:'2px 0 0' }}>uses</p>
+                        <p style={{ fontSize:'15px', fontWeight:700, color:'#11162A', margin:0, lineHeight:1 }}>{uses}</p>
+                        <p style={{ fontSize:'10px', color:'#98A2B5', margin:'2px 0 0' }}>uses</p>
                       </div>
                       {/* Correct % */}
                       {rate && (
                         <div style={{ textAlign:'right' }}>
-                          <p style={{ fontSize:'15px', fontWeight:700, color:'#10B981', margin:0, lineHeight:1 }}>{rate}</p>
-                          <p style={{ fontSize:'10px', color:'#9CA3AF', margin:'2px 0 0' }}>correct</p>
+                          <p style={{ fontSize:'15px', fontWeight:700, color:'#F59E0B', margin:0, lineHeight:1 }}>{rate}</p>
+                          <p style={{ fontSize:'10px', color:'#98A2B5', margin:'2px 0 0' }}>correct</p>
                         </div>
                       )}
                       {/* Marks (when no rate) */}
                       {!rate && (
                         <div style={{ textAlign:'right' }}>
-                          <p style={{ fontSize:'15px', fontWeight:700, color:'#6B7280', margin:0, lineHeight:1 }}>{q.marks}</p>
-                          <p style={{ fontSize:'10px', color:'#9CA3AF', margin:'2px 0 0' }}>marks</p>
+                          <p style={{ fontSize:'15px', fontWeight:700, color:'#6A7387', margin:0, lineHeight:1 }}>{q.marks}</p>
+                          <p style={{ fontSize:'10px', color:'#98A2B5', margin:'2px 0 0' }}>marks</p>
                         </div>
                       )}
                       {/* Add to test */}
@@ -764,11 +801,11 @@ export default function QuestionBank() {
                             onClick={() => fromTestId ? void handleAddDirectToTest(q, fromTestId) : openAddToTest(q)}
                             disabled={isAddingThis}
                             title={fromTestId ? `Add to ${fromTestName ?? 'test'}` : 'Add to test'}
-                            style={{ padding:'6px 10px', borderRadius:'7px', border:'1.5px solid #D1FAE5', backgroundColor:'#ECFDF5', cursor: isAddingThis ? 'not-allowed' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'4px', fontSize:'12px', fontWeight:600, color:'#059669', opacity: isAddingThis ? 0.6 : 1 }}>
+                            style={{ padding:'6px 10px', borderRadius:'7px', border:'1.5px solid #FEF3C7', backgroundColor:'#FFFBEB', cursor: isAddingThis ? 'not-allowed' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'4px', fontSize:'12px', fontWeight:600, color:'#D97706', opacity: isAddingThis ? 0.6 : 1 }}>
                             {isAddingThis ? (
-                              <div className="animate-spin rounded-full h-3 w-3 border-b-2" style={{ borderColor:'#059669' }} />
+                              <div className="animate-spin rounded-full h-3 w-3 border-b-2" style={{ borderColor:'#D97706' }} />
                             ) : (
-                              <Plus width={13} height={13} stroke="#059669" strokeWidth={2.5} />
+                              <Plus width={13} height={13} stroke="#D97706" strokeWidth={2.5} />
                             )}
                             Add
                           </button>
@@ -783,8 +820,8 @@ export default function QuestionBank() {
                       {/* Edit */}
                       <button onClick={() => handleEdit(q)}
                         title="Edit question"
-                        style={{ padding:'6px 10px', borderRadius:'7px', border:'1.5px solid #E5E7EB', backgroundColor:'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'4px', fontSize:'12px', fontWeight:500, color:'#374151' }}>
-                        <Pencil width={13} height={13} stroke="#6B7280" strokeWidth={1.5} />
+                        style={{ padding:'6px 10px', borderRadius:'7px', border:'1.5px solid #E5E7EB', backgroundColor:'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'4px', fontSize:'12px', fontWeight:500, color:'#434B5E' }}>
+                        <Pencil width={13} height={13} stroke="#6A7387" strokeWidth={1.5} />
                         Edit
                       </button>
                     </div>
@@ -798,12 +835,12 @@ export default function QuestionBank() {
           {pagination && pagination.totalPages > 1 && (
             <div style={{ display:'flex', justifyContent:'center', alignItems:'center', gap:'8px', marginTop:'20px' }}>
               <button onClick={() => setPage(p=>Math.max(1,p-1))} disabled={page===1}
-                style={{ padding:'7px 16px', borderRadius:'8px', border:'1.5px solid #E5E7EB', backgroundColor:'white', fontSize:'13px', color: page===1?'#9CA3AF':'#374151', cursor: page===1?'not-allowed':'pointer' }}>
+                style={{ padding:'7px 16px', borderRadius:'8px', border:'1.5px solid #E5E7EB', backgroundColor:'white', fontSize:'13px', color: page===1?'#98A2B5':'#434B5E', cursor: page===1?'not-allowed':'pointer' }}>
                 Previous
               </button>
-              <span style={{ fontSize:'13px', color:'#6B7280' }}>Page {page} of {pagination.totalPages}</span>
+              <span style={{ fontSize:'13px', color:'#6A7387' }}>Page {page} of {pagination.totalPages}</span>
               <button onClick={() => setPage(p=>Math.min(pagination.totalPages,p+1))} disabled={page===pagination.totalPages}
-                style={{ padding:'7px 16px', borderRadius:'8px', border:'1.5px solid #E5E7EB', backgroundColor:'white', fontSize:'13px', color: page===pagination.totalPages?'#9CA3AF':'#374151', cursor: page===pagination.totalPages?'not-allowed':'pointer' }}>
+                style={{ padding:'7px 16px', borderRadius:'8px', border:'1.5px solid #E5E7EB', backgroundColor:'white', fontSize:'13px', color: page===pagination.totalPages?'#98A2B5':'#434B5E', cursor: page===pagination.totalPages?'not-allowed':'pointer' }}>
                 Next
               </button>
             </div>
@@ -820,18 +857,18 @@ export default function QuestionBank() {
 
             {/* Header */}
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'6px' }}>
-              <h2 style={{ fontSize:'18px', fontWeight:700, color:'#111827', margin:0 }}>Add to Test</h2>
+              <h2 style={{ fontSize:'18px', fontWeight:700, color:'#11162A', margin:0 }}>Add to Test</h2>
               <button onClick={() => setAddModal(null)}
-                style={{ border:'none', background:'none', fontSize:'22px', color:'#9CA3AF', cursor:'pointer', lineHeight:1 }}>×</button>
+                style={{ border:'none', background:'none', fontSize:'22px', color:'#98A2B5', cursor:'pointer', lineHeight:1 }}>×</button>
             </div>
-            <p style={{ fontSize:'13px', color:'#6B7280', margin:'0 0 16px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+            <p style={{ fontSize:'13px', color:'#6A7387', margin:'0 0 16px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
               {qTitle(addModal.q)}
             </p>
 
             {/* Search tests */}
             <div style={{ position:'relative', marginBottom:'12px' }}>
               <Search style={{ position:'absolute', left:'10px', top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}
-                width={13} height={13} stroke="#9CA3AF" strokeWidth={1.5} />
+                width={13} height={13} stroke="#98A2B5" strokeWidth={1.5} />
               <input
                 value={testSearch}
                 onChange={e => setTestSearch(e.target.value)}
@@ -839,7 +876,7 @@ export default function QuestionBank() {
                 style={{
                   width:'100%', padding:'8px 12px 8px 32px', borderRadius:'9px',
                   border:'1.5px solid #E5E7EB', backgroundColor:'#F9FAFB',
-                  fontSize:'13px', color:'#374151', outline:'none', boxSizing:'border-box',
+                  fontSize:'13px', color:'#434B5E', outline:'none', boxSizing:'border-box',
                 }}
               />
             </div>
@@ -848,10 +885,10 @@ export default function QuestionBank() {
             <div style={{ overflowY:'auto', flex:1 }}>
               {testsLoading ? (
                 <div style={{ display:'flex', justifyContent:'center', padding:'32px 0' }}>
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2" style={{ borderColor:'#10B981' }} />
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2" style={{ borderColor:'#F59E0B' }} />
                 </div>
               ) : testsList.length === 0 ? (
-                <p style={{ textAlign:'center', color:'#9CA3AF', fontSize:'13px', padding:'32px 0' }}>No tests found</p>
+                <p style={{ textAlign:'center', color:'#98A2B5', fontSize:'13px', padding:'32px 0' }}>No tests found</p>
               ) : (
                 testsList
                   .filter(t => !testSearch.trim() || t.name.toLowerCase().includes(testSearch.toLowerCase()))
@@ -867,20 +904,20 @@ export default function QuestionBank() {
                           cursor: addingTestId ? 'not-allowed' : 'pointer',
                           transition:'border-color 0.15s, background-color 0.15s',
                         }}
-                        onMouseEnter={e => { if (!addingTestId) { e.currentTarget.style.borderColor='#10B981'; e.currentTarget.style.backgroundColor='#F0FDF4'; } }}
+                        onMouseEnter={e => { if (!addingTestId) { e.currentTarget.style.borderColor='#F59E0B'; e.currentTarget.style.backgroundColor='#FFFBEB'; } }}
                         onMouseLeave={e => { e.currentTarget.style.borderColor='#E5E7EB'; e.currentTarget.style.backgroundColor='white'; }}>
                         <div style={{ minWidth:0 }}>
-                          <p style={{ fontSize:'14px', fontWeight:600, color:'#111827', margin:'0 0 2px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                          <p style={{ fontSize:'14px', fontWeight:600, color:'#11162A', margin:'0 0 2px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                             {t.name}
                           </p>
-                          <p style={{ fontSize:'11px', color:'#9CA3AF', margin:0 }}>
+                          <p style={{ fontSize:'11px', color:'#98A2B5', margin:0 }}>
                             {t.testCode} · {t.duration} min
                           </p>
                         </div>
                         {isAdding ? (
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2" style={{ borderColor:'#10B981', flexShrink:0 }} />
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2" style={{ borderColor:'#F59E0B', flexShrink:0 }} />
                         ) : (
-                          <Plus width={16} height={16} stroke="#10B981" strokeWidth={2.5} style={{ flexShrink:0 }} />
+                          <Plus width={16} height={16} stroke="#F59E0B" strokeWidth={2.5} style={{ flexShrink:0 }} />
                         )}
                       </div>
                     );
@@ -899,72 +936,71 @@ export default function QuestionBank() {
             onClick={e => e.stopPropagation()}>
 
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'20px' }}>
-              <h2 style={{ fontSize:'18px', fontWeight:700, color:'#111827', margin:0 }}>Edit Behavioral Question</h2>
+              <h2 style={{ fontSize:'18px', fontWeight:700, color:'#11162A', margin:0 }}>Edit Behavioral Question</h2>
               <button onClick={() => setEditBeh(p => ({ ...p, open: false }))}
-                style={{ border:'none', background:'none', fontSize:'22px', color:'#9CA3AF', cursor:'pointer', lineHeight:1 }}>×</button>
+                style={{ border:'none', background:'none', fontSize:'22px', color:'#98A2B5', cursor:'pointer', lineHeight:1 }}>×</button>
             </div>
 
             <div style={{ marginBottom:'14px' }}>
-              <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'#6B7280', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>
+              <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'#6A7387', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>
                 Title <span style={{ color:'#EF4444' }}>*</span>
               </label>
               <input value={editBeh.title}
                 onChange={e => setEditBeh(p => ({ ...p, title: e.target.value }))}
-                style={{ width:'100%', padding:'10px 12px', borderRadius:'10px', border:'1.5px solid #E5E7EB', fontSize:'14px', color:'#111827', outline:'none', boxSizing:'border-box' }}
+                style={{ width:'100%', padding:'10px 12px', borderRadius:'10px', border:'1.5px solid #E5E7EB', fontSize:'14px', color:'#11162A', outline:'none', boxSizing:'border-box' }}
                 placeholder="Question title" />
             </div>
 
             <div style={{ marginBottom:'14px' }}>
-              <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'#6B7280', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Description</label>
+              <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'#6A7387', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Description</label>
               <textarea value={editBeh.description}
                 onChange={e => setEditBeh(p => ({ ...p, description: e.target.value }))}
                 rows={3}
-                style={{ width:'100%', padding:'10px 12px', borderRadius:'10px', border:'1.5px solid #E5E7EB', fontSize:'14px', color:'#111827', outline:'none', resize:'none', boxSizing:'border-box' }}
+                style={{ width:'100%', padding:'10px 12px', borderRadius:'10px', border:'1.5px solid #E5E7EB', fontSize:'14px', color:'#11162A', outline:'none', resize:'none', boxSizing:'border-box' }}
                 placeholder="Optional description" />
             </div>
 
             <div style={{ marginBottom:'14px' }}>
-              <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'#6B7280', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Expected Answer</label>
+              <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'#6A7387', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Expected Answer</label>
               <textarea value={editBeh.expectedAnswer}
                 onChange={e => setEditBeh(p => ({ ...p, expectedAnswer: e.target.value }))}
                 rows={3}
-                style={{ width:'100%', padding:'10px 12px', borderRadius:'10px', border:'1.5px solid #E5E7EB', fontSize:'14px', color:'#111827', outline:'none', resize:'none', boxSizing:'border-box' }}
+                style={{ width:'100%', padding:'10px 12px', borderRadius:'10px', border:'1.5px solid #E5E7EB', fontSize:'14px', color:'#11162A', outline:'none', resize:'none', boxSizing:'border-box' }}
                 placeholder="What a good answer looks like" />
             </div>
 
             <div style={{ display:'grid', gridTemplateColumns:'1fr 80px 1fr', gap:'12px', marginBottom:'22px' }}>
               <div>
-                <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'#6B7280', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Difficulty</label>
-                <select value={editBeh.difficulty}
-                  onChange={e => setEditBeh(p => ({ ...p, difficulty: e.target.value as Difficulty }))}
-                  style={{ width:'100%', padding:'9px 12px', borderRadius:'10px', border:'1.5px solid #E5E7EB', fontSize:'13px', color:'#374151', backgroundColor:'white', outline:'none' }}>
-                  <option value="easy">Easy</option>
-                  <option value="medium">Medium</option>
-                  <option value="hard">Hard</option>
-                </select>
+                <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'#6A7387', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Difficulty</label>
+                <CustomSelect
+                  value={editBeh.difficulty}
+                  onChange={v => setEditBeh(p => ({ ...p, difficulty: v as Difficulty }))}
+                  options={[{ value:'easy', label:'Easy' }, { value:'medium', label:'Medium' }, { value:'hard', label:'Hard' }]}
+                  style={{ width:'100%' }}
+                />
               </div>
               <div>
-                <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'#6B7280', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Marks</label>
+                <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'#6A7387', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Marks</label>
                 <input type="number" min={1} value={editBeh.marks}
                   onChange={e => setEditBeh(p => ({ ...p, marks: Number(e.target.value) }))}
-                  style={{ width:'100%', padding:'9px 10px', borderRadius:'10px', border:'1.5px solid #E5E7EB', fontSize:'13px', color:'#374151', outline:'none', boxSizing:'border-box' }} />
+                  style={{ width:'100%', padding:'9px 10px', borderRadius:'10px', border:'1.5px solid #E5E7EB', fontSize:'13px', color:'#434B5E', outline:'none', boxSizing:'border-box' }} />
               </div>
               <div>
-                <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'#6B7280', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Topic</label>
+                <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'#6A7387', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Topic</label>
                 <input value={editBeh.topic}
                   onChange={e => setEditBeh(p => ({ ...p, topic: e.target.value }))}
-                  style={{ width:'100%', padding:'9px 12px', borderRadius:'10px', border:'1.5px solid #E5E7EB', fontSize:'13px', color:'#374151', outline:'none', boxSizing:'border-box' }}
+                  style={{ width:'100%', padding:'9px 12px', borderRadius:'10px', border:'1.5px solid #E5E7EB', fontSize:'13px', color:'#434B5E', outline:'none', boxSizing:'border-box' }}
                   placeholder="e.g. Leadership" />
               </div>
             </div>
 
             <div style={{ display:'flex', justifyContent:'flex-end', gap:'10px' }}>
               <button onClick={() => setEditBeh(p => ({ ...p, open: false }))}
-                style={{ padding:'10px 20px', borderRadius:'10px', border:'1.5px solid #E5E7EB', backgroundColor:'white', fontSize:'14px', fontWeight:500, color:'#374151', cursor:'pointer' }}>
+                style={{ padding:'10px 20px', borderRadius:'10px', border:'1.5px solid #E5E7EB', backgroundColor:'white', fontSize:'14px', fontWeight:500, color:'#434B5E', cursor:'pointer' }}>
                 Cancel
               </button>
               <button onClick={handleSaveBehavioral} disabled={savingBeh}
-                style={{ padding:'10px 20px', borderRadius:'10px', border:'none', backgroundColor: savingBeh ? '#6EE7B7' : '#10B981', fontSize:'14px', fontWeight:600, color:'white', cursor: savingBeh ? 'not-allowed' : 'pointer' }}>
+                style={{ padding:'10px 20px', borderRadius:'10px', border:'none', backgroundColor: savingBeh ? '#FDE68A' : '#F59E0B', fontSize:'14px', fontWeight:600, color:'white', cursor: savingBeh ? 'not-allowed' : 'pointer' }}>
                 {savingBeh ? 'Saving…' : 'Save changes'}
               </button>
             </div>

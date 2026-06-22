@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ProctorDashboard Component
  *
  * Admin dashboard for viewing proctoring data:
@@ -18,6 +18,7 @@ import { Image } from 'lucide-react';
 import api from '../../services/api';
 import { violationLabel } from '../../utils/violationLabels';
 import BackButton from '../../components/BackButton';
+import CustomSelect from '../../components/CustomSelect';
 
 const REPORT_EVENT_TYPES = new Set([
   'tab_switch',
@@ -155,7 +156,7 @@ export default function ProctorDashboard() {
   };
 
   const getTrustScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-600';
+    if (score >= 80) return 'text-amber-600';
     if (score >= 50) return 'text-yellow-600';
     return 'text-red-600';
   };
@@ -193,7 +194,7 @@ export default function ProctorDashboard() {
       <div className="flex items-start gap-3">
         <BackButton mt="4px" />
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Trust Score Report</h1>
+          <h1 style={{ fontSize: "32px", fontWeight: 700, letterSpacing: "-0.02em", color: "#11162A", margin: 0, lineHeight: 1.2 }}>Trust Score Report</h1>
           <p className="text-gray-500">
             {session.attempt.candidate.name} - {session.attempt.test.name} (Matrix-aligned trust report)
           </p>
@@ -236,25 +237,25 @@ export default function ProctorDashboard() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
             <div>
               <span className="text-gray-500">Camera:</span>
-              <span className={`ml-2 ${session.cameraEnabled ? 'text-green-600' : 'text-red-600'}`}>
+              <span className="ml-2 text-gray-900">
                 {session.cameraEnabled ? 'Enabled' : 'Disabled'}
               </span>
             </div>
             <div>
               <span className="text-gray-500">Microphone:</span>
-              <span className={`ml-2 ${session.microphoneEnabled ? 'text-green-600' : 'text-red-600'}`}>
+              <span className="ml-2 text-gray-900">
                 {session.microphoneEnabled ? 'Enabled' : 'Disabled'}
               </span>
             </div>
             <div>
               <span className="text-gray-500">Face Verified:</span>
-              <span className={`ml-2 ${session.faceVerified ? 'text-green-600' : 'text-yellow-600'}`}>
+              <span className="ml-2 text-gray-900">
                 {session.faceVerified ? 'Yes' : 'No'}
               </span>
             </div>
             <div>
               <span className="text-gray-500">External Monitor:</span>
-              <span className={`ml-2 ${session.externalMonitorDetected ? 'text-red-600' : 'text-green-600'}`}>
+              <span className="ml-2 text-gray-900">
                 {session.externalMonitorDetected ? 'Detected' : 'None'}
               </span>
             </div>
@@ -276,27 +277,27 @@ export default function ProctorDashboard() {
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-lg font-semibold">Violation Report ({filteredEvents.length})</h2>
             <div className="flex gap-2">
-              <select
+              <CustomSelect
                 value={severityFilter}
-                onChange={e => setSeverityFilter(e.target.value)}
-                className="input text-sm"
-              >
-                <option value="all">All Severity</option>
-                <option value="critical">Critical</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </select>
-              <select
+                onChange={v => setSeverityFilter(v)}
+                options={[
+                  { value:'all', label:'All Severity' },
+                  { value:'critical', label:'Critical' },
+                  { value:'high', label:'High' },
+                  { value:'medium', label:'Medium' },
+                  { value:'low', label:'Low' },
+                ]}
+              />
+              <CustomSelect
                 value={reviewedFilter}
-                onChange={e => setReviewedFilter(e.target.value)}
-                className="input text-sm"
-              >
-                <option value="all">All Status</option>
-                <option value="unreviewed">Unreviewed</option>
-                <option value="reviewed">Reviewed</option>
-                <option value="dismissed">Dismissed</option>
-              </select>
+                onChange={v => setReviewedFilter(v)}
+                options={[
+                  { value:'all', label:'All Status' },
+                  { value:'unreviewed', label:'Unreviewed' },
+                  { value:'reviewed', label:'Reviewed' },
+                  { value:'dismissed', label:'Dismissed' },
+                ]}
+              />
             </div>
           </div>
 

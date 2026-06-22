@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { Test } from '../../types';
-import { ChevronRight, Calendar, Pencil, Check, Trash2 } from 'lucide-react';
+import { ChevronRight, Pencil, Check, Trash2 } from 'lucide-react';
+import DateTimePicker from '../../components/DateTimePicker';
+import CustomSelect from '../../components/CustomSelect';
 
 type Panel = 'general' | 'access' | 'behavior' | 'grading' | 'email' | 'danger';
 
@@ -104,7 +106,7 @@ function Toggle({ on, onChange }: { on: boolean; onChange: () => void }) {
     <button type="button" onClick={onChange}
       style={{
         position:'relative', flexShrink:0, width:'48px', height:'26px',
-        borderRadius:'13px', backgroundColor: on ? '#10B981' : '#D1D5DB',
+        borderRadius:'13px', backgroundColor: on ? '#F59E0B' : '#D1D5DB',
         border:'none', cursor:'pointer', transition:'background-color 0.2s',
       }} aria-pressed={on}>
       <span style={{
@@ -128,8 +130,8 @@ function ToggleRow({ label, desc, on, onChange, last }: {
       padding:'18px 0', borderBottom: last ? 'none' : '1px solid #F3F4F6',
     }}>
       <div>
-        <p style={{ fontSize:'14px', fontWeight:500, color:'#111827', margin:'0 0 3px' }}>{label}</p>
-        <p style={{ fontSize:'12px', color:'#9CA3AF', margin:0 }}>{desc}</p>
+        <p style={{ fontSize:'14px', fontWeight:500, color:'#11162A', margin:'0 0 3px' }}>{label}</p>
+        <p style={{ fontSize:'12px', color:'#98A2B5', margin:0 }}>{desc}</p>
       </div>
       <Toggle on={on} onChange={onChange} />
     </div>
@@ -139,11 +141,11 @@ function ToggleRow({ label, desc, on, onChange, last }: {
 /* ── shared input style ── */
 const inputSx: React.CSSProperties = {
   width:'100%', padding:'10px 14px', borderRadius:'10px',
-  border:'1px solid #E5E7EB', backgroundColor:'white', color:'#111827',
+  border:'1px solid #E5E7EB', backgroundColor:'white', color:'#11162A',
   fontSize:'14px', outline:'none', fontFamily:'inherit', boxSizing:'border-box',
 };
 const labelSx: React.CSSProperties = {
-  display:'block', fontSize:'13px', fontWeight:500, color:'#374151', marginBottom:'6px',
+  display:'block', fontSize:'13px', fontWeight:500, color:'#434B5E', marginBottom:'6px',
 };
 
 export default function TestSettings() {
@@ -157,6 +159,8 @@ export default function TestSettings() {
   const [original,          setOriginal]           = useState<FormState | null>(null);
   const [form,              setForm]               = useState<FormState | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm]  = useState(false);
+  const [showCategoryDrop,  setShowCategoryDrop]   = useState(false);
+  const [showLanguageDrop,  setShowLanguageDrop]   = useState(false);
 
   // Email template state
   const [emailTab,          setEmailTab]           = useState<EmailTab>('invite');
@@ -259,7 +263,7 @@ export default function TestSettings() {
 
   if (loading) return (
     <div style={{ display:'flex', justifyContent:'center', padding:'80px 0' }}>
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor:'#10B981' }} />
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor:'#F59E0B' }} />
     </div>
   );
   if (!form) return null;
@@ -282,8 +286,8 @@ export default function TestSettings() {
       padding:'18px 0', borderBottom: last ? 'none' : '1px solid #F3F4F6',
     }}>
       <div>
-        <p style={{ fontSize:'14px', fontWeight:500, color:'#111827', margin:'0 0 3px' }}>{label}</p>
-        <p style={{ fontSize:'12px', color:'#9CA3AF', margin:0 }}>{desc}</p>
+        <p style={{ fontSize:'14px', fontWeight:500, color:'#11162A', margin:'0 0 3px' }}>{label}</p>
+        <p style={{ fontSize:'12px', color:'#98A2B5', margin:0 }}>{desc}</p>
       </div>
       <button type="button" onClick={onClick}
         style={{
@@ -291,7 +295,7 @@ export default function TestSettings() {
           fontSize:'13px', fontWeight:600, whiteSpace:'nowrap',
           border: btnRed ? 'none' : '1.5px solid #E5E7EB',
           backgroundColor: btnRed ? '#EF4444' : 'white',
-          color: btnRed ? 'white' : '#374151',
+          color: btnRed ? 'white' : '#434B5E',
         }}>
         {btnLabel}
       </button>
@@ -315,11 +319,13 @@ export default function TestSettings() {
                   display:'flex', alignItems:'center', justifyContent:'space-between',
                   width:'100%', padding:'10px 14px', borderRadius:'10px',
                   border:'none', cursor:'pointer', marginBottom:'2px',
-                  backgroundColor: active ? '#111827' : 'transparent',
-                  color: active ? 'white' : isDanger ? '#EF4444' : '#374151',
+                  backgroundColor: active ? '#F59E0B' : 'transparent',
+                  color: active ? 'white' : '#434B5E',
                   fontSize:'14px', fontWeight: active ? 600 : 400,
                   textAlign:'left', transition:'background-color 0.15s',
-                }}>
+                }}
+                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(245,158,11,0.08)'; }}
+                onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}>
                 <span>{p.label}</span>
                 {active && <ChevronRight size={14} color="white" />}
               </button>
@@ -337,7 +343,7 @@ export default function TestSettings() {
             {/* ─── GENERAL ─── */}
             {activePanel === 'general' && (
               <div style={{ display:'flex', flexDirection:'column', gap:'20px' }}>
-                <p style={{ fontSize:'18px', fontWeight:700, color:'#111827', margin:0 }}>General</p>
+                <p style={{ fontSize:'18px', fontWeight:700, color:'#11162A', margin:0 }}>General</p>
 
                 <div>
                   <label style={labelSx}>Test title</label>
@@ -353,17 +359,59 @@ export default function TestSettings() {
                 </div>
 
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px' }}>
+                  {/* Category custom dropdown */}
                   <div>
                     <label style={labelSx}>Category</label>
-                    <select value={form.category} onChange={e => patch({ category: e.target.value })} style={inputSx}>
-                      {CATEGORIES.map(c => <option key={c}>{c}</option>)}
-                    </select>
+                    {showCategoryDrop && <div className="fixed inset-0 z-10" onClick={() => setShowCategoryDrop(false)} />}
+                    <div style={{ position:'relative', zIndex: 20 }}>
+                      <button type="button" onClick={() => setShowCategoryDrop(v => !v)}
+                        style={{ ...inputSx, display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer', borderColor: showCategoryDrop ? '#FDE68A' : '#E5E7EB' }}>
+                        <span>{form.category}</span>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                          <path d="M2 4L6 8L10 4" stroke="#98A2B5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                      {showCategoryDrop && (
+                        <div style={{ position:'absolute', top:'calc(100% + 4px)', left:0, right:0, backgroundColor:'white', borderRadius:'10px', border:'1px solid #FDE68A', boxShadow:'0 4px 16px rgba(0,0,0,0.10)', overflow:'hidden', zIndex:30, maxHeight:'220px', overflowY:'auto' }}>
+                          {CATEGORIES.map(c => (
+                            <button key={c} type="button"
+                              onClick={() => { patch({ category: c }); setShowCategoryDrop(false); }}
+                              style={{ width:'100%', textAlign:'left', padding:'9px 14px', fontSize:'14px', backgroundColor: c === form.category ? '#FEF3C7' : 'white', color:'#11162A', border:'none', cursor:'pointer' }}
+                              onMouseEnter={e => { if (c !== form.category) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#FFFBEB'; }}
+                              onMouseLeave={e => { if (c !== form.category) (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'white'; }}>
+                              {c}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
+                  {/* Language custom dropdown */}
                   <div>
                     <label style={labelSx}>Language</label>
-                    <select value={form.language} onChange={e => patch({ language: e.target.value })} style={inputSx}>
-                      {LANGUAGES.map(l => <option key={l}>{l}</option>)}
-                    </select>
+                    {showLanguageDrop && <div className="fixed inset-0 z-10" onClick={() => setShowLanguageDrop(false)} />}
+                    <div style={{ position:'relative', zIndex: 20 }}>
+                      <button type="button" onClick={() => setShowLanguageDrop(v => !v)}
+                        style={{ ...inputSx, display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer', borderColor: showLanguageDrop ? '#FDE68A' : '#E5E7EB' }}>
+                        <span>{form.language}</span>
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                          <path d="M2 4L6 8L10 4" stroke="#98A2B5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                      {showLanguageDrop && (
+                        <div style={{ position:'absolute', top:'calc(100% + 4px)', left:0, right:0, backgroundColor:'white', borderRadius:'10px', border:'1px solid #FDE68A', boxShadow:'0 4px 16px rgba(0,0,0,0.10)', overflow:'hidden', zIndex:30 }}>
+                          {LANGUAGES.map(l => (
+                            <button key={l} type="button"
+                              onClick={() => { patch({ language: l }); setShowLanguageDrop(false); }}
+                              style={{ width:'100%', textAlign:'left', padding:'9px 14px', fontSize:'14px', backgroundColor: l === form.language ? '#FEF3C7' : 'white', color:'#11162A', border:'none', cursor:'pointer' }}
+                              onMouseEnter={e => { if (l !== form.language) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#FFFBEB'; }}
+                              onMouseLeave={e => { if (l !== form.language) (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'white'; }}>
+                              {l}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -372,7 +420,7 @@ export default function TestSettings() {
             {/* ─── ACCESS & SCHEDULING ─── */}
             {activePanel === 'access' && (
               <div>
-                <p style={{ fontSize:'18px', fontWeight:700, color:'#111827', margin:'0 0 24px' }}>
+                <p style={{ fontSize:'18px', fontWeight:700, color:'#11162A', margin:'0 0 24px' }}>
                   Access &amp; scheduling
                 </p>
 
@@ -380,21 +428,11 @@ export default function TestSettings() {
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px', marginBottom:'4px' }}>
                   <div>
                     <label style={labelSx}>Opens</label>
-                    <div style={{ position:'relative' }}>
-                      <input type="datetime-local" value={form.startTime}
-                        onChange={e => patch({ startTime: e.target.value })}
-                        style={{ ...inputSx, paddingRight:'40px' }} />
-                      <Calendar size={16} color="#9CA3AF" style={{ position:'absolute', right:'12px', top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }} />
-                    </div>
+                    <DateTimePicker value={form.startTime} onChange={v => patch({ startTime: v })} placeholder="Select open date & time" />
                   </div>
                   <div>
                     <label style={labelSx}>Closes</label>
-                    <div style={{ position:'relative' }}>
-                      <input type="datetime-local" value={form.endTime}
-                        onChange={e => patch({ endTime: e.target.value })}
-                        style={{ ...inputSx, paddingRight:'40px' }} />
-                      <Calendar size={16} color="#9CA3AF" style={{ position:'absolute', right:'12px', top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }} />
-                    </div>
+                    <DateTimePicker value={form.endTime} onChange={v => patch({ endTime: v })} placeholder="Select close date & time" />
                   </div>
                 </div>
 
@@ -408,7 +446,7 @@ export default function TestSettings() {
             {/* ─── TEST BEHAVIOR ─── */}
             {activePanel === 'behavior' && (
               <div>
-                <p style={{ fontSize:'18px', fontWeight:700, color:'#111827', margin:'0 0 4px' }}>Test behavior</p>
+                <p style={{ fontSize:'18px', fontWeight:700, color:'#11162A', margin:'0 0 4px' }}>Test behavior</p>
 
                 <ToggleRow label="Randomize question order"  desc="Shuffle per candidate"               on={form.shuffleQuestions}       onChange={() => patch({ shuffleQuestions: !form.shuffleQuestions })} />
                 <ToggleRow label="Randomize answer options"  desc="Shuffle MCQ choices"                 on={form.shuffleOptions}         onChange={() => patch({ shuffleOptions: !form.shuffleOptions })} />
@@ -422,7 +460,7 @@ export default function TestSettings() {
             {/* ─── RESULTS & GRADING ─── */}
             {activePanel === 'grading' && (
               <div>
-                <p style={{ fontSize:'18px', fontWeight:700, color:'#111827', margin:'0 0 24px' }}>Results &amp; grading</p>
+                <p style={{ fontSize:'18px', fontWeight:700, color:'#11162A', margin:'0 0 24px' }}>Results &amp; grading</p>
 
                 {/* Passing score + Grading mode */}
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px', marginBottom:'8px' }}>
@@ -434,10 +472,12 @@ export default function TestSettings() {
                   </div>
                   <div>
                     <label style={labelSx}>Grading mode</label>
-                    <select value={form.gradingMode} onChange={e => patch({ gradingMode: e.target.value })} style={inputSx}>
-                      <option value="Automatic">Automatic</option>
-                      <option value="Manual">Manual</option>
-                    </select>
+                    <CustomSelect
+                      value={form.gradingMode}
+                      onChange={v => patch({ gradingMode: v })}
+                      options={[{ value:'Automatic', label:'Automatic' }, { value:'Manual', label:'Manual' }]}
+                      style={{ width:'100%' }}
+                    />
                   </div>
                 </div>
 
@@ -450,8 +490,8 @@ export default function TestSettings() {
             {/* ─── EMAIL ─── */}
             {activePanel === 'email' && (
               <div>
-                <p style={{ fontSize:'18px', fontWeight:700, color:'#111827', margin:'0 0 4px' }}>Email Insights</p>
-                <p style={{ fontSize:'13px', color:'#6B7280', margin:'0 0 20px' }}>
+                <p style={{ fontSize:'18px', fontWeight:700, color:'#11162A', margin:'0 0 4px' }}>Email Insights</p>
+                <p style={{ fontSize:'13px', color:'#6A7387', margin:'0 0 20px' }}>
                   Customize the emails sent to candidates during the assessment lifecycle.
                 </p>
 
@@ -463,8 +503,8 @@ export default function TestSettings() {
                       style={{
                         padding:'8px 18px', border:'none', background:'none', cursor:'pointer',
                         fontSize:'13px', fontWeight: emailTab === tab ? 600 : 400,
-                        color: emailTab === tab ? '#10B981' : '#6B7280',
-                        borderBottom: emailTab === tab ? '2px solid #10B981' : '2px solid transparent',
+                        color: emailTab === tab ? '#F59E0B' : '#6A7387',
+                        borderBottom: emailTab === tab ? '2px solid #F59E0B' : '2px solid transparent',
                         marginBottom:'-2px', transition:'color 0.15s',
                       }}>
                       {tab === 'invite' ? 'Invite Email' : 'Confirmation Email'}
@@ -480,7 +520,7 @@ export default function TestSettings() {
                   return (
                     <div>
                       {/* Description */}
-                      <p style={{ fontSize:'12px', color:'#9CA3AF', margin:'0 0 16px' }}>
+                      <p style={{ fontSize:'12px', color:'#98A2B5', margin:'0 0 16px' }}>
                         {isInvite
                           ? 'This email is sent to candidates when you invite them to take the test.'
                           : 'This email is sent to candidates when they complete the test.'}
@@ -490,35 +530,35 @@ export default function TestSettings() {
                         /* ── Edit mode ── */
                         <div>
                           <div style={{ marginBottom:'14px' }}>
-                            <label style={{ display:'block', fontSize:'12px', fontWeight:600, color:'#374151', marginBottom:'6px' }}>Subject</label>
+                            <label style={{ display:'block', fontSize:'12px', fontWeight:600, color:'#434B5E', marginBottom:'6px' }}>Subject</label>
                             <input type="text"
                               value={emailDraft.subject}
                               onChange={e => setEmailDraft(d => ({ ...d, subject: e.target.value }))}
                               style={{
                                 width:'100%', padding:'9px 12px', borderRadius:'8px',
-                                border:'1.5px solid #D1FAE5', backgroundColor:'#FAFFFE',
-                                fontSize:'13px', color:'#111827', outline:'none', boxSizing:'border-box',
+                                border:'1.5px solid #FEF3C7', backgroundColor:'#FAFFFE',
+                                fontSize:'13px', color:'#11162A', outline:'none', boxSizing:'border-box',
                               }}
                             />
                           </div>
 
                           <div style={{ marginBottom:'14px' }}>
-                            <label style={{ display:'block', fontSize:'12px', fontWeight:600, color:'#374151', marginBottom:'6px' }}>Body</label>
+                            <label style={{ display:'block', fontSize:'12px', fontWeight:600, color:'#434B5E', marginBottom:'6px' }}>Body</label>
                             <textarea
                               value={emailDraft.body}
                               onChange={e => setEmailDraft(d => ({ ...d, body: e.target.value }))}
                               rows={12}
                               style={{
                                 width:'100%', padding:'10px 12px', borderRadius:'8px',
-                                border:'1.5px solid #D1FAE5', backgroundColor:'#FAFFFE',
-                                fontSize:'13px', color:'#111827', outline:'none', boxSizing:'border-box',
+                                border:'1.5px solid #FEF3C7', backgroundColor:'#FAFFFE',
+                                fontSize:'13px', color:'#11162A', outline:'none', boxSizing:'border-box',
                                 fontFamily:'inherit', lineHeight:'1.7', maxHeight:'480px',
                               }}
                             />
                           </div>
 
                           <div style={{ marginBottom:'16px' }}>
-                            <p style={{ fontSize:'11px', fontWeight:600, color:'#9CA3AF', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'0.05em' }}>
+                            <p style={{ fontSize:'11px', fontWeight:600, color:'#98A2B5', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'0.05em' }}>
                               Click a variable to insert it
                             </p>
                             <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
@@ -526,8 +566,8 @@ export default function TestSettings() {
                                 <button key={v.key} type="button" title={v.desc}
                                   onClick={() => setEmailDraft(d => ({ ...d, body: d.body + v.key }))}
                                   style={{
-                                    fontSize:'11px', fontWeight:600, color:'#059669',
-                                    backgroundColor:'#D1FAE5', padding:'2px 8px', borderRadius:'20px',
+                                    fontSize:'11px', fontWeight:600, color:'#D97706',
+                                    backgroundColor:'#FEF3C7', padding:'2px 8px', borderRadius:'20px',
                                     border:'none', cursor:'pointer',
                                   }}>{v.key}</button>
                               ))}
@@ -541,7 +581,7 @@ export default function TestSettings() {
                               style={{
                                 padding:'8px 18px', borderRadius:'10px',
                                 border:'1.5px solid #E5E7EB', backgroundColor:'white',
-                                fontSize:'13px', fontWeight:500, color:'#374151',
+                                fontSize:'13px', fontWeight:500, color:'#434B5E',
                                 cursor: emailSaving ? 'not-allowed' : 'pointer',
                               }}>Cancel</button>
                             <button type="button"
@@ -549,7 +589,7 @@ export default function TestSettings() {
                               disabled={emailSaving}
                               style={{
                                 padding:'8px 20px', borderRadius:'10px',
-                                border:'none', backgroundColor: emailSaving ? '#6EE7B7' : '#10B981',
+                                border:'none', backgroundColor: emailSaving ? '#FDE68A' : '#F59E0B',
                                 fontSize:'13px', fontWeight:600, color:'white',
                                 cursor: emailSaving ? 'not-allowed' : 'pointer',
                               }}>
@@ -561,24 +601,24 @@ export default function TestSettings() {
                         /* ── Preview mode ── */
                         <div>
                           <div style={{ marginBottom:'16px', backgroundColor:'#F9FAFB', borderRadius:'10px', padding:'12px 16px', border:'1px solid #E5E7EB' }}>
-                            <p style={{ fontSize:'11px', fontWeight:600, color:'#9CA3AF', margin:'0 0 4px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Subject</p>
-                            <p style={{ fontSize:'13px', color:'#374151', margin:0 }}>{subject}</p>
+                            <p style={{ fontSize:'11px', fontWeight:600, color:'#98A2B5', margin:'0 0 4px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Subject</p>
+                            <p style={{ fontSize:'13px', color:'#434B5E', margin:0 }}>{subject}</p>
                           </div>
 
                           <div style={{ backgroundColor:'#F9FAFB', borderRadius:'10px', padding:'16px', border:'1px solid #E5E7EB', marginBottom:'16px' }}>
-                            <p style={{ fontSize:'11px', fontWeight:600, color:'#9CA3AF', margin:'0 0 10px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Body</p>
-                            <pre style={{ fontSize:'13px', color:'#374151', margin:0, whiteSpace:'pre-wrap', fontFamily:'inherit', lineHeight:'1.7' }}>
+                            <p style={{ fontSize:'11px', fontWeight:600, color:'#98A2B5', margin:'0 0 10px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Body</p>
+                            <pre style={{ fontSize:'13px', color:'#434B5E', margin:0, whiteSpace:'pre-wrap', fontFamily:'inherit', lineHeight:'1.7' }}>
                               {body}
                             </pre>
                           </div>
 
                           <div style={{ marginBottom:'16px' }}>
-                            <p style={{ fontSize:'11px', fontWeight:600, color:'#9CA3AF', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Available variables</p>
+                            <p style={{ fontSize:'11px', fontWeight:600, color:'#98A2B5', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Available variables</p>
                             <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
                               {AVAILABLE_VARS.filter(v => isInvite || v.key !== '{{test_link}}').map(v => (
                                 <span key={v.key} title={v.desc} style={{
-                                  fontSize:'11px', fontWeight:600, color:'#059669',
-                                  backgroundColor:'#D1FAE5', padding:'2px 8px', borderRadius:'20px',
+                                  fontSize:'11px', fontWeight:600, color:'#D97706',
+                                  backgroundColor:'#FEF3C7', padding:'2px 8px', borderRadius:'20px',
                                   cursor:'default',
                                 }}>{v.key}</span>
                               ))}
@@ -592,7 +632,7 @@ export default function TestSettings() {
                                 display:'flex', alignItems:'center', gap:'6px',
                                 padding:'8px 18px', borderRadius:'10px',
                                 border:'1.5px solid #E5E7EB', backgroundColor:'white',
-                                fontSize:'13px', fontWeight:500, color:'#374151', cursor:'pointer',
+                                fontSize:'13px', fontWeight:500, color:'#434B5E', cursor:'pointer',
                               }}>
                               <Pencil size={13} />
                               Edit {isInvite ? 'Invite' : 'Confirmation'} Email
@@ -606,7 +646,7 @@ export default function TestSettings() {
 
                 {!emailTemplates && (
                   <div style={{ display:'flex', justifyContent:'center', padding:'40px 0' }}>
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2" style={{ borderColor:'#10B981' }} />
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2" style={{ borderColor:'#F59E0B' }} />
                   </div>
                 )}
               </div>
@@ -615,8 +655,8 @@ export default function TestSettings() {
             {/* ─── DANGER ZONE ─── */}
             {activePanel === 'danger' && (
               <div>
-                <p style={{ fontSize:'18px', fontWeight:700, color:'#EF4444', margin:'0 0 4px' }}>Danger zone</p>
-                <p style={{ fontSize:'13px', color:'#6B7280', margin:'0 0 8px' }}>These actions are irreversible.</p>
+                <p style={{ fontSize:'18px', fontWeight:700, color:'#11162A', margin:'0 0 4px' }}>Danger zone</p>
+                <p style={{ fontSize:'13px', color:'#6A7387', margin:'0 0 8px' }}>These actions are irreversible.</p>
 
                 <DangerRow
                   label="Archive test"   desc="Hide from candidates, keep data"
@@ -652,7 +692,7 @@ export default function TestSettings() {
           style={{
             padding:'9px 22px', borderRadius:'10px',
             border:'1.5px solid #E5E7EB', backgroundColor:'white',
-            fontSize:'14px', fontWeight:500, color:'#374151', cursor:'pointer',
+            fontSize:'14px', fontWeight:500, color:'#434B5E', cursor:'pointer',
           }}>
           Discard
         </button>
@@ -660,7 +700,7 @@ export default function TestSettings() {
           style={{
             display:'flex', alignItems:'center', gap:'6px',
             padding:'9px 22px', borderRadius:'10px',
-            border:'none', backgroundColor: saving ? '#A7F3D0' : '#10B981',
+            border:'none', backgroundColor: saving ? '#FDE68A' : '#F59E0B',
             fontSize:'14px', fontWeight:600, color:'white',
             cursor: saving ? 'not-allowed' : 'pointer',
           }}>
@@ -687,18 +727,18 @@ export default function TestSettings() {
               }}>
                 <Trash2 size={18} color="#DC2626" />
               </div>
-              <p style={{ fontSize:'16px', fontWeight:700, color:'#111827', margin:0 }}>Delete test?</p>
+              <p style={{ fontSize:'16px', fontWeight:700, color:'#11162A', margin:0 }}>Delete test?</p>
             </div>
-            <p style={{ fontSize:'14px', color:'#6B7280', margin:'0 0 24px', lineHeight:'1.6' }}>
+            <p style={{ fontSize:'14px', color:'#6A7387', margin:'0 0 24px', lineHeight:'1.6' }}>
               This will permanently delete the test and all candidate attempts, results, and invitations.
-              This action <strong style={{ color:'#374151' }}>cannot be undone</strong>.
+              This action <strong style={{ color:'#434B5E' }}>cannot be undone</strong>.
             </p>
             <div style={{ display:'flex', gap:'10px' }}>
               <button type="button" onClick={() => setShowDeleteConfirm(false)}
                 style={{
                   flex:1, padding:'10px', borderRadius:'10px',
                   border:'1.5px solid #E5E7EB', backgroundColor:'white',
-                  fontSize:'14px', fontWeight:500, color:'#374151', cursor:'pointer',
+                  fontSize:'14px', fontWeight:500, color:'#434B5E', cursor:'pointer',
                 }}>
                 Cancel
               </button>

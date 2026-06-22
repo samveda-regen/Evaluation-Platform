@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
+﻿import { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link, useParams, useLocation } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
-import { Trash2, ChevronRight, Check, Upload, Star, ChevronDown } from 'lucide-react';
+import { Trash2, ChevronRight, Check, Upload } from 'lucide-react';
 import BackButton from '../../components/BackButton';
 
 interface MediaAsset {
@@ -133,7 +133,10 @@ export default function MCQForm() {
   /* ─── Tag handlers ─── */
   const addTag = () => {
     const t = tagInput.trim().toLowerCase();
-    if (t && !formData.tags.includes(t)) { setFormData({...formData, tags:[...formData.tags,t]}); setTagInput(''); setShowTagInput(false); }
+    if (!t) { setShowTagInput(false); return; }
+    if (!/^[a-z0-9][a-z0-9_\- ]*$/.test(t)) { toast.error('Tags: letters, numbers, hyphens only'); return; }
+    if (!formData.tags.includes(t)) setFormData({...formData, tags:[...formData.tags,t]});
+    setTagInput(''); setShowTagInput(false);
   };
   const removeTag = (t: string) => setFormData({...formData, tags:formData.tags.filter(x=>x!==t)});
 
@@ -164,18 +167,12 @@ export default function MCQForm() {
   /* ─── Difficulty pill styles ─── */
   const diffStyle = (d: string) => {
     const active = formData.difficulty === d;
-    const map: Record<string,{bg:string;color:string;border:string}> = {
-      easy:   {bg:'#ECFDF5', color:'#059669', border:'#10B981'},
-      medium: {bg:'#F9FAFB', color:'#374151', border:'#E5E7EB'},
-      hard:   {bg:'#F9FAFB', color:'#374151', border:'#E5E7EB'},
-    };
-    if (!active) return { backgroundColor:'#F9FAFB', color:'#6B7280', border:'1.5px solid #E5E7EB' };
-    const c = map[d] || map.medium;
-    return { backgroundColor: c.bg, color: c.color, border:`1.5px solid ${c.border}` };
+    if (!active) return { backgroundColor:'#F9FAFB', color:'#6A7387', border:'1.5px solid #E5E7EB' };
+    return { backgroundColor:'#FFFBEB', color:'#D97706', border:'1.5px solid #F59E0B' };
   };
 
   /* ─── Shared input style ─── */
-  const inputSx: React.CSSProperties = { backgroundColor:'white', color:'#111827', borderColor:'#E5E7EB' };
+  const inputSx: React.CSSProperties = { backgroundColor:'white', color:'#11162A', borderColor:'#E5E7EB' };
 
   return (
     <div style={{ backgroundColor:'#f4f6fb', margin:'-24px', minHeight:'calc(100vh - 52px)' }}>
@@ -183,17 +180,17 @@ export default function MCQForm() {
       {/* ── Header ── */}
       <div style={{ backgroundColor:'white', borderBottom:'1px solid #F3F4F6' }} className="px-8 py-5">
         {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-sm mb-4" style={{ color:'#9CA3AF' }}>
-          <Link to="/admin/repository/question-bank" className="hover:underline" style={{ color:'#9CA3AF' }}>Question Library</Link>
-          <ChevronRight width={12} height={12} stroke="#9CA3AF" strokeWidth={1.5} />
-          <span style={{ color:'#374151' }}>MCQ</span>
+        <div className="flex items-center gap-2 text-sm mb-4" style={{ color:'#98A2B5' }}>
+          <Link to="/admin/repository/question-bank" className="hover:underline" style={{ color:'#98A2B5' }}>Question Library</Link>
+          <ChevronRight width={12} height={12} stroke="#98A2B5" strokeWidth={1.5} />
+          <span style={{ color:'#434B5E' }}>MCQ</span>
         </div>
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
             <BackButton />
             <div>
-              <h1 className="text-2xl font-bold" style={{ color:'#111827' }}>{isEditing ? 'Edit MCQ question' : 'New MCQ question'}</h1>
-              <p className="text-sm mt-1" style={{ color:'#6B7280' }}>
+              <h1 style={{ fontSize: "32px", fontWeight: 700, letterSpacing: "-0.02em", color: "#11162A", margin: 0, lineHeight: 1.2 }}>{isEditing ? 'Edit MCQ question' : 'New MCQ question'}</h1>
+              <p className="text-sm mt-1" style={{ color:'#6A7387' }}>
                 Multiple choice · {formData.isMultipleChoice ? 'multiple answers' : 'single answer'}
               </p>
             </div>
@@ -201,12 +198,12 @@ export default function MCQForm() {
           <div className="flex items-center gap-3 flex-shrink-0">
             <button onClick={() => navigate(-1)}
               className="px-5 py-2.5 rounded-xl border text-sm font-medium"
-              style={{ borderColor:'#E5E7EB', color:'#374151', backgroundColor:'white' }}>
+              style={{ borderColor:'#E5E7EB', color:'#434B5E', backgroundColor:'white' }}>
               Cancel
             </button>
             <button onClick={handleSubmit} disabled={loading}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
-              style={{ backgroundColor: loading ? '#6EE7B7' : '#10B981' }}>
+              style={{ backgroundColor: loading ? '#FDE68A' : '#F59E0B' }}>
               <Check width={13} height={13} stroke="white" strokeWidth={2.5} />
               {loading ? 'Saving…' : 'Save question'}
             </button>
@@ -223,11 +220,11 @@ export default function MCQForm() {
 
           {/* QUESTION card */}
           <div className="rounded-2xl p-6" style={{ backgroundColor:'white', boxShadow:'0 1px 3px rgba(0,0,0,0.06)' }}>
-            <p className="text-xs font-bold uppercase tracking-widest mb-5" style={{ color:'#9CA3AF' }}>QUESTION</p>
+            <p className="text-xs font-bold uppercase tracking-widest mb-5" style={{ color:'#98A2B5' }}>QUESTION</p>
 
             {/* Prompt */}
             <div className="mb-6">
-              <label className="block text-sm font-medium mb-2" style={{ color:'#374151' }}>
+              <label className="block text-sm font-medium mb-2" style={{ color:'#434B5E' }}>
                 Prompt <span style={{ color:'#EF4444' }}>*</span>
               </label>
               <textarea
@@ -243,18 +240,18 @@ export default function MCQForm() {
             {/* Answer options */}
             <div>
               <div className="flex items-center justify-between mb-3">
-                <p className="text-sm" style={{ color:'#374151' }}>
+                <p className="text-sm" style={{ color:'#434B5E' }}>
                   <span className="font-medium">Answer options</span>
-                  <span style={{ color:'#9CA3AF' }}> · select the correct one</span>
+                  <span style={{ color:'#98A2B5' }}> · select the correct one</span>
                 </p>
-                <label className="flex items-center gap-1.5 text-xs cursor-pointer" style={{ color:'#6B7280' }}>
+                <label className="flex items-center gap-1.5 text-xs cursor-pointer" style={{ color:'#6A7387' }}>
                   <input type="checkbox" checked={formData.isMultipleChoice}
                     onChange={e => setFormData({
                       ...formData,
                       isMultipleChoice: e.target.checked,
                       correctAnswers: e.target.checked ? formData.correctAnswers : formData.correctAnswers.slice(0,1),
                     })}
-                    className="h-3.5 w-3.5 rounded" style={{ accentColor:'#10B981' }} />
+                    className="h-3.5 w-3.5 rounded" style={{ accentColor:'#F59E0B' }} />
                   Multiple correct
                 </label>
               </div>
@@ -265,15 +262,15 @@ export default function MCQForm() {
                   return (
                     <div key={i} className="flex items-center gap-3 px-4 py-3 rounded-xl"
                       style={{
-                        border: `1.5px solid ${isCorrect ? '#10B981' : '#F3F4F6'}`,
-                        backgroundColor: isCorrect ? '#F0FDF4' : 'white',
+                        border: `1.5px solid ${isCorrect ? '#F59E0B' : '#F3F4F6'}`,
+                        backgroundColor: isCorrect ? '#FFFBEB' : 'white',
                         transition: 'all 0.15s',
                       }}>
                       {/* Correct toggle */}
                       <button type="button" onClick={() => toggleCorrect(i)}
                         className="flex-shrink-0 h-5 w-5 rounded-full flex items-center justify-center"
                         style={{
-                          backgroundColor: isCorrect ? '#10B981' : 'transparent',
+                          backgroundColor: isCorrect ? '#F59E0B' : 'transparent',
                           border: isCorrect ? 'none' : '1.5px solid #D1D5DB',
                         }}>
                         {isCorrect && (
@@ -284,11 +281,11 @@ export default function MCQForm() {
                       <input type="text" value={opt}
                         onChange={e => setOpt(i, e.target.value)}
                         className="flex-1 text-sm outline-none bg-transparent"
-                        style={{ color:'#111827' }}
+                        style={{ color:'#11162A' }}
                         placeholder={`Option ${LETTERS[i]}`}
                       />
                       {/* Letter badge */}
-                      <span className="text-xs font-semibold flex-shrink-0" style={{ color:'#9CA3AF' }}>
+                      <span className="text-xs font-semibold flex-shrink-0" style={{ color:'#98A2B5' }}>
                         {LETTERS[i]}
                       </span>
                       {/* Trash icon */}
@@ -306,7 +303,7 @@ export default function MCQForm() {
               {formData.options.length < 6 && (
                 <button type="button" onClick={addOption}
                   className="mt-3 flex items-center gap-1.5 text-sm font-medium"
-                  style={{ color:'#10B981' }}>
+                  style={{ color:'#F59E0B' }}>
                   <span className="text-base font-bold">+</span> Add option
                 </button>
               )}
@@ -315,7 +312,7 @@ export default function MCQForm() {
             {/* Collapsible media */}
             <div className="mt-6 pt-4" style={{ borderTop:'1px solid #F3F4F6' }}>
               <button type="button" onClick={() => setShowMedia(v=>!v)}
-                className="flex items-center gap-2 text-sm" style={{ color:'#9CA3AF' }}>
+                className="flex items-center gap-2 text-sm" style={{ color:'#98A2B5' }}>
                 <Upload width={13} height={13} strokeWidth={1.5} />
                 {showMedia ? 'Hide media' : `Add media${mediaAssets.length ? ` (${mediaAssets.length})` : ''}`}
               </button>
@@ -323,26 +320,26 @@ export default function MCQForm() {
                 <div className="mt-3">
                   <input ref={fileInputRef} type="file" multiple accept="image/*,video/*,audio/*"
                     onChange={handleFileSelect} className="hidden" />
-                  {uploadingMedia && <p className="text-xs mb-2" style={{ color:'#6B7280' }}>Uploading…</p>}
+                  {uploadingMedia && <p className="text-xs mb-2" style={{ color:'#6A7387' }}>Uploading…</p>}
                   {mediaAssets.length === 0 ? (
                     <div onClick={() => fileInputRef.current?.click()}
                       className="border-2 border-dashed rounded-xl p-5 text-center cursor-pointer"
                       style={{ borderColor:'#E5E7EB', backgroundColor:'#FAFAFA' }}>
-                      <p className="text-sm" style={{ color:'#9CA3AF' }}>Click to upload images, videos, or audio</p>
+                      <p className="text-sm" style={{ color:'#98A2B5' }}>Click to upload images, videos, or audio</p>
                     </div>
                   ) : (
                     <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
                       {mediaAssets.map(a => (
                         <div key={a.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl border"
                           style={{ borderColor:'#F3F4F6', backgroundColor:'white' }}>
-                          <span className="text-sm flex-1 truncate" style={{ color:'#374151' }}>{a.originalName}</span>
-                          <span className="text-xs" style={{ color:'#9CA3AF' }}>{(a.fileSize/1024/1024).toFixed(1)} MB</span>
+                          <span className="text-sm flex-1 truncate" style={{ color:'#434B5E' }}>{a.originalName}</span>
+                          <span className="text-xs" style={{ color:'#98A2B5' }}>{(a.fileSize/1024/1024).toFixed(1)} MB</span>
                           <button type="button" onClick={() => handleDeleteMedia(a.id)}
                             className="text-sm font-medium" style={{ color:'#DC2626' }}>Remove</button>
                         </div>
                       ))}
                       <button type="button" onClick={() => fileInputRef.current?.click()}
-                        className="text-sm font-medium" style={{ color:'#10B981' }}>+ Upload more</button>
+                        className="text-sm font-medium" style={{ color:'#F59E0B' }}>+ Upload more</button>
                     </div>
                   )}
                 </div>
@@ -352,9 +349,9 @@ export default function MCQForm() {
 
           {/* EXPLANATION card */}
           <div className="rounded-2xl p-6" style={{ backgroundColor:'white', boxShadow:'0 1px 3px rgba(0,0,0,0.06)' }}>
-            <p className="text-sm" style={{ color:'#374151' }}>
-              <span className="font-bold uppercase text-xs tracking-widest" style={{ color:'#9CA3AF' }}>EXPLANATION</span>
-              <span className="ml-2 text-xs" style={{ color:'#9CA3AF' }}>(optional, shown in review)</span>
+            <p className="text-sm" style={{ color:'#434B5E' }}>
+              <span className="font-bold uppercase text-xs tracking-widest" style={{ color:'#98A2B5' }}>EXPLANATION</span>
+              <span className="ml-2 text-xs" style={{ color:'#98A2B5' }}>(optional, shown in review)</span>
             </p>
             <textarea
               value={formData.explanation}
@@ -372,27 +369,24 @@ export default function MCQForm() {
 
           {/* Properties panel */}
           <div className="rounded-2xl p-5" style={{ backgroundColor:'white', boxShadow:'0 1px 3px rgba(0,0,0,0.06)' }}>
-            <p className="text-sm font-bold mb-5" style={{ color:'#111827' }}>Properties</p>
+            <p className="text-sm font-bold mb-5" style={{ color:'#11162A' }}>Properties</p>
 
             {/* Category */}
             <div className="mb-4">
-              <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color:'#6B7280' }}>
+              <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color:'#6A7387' }}>
                 Category
               </label>
-              <div className="relative">
-                <input type="text" value={formData.topic}
-                  onChange={e => setFormData({...formData, topic:e.target.value})}
-                  className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none pr-8"
-                  style={inputSx}
-                  placeholder="e.g. APIs, Algorithms"
-                />
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" width={14} height={14} stroke="#9CA3AF" strokeWidth={1.5} />
-              </div>
+              <input type="text" value={formData.topic}
+                onChange={e => setFormData({...formData, topic:e.target.value})}
+                className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
+                style={inputSx}
+                placeholder="e.g. APIs, Algorithms"
+              />
             </div>
 
             {/* Difficulty */}
             <div className="mb-4">
-              <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color:'#6B7280' }}>
+              <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color:'#6A7387' }}>
                 Difficulty
               </label>
               <div className="flex gap-2">
@@ -409,7 +403,7 @@ export default function MCQForm() {
 
             {/* Points */}
             <div className="mb-4">
-              <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color:'#6B7280' }}>
+              <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color:'#6A7387' }}>
                 Points
               </label>
               <input type="number" min={1} value={formData.marks}
@@ -421,7 +415,7 @@ export default function MCQForm() {
 
             {/* Time estimate */}
             <div className="mb-4">
-              <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color:'#6B7280' }}>
+              <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color:'#6A7387' }}>
                 Time estimate (sec)
               </label>
               <input type="number" min={5} defaultValue={45}
@@ -432,15 +426,15 @@ export default function MCQForm() {
 
             {/* Tags */}
             <div>
-              <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color:'#6B7280' }}>
+              <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color:'#6A7387' }}>
                 Tags
               </label>
               <div className="flex flex-wrap gap-1.5">
                 {formData.tags.map(tag => (
                   <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium"
-                    style={{ backgroundColor:'#F3F4F6', color:'#374151' }}>
+                    style={{ backgroundColor:'#F3F4F6', color:'#434B5E' }}>
                     {tag}
-                    <button type="button" onClick={() => removeTag(tag)} style={{ color:'#9CA3AF', lineHeight:1 }}>×</button>
+                    <button type="button" onClick={() => removeTag(tag)} style={{ color:'#98A2B5', lineHeight:1 }}>×</button>
                   </span>
                 ))}
                 {showTagInput ? (
@@ -452,13 +446,13 @@ export default function MCQForm() {
                     }}
                     onBlur={() => { addTag(); setShowTagInput(false); }}
                     className="px-2.5 py-1 text-xs rounded-full border outline-none"
-                    style={{ borderColor:'#10B981', backgroundColor:'white', width:'64px', color:'#111827' }}
+                    style={{ borderColor:'#F59E0B', backgroundColor:'white', width:'64px', color:'#11162A' }}
                     placeholder="tag…"
                   />
                 ) : (
                   <button type="button" onClick={() => setShowTagInput(true)}
                     className="inline-flex items-center justify-center w-6 h-6 rounded-full text-sm font-bold"
-                    style={{ backgroundColor:'#F3F4F6', color:'#6B7280' }}>
+                    style={{ backgroundColor:'#F3F4F6', color:'#6A7387' }}>
                     +
                   </button>
                 )}
@@ -466,26 +460,6 @@ export default function MCQForm() {
             </div>
           </div>
 
-          {/* AI assist panel */}
-          <div className="rounded-2xl p-5" style={{ backgroundColor:'#F0FDF4', border:'1px solid #D1FAE5', boxShadow:'0 1px 3px rgba(0,0,0,0.04)' }}>
-            <div className="flex items-center gap-2 mb-1">
-              <Star width={16} height={16} stroke="#10B981" strokeWidth={1.5} />
-              <p className="text-sm font-bold" style={{ color:'#065F46' }}>AI assist</p>
-            </div>
-            <p className="text-xs mb-4" style={{ color:'#6B7280' }}>
-              Generate distractor options or an explanation automatically.
-            </p>
-            <button type="button"
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-medium transition-colors hover:bg-white"
-              style={{ borderColor:'#A7F3D0', color:'#374151', backgroundColor:'white' }}
-              onClick={() => {
-                if (!formData.questionText.trim()) { toast.error('Enter a question prompt first'); return; }
-                toast('AI suggestions — coming soon');
-              }}>
-              <Star width={13} height={13} stroke="#10B981" strokeWidth={1.5} />
-              Suggest options
-            </button>
-          </div>
         </div>
       </div>
     </div>

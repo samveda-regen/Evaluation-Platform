@@ -24,6 +24,9 @@ import AdminProfile from './pages/admin/AdminProfile';
 import BehavioralForm from './pages/admin/BehavioralForm';
 import AllAttempts from './pages/admin/AllAttempts';
 
+// Public pages
+import PhoneCapture from './pages/PhoneCapture';
+
 // Candidate pages
 import CandidateLogin from './pages/candidate/CandidateLogin';
 import TestInvitation from './pages/candidate/TestInvitation';
@@ -145,6 +148,9 @@ export default function App() {
           </ProtectedCandidateRoute>
         }
       />
+
+      {/* Public: phone camera capture for ID verification */}
+      <Route path="/phone-capture/:sessionId" element={<PhoneCapture />} />
 
       {/* 404 */}
       <Route path="*" element={<Navigate to="/" replace />} />

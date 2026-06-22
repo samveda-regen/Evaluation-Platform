@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
@@ -33,8 +33,8 @@ function CheckOption({ name, checked, onChange, label, disabled }: {
     <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: disabled ? 'not-allowed' : 'pointer', padding: '2px 0', opacity: disabled ? 0.5 : 1 }}>
       <div style={{
         width: '18px', height: '18px', borderRadius: '5px', flexShrink: 0,
-        border: checked ? '2px solid #10B981' : '2px solid #D1D5DB',
-        backgroundColor: checked ? '#10B981' : 'white',
+        border: checked ? '2px solid #F59E0B' : '2px solid #D1D5DB',
+        backgroundColor: checked ? '#F59E0B' : 'white',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         pointerEvents: disabled ? 'none' : 'auto',
       }}>
@@ -44,7 +44,7 @@ function CheckOption({ name, checked, onChange, label, disabled }: {
       </div>
       <input type="checkbox" name={name} checked={checked} onChange={onChange} disabled={disabled}
         style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }} />
-      <span style={{ fontSize: '13px', color: '#374151' }}>{label}</span>
+      <span style={{ fontSize: '13px', color: '#434B5E' }}>{label}</span>
     </label>
   );
 }
@@ -57,8 +57,8 @@ function SourceRow({ icon, label, checked, onChange }: {
     <label onClick={onChange} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 4px', cursor: 'pointer', borderBottom: '1px solid #F3F4F6' }}>
       <div style={{
         width: '20px', height: '20px', borderRadius: '5px', flexShrink: 0,
-        border: checked ? '2px solid #10B981' : '2px solid #D1D5DB',
-        backgroundColor: checked ? '#10B981' : 'white',
+        border: checked ? '2px solid #F59E0B' : '2px solid #D1D5DB',
+        backgroundColor: checked ? '#F59E0B' : 'white',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         {checked && (
@@ -66,7 +66,7 @@ function SourceRow({ icon, label, checked, onChange }: {
         )}
       </div>
       {icon}
-      <span style={{ fontSize: '13px', color: '#374151' }}>{label}</span>
+      <span style={{ fontSize: '13px', color: '#434B5E' }}>{label}</span>
     </label>
   );
 }
@@ -74,14 +74,14 @@ function SourceRow({ icon, label, checked, onChange }: {
 /* ── Input styles ── */
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '10px 14px', borderRadius: '10px',
-  border: '1.5px solid #E5E7EB', fontSize: '13px', color: '#111827',
+  border: '1.5px solid #E5E7EB', fontSize: '13px', color: '#11162A',
   outline: 'none', boxSizing: 'border-box', backgroundColor: 'white',
 };
 const labelStyle: React.CSSProperties = {
-  display: 'block', fontSize: '12px', fontWeight: 600, color: '#374151', marginBottom: '7px',
+  display: 'block', fontSize: '12px', fontWeight: 600, color: '#434B5E', marginBottom: '7px',
 };
 const sectionTitle: React.CSSProperties = {
-  fontSize: '10px', fontWeight: 700, letterSpacing: '0.09em', color: '#9CA3AF', margin: '0 0 18px',
+  fontSize: '10px', fontWeight: 700, letterSpacing: '0.09em', color: '#98A2B5', margin: '0 0 18px',
 };
 const card: React.CSSProperties = {
   backgroundColor: 'white', borderRadius: '18px', padding: '24px',
@@ -215,7 +215,7 @@ export default function TestForm() {
   };
 
   const focusGreen = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    e.target.style.borderColor = '#10B981';
+    e.target.style.borderColor = '#F59E0B';
   };
   const blurGray = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     e.target.style.borderColor = '#E5E7EB';
@@ -226,33 +226,35 @@ export default function TestForm() {
 
       {/* ── HEADER ── */}
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-          <BackButton />
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#9CA3AF', marginBottom: '6px' }}>
-              <span style={{ cursor: 'pointer', color: '#10B981' }} onClick={() => navigate('/admin/tests')}>Assessments</span>
-              <ChevronRight width={12} height={12} strokeWidth={1.5} />
-              <span>New test</span>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#98A2B5', marginBottom: '10px' }}>
+            <span style={{ cursor: 'pointer', color: '#F59E0B' }} onClick={() => navigate('/admin/tests')}>Assessments</span>
+            <ChevronRight width={12} height={12} strokeWidth={1.5} />
+            <span>New test</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+            <BackButton mt="3px" />
+            <div>
+              <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#11162A', margin: 0 }}>
+                {isEditing ? 'Edit Test' : 'Create Test'}
+              </h1>
+              <p style={{ fontSize: '13px', color: '#6A7387', margin: '4px 0 0' }}>
+                Set up the assessment basics. You'll add questions next.
+              </p>
             </div>
-            <h1 style={{ fontSize: '28px', fontWeight: 700, color: '#111827', margin: 0 }}>
-              {isEditing ? 'Edit Test' : 'Create Test'}
-            </h1>
-            <p style={{ fontSize: '13px', color: '#6B7280', margin: '4px 0 0' }}>
-              Set up the assessment basics. You'll add questions next.
-            </p>
           </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
           <button type="button" onClick={() => navigate('/admin/tests')}
-            style={{ padding: '10px 20px', borderRadius: '10px', border: '1.5px solid #E5E7EB', backgroundColor: 'white', fontSize: '13px', fontWeight: 500, color: '#374151', cursor: 'pointer' }}>
+            style={{ padding: '10px 20px', borderRadius: '10px', border: '1.5px solid #E5E7EB', backgroundColor: 'white', fontSize: '13px', fontWeight: 500, color: '#434B5E', cursor: 'pointer' }}>
             Cancel
           </button>
           <button type="submit" form="test-form" disabled={loading}
             style={{
               display: 'flex', alignItems: 'center', gap: '6px',
               padding: '10px 22px', borderRadius: '10px', border: 'none',
-              backgroundColor: loading ? '#6EE7B7' : '#10B981',
+              backgroundColor: loading ? '#FDE68A' : '#F59E0B',
               fontSize: '13px', fontWeight: 600, color: 'white',
               cursor: loading ? 'not-allowed' : 'pointer',
             }}>
@@ -298,7 +300,7 @@ export default function TestForm() {
                   rows={4} style={{ ...inputStyle, lineHeight: '1.6' }}
                   onFocus={focusGreen} onBlur={blurGray} />
               </div>
-              <p style={{ fontSize: '12px', color: '#9CA3AF', margin: '0 0 18px' }}>Shown to candidates on the instructions screen.</p>
+              <p style={{ fontSize: '12px', color: '#98A2B5', margin: '0 0 18px' }}>Shown to candidates on the instructions screen.</p>
 
               {/* Instructions */}
               <div style={{ marginBottom: '18px' }}>
@@ -326,8 +328,8 @@ export default function TestForm() {
                 <div>
                   <label style={labelStyle}>Test code</label>
                   <input value="AUTO-GENERATED" disabled
-                    style={{ ...inputStyle, backgroundColor: '#F9FAFB', color: '#9CA3AF', cursor: 'not-allowed' }} />
-                  <p style={{ fontSize: '11px', color: '#9CA3AF', margin: '4px 0 0' }}>Auto-generated, editable.</p>
+                    style={{ ...inputStyle, backgroundColor: '#F9FAFB', color: '#98A2B5', cursor: 'not-allowed' }} />
+                  <p style={{ fontSize: '11px', color: '#98A2B5', margin: '4px 0 0' }}>Auto-generated, editable.</p>
                 </div>
               </div>
             </div>
@@ -362,9 +364,9 @@ export default function TestForm() {
                         style={{
                           padding: '7px 18px', borderRadius: '10px', fontSize: '13px',
                           fontWeight: active ? 600 : 400, cursor: 'pointer',
-                          border: `1.5px solid ${active ? '#10B981' : '#E5E7EB'}`,
-                          backgroundColor: active ? '#F0FDF4' : 'white',
-                          color: active ? '#059669' : '#6B7280',
+                          border: `1.5px solid ${active ? '#F59E0B' : '#E5E7EB'}`,
+                          backgroundColor: active ? '#FFFBEB' : 'white',
+                          color: active ? '#D97706' : '#6A7387',
                         }}>
                         {label}
                       </button>
@@ -392,7 +394,7 @@ export default function TestForm() {
                   />
                 </div>
                 <div>
-                  <label style={labelStyle}>End time <span style={{ color: '#9CA3AF', fontWeight: 400 }}>(optional)</span></label>
+                  <label style={labelStyle}>End time <span style={{ color: '#98A2B5', fontWeight: 400 }}>(optional)</span></label>
                   <DateTimePicker
                     value={formData.endTime}
                     onChange={v => setFormData(p => ({ ...p, endTime: v }))}
@@ -440,27 +442,27 @@ export default function TestForm() {
 
             {/* Question sources */}
             <div style={{ ...card, marginBottom: '16px' }}>
-              <p style={{ fontSize: '14px', fontWeight: 700, color: '#111827', margin: '0 0 14px' }}>Question sources</p>
+              <p style={{ fontSize: '14px', fontWeight: 700, color: '#11162A', margin: '0 0 14px' }}>Question sources</p>
               <SourceRow
                 checked={srcs.library} onChange={() => setSrcs(p => ({ ...p, library: !p.library }))}
                 label="From Question Library"
-                icon={<FileText width={15} height={15} stroke="#9CA3AF" strokeWidth={1.5} />}
+                icon={<FileText width={15} height={15} stroke="#98A2B5" strokeWidth={1.5} />}
               />
               <SourceRow
                 checked={srcs.write} onChange={() => setSrcs(p => ({ ...p, write: !p.write }))}
                 label="Write new questions"
-                icon={<Plus width={15} height={15} stroke="#9CA3AF" strokeWidth={1.5} />}
+                icon={<Plus width={15} height={15} stroke="#98A2B5" strokeWidth={1.5} />}
               />
               <SourceRow
                 checked={srcs.ai} onChange={() => setSrcs(p => ({ ...p, ai: !p.ai }))}
                 label="AI-generate questions"
-                icon={<Sparkles width={15} height={15} stroke="#9CA3AF" strokeWidth={1.5} />}
+                icon={<Sparkles width={15} height={15} stroke="#98A2B5" strokeWidth={1.5} />}
               />
               <div style={{ borderBottom: 'none' }}>
                 <SourceRow
                   checked={srcs.csv} onChange={() => setSrcs(p => ({ ...p, csv: !p.csv }))}
                   label="Import from CSV"
-                  icon={<Upload width={15} height={15} stroke="#9CA3AF" strokeWidth={1.5} />}
+                  icon={<Upload width={15} height={15} stroke="#98A2B5" strokeWidth={1.5} />}
                 />
               </div>
             </div>
@@ -468,19 +470,19 @@ export default function TestForm() {
             {/* Shortcut — AI Generator */}
             <div style={{
               borderRadius: '18px', padding: '20px',
-              backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0',
+              backgroundColor: '#FFFBEB', border: '1px solid #BBF7D0',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '10px' }}>
-                <Sparkles width={15} height={15} stroke="#10B981" strokeWidth={1.5} />
-                <span style={{ fontSize: '14px', fontWeight: 700, color: '#059669' }}>Shortcut</span>
+                <Sparkles width={15} height={15} stroke="#F59E0B" strokeWidth={1.5} />
+                <span style={{ fontSize: '14px', fontWeight: 700, color: '#D97706' }}>Shortcut</span>
               </div>
-              <p style={{ fontSize: '12px', color: '#6B7280', margin: '0 0 14px', lineHeight: '1.6' }}>
+              <p style={{ fontSize: '12px', color: '#6A7387', margin: '0 0 14px', lineHeight: '1.6' }}>
                 Skip manual setup — generate a full role-based test from a job description.
               </p>
               <button type="button" onClick={() => navigate('/admin/tests/agent')}
                 style={{
                   width: '100%', padding: '11px', borderRadius: '10px', border: 'none',
-                  backgroundColor: '#10B981', color: 'white', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+                  backgroundColor: '#F59E0B', color: 'white', fontSize: '13px', fontWeight: 600, cursor: 'pointer',
                 }}>
                 Use AI Generator
               </button>

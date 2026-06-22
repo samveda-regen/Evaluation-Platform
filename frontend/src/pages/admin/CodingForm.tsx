@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
@@ -74,10 +74,10 @@ export default function CodingForm() {
 
   const addTag = () => {
     const tag = tagInput.trim().toLowerCase();
-    if (tag && !formData.tags.includes(tag)) {
-      setFormData({ ...formData, tags: [...formData.tags, tag] });
-      setTagInput('');
-    }
+    if (!tag) return;
+    if (!/^[a-z0-9][a-z0-9_\- ]*$/.test(tag)) { toast.error('Tags: letters, numbers, hyphens only'); return; }
+    if (!formData.tags.includes(tag)) setFormData({ ...formData, tags: [...formData.tags, tag] });
+    setTagInput('');
   };
 
   const removeTag = (tagToRemove: string) => {
@@ -164,7 +164,7 @@ export default function CodingForm() {
     <div>
       <div className="flex items-center gap-3 mb-6">
         <BackButton mt="0" />
-        <h1 className="text-2xl font-bold text-gray-800">{isEditing ? 'Edit Coding Question' : 'Create Coding Question'}</h1>
+        <h1 style={{ fontSize: "32px", fontWeight: 700, letterSpacing: "-0.02em", color: "#11162A", margin: 0, lineHeight: 1.2 }}>{isEditing ? 'Edit Coding Question' : 'Create Coding Question'}</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
@@ -270,15 +270,20 @@ export default function CodingForm() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Difficulty *</label>
-              <select
-                value={formData.difficulty}
-                onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
-                className="input"
-              >
-                <option value="easy">Easy</option>
-                <option value="medium">Medium</option>
-                <option value="hard">Hard</option>
-              </select>
+              <div style={{ display:'flex', gap:'8px' }}>
+                {(['easy','medium','hard'] as const).map(d => (
+                  <button key={d} type="button"
+                    onClick={() => setFormData({ ...formData, difficulty: d })}
+                    style={{
+                      flex:1, padding:'8px 0', borderRadius:'10px', fontSize:'13px', fontWeight:600, cursor:'pointer', transition:'all 0.15s',
+                      ...(formData.difficulty === d
+                        ? { backgroundColor:'#FFFBEB', color:'#D97706', border:'1.5px solid #F59E0B' }
+                        : { backgroundColor:'#F9FAFB', color:'#6A7387', border:'1.5px solid #E5E7EB' })
+                    }}>
+                    {d.charAt(0).toUpperCase()+d.slice(1)}
+                  </button>
+                ))}
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Time Limit (ms)</label>

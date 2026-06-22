@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
@@ -236,12 +236,12 @@ export default function LiveProctoring() {
     <div className="space-y-6">
       <div className="flex items-center gap-3">
         <BackButton mt="0" />
-        <h1 className="text-2xl font-bold text-gray-800">Live Proctoring</h1>
+        <h1 style={{ fontSize: "32px", fontWeight: 700, letterSpacing: "-0.02em", color: "#11162A", margin: 0, lineHeight: 1.2 }}>Live Proctoring</h1>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="card"><p className="text-sm text-gray-500">Candidates</p><p className="text-2xl font-bold">{stats.total}</p></div>
-        <div className="card"><p className="text-sm text-gray-500">Online</p><p className="text-2xl font-bold text-green-600">{stats.online}</p></div>
+        <div className="card"><p className="text-sm text-gray-500">Online</p><p className="text-2xl font-bold text-amber-600">{stats.online}</p></div>
         <div className="card"><p className="text-sm text-gray-500">Flagged</p><p className="text-2xl font-bold text-red-600">{stats.flagged}</p></div>
         <div className="card"><p className="text-sm text-gray-500">High Risk</p><p className="text-2xl font-bold text-orange-600">{stats.highRisk}</p></div>
       </div>
@@ -261,7 +261,7 @@ export default function LiveProctoring() {
                       <p className="text-sm text-gray-500">{candidate.candidate.email}</p>
                     </div>
                     <div className="text-right">
-                      <p className={candidate.status.online ? 'text-green-600 font-medium' : 'text-gray-500'}>{candidate.status.online ? 'Online' : 'Offline'}</p>
+                      <p className={candidate.status.online ? 'text-amber-600 font-medium' : 'text-gray-500'}>{candidate.status.online ? 'Online' : 'Offline'}</p>
                       <p className="text-sm text-gray-500">Trust: {Math.round(candidate.trustScore || 100)}%</p>
                     </div>
                   </div>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../../services/api';
@@ -607,7 +607,7 @@ export default function CustomQuestions() {
                               key={`${question.id}-${index}`}
                               className={`text-xs px-2 py-1 rounded ${
                                 question.correctAnswers.includes(index)
-                                  ? 'bg-green-100 text-green-800'
+                                  ? 'bg-amber-100 text-amber-800'
                                   : 'bg-gray-100 text-gray-700'
                               }`}
                             >
@@ -903,8 +903,8 @@ export default function CustomQuestions() {
                         onClick={() => toggleMCQCorrectAnswer(index)}
                         className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0 ${
                           mcqForm.correctAnswers.includes(index)
-                            ? 'bg-green-500 border-green-500 text-white'
-                            : 'border-gray-300 hover:border-green-500'
+                            ? 'bg-amber-500 border-amber-500 text-white'
+                            : 'border-gray-300 hover:border-amber-500'
                         }`}
                       >
                         {mcqForm.correctAnswers.includes(index) ? '✓' : index + 1}

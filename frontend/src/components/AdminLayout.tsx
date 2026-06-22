@@ -1,14 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../context/authStore';
 import { adminApi } from '../services/api';
 import { getRealtimeSocket } from '../services/realtimeService';
 import {
-  LayoutDashboard, ClipboardCheck, BookOpen, MonitorPlay, ShieldCheck, ScanFace,
-  Sparkles, Search, X, Bell, ChevronDown, User, LogOut,
-  CheckCircle2, PlayCircle, ChevronRight,
-  FileText, HelpCircle, Code2, LayoutGrid,
+  X, ChevronRight, CheckCircle2, PlayCircle,
 } from 'lucide-react';
+import Icon from './Icon';
+import talentstaQLogo from '../assets/assessment-icons/icons/Talentstaq logo dark.svg';
 
 type SearchResultType = 'test' | 'mcq' | 'coding' | 'page';
 
@@ -37,32 +36,31 @@ const navItems = [
     path: '/admin/dashboard',
     label: 'Dashboard',
     matchPrefix: '/admin/dashboard',
-    icon: <LayoutDashboard size={16} />,
+    icon: <Icon name="dashboard" size={26} />,
   },
   {
     path: '/admin/tests',
     label: 'Assessments',
     matchPrefix: '/admin/tests',
-    icon: <ClipboardCheck size={16} />,
+    icon: <Icon name="total-assessments" size={26} />,
   },
   {
     path: '/admin/repository/question-bank',
     label: 'Question Library',
     matchPrefix: '/admin/repository',
-    icon: <BookOpen size={16} />,
+    icon: <Icon name="question-library" size={26} />,
   },
-  
   {
     path: '/admin/trust-reports',
     label: 'Trust & Integrity',
     matchPrefix: '/admin/trust-reports',
-    icon: <ShieldCheck size={16} />,
+    icon: <Icon name="trust-and-integrity" size={26} />,
   },
   {
     path: '/admin/id-verification-data',
     label: 'ID Verification',
     matchPrefix: '/admin/id-verification-data',
-    icon: <ScanFace size={16} />,
+    icon: <Icon name="id" size={26} />,
   },
 ];
 
@@ -413,17 +411,17 @@ export default function AdminLayout() {
   };
 
   const TYPE_ICON: Record<SearchResultType, React.ReactNode> = {
-    test:   <FileText size={13} color="white" />,
-    mcq:    <HelpCircle size={13} color="white" />,
-    coding: <Code2 size={13} color="white" />,
-    page:   <LayoutGrid size={13} color="white" />,
+    test:   <Icon name="total-assessments" size={17} />,
+    mcq:    <Icon name="mcq-questions" size={17} />,
+    coding: <Icon name="coding" size={17} />,
+    page:   <Icon name="dashboard" size={17} />,
   };
 
   const TYPE_BG: Record<SearchResultType, string> = {
-    test:   '#111827',
-    mcq:    '#4F46E5',
-    coding: '#059669',
-    page:   '#6B7280',
+    test:   '#FFF6EE',
+    mcq:    '#FFF6EE',
+    coding: '#FFF6EE',
+    page:   '#F3F4F6',
   };
 
   const TYPE_LABEL: Record<SearchResultType, string> = {
@@ -444,25 +442,23 @@ export default function AdminLayout() {
   const isActiveItem = (matchPrefix: string) => location.pathname.startsWith(matchPrefix);
 
   return (
-    <div className="admin-shell flex h-screen overflow-hidden" style={{ background: '#f4f6fb' }}>
+    <div className="admin-shell flex h-screen overflow-hidden" style={{ background: '#F7F8FA' }}>
 
       {/* ── LEFT SIDEBAR ── */}
       <aside
         className="flex flex-col flex-shrink-0 h-full"
-        style={{ width: '220px', backgroundColor: '#142340', borderRight: '1px solid #1a2332' }}
+        style={{ width: '220px', backgroundColor: '#ffffff', borderRight: '1px solid #E2E6EE' }}
       >
         {/* Logo */}
-        <div className="flex items-center gap-2.5 px-5 py-4" style={{ borderBottom: '1px solid #1a2332' }}>
-          <div>
-            <p className="text-white text-sm font-semibold leading-tight">TalentstaQ</p>
-          </div>
+        <div className="flex items-center justify-center py-4" style={{ borderBottom: '1px solid #E2E6EE' }}>
+          <img src={talentstaQLogo} alt="TalentstaQ" style={{ height: '50px', width: 'auto' }} />
         </div>
 
         {/* Navigation */}
         <div className="flex-1 overflow-y-auto px-3 py-4">
           <p
             className="text-[9px] font-bold tracking-widest uppercase px-2 mb-3"
-            style={{ color: '#ffffff' }}
+            style={{ color: '#6A7387', fontFamily: 'var(--font-mono)' }}
           >
             Workspace
           </p>
@@ -476,13 +472,13 @@ export default function AdminLayout() {
                   to={item.path}
                   className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors"
                   style={{
-                    backgroundColor: active ? 'rgba(227, 158, 30, 0.41)' : 'transparent',
-                    color: active ? '#ffffff' : '#ffffff',
+                    backgroundColor: active ? '#FFF6EE' : 'transparent',
+                    color: active ? '#E07B3C' : '#434B5E',
                   }}
-                  onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(227, 158, 30, 0.2)'; }}
-                  onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
+                  onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(245,158,11,0.08)'; (e.currentTarget as HTMLElement).style.color = '#D97706'; } }}
+                  onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; (e.currentTarget as HTMLElement).style.color = '#434B5E'; } }}
                 >
-                  <span style={{ color: active ? '#10B981' : 'currentColor' }}>{item.icon}</span>
+                  <span style={{ color: active ? '#E07B3C' : '#98A2B5' }}>{item.icon}</span>
                   {item.label}
                 </Link>
               );
@@ -500,9 +496,9 @@ export default function AdminLayout() {
             }}
             onMouseEnter={e => {
               const el = e.currentTarget as HTMLElement;
-              el.style.backgroundColor = 'rgba(139,92,246,0.13)';
+              el.style.backgroundColor = 'rgba(224,123,60,0.08)';
               const title = el.querySelector('[data-aititle]') as HTMLElement | null;
-              if (title) title.style.color = '#ffffff';
+              if (title) title.style.color = '#1F3556';
               const glow = el.querySelector('[data-aiglow]') as HTMLElement | null;
               if (glow) glow.style.opacity = '1';
             }}
@@ -510,44 +506,29 @@ export default function AdminLayout() {
               const el = e.currentTarget as HTMLElement;
               el.style.backgroundColor = 'transparent';
               const title = el.querySelector('[data-aititle]') as HTMLElement | null;
-              if (title) title.style.color = '#C4CAD6';
+              if (title) title.style.color = '#434B5E';
               const glow = el.querySelector('[data-aiglow]') as HTMLElement | null;
               if (glow) glow.style.opacity = '0.5';
             }}
           >
-            {/* Gemini 4-point star with neon glow */}
-            <div style={{ position: 'relative', width: '34px', height: '34px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div data-aiglow="" style={{
-                position: 'absolute', inset: '-4px', borderRadius: '50%',
-                background: 'radial-gradient(circle, rgba(139,92,246,0.6) 0%, rgba(6,182,212,0.3) 55%, transparent 75%)',
-                filter: 'blur(6px)', opacity: '0.5', transition: 'opacity 0.2s',
-              }} />
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style={{ position: 'relative', zIndex: 1 }}>
-                <defs>
-                  <linearGradient id="adminAiStar" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stopColor="#06B6D4" />
-                    <stop offset="48%" stopColor="#8B5CF6" />
-                    <stop offset="100%" stopColor="#EC4899" />
-                  </linearGradient>
-                </defs>
-                <path d="M12 2 Q13.2 8.8 20 12 Q13.2 15.2 12 22 Q10.8 15.2 4 12 Q10.8 8.8 12 2 Z" fill="url(#adminAiStar)" />
-              </svg>
+            <div data-aiglow="" style={{ flexShrink: 0, transition: 'opacity 0.2s', opacity: 0.85 }}>
+              <Icon name="ai-generate" size={42} />
             </div>
 
             <div style={{ flex: 1, minWidth: 0 }}>
-              <p data-aititle="" style={{ fontSize: '12px', fontWeight: 600, margin: 0, color: '#C4CAD6', letterSpacing: '0.01em', transition: 'color 0.18s' }}>
+              <p data-aititle="" style={{ fontSize: '12px', fontWeight: 600, margin: 0, color: '#434B5E', letterSpacing: '0.01em', transition: 'color 0.18s' }}>
                 AI Test Generator
               </p>
-              <p style={{ fontSize: '10px', color: '#4B5563', margin: '2px 0 0', lineHeight: 1.3 }}>
-                Generate from job description
+              <p style={{ fontSize: '10px', color: '#98A2B5', margin: '2px 0 0', lineHeight: 1.3 }}>
+                Auto-generate from job posting
               </p>
             </div>
-            <ChevronRight size={11} color="#4B5563" style={{ flexShrink: 0 }} />
+            <ChevronRight size={11} color="#98A2B5" style={{ flexShrink: 0 }} />
           </Link>
         </div>
 
         {/* User Profile */}
-        <div ref={profileRef} style={{ position: 'relative', borderTop: '1px solid #1a2332' }}>
+        <div ref={profileRef} style={{ position: 'relative', borderTop: '1px solid #E2E6EE' }}>
           {/* Profile popup (opens upward) */}
           {profileOpen && (
             <div style={{
@@ -558,19 +539,19 @@ export default function AdminLayout() {
             }}>
               {/* Admin header */}
               <div style={{ padding: '14px 14px 12px', borderBottom: '1px solid #F3F4F6', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#10B981', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: '12px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#F59E0B', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: '12px' }}>
                   {initials}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <p style={{ fontSize: '13px', fontWeight: 600, color: '#111827', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <p style={{ fontSize: '13px', fontWeight: 600, color: '#11162A', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {admin?.name || 'Admin'}
                     </p>
-                    <span style={{ fontSize: '10px', fontWeight: 600, color: '#059669', backgroundColor: '#D1FAE5', padding: '1px 7px', borderRadius: '20px', flexShrink: 0 }}>
+                    <span style={{ fontSize: '10px', fontWeight: 600, color: '#D97706', backgroundColor: '#FEF3C7', padding: '1px 7px', borderRadius: '20px', flexShrink: 0 }}>
                       Admin
                     </span>
                   </div>
-                  <p style={{ fontSize: '11px', color: '#6B7280', margin: '1px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <p style={{ fontSize: '11px', color: '#6A7387', margin: '1px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {admin?.companyName
                       ? `${admin.companyName} · ${admin.email}`
                       : admin?.email || ''}
@@ -586,10 +567,10 @@ export default function AdminLayout() {
                   style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 14px', border: 'none', backgroundColor: 'transparent', cursor: 'pointer' }}
                   onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#EDF0F7'; }}
                   onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
-                  <User size={15} color="#6B7280" />
+                  <Icon name="my-profile" size={16} />
                   <div style={{ textAlign: 'left' }}>
-                    <p style={{ fontSize: '13px', color: '#374151', margin: 0, fontWeight: 500 }}>My profile</p>
-                    <p style={{ fontSize: '11px', color: '#9CA3AF', margin: 0 }}>Personal details & password</p>
+                    <p style={{ fontSize: '13px', color: '#434B5E', margin: 0, fontWeight: 500 }}>My profile</p>
+                    <p style={{ fontSize: '11px', color: '#98A2B5', margin: 0 }}>Personal details & password</p>
                   </div>
                 </button>
 
@@ -599,8 +580,8 @@ export default function AdminLayout() {
                   style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 14px', border: 'none', backgroundColor: 'transparent', cursor: 'pointer' }}
                   onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#EDF0F7'; }}
                   onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
-                  <Bell size={15} color="#6B7280" />
-                  <p style={{ fontSize: '13px', color: '#374151', margin: 0, fontWeight: 500, flex: 1, textAlign: 'left' }}>Notifications</p>
+                  <Icon name="notification" size={16} />
+                  <p style={{ fontSize: '13px', color: '#434B5E', margin: 0, fontWeight: 500, flex: 1, textAlign: 'left' }}>Notifications</p>
                   {notifUnread > 0 && (
                     <span style={{ fontSize: '10px', fontWeight: 700, color: 'white', backgroundColor: '#EF4444', padding: '2px 7px', borderRadius: '20px', flexShrink: 0 }}>
                       {notifUnread > 9 ? '9+' : notifUnread}
@@ -616,7 +597,7 @@ export default function AdminLayout() {
                   style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 14px', border: 'none', backgroundColor: 'transparent', cursor: 'pointer' }}
                   onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#FEF2F2'; }}
                   onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
-                  <LogOut size={15} color="#EF4444" />
+                  <Icon name="logout" size={16} />
                   <p style={{ fontSize: '13px', color: '#EF4444', margin: 0, fontWeight: 500 }}>Sign out</p>
                 </button>
               </div>
@@ -628,33 +609,34 @@ export default function AdminLayout() {
             onClick={() => setProfileOpen(o => !o)}
             className="w-full flex items-center gap-2.5 px-3 py-3 transition-colors"
             style={{ backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(255,255,255,0.04)'; }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#F7F8FA'; }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
           >
             <div
               className="h-8 w-8 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
-              style={{ backgroundColor: '#374151' }}
+              style={{ backgroundColor: '#E07B3C' }}
             >
               {initials}
             </div>
             <div className="flex-1 min-w-0 text-left">
-              <p className="text-white text-xs font-medium truncate">
+              <p className="text-xs font-medium truncate" style={{ color: '#252B3B' }}>
                 {admin?.name || 'Admin'}
               </p>
-              <p className="text-[10px] truncate" style={{ color: '#6B7280' }}>
+              <p className="text-[10px] truncate" style={{ color: '#6A7387' }}>
                 {admin?.companyName || 'Admin'}
               </p>
             </div>
-            <ChevronDown
+            <Icon
+              name="chevron-down"
               size={14}
-              style={{ color: '#4B5563', flexShrink: 0, transform: profileOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+              style={{ flexShrink: 0, transform: profileOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s', opacity: 0.5 }}
             />
           </button>
         </div>
       </aside>
 
       {/* ── MAIN AREA ── */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ backgroundColor: '#f4f6fb' }}>
+      <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ backgroundColor: '#F7F8FA' }}>
 
         {/* Top Bar — hidden on profile page */}
         <header
@@ -670,14 +652,14 @@ export default function AdminLayout() {
             <div
               className="flex items-center gap-2 rounded-lg px-3"
               style={{
-                backgroundColor: '#EBEDF0',
-                border: `1px solid ${searchOpen ? '#10B981' : '#E2E5E9'}`,
+                backgroundColor: 'white',
+                border: `1px solid ${searchOpen ? '#F59E0B' : '#E2E6EE'}`,
                 height: '36px',
                 width: '100%',
                 transition: 'border-color 0.15s',
               }}
             >
-              <Search size={14} color="#9CA3AF" style={{ flexShrink: 0 }} />
+              <Icon name="search" size={15} style={{ opacity: 0.55 }} />
               <input
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
@@ -688,13 +670,13 @@ export default function AdminLayout() {
                 }}
                 placeholder="Search candidates, tests..."
                 className="flex-1 bg-transparent text-sm outline-none"
-                style={{ color: '#374151' }}
+                style={{ color: '#434B5E' }}
               />
               {searchQuery && (
                 <button
                   onClick={() => { setSearchQuery(''); setSearchResults([]); setSearchOpen(false); }}
                   className="icon-btn"
-                  style={{ color: '#9CA3AF', lineHeight: 1, flexShrink: 0, background: 'none', border: 'none', padding: '2px' }}
+                  style={{ color: '#98A2B5', lineHeight: 1, flexShrink: 0, background: 'none', border: 'none', padding: '2px' }}
                 >
                   <X size={12} />
                 </button>
@@ -714,12 +696,12 @@ export default function AdminLayout() {
               >
                 {searchLoading ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '16px' }}>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2" style={{ borderColor: '#10B981' }} />
-                    <span style={{ fontSize: '13px', color: '#9CA3AF' }}>Searching…</span>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2" style={{ borderColor: '#E07B3C' }} />
+                    <span style={{ fontSize: '13px', color: '#98A2B5' }}>Searching…</span>
                   </div>
                 ) : searchResults.length === 0 ? (
                   <div style={{ padding: '20px 16px', textAlign: 'center' }}>
-                    <p style={{ fontSize: '13px', color: '#9CA3AF', margin: 0 }}>No results for "<strong style={{ color: '#374151' }}>{searchQuery}</strong>"</p>
+                    <p style={{ fontSize: '13px', color: '#98A2B5', margin: 0 }}>No results for "<strong style={{ color: '#434B5E' }}>{searchQuery}</strong>"</p>
                   </div>
                 ) : (
                   (() => {
@@ -731,7 +713,7 @@ export default function AdminLayout() {
                       <div key={group.type}>
                         <p style={{
                           padding: '10px 16px 4px',
-                          fontSize: '10px', fontWeight: 700, color: '#9CA3AF',
+                          fontSize: '10px', fontWeight: 700, color: '#98A2B5',
                           letterSpacing: '0.07em', margin: 0,
                           borderTop: group.type !== grouped[0].type ? '1px solid #F9FAFB' : 'none',
                         }}>
@@ -746,7 +728,7 @@ export default function AdminLayout() {
                               width: '100%', padding: '9px 16px', textAlign: 'left',
                               backgroundColor: 'transparent', border: 'none', cursor: 'pointer',
                             }}
-                            onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#EDF0F7')}
+                            onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.06)')}
                             onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
                           >
                             <div style={{
@@ -757,10 +739,10 @@ export default function AdminLayout() {
                               {TYPE_ICON[result.type]}
                             </div>
                             <div style={{ minWidth: 0, flex: 1 }}>
-                              <p style={{ fontSize: '13px', fontWeight: 500, color: '#111827', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <p style={{ fontSize: '13px', fontWeight: 500, color: '#11162A', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {result.name}
                               </p>
-                              <p style={{ fontSize: '11px', color: '#9CA3AF', margin: 0 }}>{result.subtitle}</p>
+                              <p style={{ fontSize: '11px', color: '#98A2B5', margin: 0 }}>{result.subtitle}</p>
                             </div>
                             <ChevronRight size={12} color="#D1D5DB" style={{ flexShrink: 0 }} />
                           </button>
@@ -788,7 +770,7 @@ export default function AdminLayout() {
                 className="icon-btn relative flex items-center justify-center rounded-full"
                 style={{ width: '38px', height: '38px', backgroundColor: '#EBEDF0', border: '1px solid #E2E5E9' }}
               >
-                <Bell size={19} color="#374151" />
+                <Icon name="bell" size={20} />
                 {notifUnread > 0 && (
                   <span
                     className="absolute -top-0.5 -right-0.5 h-4 w-4 rounded-full flex items-center justify-center text-white"
@@ -807,7 +789,7 @@ export default function AdminLayout() {
                   boxShadow: '0 8px 32px rgba(0,0,0,0.14)', overflow: 'hidden',
                 }}>
                   <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F3F4F6' }}>
-                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#111827' }}>Notifications</span>
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#11162A' }}>Notifications</span>
                     {notificationHistory.length > 0 && (
                       <button
                         onClick={() => {
@@ -815,7 +797,7 @@ export default function AdminLayout() {
                           setNotifUnread(0);
                           adminApi.clearAllNotifications().catch(() => {});
                         }}
-                        style={{ fontSize: '11px', color: '#6B7280', background: 'none', border: 'none', cursor: 'pointer' }}
+                        style={{ fontSize: '11px', color: '#6A7387', background: 'none', border: 'none', cursor: 'pointer' }}
                       >
                         Clear all
                       </button>
@@ -824,36 +806,36 @@ export default function AdminLayout() {
                   <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
                     {notificationHistory.length === 0 ? (
                       <div style={{ padding: '32px 16px', textAlign: 'center' }}>
-                        <p style={{ fontSize: '13px', color: '#9CA3AF', margin: 0 }}>No notifications yet</p>
+                        <p style={{ fontSize: '13px', color: '#98A2B5', margin: 0 }}>No notifications yet</p>
                       </div>
                     ) : (
                       notificationHistory.map(n => {
                         const isStarted = n.type === 'started';
                         return (
                           <div key={n.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '12px 16px', borderBottom: '1px solid #F9FAFB' }}>
-                            <div style={{ height: '32px', width: '32px', borderRadius: '50%', flexShrink: 0, backgroundColor: isStarted ? '#DBEAFE' : '#D1FAE5', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <div style={{ height: '32px', width: '32px', borderRadius: '50%', flexShrink: 0, backgroundColor: isStarted ? '#DBEAFE' : '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               {isStarted
                                 ? <PlayCircle size={14} color="#3B82F6" />
-                                : <CheckCircle2 size={14} color="#059669" />
+                                : <CheckCircle2 size={14} color="#D97706" />
                               }
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <p style={{ fontSize: '13px', fontWeight: 500, color: '#111827', margin: 0 }}>
+                              <p style={{ fontSize: '13px', fontWeight: 500, color: '#11162A', margin: 0 }}>
                                 {isStarted ? 'Exam Started' : (n.autoSubmit ? 'Test Auto-submitted' : 'Test Completed')}
                               </p>
-                              <p style={{ fontSize: '12px', color: '#6B7280', margin: '2px 0 0' }}>
+                              <p style={{ fontSize: '12px', color: '#6A7387', margin: '2px 0 0' }}>
                                 <span style={{ fontWeight: 500 }}>{n.candidateName}</span>
                                 {isStarted ? ' started ' : (n.autoSubmit ? ' was auto-submitted for ' : ' completed ')}
                                 <span style={{ fontWeight: 500 }}>{n.testName}</span>
                               </p>
-                              <p style={{ fontSize: '11px', color: '#9CA3AF', margin: '3px 0 0' }}>{relativeTime(n.timestamp)}</p>
+                              <p style={{ fontSize: '11px', color: '#98A2B5', margin: '3px 0 0' }}>{relativeTime(n.timestamp)}</p>
                             </div>
                             <button
                               onClick={() => {
                                 setNotificationHistory(prev => prev.filter(x => x.id !== n.id));
                                 adminApi.deleteNotification(n.id).catch(() => {});
                               }}
-                              style={{ color: '#9CA3AF', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, lineHeight: 1, fontSize: '16px', padding: '2px' }}
+                              style={{ color: '#98A2B5', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, lineHeight: 1, fontSize: '16px', padding: '2px' }}
                             >
                               ×
                             </button>
@@ -887,22 +869,22 @@ export default function AdminLayout() {
               <div
                 key={notification.id}
                 className="flex items-start gap-3 rounded-lg p-4 shadow-lg"
-                style={{ backgroundColor: 'white', border: `1px solid ${isStarted ? '#BFDBFE' : '#D1FAE5'}` }}
+                style={{ backgroundColor: 'white', border: `1px solid ${isStarted ? '#BFDBFE' : '#FEF3C7'}` }}
               >
                 <div
                   className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full"
-                  style={{ backgroundColor: isStarted ? '#DBEAFE' : '#D1FAE5' }}
+                  style={{ backgroundColor: isStarted ? '#DBEAFE' : '#FEF3C7' }}
                 >
                   {isStarted
                     ? <PlayCircle size={16} color="#3B82F6" />
-                    : <CheckCircle2 size={16} color="#059669" />
+                    : <CheckCircle2 size={16} color="#D97706" />
                   }
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold" style={{ color: '#111827' }}>
+                  <p className="text-sm font-semibold" style={{ color: '#11162A' }}>
                     {isStarted ? 'Exam Started' : (notification.autoSubmit ? 'Test Auto-submitted' : 'Test Completed')}
                   </p>
-                  <p className="mt-0.5 text-sm" style={{ color: '#6B7280' }}>
+                  <p className="mt-0.5 text-sm" style={{ color: '#6A7387' }}>
                     <span className="font-medium">{notification.candidateName}</span>
                     {isStarted ? ' started ' : (notification.autoSubmit ? ' was auto-submitted for ' : ' completed ')}
                     <span className="font-medium">{notification.testName}</span>
@@ -911,7 +893,7 @@ export default function AdminLayout() {
                 <button
                   onClick={() => dismissCompletionPopup(notification.id)}
                   className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded"
-                  style={{ color: '#9CA3AF', fontSize: '18px', lineHeight: 1 }}
+                  style={{ color: '#98A2B5', fontSize: '18px', lineHeight: 1 }}
                 >
                   &times;
                 </button>

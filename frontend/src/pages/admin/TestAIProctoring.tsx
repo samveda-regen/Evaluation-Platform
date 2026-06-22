@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
@@ -32,7 +32,7 @@ const VIOLATION_META: Record<string, { label: string; desc: string; severity: Se
 const SEV_COLOR: Record<Severity, string> = {
   High:   '#EF4444',
   Medium: '#F59E0B',
-  Low:    '#6B7280',
+  Low:    '#6A7387',
 };
 
 /* ── Small reusable toggle ── */
@@ -45,7 +45,7 @@ function Toggle({ on, onChange, disabled }: { on: boolean; onChange: () => void;
       style={{
         position: 'relative', flexShrink: 0,
         width: '44px', height: '24px', borderRadius: '12px',
-        backgroundColor: on ? '#10B981' : '#D1D5DB',
+        backgroundColor: on ? '#F59E0B' : '#D1D5DB',
         border: 'none', cursor: disabled ? 'default' : 'pointer',
         transition: 'background-color 0.2s',
       }}
@@ -98,6 +98,7 @@ export default function TestAIProctoring() {
       setSelectedEvents(normalizeCustomAIViolationSelection(loaded.customAIViolations || DEFAULT_CUSTOM_AI_VIOLATIONS));
 
       /* restore extended proctoring settings */
+      const isEnabled = Boolean(loaded.proctorEnabled);
       try {
         const raw = (loaded as unknown as Record<string, unknown>).proctoringSettings;
         const p = typeof raw === 'string' ? JSON.parse(raw) : raw;
@@ -106,10 +107,12 @@ export default function TestAIProctoring() {
           if (typeof p.warnOnViolation   === 'boolean') setWarnOnViolation(p.warnOnViolation);
           if (typeof p.captureSnapshot   === 'boolean') setCaptureSnapshot(p.captureSnapshot);
           if (typeof p.autoSubmit        === 'boolean') setAutoSubmit(p.autoSubmit);
-          if (typeof p.webcamOn          === 'boolean') setWebcamOn(p.webcamOn);
-          if (typeof p.micOn             === 'boolean') setMicOn(p.micOn);
-          if (typeof p.screenOn          === 'boolean') setScreenOn(p.screenOn);
-          if (typeof p.fullscreenOn      === 'boolean') setFullscreenOn(p.fullscreenOn);
+          setWebcamOn(typeof p.webcamOn === 'boolean' ? p.webcamOn : isEnabled);
+          setMicOn(typeof p.micOn === 'boolean' ? p.micOn : isEnabled);
+          setScreenOn(typeof p.screenOn === 'boolean' ? p.screenOn : isEnabled);
+          setFullscreenOn(typeof p.fullscreenOn === 'boolean' ? p.fullscreenOn : isEnabled);
+        } else if (isEnabled) {
+          setWebcamOn(true); setMicOn(true); setScreenOn(true); setFullscreenOn(true);
         }
       } catch { /* ignore */ }
 
@@ -168,7 +171,7 @@ export default function TestAIProctoring() {
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: '#10B981' }} />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: '#F59E0B' }} />
       </div>
     );
   }
@@ -191,12 +194,16 @@ export default function TestAIProctoring() {
             <div style={{ backgroundColor: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '16px' }}>
                 <div>
-                  <p style={{ fontSize: '15px', fontWeight: 700, color: '#111827', margin: 0 }}>AI proctoring</p>
-                  <p style={{ fontSize: '12px', color: '#6B7280', marginTop: '4px', margin: '4px 0 0' }}>
+                  <p style={{ fontSize: '15px', fontWeight: 700, color: '#11162A', margin: 0 }}>AI proctoring</p>
+                  <p style={{ fontSize: '12px', color: '#6A7387', marginTop: '4px', margin: '4px 0 0' }}>
                     Webcam + screen monitoring with automatic violation detection.
                   </p>
                 </div>
-                <Toggle on={proctorEnabled} onChange={() => setProctorEnabled(p => !p)} />
+                <Toggle on={proctorEnabled} onChange={() => {
+                  const next = !proctorEnabled;
+                  setProctorEnabled(next);
+                  if (next) { setWebcamOn(true); setMicOn(true); setScreenOn(true); setFullscreenOn(true); }
+                }} />
               </div>
 
               {/* Monitoring mode tiles */}
@@ -209,17 +216,18 @@ export default function TestAIProctoring() {
                       type="button"
                       onClick={proctorEnabled ? toggle : undefined}
                       style={{
-                        backgroundColor: active ? '#F0FDF4' : '#F9FAFB',
-                        border: `1.5px solid ${active ? '#A7F3D0' : '#E5E7EB'}`,
+                        backgroundColor: active ? '#FFFBEB' : '#F9FAFB',
+                        border: `1.5px solid ${active ? '#FDE68A' : '#E5E7EB'}`,
                         borderRadius: '12px',
                         padding: '14px 8px',
                         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px',
                         cursor: proctorEnabled ? 'pointer' : 'default',
                         transition: 'all 0.15s',
+                        opacity: !proctorEnabled ? 0.6 : 1,
                       }}>
-                      <span style={{ color: active ? '#10B981' : '#9CA3AF' }}>{icon}</span>
-                      <span style={{ fontSize: '12px', fontWeight: 500, color: '#374151' }}>{label}</span>
-                      <span style={{ fontSize: '11px', fontWeight: 700, color: active ? '#10B981' : '#9CA3AF' }}>
+                      <span style={{ color: active ? '#F59E0B' : '#98A2B5' }}>{icon}</span>
+                      <span style={{ fontSize: '12px', fontWeight: 500, color: '#434B5E' }}>{label}</span>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: active ? '#F59E0B' : '#98A2B5' }}>
                         {active ? 'On' : 'Off'}
                       </span>
                     </button>
@@ -231,9 +239,9 @@ export default function TestAIProctoring() {
             {/* ── Violation rules card ── */}
             <div style={{ backgroundColor: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
-                <p style={{ fontSize: '15px', fontWeight: 700, color: '#111827', margin: 0 }}>Violation rules</p>
+                <p style={{ fontSize: '15px', fontWeight: 700, color: '#11162A', margin: 0 }}>Violation rules</p>
               </div>
-              <p style={{ fontSize: '12px', color: '#6B7280', marginTop: '4px', marginBottom: '16px' }}>
+              <p style={{ fontSize: '12px', color: '#6A7387', marginTop: '4px', marginBottom: '16px' }}>
                 Toggle what counts against the trust score.
               </p>
 
@@ -255,8 +263,8 @@ export default function TestAIProctoring() {
                     }}>
                       <AlertTriangle size={16} style={{ flexShrink: 0, color: '#F59E0B' }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: '13px', fontWeight: 600, color: '#111827', margin: 0 }}>{meta.label}</p>
-                        <p style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '2px', margin: '2px 0 0' }}>{meta.desc}</p>
+                        <p style={{ fontSize: '13px', fontWeight: 600, color: '#11162A', margin: 0 }}>{meta.label}</p>
+                        <p style={{ fontSize: '11px', color: '#98A2B5', marginTop: '2px', margin: '2px 0 0' }}>{meta.desc}</p>
                       </div>
                       <span style={{
                         fontSize: '12px', fontWeight: 600, color: sevColor,
@@ -277,13 +285,13 @@ export default function TestAIProctoring() {
 
             {/* Trust scoring card */}
             <div style={{ backgroundColor: 'white', borderRadius: '16px', padding: '20px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-              <p style={{ fontSize: '14px', fontWeight: 700, color: '#111827', margin: '0 0 16px' }}>Trust scoring</p>
+              <p style={{ fontSize: '14px', fontWeight: 700, color: '#11162A', margin: '0 0 16px' }}>Trust scoring</p>
 
               {/* Auto-flag slider */}
               <div style={{ marginBottom: '16px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 500, color: '#374151' }}>Auto-flag threshold</span>
-                  <span style={{ fontSize: '14px', fontWeight: 700, color: '#111827' }}>{autoFlagThreshold}</span>
+                  <span style={{ fontSize: '12px', fontWeight: 500, color: '#434B5E' }}>Auto-flag threshold</span>
+                  <span style={{ fontSize: '14px', fontWeight: 700, color: '#11162A' }}>{autoFlagThreshold}</span>
                 </div>
                 <input
                   type="range"
@@ -291,9 +299,9 @@ export default function TestAIProctoring() {
                   max={100}
                   value={autoFlagThreshold}
                   onChange={e => setAutoFlagThreshold(Number(e.target.value))}
-                  style={{ width: '100%', accentColor: '#10B981', cursor: 'pointer' }}
+                  style={{ width: '100%', accentColor: '#F59E0B', cursor: 'pointer' }}
                 />
-                <p style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '6px' }}>
+                <p style={{ fontSize: '11px', color: '#98A2B5', marginTop: '6px' }}>
                   Attempts below this trust score are flagged for review
                 </p>
               </div>
@@ -301,7 +309,7 @@ export default function TestAIProctoring() {
               <div style={{ borderTop: '1px solid #F3F4F6', margin: '0 0 14px' }} />
 
               {/* On violation checkboxes */}
-              <p style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#6B7280', margin: '0 0 12px' }}>
+              <p style={{ fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#6A7387', margin: '0 0 12px' }}>
                 On violation
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -316,7 +324,7 @@ export default function TestAIProctoring() {
                       style={{
                         width: '16px', height: '16px', borderRadius: '4px', flexShrink: 0,
                         border: state ? 'none' : '1.5px solid #D1D5DB',
-                        backgroundColor: state ? '#10B981' : 'white',
+                        backgroundColor: state ? '#F59E0B' : 'white',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         cursor: 'pointer', transition: 'all 0.15s',
                       }}>
@@ -324,7 +332,7 @@ export default function TestAIProctoring() {
                         <CheckCircle2 width={10} height={10} style={{ color: 'white' }} />
                       )}
                     </div>
-                    <span style={{ fontSize: '12px', color: '#374151' }}>{label}</span>
+                    <span style={{ fontSize: '12px', color: '#434B5E' }}>{label}</span>
                   </label>
                 ))}
               </div>
@@ -354,7 +362,7 @@ export default function TestAIProctoring() {
               style={{
                 width: '100%', padding: '10px',
                 borderRadius: '12px', border: 'none',
-                backgroundColor: saving ? '#A7F3D0' : '#10B981',
+                backgroundColor: saving ? '#FDE68A' : '#F59E0B',
                 color: 'white', fontSize: '14px', fontWeight: 600,
                 cursor: saving ? 'not-allowed' : 'pointer',
                 transition: 'background-color 0.15s',

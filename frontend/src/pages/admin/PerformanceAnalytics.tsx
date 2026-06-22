@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import api, { adminApi } from '../../services/api';
@@ -55,18 +55,18 @@ interface AdminOverview {
 interface TestOption { id: string; name: string }
 
 /* ── Helpers ── */
-const AVATAR_COLORS = ['#6366F1','#8B5CF6','#F59E0B','#10B981','#3B82F6','#EF4444','#EC4899','#F97316'];
+const AVATAR_COLORS = ['#6366F1','#8B5CF6','#F59E0B','#F59E0B','#3B82F6','#EF4444','#EC4899','#F97316'];
 function avatarBg(name: string) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
   return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
 }
 function initials(name: string) {
-  const p = name.trim().split(/\s+/);
-  return p.length >= 2 ? (p[0][0] + p[1][0]).toUpperCase() : name.slice(0, 2).toUpperCase();
+  const p = name.trim().split(/\s+/).map(w => w.replace(/[^a-zA-Z]/g, '')).filter(Boolean);
+  return p.length >= 2 ? (p[0][0] + p[1][0]).toUpperCase() : (p[0]?.[0] ?? name.replace(/[^a-zA-Z]/g,'')[0] ?? '?').toUpperCase();
 }
 function skillColor(pct: number) {
-  if (pct >= 70) return '#10B981';
+  if (pct >= 70) return '#F59E0B';
   if (pct >= 50) return '#F59E0B';
   return '#EF4444';
 }
@@ -83,7 +83,7 @@ function fmtChange(val: number | null | undefined): string | undefined {
 }
 
 /* ── SVG Donut ── */
-function DonutRing({ pct, size = 88, sw = 9, color = '#10B981' }: {
+function DonutRing({ pct, size = 88, sw = 9, color = '#F59E0B' }: {
   pct: number; size?: number; sw?: number; color?: string;
 }) {
   const r = (size - sw) / 2;
@@ -110,7 +110,7 @@ function KPICard({ icon, iconBg, value, label, change, changeUp }: {
   change?: string; changeUp?: boolean;
 }) {
   return (
-    <div style={{
+    <div className="stat-card" style={{
       backgroundColor: 'white', borderRadius: '14px', padding: '20px 22px',
       boxShadow: '0 1px 6px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', gap: '10px',
     }}>
@@ -122,14 +122,14 @@ function KPICard({ icon, iconBg, value, label, change, changeUp }: {
         {change !== undefined && (
           <span style={{
             fontSize: '12px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px',
-            backgroundColor: changeUp ? '#ECFDF5' : '#FEF2F2',
-            color: changeUp ? '#059669' : '#DC2626',
+            backgroundColor: changeUp ? '#FFFBEB' : '#FEF2F2',
+            color: changeUp ? '#D97706' : '#DC2626',
           }}>{change}</span>
         )}
       </div>
       <div>
-        <p style={{ fontSize: '28px', fontWeight: 700, color: '#111827', margin: 0, lineHeight: 1.1 }}>{value}</p>
-        <p style={{ fontSize: '13px', color: '#6B7280', margin: '4px 0 0' }}>{label}</p>
+        <p style={{ fontSize: '28px', fontWeight: 700, color: '#11162A', margin: 0, lineHeight: 1.1 }}>{value}</p>
+        <p style={{ fontSize: '13px', color: '#6A7387', margin: '4px 0 0' }}>{label}</p>
       </div>
     </div>
   );
@@ -145,12 +145,12 @@ function TrendBar({ label, value, sublabel, maxValue }: {
       <div style={{ display: 'flex', alignItems: 'flex-end', height: '160px', width: '100%', justifyContent: 'center' }}>
         <div style={{
           width: '100%', maxWidth: '52px', height: `${heightPx}px`,
-          backgroundColor: value > 0 ? '#10B981' : '#E5E7EB',
+          backgroundColor: value > 0 ? '#F59E0B' : '#E5E7EB',
           borderRadius: '6px 6px 0 0', transition: 'height 0.4s',
         }} />
       </div>
-      <p style={{ fontSize: '11px', fontWeight: 600, color: '#374151', margin: 0 }}>{label}</p>
-      <p style={{ fontSize: '11px', color: '#9CA3AF', margin: 0 }}>{sublabel}</p>
+      <p style={{ fontSize: '11px', fontWeight: 600, color: '#434B5E', margin: 0 }}>{label}</p>
+      <p style={{ fontSize: '11px', color: '#98A2B5', margin: 0 }}>{sublabel}</p>
     </div>
   );
 }
@@ -322,7 +322,7 @@ export default function PerformanceAnalytics() {
 
   if (loading) return (
     <div style={{ display:'flex', justifyContent:'center', padding:'80px 0' }}>
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor:'#10B981' }} />
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor:'#F59E0B' }} />
     </div>
   );
 
@@ -330,8 +330,8 @@ export default function PerformanceAnalytics() {
     <div style={{ padding:'0', backgroundColor:'#F9FAFB', minHeight:'100%' }}>
 
       {/* Breadcrumb */}
-      <div style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'12px', color:'#9CA3AF', marginBottom:'8px' }}>
-        <span style={{ cursor:'pointer', color:'#6B7280' }} onClick={() => navigate('/admin/dashboard')}>Workspace</span>
+      <div style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'12px', color:'#98A2B5', marginBottom:'8px' }}>
+        <span style={{ cursor:'pointer', color:'#6A7387' }} onClick={() => navigate('/admin/dashboard')}>Workspace</span>
         <span>›</span>
         <span>Analytics</span>
       </div>
@@ -341,8 +341,8 @@ export default function PerformanceAnalytics() {
         <div style={{ display:'flex', alignItems:'flex-start', gap:'12px' }}>
           <BackButton />
           <div>
-            <h1 style={{ fontSize:'26px', fontWeight:700, color:'#111827', margin:'0 0 4px' }}>Performance Analytics</h1>
-            <p style={{ fontSize:'13px', color:'#6B7280', margin:0 }}>Cross-test outcomes, skill coverage and candidate comparison.</p>
+            <h1 style={{ fontSize:'32px', fontWeight:700, letterSpacing:'-0.02em', color:'#11162A', margin:'0 0 4px', lineHeight:1.2 }}>Performance Analytics</h1>
+            <p style={{ fontSize:'13px', color:'#6A7387', margin:0 }}>Cross-test outcomes, skill coverage and candidate comparison.</p>
           </div>
         </div>
 
@@ -354,12 +354,12 @@ export default function PerformanceAnalytics() {
               style={{
                 display:'flex', alignItems:'center', gap:'8px', padding:'8px 14px',
                 border:'1px solid #E5E7EB', borderRadius:'8px', backgroundColor:'white',
-                fontSize:'13px', color:'#374151', cursor:'pointer',
+                fontSize:'13px', color:'#434B5E', cursor:'pointer',
                 maxWidth:'220px',
               }}
             >
               <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{selectedTestName}</span>
-              <ChevronDown size={12} color="#6B7280" style={{ flexShrink:0 }} />
+              <ChevronDown size={12} color="#6A7387" style={{ flexShrink:0 }} />
             </button>
             {showDropdown && (
               <div style={{
@@ -371,8 +371,8 @@ export default function PerformanceAnalytics() {
                   onClick={() => { setSelectedTestId(''); setShowDropdown(false); }}
                   style={{
                     width:'100%', textAlign:'left', padding:'10px 14px', border:'none',
-                    backgroundColor: !selectedTestId ? '#F0FDF4' : 'white',
-                    color: !selectedTestId ? '#059669' : '#374151',
+                    backgroundColor: !selectedTestId ? '#FFFBEB' : 'white',
+                    color: !selectedTestId ? '#D97706' : '#434B5E',
                     fontSize:'13px', cursor:'pointer', borderBottom:'1px solid #F3F4F6',
                   }}
                 >All tests</button>
@@ -381,8 +381,8 @@ export default function PerformanceAnalytics() {
                     onClick={() => { setSelectedTestId(t.id); setShowDropdown(false); }}
                     style={{
                       width:'100%', textAlign:'left', padding:'10px 14px', border:'none',
-                      backgroundColor: selectedTestId===t.id ? '#F0FDF4' : 'white',
-                      color: selectedTestId===t.id ? '#059669' : '#374151',
+                      backgroundColor: selectedTestId===t.id ? '#FFFBEB' : 'white',
+                      color: selectedTestId===t.id ? '#D97706' : '#434B5E',
                       fontSize:'13px', cursor:'pointer', borderBottom:'1px solid #F3F4F6',
                     }}
                   >
@@ -399,7 +399,7 @@ export default function PerformanceAnalytics() {
               style={{
                 display:'flex', alignItems:'center', gap:'6px', padding:'8px 16px',
                 border:'1.5px solid #E5E7EB', borderRadius:'8px', backgroundColor:'white',
-                fontSize:'13px', fontWeight:500, color:'#374151', cursor:'pointer',
+                fontSize:'13px', fontWeight:500, color:'#434B5E', cursor:'pointer',
               }}>
               <FileDown size={14} />
               Export
@@ -424,17 +424,17 @@ export default function PerformanceAnalytics() {
       {/* Score Statistics (per-test only) */}
       {isTestMode && testAnalytics && testAnalytics.completedAttempts > 0 && (
         <div style={{ backgroundColor:'white', borderRadius:'14px', padding:'22px 24px', boxShadow:'0 1px 6px rgba(0,0,0,0.06)', marginBottom:'16px' }}>
-          <p style={{ fontSize:'15px', fontWeight:600, color:'#111827', margin:'0 0 20px' }}>Score Statistics</p>
+          <p style={{ fontSize:'16px', fontWeight:600, color:'#11162A', margin:'0 0 20px' }}>Score Statistics</p>
           <div style={{ display:'flex', justifyContent:'space-around', textAlign:'center' }}>
             {[
-              { label:'Highest', value: testAnalytics.highestScore != null ? `${Math.round((testAnalytics.highestScore/testTotalMarks)*100)}%` : '—', color:'#10B981' },
-              { label:'Median',  value: testAnalytics.medianScore  != null ? `${Math.round((testAnalytics.medianScore/testTotalMarks)*100)}%`  : '—', color:'#111827' },
+              { label:'Highest', value: testAnalytics.highestScore != null ? `${Math.round((testAnalytics.highestScore/testTotalMarks)*100)}%` : '—', color:'#F59E0B' },
+              { label:'Median',  value: testAnalytics.medianScore  != null ? `${Math.round((testAnalytics.medianScore/testTotalMarks)*100)}%`  : '—', color:'#11162A' },
               { label:'Average', value: testAnalytics.averageScore != null ? `${Math.round((testAnalytics.averageScore/testTotalMarks)*100)}%` : '—', color:'#3B82F6' },
               { label:'Lowest',  value: testAnalytics.lowestScore  != null ? `${Math.round((testAnalytics.lowestScore/testTotalMarks)*100)}%`  : '—', color:'#EF4444' },
               { label:'Flagged', value: String(testAnalytics.flaggedAttempts ?? 0), color:'#F97316' },
             ].map(stat => (
               <div key={stat.label}>
-                <p style={{ fontSize:'13px', color:'#6B7280', margin:'0 0 6px' }}>{stat.label}</p>
+                <p style={{ fontSize:'13px', color:'#6A7387', margin:'0 0 6px' }}>{stat.label}</p>
                 <p style={{ fontSize:'24px', fontWeight:700, color:stat.color, margin:0 }}>{stat.value}</p>
               </div>
             ))}
@@ -448,15 +448,15 @@ export default function PerformanceAnalytics() {
         {/* Score trend */}
         <div style={{ backgroundColor:'white', borderRadius:'14px', padding:'22px 24px', boxShadow:'0 1px 6px rgba(0,0,0,0.06)' }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'20px' }}>
-            <p style={{ fontSize:'15px', fontWeight:600, color:'#111827', margin:0 }}>Score trend</p>
+            <p style={{ fontSize:'16px', fontWeight:600, color:'#11162A', margin:0 }}>Score trend</p>
             <div style={{ display:'flex', gap:'2px', backgroundColor:'#F3F4F6', borderRadius:'8px', padding:'3px' }}>
               {(['7d','30d','90d'] as const).map(w => (
                 <button key={w} onClick={() => setTrendWin(w)}
                   style={{
                     padding:'4px 10px', borderRadius:'6px', border:'none', cursor:'pointer',
                     fontSize:'12px', fontWeight:500,
-                    backgroundColor: trendWin === w ? '#111827' : 'transparent',
-                    color: trendWin === w ? 'white' : '#6B7280',
+                    backgroundColor: trendWin === w ? '#11162A' : 'transparent',
+                    color: trendWin === w ? 'white' : '#6A7387',
                   }}>{w}</button>
               ))}
             </div>
@@ -470,9 +470,9 @@ export default function PerformanceAnalytics() {
 
         {/* Skill coverage */}
         <div style={{ backgroundColor:'white', borderRadius:'14px', padding:'22px 24px', boxShadow:'0 1px 6px rgba(0,0,0,0.06)' }}>
-          <p style={{ fontSize:'15px', fontWeight:600, color:'#111827', margin:'0 0 16px' }}>Skill coverage</p>
+          <p style={{ fontSize:'16px', fontWeight:600, color:'#11162A', margin:'0 0 16px' }}>Skill coverage</p>
           {displaySkills.length === 0 ? (
-            <p style={{ fontSize:'13px', color:'#9CA3AF' }}>No skill data</p>
+            <p style={{ fontSize:'13px', color:'#98A2B5' }}>No skill data</p>
           ) : (
             <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
               {displaySkills.map(s => {
@@ -480,8 +480,8 @@ export default function PerformanceAnalytics() {
                 return (
                   <div key={s.skill}>
                     <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'4px' }}>
-                      <span style={{ fontSize:'12px', color:'#374151' }}>{s.skill}</span>
-                      <span style={{ fontSize:'12px', fontWeight:600, color:'#111827' }}>{s.pct}%</span>
+                      <span style={{ fontSize:'12px', color:'#434B5E' }}>{s.skill}</span>
+                      <span style={{ fontSize:'12px', fontWeight:600, color:'#11162A' }}>{s.pct}%</span>
                     </div>
                     <div style={{ height:'5px', backgroundColor:'#F3F4F6', borderRadius:'3px' }}>
                       <div style={{ height:'5px', width:`${s.pct}%`, backgroundColor:col, borderRadius:'3px' }} />
@@ -499,29 +499,29 @@ export default function PerformanceAnalytics() {
 
         {/* Difficulty breakdown */}
         <div style={{ backgroundColor:'white', borderRadius:'14px', padding:'22px 24px', boxShadow:'0 1px 6px rgba(0,0,0,0.06)' }}>
-          <p style={{ fontSize:'15px', fontWeight:600, color:'#111827', margin:'0 0 4px' }}>Difficulty breakdown</p>
-          <p style={{ fontSize:'12px', color:'#9CA3AF', margin:'0 0 20px' }}>Avg correctness by difficulty</p>
+          <p style={{ fontSize:'16px', fontWeight:600, color:'#11162A', margin:'0 0 4px' }}>Difficulty breakdown</p>
+          <p style={{ fontSize:'12px', color:'#98A2B5', margin:'0 0 20px' }}>Avg correctness by difficulty</p>
           <div style={{ display:'flex', justifyContent:'space-around', alignItems:'center' }}>
             {displayDiff ? (
               (['easy','medium','hard'] as const).map(lv => {
                 const pct = Math.round(displayDiff[lv].avgAccuracy);
                 const count = displayDiff[lv].count;
-                const col = lv === 'easy' ? '#10B981' : lv === 'medium' ? '#F59E0B' : '#EF4444';
+                const col = lv === 'easy' ? '#F59E0B' : lv === 'medium' ? '#F59E0B' : '#EF4444';
                 return (
                   <div key={lv} style={{ textAlign:'center' }}>
                     <div style={{ position:'relative', display:'inline-flex', alignItems:'center', justifyContent:'center' }}>
                       <DonutRing pct={pct} size={88} sw={9} color={col} />
-                      <span style={{ position:'absolute', fontSize:'16px', fontWeight:700, color:'#111827' }}>{pct}%</span>
+                      <span style={{ position:'absolute', fontSize:'16px', fontWeight:700, color:'#11162A' }}>{pct}%</span>
                     </div>
-                    <p style={{ fontSize:'13px', color:'#374151', fontWeight:500, margin:'8px 0 2px', textTransform:'capitalize' }}>{lv}</p>
+                    <p style={{ fontSize:'13px', color:'#434B5E', fontWeight:500, margin:'8px 0 2px', textTransform:'capitalize' }}>{lv}</p>
                     {count > 0 && (
-                      <p style={{ fontSize:'11px', color:'#9CA3AF', margin:0 }}>{count} question{count !== 1 ? 's' : ''}</p>
+                      <p style={{ fontSize:'11px', color:'#98A2B5', margin:0 }}>{count} question{count !== 1 ? 's' : ''}</p>
                     )}
                   </div>
                 );
               })
             ) : (
-              <p style={{ color:'#9CA3AF', fontSize:'13px' }}>No difficulty data</p>
+              <p style={{ color:'#98A2B5', fontSize:'13px' }}>No difficulty data</p>
             )}
           </div>
         </div>
@@ -529,21 +529,21 @@ export default function PerformanceAnalytics() {
         {/* Top candidates */}
         <div style={{ backgroundColor:'white', borderRadius:'14px', padding:'22px 24px', boxShadow:'0 1px 6px rgba(0,0,0,0.06)' }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'16px' }}>
-            <p style={{ fontSize:'15px', fontWeight:600, color:'#111827', margin:0 }}>Top candidates</p>
+            <p style={{ fontSize:'16px', fontWeight:600, color:'#11162A', margin:0 }}>Top candidates</p>
             {isTestMode ? (
-              <span style={{ fontSize:'12px', color:'#10B981', cursor:'pointer', fontWeight:500 }}
+              <span style={{ fontSize:'12px', color:'#F59E0B', cursor:'pointer', fontWeight:500 }}
                 onClick={() => navigate(`/admin/tests/${selectedTestId}?tab=candidates`)}>
                 View leaderboard
               </span>
             ) : (
-              <span style={{ fontSize:'12px', color:'#10B981', cursor:'pointer', fontWeight:500 }}
+              <span style={{ fontSize:'12px', color:'#F59E0B', cursor:'pointer', fontWeight:500 }}
                 onClick={() => navigate('/admin/tests')}>
                 View all tests
               </span>
             )}
           </div>
           {topCandidates.length === 0 ? (
-            <p style={{ color:'#9CA3AF', fontSize:'13px' }}>No candidate data</p>
+            <p style={{ color:'#98A2B5', fontSize:'13px' }}>No candidate data</p>
           ) : (
             <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
               {topCandidates.map((c, i) => (
@@ -553,10 +553,10 @@ export default function PerformanceAnalytics() {
                     display:'flex', alignItems:'center', gap:'10px', cursor:'pointer',
                     padding:'8px 10px', borderRadius:'10px', transition:'background-color 0.15s',
                   }}
-                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#EDF0F7')}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.09)')}
                   onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
                 >
-                  <span style={{ fontSize:'13px', color:'#9CA3AF', width:'16px', textAlign:'center', flexShrink:0 }}>{i+1}</span>
+                  <span style={{ fontSize:'13px', color:'#98A2B5', width:'16px', textAlign:'center', flexShrink:0 }}>{i+1}</span>
                   <div style={{
                     width:'34px', height:'34px', borderRadius:'50%', flexShrink:0,
                     backgroundColor: avatarBg(c.name),
@@ -564,19 +564,19 @@ export default function PerformanceAnalytics() {
                     fontSize:'11px', fontWeight:700, color:'white',
                   }}>{initials(c.name)}</div>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <p style={{ fontSize:'13px', fontWeight:500, color:'#111827', margin:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                    <p style={{ fontSize:'13px', fontWeight:500, color:'#11162A', margin:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                       {c.name}
                     </p>
                   </div>
                   <div style={{ display:'flex', alignItems:'center', gap:'10px', flexShrink:0 }}>
                     {c.trust > 0 && (
-                      <span style={{ fontSize:'11px', color:'#9CA3AF' }}>
-                        Trust <span style={{ color:'#374151', fontWeight:600 }}>{c.trust}</span>
+                      <span style={{ fontSize:'11px', color:'#98A2B5' }}>
+                        Trust <span style={{ color:'#434B5E', fontWeight:600 }}>{c.trust}</span>
                       </span>
                     )}
                     <span style={{
                       fontSize:'13px', fontWeight:700,
-                      color: c.pct >= 70 ? '#10B981' : c.pct >= 40 ? '#F59E0B' : '#EF4444',
+                      color: c.pct >= 70 ? '#F59E0B' : c.pct >= 40 ? '#F59E0B' : '#EF4444',
                     }}>{c.pct}%</span>
                   </div>
                 </div>

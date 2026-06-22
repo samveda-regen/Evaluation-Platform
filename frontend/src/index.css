@@ -1,6 +1,13 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
 
 * {
   box-sizing: border-box;
@@ -8,10 +15,68 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-  background: #F8FAFC;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
+  background: #F7F8FA;
+  color: #252B3B;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Type scale — exact HRIA spec ── */
+.text-display    { font-size: 52px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1;  color: #11162A; }
+.text-section    { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2;  color: #11162A; }
+.text-card-head  { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.3;  color: #11162A; }
+.text-subhead    { font-size: 16px; font-weight: 600; line-height: 1.4;                           color: #252B3B; }
+.text-body       { font-size: 15px; font-weight: 400; line-height: 1.55;                          color: #252B3B; }
+.text-meta       { font-size: 13px; font-weight: 400; line-height: 1.5;                           color: #434B5E; }
+.text-mono-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6A7387;
+}
+
+/* ── Base heading defaults ── */
+@layer base {
+  h1 { font-family: var(--font-sans); font-size: 32px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; color: #11162A; }
+  h2 { font-family: var(--font-sans); font-size: 22px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.3; color: #11162A; }
+  h3 { font-family: var(--font-sans); font-size: 16px; font-weight: 600; line-height: 1.4;        color: #252B3B; }
+  h4 { font-family: var(--font-sans); font-size: 15px; font-weight: 600; line-height: 1.5;        color: #252B3B; }
+  h5, h6 { font-family: var(--font-sans); font-size: 13px; font-weight: 600; color: #252B3B; }
+}
+
+/* ── Admin shell: remap Tailwind gray → HRIA ink ── */
+.admin-shell .text-gray-900,
+.admin-shell .text-slate-900 { color: #11162A !important; }
+
+.admin-shell .text-gray-800,
+.admin-shell .text-slate-800 { color: #252B3B !important; }
+
+.admin-shell .text-gray-700,
+.admin-shell .text-slate-700 { color: #434B5E !important; }
+
+.admin-shell .text-gray-600,
+.admin-shell .text-slate-600 { color: #6A7387 !important; }
+
+.admin-shell .text-gray-500,
+.admin-shell .text-slate-500 { color: #6A7387 !important; }
+
+.admin-shell .text-gray-400,
+.admin-shell .text-slate-400 { color: #98A2B5 !important; }
+
+/* Table column headers / section labels — mono uppercase */
+.admin-shell th,
+.admin-shell .col-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6A7387;
 }
 
 /* ── Minimalistic animations ── */
@@ -32,13 +97,13 @@ body {
 .animate-pulse-dot  { animation: pulse-dot  1.4s ease-in-out infinite; }
 .animate-fade-in-up { animation: fade-in-up 0.22s ease-out both; }
 
-/* Admin-wide hover tint — lighter shade of sidebar (#142340) */
-:root { --admin-hover: #EDF0F7; }
+/* Admin-wide hover tint — amber */
+:root { --admin-hover: rgba(245,158,11,0.06); }
 
 /* Override every Tailwind gray hover inside the admin shell */
 .admin-shell .hover\:bg-gray-50:hover,
 .admin-shell .hover\:bg-gray-100:hover,
-.admin-shell .hover\:bg-gray-200:hover { background-color: #EDF0F7 !important; }
+.admin-shell .hover\:bg-gray-200:hover { background-color: rgba(245,158,11,0.06) !important; }
 
 /* Icon-only button animation — mirrors back-button behaviour */
 .icon-btn {
@@ -48,21 +113,18 @@ body {
 .icon-btn:hover  { transform: scale(1.1); }
 .icon-btn:active { transform: scale(0.93); }
 
-/* Stat card hover lift */
+/* Stat card hover — amber tint, no lift */
 .stat-card {
-  transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.15s;
+  transition: box-shadow 0.18s ease, background-color 0.18s ease;
 }
 .stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(0,0,0,0.10) !important;
+  background-color: rgba(245, 158, 11, 0.06) !important;
+  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.18) !important;
 }
 
-/* Icon container subtle scale on parent hover */
+/* Icon container — no scale animation */
 .icon-wrap {
-  transition: transform 0.18s ease;
-}
-.stat-card:hover .icon-wrap {
-  transform: scale(1.1);
+  transition: none;
 }
 
 /* Custom scrollbar */
@@ -135,7 +197,7 @@ textarea {
   }
 
   .btn-success {
-    @apply bg-green-600 text-white hover:bg-green-700 active:bg-green-800;
+    @apply bg-amber-500 text-white hover:bg-amber-600 active:bg-amber-700;
   }
 
   .input {
@@ -160,7 +222,7 @@ textarea {
   }
 
   .badge-success {
-    @apply bg-green-100 text-green-800;
+    @apply bg-amber-100 text-amber-800;
   }
 
   .badge-warning {
@@ -172,7 +234,7 @@ textarea {
   }
 
   .badge-info {
-    @apply bg-blue-100 text-blue-800;
+    @apply bg-amber-100 text-amber-800;
   }
 }
 
@@ -272,7 +334,7 @@ textarea {
 }
 
 .admin-dark input[type="checkbox"] {
-  accent-color: #10b981;
+  accent-color: #F59E0B;
 }
 
 .admin-dark input.bg-transparent,
@@ -327,11 +389,10 @@ textarea {
 }
 
 .admin-dark .badge-success,
-.admin-dark .bg-green-100,
-.admin-dark .bg-emerald-50,
-.admin-dark .bg-emerald-100 {
-  background-color: rgba(16, 185, 129, 0.16);
-  color: #6ee7b7;
+.admin-dark .bg-amber-50,
+.admin-dark .bg-amber-100 {
+  background-color: rgba(245, 158, 11, 0.18);
+  color: #fcd34d;
 }
 
 .admin-dark .badge-warning,
@@ -358,9 +419,9 @@ textarea {
   color: #93c5fd;
 }
 
-.admin-dark .text-emerald-700,
-.admin-dark .text-emerald-600 {
-  color: #6ee7b7;
+.admin-dark .text-amber-700,
+.admin-dark .text-amber-600 {
+  color: #fcd34d;
 }
 
 .admin-dark .text-blue-700,

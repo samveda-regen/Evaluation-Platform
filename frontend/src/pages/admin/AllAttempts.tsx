@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback } from 'react';
+﻿import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
-import { ChevronRight, Search, X } from 'lucide-react';
+import { ChevronRight, ChevronDown, Search, X } from 'lucide-react';
 import { adminApi } from '../../services/api';
 import BackButton from '../../components/BackButton';
 
@@ -19,7 +19,7 @@ interface TestOption { id: string; name: string }
 /* ── Avatar helpers (same as AdminDashboard) ── */
 const AVATAR_COLORS = [
   '#8B5CF6','#7C3AED','#EF4444','#3B82F6','#F97316',
-  '#10B981','#EC4899','#0EA5E9','#84CC16','#F59E0B',
+  '#F59E0B','#EC4899','#0EA5E9','#84CC16','#F59E0B',
 ];
 function avatarColor(name: string) {
   let h = 0;
@@ -27,18 +27,24 @@ function avatarColor(name: string) {
   return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
 }
 function initials(name: string) {
-  return name.trim().split(/\s+/).map(p => p[0]).join('').slice(0, 2).toUpperCase();
+  return name.trim().split(/\s+/)
+    .map(p => p.replace(/[^a-zA-Z]/g, ''))
+    .filter(Boolean)
+    .map(p => p[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
 }
 
 /* ── Status badge (same logic as AdminDashboard's StatusBadge) ── */
 function StatusBadge({ status }: { status: string }) {
   const MAP: Record<string, { label: string; dot: string; text: string; bg: string }> = {
-    submitted:      { label: 'Submitted',      dot: '#10B981', text: '#059669', bg: '#ECFDF5' },
+    submitted:      { label: 'Submitted',      dot: '#F59E0B', text: '#D97706', bg: '#FFFBEB' },
     auto_submitted: { label: 'Auto-submitted', dot: '#F59E0B', text: '#D97706', bg: '#FFFBEB' },
-    in_progress:    { label: 'Inprogress',     dot: '#3B82F6', text: '#2563EB', bg: '#EFF6FF' },
-    inprogress:     { label: 'Inprogress',     dot: '#3B82F6', text: '#2563EB', bg: '#EFF6FF' },
+    in_progress:    { label: 'Inprogress',     dot: '#FBBF24', text: '#92400E', bg: '#FEF3C7' },
+    inprogress:     { label: 'Inprogress',     dot: '#FBBF24', text: '#92400E', bg: '#FEF3C7' },
   };
-  const cfg = MAP[status] ?? { label: status, dot: '#9CA3AF', text: '#6B7280', bg: '#F3F4F6' };
+  const cfg = MAP[status] ?? { label: status, dot: '#98A2B5', text: '#6A7387', bg: '#F3F4F6' };
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: '5px',
@@ -57,6 +63,69 @@ const STATUS_OPTIONS = [
   { value: 'auto_submitted', label: 'Auto-submitted' },
   { value: 'in_progress',    label: 'Inprogress' },
 ];
+
+/* ── Custom amber-themed dropdown ── */
+function CustomSelect({ value, onChange, options, placeholder, style }: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  placeholder?: string;
+  style?: React.CSSProperties;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, []);
+  const selected = options.find(o => o.value === value);
+  return (
+    <div ref={ref} style={{ position: 'relative', ...style }}>
+      <div
+        onClick={() => setOpen(p => !p)}
+        style={{
+          padding: '8px 12px', borderRadius: '8px',
+          border: `1px solid ${open ? '#F59E0B' : '#FDE68A'}`,
+          backgroundColor: 'white', fontSize: '13px', color: value ? '#D97706' : '#6A7387',
+          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: '8px', userSelect: 'none', transition: 'border-color 0.15s',
+        }}
+      >
+        <span style={{ fontWeight: value ? 500 : 400 }}>{selected?.label || placeholder}</span>
+        <ChevronDown size={12} color={open ? '#F59E0B' : '#98A2B5'} style={{ transition: 'transform 0.15s', transform: open ? 'rotate(180deg)' : 'none', flexShrink: 0 }} />
+      </div>
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 100,
+          backgroundColor: 'white', borderRadius: '9px',
+          border: '1px solid #FDE68A', boxShadow: '0 8px 24px rgba(245,158,11,0.12)',
+          minWidth: '100%', overflow: 'hidden',
+        }}>
+          {options.map(opt => (
+            <div
+              key={opt.value}
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              style={{
+                padding: '9px 14px', fontSize: '13px',
+                backgroundColor: opt.value === value ? 'rgba(245,158,11,0.1)' : 'transparent',
+                color: opt.value === value ? '#D97706' : '#434B5E',
+                cursor: 'pointer', fontWeight: opt.value === value ? 600 : 400,
+                transition: 'background-color 0.1s',
+              }}
+              onMouseEnter={e => { if (opt.value !== value) e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.06)'; }}
+              onMouseLeave={e => { if (opt.value !== value) e.currentTarget.style.backgroundColor = 'transparent'; }}
+            >
+              {opt.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function AllAttempts() {
   const navigate = useNavigate();
@@ -114,8 +183,8 @@ export default function AllAttempts() {
     <div style={{ padding: '0', backgroundColor: '#F9FAFB', minHeight: '100%' }}>
 
       {/* Breadcrumb */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#9CA3AF', marginBottom: '8px' }}>
-        <span style={{ cursor: 'pointer', color: '#6B7280' }} onClick={() => navigate('/admin/dashboard')}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#98A2B5', marginBottom: '8px' }}>
+        <span style={{ cursor: 'pointer', color: '#6A7387' }} onClick={() => navigate('/admin/dashboard')}>
           Workspace
         </span>
         <span>›</span>
@@ -127,8 +196,8 @@ export default function AllAttempts() {
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
           <BackButton />
           <div>
-            <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>All Attempts</h1>
-            <p style={{ fontSize: '13px', color: '#9CA3AF', margin: 0 }}>
+            <h1 style={{ fontSize: "32px", fontWeight: 700, letterSpacing: "-0.02em", color: "#11162A", margin: "0 0 4px", lineHeight: 1.2 }}>All Attempts</h1>
+            <p style={{ fontSize: '13px', color: '#98A2B5', margin: 0 }}>
               {loading ? 'Loading…' : `${total} attempt${total !== 1 ? 's' : ''} across all tests`}
             </p>
           </div>
@@ -144,7 +213,7 @@ export default function AllAttempts() {
       }}>
         {/* Search */}
         <div style={{ position: 'relative', flex: '1 1 200px', minWidth: '180px' }}>
-          <Search size={13} color="#9CA3AF" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
+          <Search size={13} color="#98A2B5" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
           <input
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
@@ -152,44 +221,35 @@ export default function AllAttempts() {
             placeholder="Search candidate or test…"
             style={{
               width: '100%', padding: '8px 12px 8px 30px', borderRadius: '8px',
-              border: '1px solid #E5E7EB', fontSize: '13px', color: '#374151',
+              border: '1px solid #E5E7EB', fontSize: '13px', color: '#434B5E',
               outline: 'none', boxSizing: 'border-box',
             }}
           />
         </div>
 
         {/* Test dropdown */}
-        <select
+        <CustomSelect
           value={testId}
-          onChange={e => setTestId(e.target.value)}
-          style={{
-            padding: '8px 12px', borderRadius: '8px', border: '1px solid #E5E7EB',
-            backgroundColor: 'white', fontSize: '13px', color: '#374151',
-            cursor: 'pointer', flex: '1 1 180px', minWidth: '150px',
-          }}
-        >
-          <option value="">All tests</option>
-          {tests.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
+          onChange={setTestId}
+          options={[{ value: '', label: 'All tests' }, ...tests.map(t => ({ value: t.id, label: t.name }))]}
+          placeholder="All tests"
+          style={{ flex: '1 1 180px', minWidth: '150px' }}
+        />
 
         {/* Status dropdown */}
-        <select
+        <CustomSelect
           value={status}
-          onChange={e => setStatus(e.target.value)}
-          style={{
-            padding: '8px 12px', borderRadius: '8px', border: '1px solid #E5E7EB',
-            backgroundColor: 'white', fontSize: '13px', color: '#374151', cursor: 'pointer',
-          }}
-        >
-          {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
+          onChange={setStatus}
+          options={STATUS_OPTIONS}
+          placeholder="All statuses"
+        />
 
         {/* Search btn */}
         <button
           onClick={applySearch}
           style={{
             padding: '8px 18px', borderRadius: '8px', border: 'none',
-            backgroundColor: '#10B981', color: 'white',
+            backgroundColor: '#F59E0B', color: 'white',
             fontSize: '13px', fontWeight: 600, cursor: 'pointer', flexShrink: 0,
           }}
         >
@@ -203,7 +263,7 @@ export default function AllAttempts() {
               display: 'flex', alignItems: 'center', gap: '4px',
               padding: '8px 12px', borderRadius: '8px',
               border: '1px solid #E5E7EB', backgroundColor: 'white',
-              color: '#6B7280', fontSize: '13px', cursor: 'pointer', flexShrink: 0,
+              color: '#6A7387', fontSize: '13px', cursor: 'pointer', flexShrink: 0,
             }}
           >
             <X size={13} />
@@ -216,10 +276,10 @@ export default function AllAttempts() {
       <div style={{ backgroundColor: 'white', borderRadius: '14px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
         {loading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: '#10B981' }} />
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: '#F59E0B' }} />
           </div>
         ) : attempts.length === 0 ? (
-          <p style={{ textAlign: 'center', padding: '64px 0', color: '#9CA3AF', fontSize: '14px' }}>
+          <p style={{ textAlign: 'center', padding: '64px 0', color: '#98A2B5', fontSize: '14px' }}>
             No attempts found{hasFilters ? ' — try adjusting your filters' : ''}
           </p>
         ) : (
@@ -231,7 +291,7 @@ export default function AllAttempts() {
                     <th key={i} style={{
                       padding: '14px 16px', textAlign: 'left',
                       fontSize: '11px', fontWeight: 600,
-                      letterSpacing: '0.07em', color: '#9CA3AF',
+                      letterSpacing: '0.07em', color: '#98A2B5',
                       whiteSpace: 'nowrap',
                     }}>
                       {h}
@@ -245,7 +305,7 @@ export default function AllAttempts() {
                     key={attempt.id}
                     onClick={() => navigate(`/admin/attempts/${attempt.id}`)}
                     style={{ borderBottom: '1px solid #F9FAFB', cursor: 'pointer' }}
-                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#EDF0F7')}
+                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.09)')}
                     onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'white')}
                   >
                     {/* Candidate */}
@@ -259,7 +319,7 @@ export default function AllAttempts() {
                         }}>
                           {initials(attempt.candidate.name || attempt.candidate.email)}
                         </div>
-                        <p style={{ fontSize: '13px', fontWeight: 500, color: '#111827', margin: 0, whiteSpace: 'nowrap' }}>
+                        <p style={{ fontSize: '13px', fontWeight: 500, color: '#11162A', margin: 0, whiteSpace: 'nowrap' }}>
                           {attempt.candidate.name || attempt.candidate.email}
                         </p>
                       </div>
@@ -268,7 +328,7 @@ export default function AllAttempts() {
                     {/* Test */}
                     <td style={{ padding: '14px 16px' }}>
                       <p style={{
-                        fontSize: '13px', color: '#374151', margin: 0,
+                        fontSize: '13px', color: '#434B5E', margin: 0,
                         maxWidth: '300px', overflow: 'hidden',
                         textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       }}>
@@ -278,7 +338,7 @@ export default function AllAttempts() {
 
                     {/* When */}
                     <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
-                      <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>
+                      <p style={{ fontSize: '13px', color: '#6A7387', margin: 0 }}>
                         {format(new Date(attempt.startTime), 'MMM d, h:mm a')}
                       </p>
                     </td>
@@ -290,7 +350,7 @@ export default function AllAttempts() {
 
                     {/* Score */}
                     <td style={{ padding: '14px 16px', whiteSpace: 'nowrap' }}>
-                      <p style={{ fontSize: '13px', fontWeight: 600, color: '#111827', margin: 0 }}>
+                      <p style={{ fontSize: '13px', fontWeight: 600, color: '#11162A', margin: 0 }}>
                         {attempt.score != null ? `${attempt.score}%` : '—'}
                       </p>
                     </td>
@@ -302,7 +362,7 @@ export default function AllAttempts() {
                         width: '28px', height: '28px', borderRadius: '50%',
                         backgroundColor: '#F9FAFB',
                       }}>
-                        <ChevronRight size={13} color="#9CA3AF" />
+                        <ChevronRight size={13} color="#98A2B5" />
                       </div>
                     </td>
                   </tr>
@@ -316,7 +376,7 @@ export default function AllAttempts() {
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 padding: '14px 16px', borderTop: '1px solid #F3F4F6',
               }}>
-                <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>
+                <p style={{ fontSize: '13px', color: '#6A7387', margin: 0 }}>
                   Page {page} of {totalPages} · {total} total
                 </p>
                 <div style={{ display: 'flex', gap: '8px' }}>
@@ -326,7 +386,7 @@ export default function AllAttempts() {
                     style={{
                       padding: '6px 14px', borderRadius: '8px',
                       border: '1px solid #E5E7EB', backgroundColor: 'white',
-                      fontSize: '13px', color: '#374151',
+                      fontSize: '13px', color: '#434B5E',
                       cursor: page <= 1 ? 'not-allowed' : 'pointer',
                       opacity: page <= 1 ? 0.4 : 1,
                     }}
@@ -338,7 +398,7 @@ export default function AllAttempts() {
                     onClick={() => void load(page + 1)}
                     style={{
                       padding: '6px 14px', borderRadius: '8px', border: 'none',
-                      backgroundColor: '#10B981', color: 'white',
+                      backgroundColor: '#F59E0B', color: 'white',
                       fontSize: '13px', fontWeight: 600,
                       cursor: page >= totalPages ? 'not-allowed' : 'pointer',
                       opacity: page >= totalPages ? 0.4 : 1,

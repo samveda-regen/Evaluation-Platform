@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+﻿import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import Editor from '@monaco-editor/react';
@@ -14,6 +14,7 @@ import {
   normalizeAIViolationType,
   normalizeCustomAIViolationSelection,
 } from '../../constants/customAIViolations';
+import talentstaQLogoLight from '../../assets/assessment-icons/icons/TalentstaQ logo-light.svg';
 
 const HIGH_PRIORITY_VIOLATIONS = new Set([
   'multiple_faces', 'phone_detected', 'looking_away', 'tab_switch',
@@ -605,10 +606,10 @@ export default function TestInterface() {
   };
 
   const difficultyColor: Record<string, string> = {
-    easy: '#10B981', medium: '#F59E0B', hard: '#EF4444',
+    easy: '#F59E0B', medium: '#F59E0B', hard: '#EF4444',
   };
   const typeColor: Record<string, string> = {
-    mcq: '#6366F1', coding: '#8B5CF6', behavioral: '#F97316',
+    mcq: '#D97706', coding: '#C2410C', behavioral: '#EA580C',
   };
   const typeLabel: Record<string, string> = {
     mcq: 'Multiple choice', coding: 'Coding', behavioral: 'Behavioral',
@@ -632,7 +633,7 @@ export default function TestInterface() {
         <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
           <div
             className="h-full rounded-full transition-all"
-            style={{ width: `${(getAnsweredCount() / questions.length) * 100}%`, background: '#10B981' }}
+            style={{ width: `${(getAnsweredCount() / questions.length) * 100}%`, background: '#F59E0B' }}
           />
         </div>
       </div>
@@ -651,7 +652,7 @@ export default function TestInterface() {
 
             if (isCurrent) { bg = '#111827'; border = '#111827'; textColor = '#FFFFFF'; }
             else if (marked) { bg = '#FEF3C7'; border = '#F59E0B'; textColor = '#92400E'; }
-            else if (answered) { bg = '#D1FAE5'; border = '#6EE7B7'; textColor = '#065F46'; }
+            else if (answered) { bg = '#FEF3C7'; border = '#FDE68A'; textColor = '#065F46'; }
 
             return (
               <button
@@ -674,7 +675,7 @@ export default function TestInterface() {
       {/* Legend */}
       <div className="border-t px-4 py-4 space-y-2" style={{ borderColor: '#E5E7EB' }}>
         {[
-          { color: '#D1FAE5', border: '#6EE7B7', label: 'Answered' },
+          { color: '#FEF3C7', border: '#FDE68A', label: 'Answered' },
           { color: '#FEF3C7', border: '#F59E0B', label: 'Marked for review' },
           { color: '#111827', border: '#111827', label: 'Current' },
           { color: '#FFFFFF', border: '#D1D5DB', label: 'Not visited' },
@@ -721,7 +722,7 @@ export default function TestInterface() {
         onClick={handleSaveAndNext}
         disabled={isTestFrozen}
         className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity disabled:opacity-50"
-        style={{ background: '#10B981' }}
+        style={{ background: '#F59E0B' }}
       >
         {currentQuestionIndex === questions.length - 1 ? 'Submit Test' : 'Save & Next'}
         {currentQuestionIndex < questions.length - 1 && (
@@ -767,7 +768,7 @@ export default function TestInterface() {
             </div>
             <h2 className="text-lg font-bold text-gray-900 mb-2">Fullscreen Required</h2>
             <p className="text-sm text-gray-500 mb-6">You exited fullscreen. Click below to continue your test.</p>
-            <button onClick={handleReenterFullscreen} className="w-full py-3 rounded-xl font-semibold text-white text-sm" style={{ background: '#10B981' }}>
+            <button onClick={handleReenterFullscreen} className="w-full py-3 rounded-xl font-semibold text-white text-sm" style={{ background: '#F59E0B' }}>
               Continue in Fullscreen
             </button>
           </div>
@@ -815,14 +816,12 @@ export default function TestInterface() {
             </svg>
             Back
           </button>
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#10B981' }}>
-            <span className="text-white font-bold text-sm">t</span>
-          </div>
+          <img src={talentstaQLogoLight} alt="TalentstaQ" style={{ height: '28px', width: 'auto', flexShrink: 0 }} />
           <span className="text-white font-semibold text-sm">{testName}</span>
           {proctorEnabled && (
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full" style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)' }}>
-              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#10B981' }} />
-              <span className="text-xs font-medium" style={{ color: '#10B981' }}>Proctoring active</span>
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full" style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.35)' }}>
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#F59E0B' }} />
+              <span className="text-xs font-medium" style={{ color: '#F59E0B' }}>Proctoring active</span>
             </div>
           )}
         </div>
@@ -843,26 +842,15 @@ export default function TestInterface() {
               </svg>
             </button>
           )}
-          <button
-            onClick={() => setShowConfirmSubmit(true)}
-            disabled={submitting || isTestFrozen}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-opacity disabled:opacity-50"
-            style={{ background: '#EF4444' }}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-            Submit Test
-          </button>
           {/* Timer */}
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: '#1E293B' }}>
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke={timeRemaining < 300000 ? '#EF4444' : '#94A3B8'} strokeWidth={1.8}>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: timeRemaining < 300000 ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)', border: `1px solid ${timeRemaining < 300000 ? 'rgba(239,68,68,0.35)' : 'rgba(245,158,11,0.35)'}` }}>
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke={timeRemaining < 300000 ? '#EF4444' : '#F59E0B'} strokeWidth={1.8}>
               <circle cx="12" cy="12" r="9" />
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />
             </svg>
             <span
               className="text-sm font-bold font-mono tabular-nums"
-              style={{ color: timeRemaining < 300000 ? '#EF4444' : '#F1F5F9' }}
+              style={{ color: timeRemaining < 300000 ? '#EF4444' : '#F59E0B' }}
             >
               {formatTime(timeRemaining)}
             </span>
@@ -1012,7 +1000,7 @@ export default function TestInterface() {
                 <div className="border-t px-4 py-2.5 flex items-center justify-between" style={{ background: '#252526', borderColor: '#3E3E42' }}>
                   <div>
                     {codeOutput && !runningCode && (
-                      <span className="text-xs font-medium" style={{ color: codeOutput.startsWith('Error') ? '#EF4444' : '#10B981' }}>
+                      <span className="text-xs font-medium" style={{ color: codeOutput.startsWith('Error') ? '#EF4444' : '#F59E0B' }}>
                         {codeOutput.startsWith('Error') ? '✗ ' : '✓ '}
                         {codeOutput.startsWith('Error') ? 'Error in code' : 'Code ran successfully'}
                       </span>
@@ -1039,7 +1027,7 @@ export default function TestInterface() {
                       onClick={handleSubmitCode}
                       disabled={isTestFrozen || codeSubmitted}
                       className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-60 transition-colors"
-                      style={{ background: codeSubmitted ? '#059669' : '#10B981' }}
+                      style={{ background: codeSubmitted ? '#D97706' : '#F59E0B' }}
                     >
                       {codeSubmitted ? '✓ Saved' : 'Submit code'}
                     </button>
@@ -1118,14 +1106,14 @@ export default function TestInterface() {
                             onClick={() => handleMCQSelect(option.originalIndex)}
                             className="w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all"
                             style={{
-                              borderColor: isSelected ? '#10B981' : '#E5E7EB',
-                              background: isSelected ? '#F0FDF4' : '#FFFFFF',
+                              borderColor: isSelected ? '#F59E0B' : '#E5E7EB',
+                              background: isSelected ? '#FFFBEB' : '#FFFFFF',
                             }}
                           >
                             <span
                               className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0 transition-colors"
                               style={{
-                                background: isSelected ? '#10B981' : '#F3F4F6',
+                                background: isSelected ? '#F59E0B' : '#F3F4F6',
                                 color: isSelected ? '#FFFFFF' : '#6B7280',
                               }}
                             >
@@ -1133,7 +1121,7 @@ export default function TestInterface() {
                             </span>
                             <span className="flex-1 text-sm text-gray-700">{option.text}</span>
                             {isSelected && (
-                              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 flex-shrink-0" viewBox="0 0 20 20" fill="#10B981">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 flex-shrink-0" viewBox="0 0 20 20" fill="#F59E0B">
                                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                               </svg>
                             )}
@@ -1161,7 +1149,7 @@ export default function TestInterface() {
                       {currentQuestion.title || currentQuestion.questionText}
                     </h2>
                     {currentQuestion.description && (
-                      <p className="text-sm mb-5" style={{ color: '#10B981' }}>
+                      <p className="text-sm mb-5" style={{ color: '#F59E0B' }}>
                         {currentQuestion.description}
                       </p>
                     )}
@@ -1175,7 +1163,7 @@ export default function TestInterface() {
                         placeholder="Write your response here..."
                         className="w-full rounded-xl border px-4 py-4 text-sm text-gray-700 resize-none outline-none transition-colors"
                         style={{ borderColor: '#E5E7EB', background: '#FFFFFF', lineHeight: '1.6' }}
-                        onFocus={(e) => (e.target.style.borderColor = '#10B981')}
+                        onFocus={(e) => (e.target.style.borderColor = '#F59E0B')}
                         onBlur={(e) => (e.target.style.borderColor = '#E5E7EB')}
                       />
                       {/* Word count + auto-saved */}
@@ -1184,7 +1172,7 @@ export default function TestInterface() {
                           {wordCount} {wordCount === 1 ? 'word' : 'words'} · {behavioralText.length} characters
                         </span>
                         {autoSaved && (
-                          <span className="flex items-center gap-1 text-xs" style={{ color: '#10B981' }}>
+                          <span className="flex items-center gap-1 text-xs" style={{ color: '#F59E0B' }}>
                             <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
                               <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                             </svg>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
@@ -7,6 +7,7 @@ import TestCandidatesPanel from './TestCandidatesPanel';
 import TestAIProctoring from './TestAIProctoring';
 import TestSettings from './TestSettings';
 import BackButton from '../../components/BackButton';
+import CustomSelect from '../../components/CustomSelect';
 import {
   ChevronRight,
   ChevronLeft,
@@ -109,7 +110,7 @@ function bandColor(label: string, passingPct: number): string {
   const lower = parseInt(label.split('-')[0] ?? '0', 10);
   if (upper <= passingPct - 15) return '#F87171'; // clearly failing → red
   if (lower < passingPct)       return '#FCD34D'; // borderline → amber
-  return '#10B981';                                // passing → green
+  return '#F59E0B';                                // passing → green
 }
 
 /* ── Score distribution bar chart ── */
@@ -141,18 +142,18 @@ function ScoreBarChart({
                   transition: 'height 0.3s',
                 }} />
               </div>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: '#374151' }}>{b.label}</span>
-              <span style={{ fontSize: '11px', color: '#6B7280' }}>{b.count}</span>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: '#434B5E' }}>{b.label}</span>
+              <span style={{ fontSize: '11px', color: '#6A7387' }}>{b.count}</span>
             </div>
           );
         })}
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #F3F4F6' }}>
-        <span style={{ fontSize: '13px', color: '#6B7280' }}>
-          Passing score&nbsp;<strong style={{ color: '#111827' }}>{passingPct}%</strong>
+        <span style={{ fontSize: '13px', color: '#6A7387' }}>
+          Passing score&nbsp;<strong style={{ color: '#11162A' }}>{passingPct}%</strong>
         </span>
-        <span style={{ fontSize: '13px', color: '#6B7280' }}>
-          Pass rate&nbsp;<strong style={{ color: '#10B981' }}>{passRate != null ? Math.round(passRate) : 0}%</strong>
+        <span style={{ fontSize: '13px', color: '#6A7387' }}>
+          Pass rate&nbsp;<strong style={{ color: '#F59E0B' }}>{passRate != null ? Math.round(passRate) : 0}%</strong>
         </span>
       </div>
     </div>
@@ -228,6 +229,8 @@ export default function TestDetails() {
   const [qSearch, setQSearch] = useState('');
   const [qTypeFilter, setQTypeFilter] = useState('all');
   const [qDiffFilter, setQDiffFilter] = useState('all');
+  const [showTypeDrop, setShowTypeDrop] = useState(false);
+  const [showDiffDrop, setShowDiffDrop] = useState(false);
   const [qPage, setQPage] = useState(1);
   const [selectedQIds, setSelectedQIds] = useState<Set<string>>(new Set());
   const [showNewQMenu, setShowNewQMenu] = useState(false);
@@ -314,14 +317,6 @@ export default function TestDetails() {
     } finally { setCreatingSection(false); }
   };
 
-  const handleDeleteSection = async (sectionId: string) => {
-    if (!confirm('Delete this section and remove its questions from the test?')) return;
-    try {
-      await adminApi.deleteTestSection(testId!, sectionId);
-      toast.success('Section deleted'); await loadTest();
-    } catch { toast.error('Failed to delete section'); }
-  };
-
   const handleAddQuestion = async () => {
     if (!selectedQuestion) { toast.error('Please select a question'); return; }
     try {
@@ -343,11 +338,6 @@ export default function TestDetails() {
     } catch { toast.error('Failed to remove question'); }
   };
 
-  const openAddModal = (type: 'mcq' | 'coding' | 'behavioral', sectionId?: string | null) => {
-    setQuestionType(type); setShowAddModal(true); setSelectedQuestion('');
-    setAvailableQuestions([]); setActiveSectionId(sectionId ?? null);
-    loadAvailableQuestions(type);
-  };
 
   const resetCustomForm = () => {
     setCustomType('mcq'); setCustomMarks(5); setCustomDifficulty('medium');
@@ -500,11 +490,11 @@ export default function TestDetails() {
   if (loading) {
     return (
       <div style={{ backgroundColor: '#f4f6fb', margin: '-24px', padding: '24px', minHeight: 'calc(100vh - 52px)' }} className="flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2" style={{ borderColor: '#10B981' }} />
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2" style={{ borderColor: '#F59E0B' }} />
       </div>
     );
   }
-  if (!test) return <div className="text-center py-12" style={{ color: '#6B7280' }}>Test not found</div>;
+  if (!test) return <div className="text-center py-12" style={{ color: '#6A7387' }}>Test not found</div>;
 
   const status = getTestStatus(test);
   const mcqCount       = questions.filter(q => q.questionType === 'mcq').length;
@@ -525,45 +515,30 @@ export default function TestDetails() {
   const buckets       = buildBuckets(analytics?.scoreDistribution ?? null, test.totalMarks);
 
   const statusColors: Record<string, { bg: string; color: string; dot: string }> = {
-    Published: { bg: '#ECFDF5', color: '#059669', dot: '#10B981' },
-    Draft:     { bg: '#F3F4F6', color: '#6B7280', dot: '#9CA3AF' },
+    Published: { bg: '#FFFBEB', color: '#D97706', dot: '#F59E0B' },
+    Draft:     { bg: '#F3F4F6', color: '#6A7387', dot: '#98A2B5' },
     Scheduled: { bg: '#EFF6FF', color: '#1D4ED8', dot: '#3B82F6' },
     Archived:  { bg: '#FFF7ED', color: '#C2410C', dot: '#F97316' },
   };
   const sc = statusColors[status];
 
   const TABS: { id: ActiveTab | 'ai-proctoring' | 'settings'; label: string; icon: React.ReactNode }[] = [
-    {
-      id: 'overview', label: 'Overview',
-      icon: <LayoutDashboard size={14} />,
-    },
-    {
-      id: 'questions', label: 'Questions',
-      icon: <FileQuestion size={14} />,
-    },
-    {
-      id: 'candidates', label: 'Candidates',
-      icon: <Users size={14} />,
-    },
-    {
-      id: 'ai-proctoring', label: 'AI Proctoring',
-      icon: <ShieldCheck size={14} />,
-    },
-    {
-      id: 'settings', label: 'Settings',
-      icon: <Settings2 size={14} />,
-    },
+    { id: 'overview',      label: 'Overview',      icon: <LayoutDashboard size={14} color="#F59E0B" /> },
+    { id: 'questions',     label: 'Questions',     icon: <FileQuestion    size={14} color="#F59E0B" /> },
+    { id: 'candidates',    label: 'Candidates',    icon: <Users           size={14} color="#F59E0B" /> },
+    { id: 'ai-proctoring', label: 'AI Proctoring', icon: <ShieldCheck     size={14} color="#F59E0B" /> },
+    { id: 'settings',      label: 'Settings',      icon: <Settings2       size={14} color="#F59E0B" /> },
   ];
 
   return (
     <div style={{ backgroundColor: '#f4f6fb', margin: '-24px', padding: '24px', minHeight: 'calc(100vh - 52px)' }}>
 
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm mb-5" style={{ color: '#9CA3AF' }}>
+      <div className="flex items-center gap-2 text-sm mb-5" style={{ color: '#98A2B5' }}>
         <BackButton mt="0" />
-        <Link to="/admin/tests" className="hover:underline" style={{ color: '#9CA3AF' }}>Assessments</Link>
+        <Link to="/admin/tests" className="hover:underline" style={{ color: '#98A2B5' }}>Assessments</Link>
         <ChevronRight size={12} />
-        <span style={{ color: '#374151' }}>{test.name}</span>
+        <span style={{ color: '#434B5E' }}>{test.name}</span>
       </div>
 
       {/* Header */}
@@ -571,30 +546,30 @@ export default function TestDetails() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           {/* Left: icon + name + meta */}
           <div className="flex items-start gap-4">
-            <div className="h-12 w-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)', boxShadow: '0 3px 10px rgba(79,70,229,0.35)' }}>
+            <div className="h-12 w-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)', boxShadow: '0 3px 10px rgba(245,158,11,0.35)' }}>
               <Layers size={22} color="white" strokeWidth={1.8} />
             </div>
             <div>
               <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-xl font-bold" style={{ color: '#111827' }}>{test.name}</h1>
+                <h1 className="text-xl font-bold" style={{ color: '#11162A' }}>{test.name}</h1>
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold"
                   style={{ backgroundColor: sc.bg, color: sc.color }}>
                   <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: sc.dot }} />
                   {status}
                 </span>
               </div>
-              <div className="flex items-center gap-4 mt-1.5 text-sm flex-wrap" style={{ color: '#6B7280' }}>
-                <span className="font-mono font-semibold" style={{ color: '#374151' }}>{test.testCode}</span>
+              <div className="flex items-center gap-4 mt-1.5 text-sm flex-wrap" style={{ color: '#6A7387' }}>
+                <span className="font-mono font-semibold" style={{ color: '#434B5E' }}>{test.testCode}</span>
                 <span className="flex items-center gap-1">
-                  <Timer size={12} />
+                  <Timer size={12} color="#F59E0B" />
                   {test.duration} min
                 </span>
                 <span className="flex items-center gap-1">
-                  <FileQuestion size={12} />
+                  <FileQuestion size={12} color="#F59E0B" />
                   {test._count?.questions ?? questions.length} questions
                 </span>
                 <span className="flex items-center gap-1">
-                  <Users size={12} />
+                  <Users size={12} color="#F59E0B" />
                   {totalAttempts} attempts
                 </span>
               </div>
@@ -605,10 +580,10 @@ export default function TestDetails() {
           <div className="flex items-center gap-2 flex-wrap">
             <button
               className="flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium"
-              style={{ borderColor: '#E5E7EB', color: '#374151', backgroundColor: 'white', transition: 'background-color 0.15s, border-color 0.15s' }}
+              style={{ borderColor: '#FDE68A', color: '#D97706', backgroundColor: 'white', transition: 'background-color 0.15s, border-color 0.15s' }}
               onClick={() => window.open(`/admin/tests/${testId}/preview`, '_blank')}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#EDF0F7'; (e.currentTarget as HTMLElement).style.borderColor = '#C7CEDF'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'white'; (e.currentTarget as HTMLElement).style.borderColor = '#E5E7EB'; }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(245,158,11,0.08)'; (e.currentTarget as HTMLElement).style.borderColor = '#F59E0B'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'white'; (e.currentTarget as HTMLElement).style.borderColor = '#FDE68A'; }}
             >
               <Eye size={14} />
               Preview
@@ -616,14 +591,14 @@ export default function TestDetails() {
             <button
               onClick={openInviteModal}
               className="flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium"
-              style={{ borderColor: '#E5E7EB', color: '#374151', backgroundColor: 'white', transition: 'background-color 0.15s, border-color 0.15s' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#EDF0F7'; (e.currentTarget as HTMLElement).style.borderColor = '#C7CEDF'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'white'; (e.currentTarget as HTMLElement).style.borderColor = '#E5E7EB'; }}
+              style={{ borderColor: '#FDE68A', color: '#D97706', backgroundColor: 'white', transition: 'background-color 0.15s, border-color 0.15s' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(245,158,11,0.08)'; (e.currentTarget as HTMLElement).style.borderColor = '#F59E0B'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'white'; (e.currentTarget as HTMLElement).style.borderColor = '#FDE68A'; }}
             >
               <Link2 size={14} />
               Invite link
               {totalAttempts > 0 && (
-                <span className="h-5 w-5 rounded-full text-xs font-bold flex items-center justify-center" style={{ backgroundColor: '#F3F4F6', color: '#374151' }}>
+                <span className="h-5 w-5 rounded-full text-xs font-bold flex items-center justify-center" style={{ backgroundColor: '#F3F4F6', color: '#434B5E' }}>
                   {Math.min(totalAttempts, 9)}
                 </span>
               )}
@@ -631,7 +606,7 @@ export default function TestDetails() {
             <button
               onClick={handlePublish}
               className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white"
-              style={{ backgroundColor: '#10B981' }}
+              style={{ backgroundColor: '#F59E0B' }}
             >
               <Upload size={14} color="white" />
               {test.isActive ? 'Publish changes' : 'Publish'}
@@ -649,7 +624,7 @@ export default function TestDetails() {
                   key={tab.id}
                   to={`/admin/tests/${testId}/${tab.id}`}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium"
-                  style={{ color: '#6B7280' }}
+                  style={{ color: '#6A7387' }}
                 >
                   {tab.icon}{tab.label}
                 </Link>
@@ -661,9 +636,9 @@ export default function TestDetails() {
                 onClick={() => switchTab(tab.id as ActiveTab)}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                 style={{
-                  backgroundColor: activeTab === tab.id ? '#F0FDF4' : 'white',
-                  color: activeTab === tab.id ? '#059669' : '#6B7280',
-                  border: activeTab === tab.id ? '1.5px solid #A7F3D0' : '1.5px solid #E5E7EB',
+                  backgroundColor: activeTab === tab.id ? '#FFFBEB' : 'white',
+                  color: activeTab === tab.id ? '#D97706' : '#6A7387',
+                  border: activeTab === tab.id ? '1.5px solid #FDE68A' : '1.5px solid #E5E7EB',
                 }}
               >
                 {tab.icon}{tab.label}
@@ -681,15 +656,15 @@ export default function TestDetails() {
             {/* 4 stat cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[
-                { label: 'Attempts', value: totalAttempts.toString(), icon: <Users size={20} color="#10B981" /> },
-                { label: 'Completion', value: completionPct > 0 ? `${completionPct}%` : '—', icon: <CheckCircle2 size={20} color="#3B82F6" /> },
-                { label: 'Avg score',  value: avgScore != null ? `${avgScore}%` : '—', icon: <ClipboardCheck size={20} color="#8B5CF6" /> },
-                { label: 'Avg trust',  value: avgTrust != null ? `${avgTrust}%` : '—', icon: <ShieldCheck size={20} color="#F59E0B" /> },
+                { label: 'Attempts',   value: totalAttempts.toString(),                        icon: <Users         size={26} color="#F59E0B" /> },
+                { label: 'Completion', value: completionPct > 0 ? `${completionPct}%` : '-',  icon: <CheckCircle2  size={26} color="#F59E0B" /> },
+                { label: 'Avg score',  value: avgScore != null ? `${avgScore}%` : '-',         icon: <ClipboardCheck size={26} color="#F59E0B" /> },
+                { label: 'Avg trust',  value: avgTrust != null ? `${avgTrust}%` : '-',         icon: <ShieldCheck   size={26} color="#F59E0B" /> },
               ].map(card => (
                 <div key={card.label} className="rounded-2xl p-5" style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
                   <div className="mb-3">{card.icon}</div>
-                  <p className="text-3xl font-bold" style={{ color: '#111827' }}>{card.value}</p>
-                  <p className="text-sm mt-1" style={{ color: '#6B7280' }}>{card.label}</p>
+                  <p className="text-3xl font-bold" style={{ color: '#11162A' }}>{card.value}</p>
+                  <p className="text-sm mt-1" style={{ color: '#6A7387' }}>{card.label}</p>
                 </div>
               ))}
             </div>
@@ -697,17 +672,17 @@ export default function TestDetails() {
             {/* Score Statistics */}
             {analytics && analytics.completedAttempts > 0 && (analytics.highestScore != null || analytics.medianScore != null || analytics.lowestScore != null) && (
               <div className="rounded-2xl p-6" style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
-                <h3 className="text-base font-semibold mb-5" style={{ color: '#111827' }}>Score Statistics</h3>
+                <h3 className="text-base font-semibold mb-5" style={{ color: '#11162A' }}>Score Statistics</h3>
                 <div style={{ display: 'flex', justifyContent: 'space-around', textAlign: 'center' }}>
                   {[
-                    { label: 'Highest', value: analytics.highestScore != null ? analytics.highestScore.toFixed(1) : '—', color: '#10B981' },
-                    { label: 'Median',  value: analytics.medianScore  != null ? analytics.medianScore.toFixed(1)  : '—', color: '#111827' },
+                    { label: 'Highest', value: analytics.highestScore != null ? analytics.highestScore.toFixed(1) : '—', color: '#F59E0B' },
+                    { label: 'Median',  value: analytics.medianScore  != null ? analytics.medianScore.toFixed(1)  : '—', color: '#11162A' },
                     { label: 'Average', value: avgScore != null ? `${avgScore}` : '—',                                    color: '#3B82F6' },
                     { label: 'Lowest',  value: analytics.lowestScore  != null ? analytics.lowestScore.toFixed(1)  : '—', color: '#EF4444' },
                     { label: 'Flagged', value: analytics.flaggedAttempts != null ? String(analytics.flaggedAttempts) : '—', color: '#F97316' },
                   ].map(stat => (
                     <div key={stat.label}>
-                      <p style={{ fontSize: '12px', color: '#6B7280', margin: '0 0 6px' }}>{stat.label}</p>
+                      <p style={{ fontSize: '12px', color: '#6A7387', margin: '0 0 6px' }}>{stat.label}</p>
                       <p style={{ fontSize: '22px', fontWeight: 700, color: stat.color, margin: 0 }}>{stat.value}</p>
                     </div>
                   ))}
@@ -717,7 +692,7 @@ export default function TestDetails() {
 
             {/* Score distribution */}
             <div className="rounded-2xl p-6" style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
-              <h3 className="text-base font-semibold mb-4" style={{ color: '#111827' }}>Score Distribution</h3>
+              <h3 className="text-base font-semibold mb-4" style={{ color: '#11162A' }}>Score Distribution</h3>
               <ScoreBarChart buckets={buckets} passingPct={passingPct} passRate={passRatePct} />
             </div>
           </div>
@@ -726,16 +701,16 @@ export default function TestDetails() {
           <div className="space-y-4">
             {/* Composition */}
             <div className="rounded-2xl p-5" style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
-              <h3 className="text-sm font-semibold mb-4" style={{ color: '#111827' }}>Composition</h3>
+              <h3 className="text-sm font-semibold mb-4" style={{ color: '#11162A' }}>Composition</h3>
               {[
-                { label: 'MCQ',        count: mcqCount,        color: '#3B82F6' },
-                { label: 'Coding',     count: codingCount,     color: '#8B5CF6' },
-                { label: 'Behavioral', count: behavioralCount, color: '#F59E0B' },
+                { label: 'MCQ',        count: mcqCount,        color: '#F59E0B' },
+                { label: 'Coding',     count: codingCount,     color: '#D97706' },
+                { label: 'Behavioral', count: behavioralCount, color: '#B45309' },
               ].map(item => (
                 <div key={item.label} className="mb-3">
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-sm font-medium" style={{ color: item.color }}>{item.label}</span>
-                    <span className="text-sm font-semibold" style={{ color: '#111827' }}>{item.count}</span>
+                    <span className="text-sm font-semibold" style={{ color: '#11162A' }}>{item.count}</span>
                   </div>
                   <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: '#F3F4F6' }}>
                     <div className="h-full rounded-full" style={{ width: `${(item.count / compMax) * 100}%`, backgroundColor: item.color }} />
@@ -746,21 +721,21 @@ export default function TestDetails() {
 
             {/* Quick actions */}
             <div className="rounded-2xl p-5" style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
-              <h3 className="text-sm font-semibold mb-3" style={{ color: '#111827' }}>Quick actions</h3>
+              <h3 className="text-sm font-semibold mb-3" style={{ color: '#11162A' }}>Quick actions</h3>
               <div className="space-y-1">
                 {[
-                  { label: 'Edit questions',    icon: <FileQuestion size={14} />, action: () => switchTab('questions') },
-                  { label: 'Manage candidates', icon: <Users size={14} />, action: () => switchTab('candidates') },
-                  { label: 'Proctoring rules',  icon: <ShieldCheck size={14} />, action: () => switchTab('ai-proctoring') },
-                  { label: 'Full analytics',    icon: <LayoutDashboard size={14} />, action: () => navigate(`/admin/tests/${testId}/analytics`) },
+                  { label: 'Edit questions',    icon: <FileQuestion    size={14} color="#F59E0B" />, action: () => switchTab('questions') },
+                  { label: 'Manage candidates', icon: <Users           size={14} color="#F59E0B" />, action: () => switchTab('candidates') },
+                  { label: 'Proctoring rules',  icon: <ShieldCheck     size={14} color="#F59E0B" />, action: () => switchTab('ai-proctoring') },
+                  { label: 'Full analytics',    icon: <LayoutDashboard size={14} color="#F59E0B" />, action: () => navigate(`/admin/tests/${testId}/analytics`) },
                 ].map(item => (
                   <button key={item.label} onClick={item.action}
                     className="w-full flex items-center justify-between px-3 py-3 rounded-xl text-sm font-medium"
-                    style={{ color: '#374151', transition: 'background-color 0.15s' }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#EDF0F7'; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}>
+                    style={{ color: '#434B5E', transition: 'background-color 0.15s, color 0.15s' }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(245,158,11,0.08)'; (e.currentTarget as HTMLElement).style.color = '#D97706'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; (e.currentTarget as HTMLElement).style.color = '#434B5E'; }}>
                     <span className="flex items-center gap-2.5">{item.icon}{item.label}</span>
-                    <ChevronRight size={14} color="#9CA3AF" />
+                    <ChevronRight size={14} color="#98A2B5" />
                   </button>
                 ))}
               </div>
@@ -777,46 +752,72 @@ export default function TestDetails() {
           <div className="flex flex-wrap items-center gap-3 px-5 py-4" style={{ borderBottom: '1px solid #F3F4F6' }}>
             {/* Search */}
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2" size={14} style={{ color: '#9CA3AF' }} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2" size={16} style={{ color: '#98A2B5' }} />
               <input
                 value={qSearch}
                 onChange={e => { setQSearch(e.target.value); setQPage(1); }}
                 placeholder="Search questions..."
                 className="pl-9 pr-4 py-2 rounded-xl border text-sm outline-none"
-                style={{ borderColor: '#E5E7EB', color: '#111827', width: '220px', backgroundColor: 'white' }}
+                style={{ borderColor: '#E5E7EB', color: '#11162A', width: '220px', backgroundColor: 'white' }}
               />
             </div>
             {/* Type filter */}
-            <select value={qTypeFilter} onChange={e => { setQTypeFilter(e.target.value); setQPage(1); }}
-              className="px-3 py-2 rounded-xl border text-sm outline-none cursor-pointer"
-              style={{ borderColor: '#E5E7EB', color: '#374151', backgroundColor: 'white' }}>
-              <option value="all">All types</option>
-              <option value="mcq">MCQ</option>
-              <option value="coding">Coding</option>
-              <option value="behavioral">Behavioral</option>
-            </select>
+            <div style={{ position: 'relative' }}>
+              {showTypeDrop && <div className="fixed inset-0 z-20" onClick={() => setShowTypeDrop(false)} />}
+              <button onClick={() => { setShowTypeDrop(v => !v); setShowDiffDrop(false); }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm"
+                style={{ borderColor: '#E5E7EB', color: '#434B5E', backgroundColor: 'white', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                {qTypeFilter === 'all' ? 'All types' : qTypeFilter === 'mcq' ? 'MCQ' : qTypeFilter === 'coding' ? 'Coding' : 'Behavioral'}
+                <ChevronDown size={13} color="#98A2B5" />
+              </button>
+              {showTypeDrop && (
+                <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 30, backgroundColor: 'white', borderRadius: '10px', padding: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', border: '1px solid #E5E7EB', minWidth: '140px' }}>
+                  {([['all','All types'],['mcq','MCQ'],['coding','Coding'],['behavioral','Behavioral']] as const).map(([val, label]) => (
+                    <button key={val}
+                      onClick={() => { setQTypeFilter(val); setQPage(1); setShowTypeDrop(false); }}
+                      style={{ width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', borderRadius: '7px', fontSize: '13px', cursor: 'pointer', backgroundColor: qTypeFilter === val ? '#F59E0B' : 'transparent', color: qTypeFilter === val ? 'white' : '#434B5E', fontWeight: qTypeFilter === val ? 600 : 400 }}
+                      onMouseEnter={e => { if (qTypeFilter !== val) e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.08)'; }}
+                      onMouseLeave={e => { if (qTypeFilter !== val) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                    >{label}</button>
+                  ))}
+                </div>
+              )}
+            </div>
             {/* Difficulty filter */}
-            <select value={qDiffFilter} onChange={e => { setQDiffFilter(e.target.value); setQPage(1); }}
-              className="px-3 py-2 rounded-xl border text-sm outline-none cursor-pointer"
-              style={{ borderColor: '#E5E7EB', color: '#374151', backgroundColor: 'white' }}>
-              <option value="all">All difficulty</option>
-              <option value="easy">Easy</option>
-              <option value="medium">Medium</option>
-              <option value="hard">Hard</option>
-            </select>
+            <div style={{ position: 'relative' }}>
+              {showDiffDrop && <div className="fixed inset-0 z-20" onClick={() => setShowDiffDrop(false)} />}
+              <button onClick={() => { setShowDiffDrop(v => !v); setShowTypeDrop(false); }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm"
+                style={{ borderColor: '#E5E7EB', color: '#434B5E', backgroundColor: 'white', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                {qDiffFilter === 'all' ? 'All difficulty' : qDiffFilter === 'easy' ? 'Easy' : qDiffFilter === 'medium' ? 'Medium' : 'Hard'}
+                <ChevronDown size={13} color="#98A2B5" />
+              </button>
+              {showDiffDrop && (
+                <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 30, backgroundColor: 'white', borderRadius: '10px', padding: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', border: '1px solid #E5E7EB', minWidth: '140px' }}>
+                  {([['all','All difficulty'],['easy','Easy'],['medium','Medium'],['hard','Hard']] as const).map(([val, label]) => (
+                    <button key={val}
+                      onClick={() => { setQDiffFilter(val); setQPage(1); setShowDiffDrop(false); }}
+                      style={{ width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', borderRadius: '7px', fontSize: '13px', cursor: 'pointer', backgroundColor: qDiffFilter === val ? '#F59E0B' : 'transparent', color: qDiffFilter === val ? 'white' : '#434B5E', fontWeight: qDiffFilter === val ? 600 : 400 }}
+                      onMouseEnter={e => { if (qDiffFilter !== val) e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.08)'; }}
+                      onMouseLeave={e => { if (qDiffFilter !== val) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                    >{label}</button>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="flex-1" />
             {/* Section manager */}
             <button onClick={() => setShowSectionModal(true)}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium"
-              style={{ borderColor: '#E5E7EB', color: '#374151', backgroundColor: 'white' }}>
-              <Plus size={13} />
+              style={{ borderColor: '#FDE68A', color: '#434B5E', backgroundColor: 'white' }}>
+              <Plus size={13} color="#F59E0B" />
               Section
             </button>
             {/* Add from Library */}
             <button onClick={() => navigate('/admin/repository/question-bank', { state: { fromTestId: testId, fromTestName: test?.name } })}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl border text-sm font-medium"
-              style={{ borderColor: '#E5E7EB', color: '#374151', backgroundColor: 'white' }}>
-              <LibraryBig size={14} />
+              style={{ borderColor: '#FDE68A', color: '#434B5E', backgroundColor: 'white' }}>
+              <LibraryBig size={14} color="#F59E0B" />
               Add from Library
             </button>
             {/* New question dropdown */}
@@ -824,7 +825,7 @@ export default function TestDetails() {
               {showNewQMenu && <div className="fixed inset-0 z-10" onClick={() => setShowNewQMenu(false)} />}
               <button onClick={() => setShowNewQMenu(v => !v)}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white"
-                style={{ backgroundColor: '#10B981' }}>
+                style={{ backgroundColor: '#F59E0B' }}>
                 <Plus size={13} color="white" />
                 New question
                 <ChevronDown size={12} color="white" />
@@ -839,7 +840,7 @@ export default function TestDetails() {
                   ].map(item => (
                     <button key={item.label} onClick={() => { setShowNewQMenu(false); item.action(); }}
                       className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors"
-                      style={{ color: '#374151' }}>
+                      style={{ color: '#434B5E' }}>
                       {item.label}
                     </button>
                   ))}
@@ -858,11 +859,11 @@ export default function TestDetails() {
           {/* Selection banner */}
           {selectedQIds.size > 0 && (
             <div className="mx-5 mt-4 flex items-center gap-3 rounded-xl px-4 py-3"
-              style={{ backgroundColor: '#F0FDF4', border: '1px solid #A7F3D0' }}>
-              <span className="text-sm font-semibold" style={{ color: '#059669' }}>{selectedQIds.size} selected</span>
+              style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
+              <span className="text-sm font-semibold" style={{ color: '#D97706' }}>{selectedQIds.size} selected</span>
               <button onClick={handleDuplicateSelected}
                 className="px-3 py-1.5 rounded-lg border text-sm font-medium"
-                style={{ borderColor: '#E5E7EB', color: '#374151', backgroundColor: 'white' }}>
+                style={{ borderColor: '#E5E7EB', color: '#434B5E', backgroundColor: 'white' }}>
                 Duplicate
               </button>
               <button onClick={handleRemoveSelected}
@@ -870,7 +871,7 @@ export default function TestDetails() {
                 style={{ color: '#DC2626', backgroundColor: '#FEF2F2' }}>
                 Remove
               </button>
-              <button onClick={() => setSelectedQIds(new Set())} className="ml-auto text-sm" style={{ color: '#9CA3AF' }}>
+              <button onClick={() => setSelectedQIds(new Set())} className="ml-auto text-sm" style={{ color: '#98A2B5' }}>
                 Clear
               </button>
             </div>
@@ -880,10 +881,10 @@ export default function TestDetails() {
           {allFlatQuestions.length === 0 ? (
             <div className="px-5 py-16 text-center">
               <div className="h-12 w-12 rounded-xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: '#F3F4F6' }}>
-                <FileQuestion size={22} color="#9CA3AF" />
+                <FileQuestion size={22} color="#98A2B5" />
               </div>
-              <p className="text-sm font-medium" style={{ color: '#374151' }}>No questions yet</p>
-              <p className="text-sm mt-1" style={{ color: '#9CA3AF' }}>Use "+ New question" or "Add from Library" to get started.</p>
+              <p className="text-sm font-medium" style={{ color: '#434B5E' }}>No questions yet</p>
+              <p className="text-sm mt-1" style={{ color: '#98A2B5' }}>Use "+ New question" or "Add from Library" to get started.</p>
             </div>
           ) : (
             <>
@@ -903,12 +904,12 @@ export default function TestDetails() {
                               setSelectedQIds(next);
                             }
                           }}
-                          className="h-4 w-4 rounded" style={{ accentColor: '#10B981' }}
+                          className="h-4 w-4 rounded" style={{ accentColor: '#F59E0B' }}
                         />
                       </th>
                       {['#', 'QUESTION', 'TYPE', 'DIFFICULTY', 'POINTS'].map(col => (
                         <th key={col} className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide"
-                          style={{ color: '#9CA3AF', whiteSpace: 'nowrap' }}>{col}</th>
+                          style={{ color: '#98A2B5', whiteSpace: 'nowrap' }}>{col}</th>
                       ))}
                       <th className="px-3 py-3 w-10" />
                     </tr>
@@ -922,17 +923,17 @@ export default function TestDetails() {
                       const isSelected = selectedQIds.has(q.id);
 
                       const typeMap: Record<string, { label: string; bg: string; color: string; icon: JSX.Element }> = {
-                        mcq: { label: 'MCQ', bg: '#DBEAFE', color: '#1D4ED8',
-                          icon: <CheckSquare size={11} color="#1D4ED8" /> },
-                        coding: { label: 'Coding', bg: '#EDE9FE', color: '#7C3AED',
-                          icon: <Code2 size={11} color="#7C3AED" /> },
+                        mcq: { label: 'MCQ', bg: '#FFF6EE', color: '#D97706',
+                          icon: <CheckSquare size={11} color="#D97706" /> },
+                        coding: { label: 'Coding', bg: '#FFF6EE', color: '#C2410C',
+                          icon: <Code2 size={11} color="#C2410C" /> },
                         behavioral: { label: 'Behavioral', bg: '#FEF3C7', color: '#D97706',
                           icon: <Brain size={11} color="#D97706" /> },
                       };
                       const tc = typeMap[q.questionType] || typeMap.mcq;
 
                       const diffMap: Record<string, { bg: string; color: string }> = {
-                        easy:   { bg: '#D1FAE5', color: '#059669' },
+                        easy:   { bg: '#FEF3C7', color: '#D97706' },
                         medium: { bg: '#FEF3C7', color: '#D97706' },
                         hard:   { bg: '#FEE2E2', color: '#DC2626' },
                       };
@@ -958,7 +959,7 @@ export default function TestDetails() {
 
                       return (
                         <tr key={q.id} className="hover:bg-gray-50 transition-colors"
-                          style={{ borderBottom: '1px solid #F9FAFB', backgroundColor: isSelected ? '#F0FDF4' : undefined }}>
+                          style={{ borderBottom: '1px solid #F9FAFB', backgroundColor: isSelected ? '#FFFBEB' : undefined }}>
                           <td className="px-5 py-3.5">
                             <input type="checkbox" checked={isSelected}
                               onChange={e => {
@@ -966,10 +967,10 @@ export default function TestDetails() {
                                 if (e.target.checked) next.add(q.id); else next.delete(q.id);
                                 setSelectedQIds(next);
                               }}
-                              className="h-4 w-4 rounded" style={{ accentColor: '#10B981' }}
+                              className="h-4 w-4 rounded" style={{ accentColor: '#F59E0B' }}
                             />
                           </td>
-                          <td className="px-3 py-3.5 text-sm font-mono" style={{ color: '#9CA3AF' }}>
+                          <td className="px-3 py-3.5 text-sm font-mono" style={{ color: '#98A2B5' }}>
                             {String(globalIdx).padStart(2, '0')}
                           </td>
                           <td className="px-3 py-3.5 max-w-xs">
@@ -979,10 +980,10 @@ export default function TestDetails() {
                                 {tc.icon}
                               </div>
                               <div className="min-w-0">
-                                <p className="text-sm font-medium truncate" style={{ color: '#111827', maxWidth: '340px' }}>
+                                <p className="text-sm font-medium truncate" style={{ color: '#11162A', maxWidth: '340px' }}>
                                   {text.length > 75 ? text.slice(0, 75) + '…' : text}
                                 </p>
-                                <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>
+                                <p className="text-xs mt-0.5" style={{ color: '#98A2B5' }}>
                                   {subtitle}{sectionName ? ` · ${sectionName}` : ''}
                                 </p>
                               </div>
@@ -1001,13 +1002,13 @@ export default function TestDetails() {
                             </span>
                           </td>
                           <td className="px-3 py-3.5">
-                            <span className="text-sm font-semibold" style={{ color: '#374151' }}>{marks}</span>
+                            <span className="text-sm font-semibold" style={{ color: '#434B5E' }}>{marks}</span>
                           </td>
                           <td className="px-3 py-3.5">
                             <button onClick={() => handleRemoveQuestion(q.id)}
                               className="p-1.5 rounded-lg hover:bg-red-50 transition-colors"
                               title="Remove from test">
-                              <Trash2 size={14} color="#D1D5DB" />
+                              <Trash2 size={14} color="#EF4444" />
                             </button>
                           </td>
                         </tr>
@@ -1019,26 +1020,26 @@ export default function TestDetails() {
 
               {/* Pagination footer */}
               <div className="flex items-center justify-between px-5 py-4" style={{ borderTop: '1px solid #F3F4F6' }}>
-                <p className="text-sm" style={{ color: '#6B7280' }}>
+                <p className="text-sm" style={{ color: '#6A7387' }}>
                   Showing {Math.min(qPage * Q_PAGE_SIZE, filteredQs.length)} of {filteredQs.length} questions
-                  <span className="font-semibold ml-1" style={{ color: '#374151' }}>· {totalQPoints} points total</span>
+                  <span className="font-semibold ml-1" style={{ color: '#434B5E' }}>· {totalQPoints} points total</span>
                 </p>
                 {totalQPages > 1 && (
                   <div className="flex items-center gap-1">
                     <button onClick={() => setQPage(p => Math.max(1, p - 1))} disabled={qPage === 1}
                       className="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-40 transition-colors">
-                      <ChevronLeft size={14} color="#374151" />
+                      <ChevronLeft size={14} color="#434B5E" />
                     </button>
                     {Array.from({ length: totalQPages }, (_, i) => i + 1).map(p => (
                       <button key={p} onClick={() => setQPage(p)}
                         className="h-8 w-8 rounded-lg text-sm font-medium transition-colors"
-                        style={{ backgroundColor: qPage === p ? '#10B981' : 'transparent', color: qPage === p ? 'white' : '#374151' }}>
+                        style={{ backgroundColor: qPage === p ? '#F59E0B' : 'transparent', color: qPage === p ? 'white' : '#434B5E' }}>
                         {p}
                       </button>
                     ))}
                     <button onClick={() => setQPage(p => Math.min(totalQPages, p + 1))} disabled={qPage === totalQPages}
                       className="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-40 transition-colors">
-                      <ChevronRight size={14} color="#374151" />
+                      <ChevronRight size={14} color="#434B5E" />
                     </button>
                   </div>
                 )}
@@ -1063,13 +1064,13 @@ export default function TestDetails() {
       {showSectionModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="rounded-2xl p-6 w-full max-w-lg" style={{ backgroundColor: 'white' }}>
-            <h3 className="text-lg font-semibold mb-1" style={{ color: '#111827' }}>Add Section</h3>
-            <p className="text-sm mb-4" style={{ color: '#6B7280' }}>Each section will randomly pick 1 question per candidate.</p>
-            <label className="block text-sm font-medium mb-2" style={{ color: '#374151' }}>Section Name</label>
-            <input type="text" value={newSectionName} onChange={e => setNewSectionName(e.target.value)} className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none mb-4" style={{ borderColor: '#E5E7EB', color: '#111827' }} placeholder="e.g. Frontend Fundamentals" />
+            <h3 className="text-lg font-semibold mb-1" style={{ color: '#11162A' }}>Add Section</h3>
+            <p className="text-sm mb-4" style={{ color: '#6A7387' }}>Each section will randomly pick 1 question per candidate.</p>
+            <label className="block text-sm font-medium mb-2" style={{ color: '#434B5E' }}>Section Name</label>
+            <input type="text" value={newSectionName} onChange={e => setNewSectionName(e.target.value)} className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none mb-4" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="e.g. Frontend Fundamentals" />
             <div className="flex gap-2 justify-end">
-              <button onClick={() => { setShowSectionModal(false); setNewSectionName(''); }} className="rounded-xl border px-4 py-2 text-sm font-medium" style={{ borderColor: '#E5E7EB', color: '#374151' }} disabled={creatingSection}>Cancel</button>
-              <button onClick={handleCreateSection} className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ backgroundColor: '#10B981' }} disabled={creatingSection}>{creatingSection ? 'Creating...' : 'Create Section'}</button>
+              <button onClick={() => { setShowSectionModal(false); setNewSectionName(''); }} className="rounded-xl border px-4 py-2 text-sm font-medium" style={{ borderColor: '#E5E7EB', color: '#434B5E' }} disabled={creatingSection}>Cancel</button>
+              <button onClick={handleCreateSection} className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ backgroundColor: '#F59E0B' }} disabled={creatingSection}>{creatingSection ? 'Creating...' : 'Create Section'}</button>
             </div>
           </div>
         </div>
@@ -1079,12 +1080,12 @@ export default function TestDetails() {
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-auto" style={{ backgroundColor: 'white' }}>
-            <h3 className="text-lg font-semibold mb-4" style={{ color: '#111827' }}>
+            <h3 className="text-lg font-semibold mb-4" style={{ color: '#11162A' }}>
               Add Existing {questionType === 'mcq' ? 'MCQ' : questionType === 'coding' ? 'Coding' : 'Behavioral'} Question
             </h3>
-            {activeSection && <p className="text-sm mb-4" style={{ color: '#6B7280' }}>Adding to section: <strong style={{ color: '#374151' }}>{activeSection.name}</strong></p>}
-            <label className="block text-sm font-medium mb-2" style={{ color: '#374151' }}>Select Question</label>
-            <select value={selectedQuestion} onChange={e => setSelectedQuestion(e.target.value)} className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none mb-4" style={{ borderColor: '#E5E7EB', color: '#111827' }}>
+            {activeSection && <p className="text-sm mb-4" style={{ color: '#6A7387' }}>Adding to section: <strong style={{ color: '#434B5E' }}>{activeSection.name}</strong></p>}
+            <label className="block text-sm font-medium mb-2" style={{ color: '#434B5E' }}>Select Question</label>
+            <select value={selectedQuestion} onChange={e => setSelectedQuestion(e.target.value)} className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none mb-4" style={{ borderColor: '#FDE68A', color: '#11162A', accentColor: '#F59E0B' }}>
               <option value="">Select a question...</option>
               {availableQuestions.map(q => {
                 const usage = sectionUsageMap.get(`${questionType}:${q.id}`);
@@ -1100,8 +1101,8 @@ export default function TestDetails() {
               <p className="text-sm mb-4" style={{ color: '#F59E0B' }}>This question is already in section{selectedQuestionUsage.length > 1 ? 's' : ''} {selectedQuestionUsage.join(', ')}.</p>
             )}
             <div className="flex gap-2 justify-end">
-              <button onClick={() => { setShowAddModal(false); setSelectedQuestion(''); setActiveSectionId(null); }} className="rounded-xl border px-4 py-2 text-sm font-medium" style={{ borderColor: '#E5E7EB', color: '#374151' }}>Cancel</button>
-              <button onClick={handleAddQuestion} className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ backgroundColor: '#10B981' }}>Add Question</button>
+              <button onClick={() => { setShowAddModal(false); setSelectedQuestion(''); setActiveSectionId(null); }} className="rounded-xl border px-4 py-2 text-sm font-medium" style={{ borderColor: '#E5E7EB', color: '#434B5E' }}>Cancel</button>
+              <button onClick={handleAddQuestion} className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ backgroundColor: '#F59E0B' }}>Add Question</button>
             </div>
           </div>
         </div>
@@ -1111,109 +1112,115 @@ export default function TestDetails() {
       {showCustomModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="rounded-2xl p-6 w-full max-w-3xl max-h-[90vh] overflow-auto" style={{ backgroundColor: 'white' }}>
-            <h3 className="text-lg font-semibold mb-4" style={{ color: '#111827' }}>Add Custom Question</h3>
-            {activeSection && <p className="text-sm mb-4" style={{ color: '#6B7280' }}>Adding to: <strong>{activeSection.name}</strong></p>}
+            <h3 className="text-lg font-semibold mb-4" style={{ color: '#11162A' }}>Add Custom Question</h3>
+            {activeSection && <p className="text-sm mb-4" style={{ color: '#6A7387' }}>Adding to: <strong>{activeSection.name}</strong></p>}
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: '#374151' }}>Question Type</label>
-                <select value={customType} onChange={e => setCustomType(e.target.value as 'mcq' | 'coding' | 'behavioral')} className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#111827' }}>
-                  <option value="mcq">MCQ</option><option value="coding">Coding</option><option value="behavioral">Behavioral</option>
-                </select>
+                <label className="block text-sm font-medium mb-1" style={{ color: '#434B5E' }}>Question Type</label>
+                <CustomSelect
+                  value={customType}
+                  onChange={v => setCustomType(v as 'mcq' | 'coding' | 'behavioral')}
+                  options={[{ value:'mcq', label:'MCQ' }, { value:'coding', label:'Coding' }, { value:'behavioral', label:'Behavioral' }]}
+                  style={{ width: '100%' }}
+                />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: '#374151' }}>Marks</label>
-                <input type="number" min={1} value={customMarks} onChange={e => setCustomMarks(Number(e.target.value))} className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#111827' }} />
+                <label className="block text-sm font-medium mb-1" style={{ color: '#434B5E' }}>Marks</label>
+                <input type="number" min={1} value={customMarks} onChange={e => setCustomMarks(Number(e.target.value))} className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#11162A' }} />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: '#374151' }}>Difficulty</label>
-                <select value={customDifficulty} onChange={e => setCustomDifficulty(e.target.value as 'easy' | 'medium' | 'hard')} className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#111827' }}>
-                  <option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option>
-                </select>
+                <label className="block text-sm font-medium mb-1" style={{ color: '#434B5E' }}>Difficulty</label>
+                <CustomSelect
+                  value={customDifficulty}
+                  onChange={v => setCustomDifficulty(v as 'easy' | 'medium' | 'hard')}
+                  options={[{ value:'easy', label:'Easy' }, { value:'medium', label:'Medium' }, { value:'hard', label:'Hard' }]}
+                  style={{ width: '100%' }}
+                />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: '#374151' }}>Topic (optional)</label>
-                <input type="text" value={customTopic} onChange={e => setCustomTopic(e.target.value)} className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#111827' }} />
+                <label className="block text-sm font-medium mb-1" style={{ color: '#434B5E' }}>Topic (optional)</label>
+                <input type="text" value={customTopic} onChange={e => setCustomTopic(e.target.value)} className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#11162A' }} />
               </div>
             </div>
             <div className="mb-4">
-              <label className="block text-sm font-medium mb-1" style={{ color: '#374151' }}>Tags (comma separated)</label>
-              <input type="text" value={customTags} onChange={e => setCustomTags(e.target.value)} className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#111827' }} placeholder="communication, sql" />
+              <label className="block text-sm font-medium mb-1" style={{ color: '#434B5E' }}>Tags (comma separated)</label>
+              <input type="text" value={customTags} onChange={e => setCustomTags(e.target.value)} className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="communication, sql" />
             </div>
             {customType === 'mcq' && (
               <div className="space-y-4 border rounded-xl p-4 mb-4" style={{ borderColor: '#F3F4F6' }}>
                 <div>
-                  <label className="block text-sm font-medium mb-1" style={{ color: '#374151' }}>Question Text</label>
-                  <textarea className="w-full rounded-xl border px-4 py-3 text-sm outline-none min-h-[90px]" style={{ borderColor: '#E5E7EB', color: '#111827' }} value={customMCQ.questionText} onChange={e => setCustomMCQ(p => ({ ...p, questionText: e.target.value }))} />
+                  <label className="block text-sm font-medium mb-1" style={{ color: '#434B5E' }}>Question Text</label>
+                  <textarea className="w-full rounded-xl border px-4 py-3 text-sm outline-none min-h-[90px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} value={customMCQ.questionText} onChange={e => setCustomMCQ(p => ({ ...p, questionText: e.target.value }))} />
                 </div>
                 <div>
                   <div className="flex justify-between items-center mb-2">
-                    <label className="text-sm font-medium" style={{ color: '#374151' }}>Options</label>
-                    <button onClick={addMCQOption} className="text-xs font-semibold px-3 py-1 rounded-lg border" style={{ borderColor: '#E5E7EB', color: '#374151' }}>Add Option</button>
+                    <label className="text-sm font-medium" style={{ color: '#434B5E' }}>Options</label>
+                    <button onClick={addMCQOption} className="text-xs font-semibold px-3 py-1 rounded-lg border" style={{ borderColor: '#E5E7EB', color: '#434B5E' }}>Add Option</button>
                   </div>
                   {customMCQ.options.map((opt, idx) => (
                     <div key={idx} className="flex gap-2 items-center mb-2">
-                      <span className="text-sm w-6" style={{ color: '#9CA3AF' }}>{idx + 1}.</span>
-                      <input type="text" value={opt} onChange={e => setMCQOption(idx, e.target.value)} className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#111827' }} />
+                      <span className="text-sm w-6" style={{ color: '#98A2B5' }}>{idx + 1}.</span>
+                      <input type="text" value={opt} onChange={e => setMCQOption(idx, e.target.value)} className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#11162A' }} />
                       <button onClick={() => removeMCQOption(idx)} className="text-xs px-2 py-1 rounded-lg" style={{ color: '#DC2626', backgroundColor: '#FEF2F2' }} disabled={customMCQ.options.length <= 2}>Remove</button>
                     </div>
                   ))}
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-1" style={{ color: '#374151' }}>Correct Option Numbers (e.g. 1,3)</label>
-                    <input type="text" value={customMCQ.correctAnswers} onChange={e => setCustomMCQ(p => ({ ...p, correctAnswers: e.target.value }))} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#111827' }} />
+                    <label className="block text-sm font-medium mb-1" style={{ color: '#434B5E' }}>Correct Option Numbers (e.g. 1,3)</label>
+                    <input type="text" value={customMCQ.correctAnswers} onChange={e => setCustomMCQ(p => ({ ...p, correctAnswers: e.target.value }))} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#11162A' }} />
                   </div>
-                  <label className="flex items-center gap-2 mt-7 text-sm" style={{ color: '#374151' }}>
+                  <label className="flex items-center gap-2 mt-7 text-sm" style={{ color: '#434B5E' }}>
                     <input type="checkbox" checked={customMCQ.isMultipleChoice} onChange={e => setCustomMCQ(p => ({ ...p, isMultipleChoice: e.target.checked }))} />
                     Multiple correct answers
                   </label>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1" style={{ color: '#374151' }}>Explanation (optional)</label>
-                  <textarea className="w-full rounded-xl border px-4 py-3 text-sm outline-none min-h-[80px]" style={{ borderColor: '#E5E7EB', color: '#111827' }} value={customMCQ.explanation} onChange={e => setCustomMCQ(p => ({ ...p, explanation: e.target.value }))} />
+                  <label className="block text-sm font-medium mb-1" style={{ color: '#434B5E' }}>Explanation (optional)</label>
+                  <textarea className="w-full rounded-xl border px-4 py-3 text-sm outline-none min-h-[80px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} value={customMCQ.explanation} onChange={e => setCustomMCQ(p => ({ ...p, explanation: e.target.value }))} />
                 </div>
               </div>
             )}
             {customType === 'coding' && (
               <div className="space-y-4 border rounded-xl p-4 mb-4" style={{ borderColor: '#F3F4F6' }}>
-                <input type="text" className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#111827' }} placeholder="Title" value={customCoding.title} onChange={e => setCustomCoding(p => ({ ...p, title: e.target.value }))} />
-                <textarea className="w-full rounded-xl border px-4 py-3 text-sm outline-none min-h-[100px]" style={{ borderColor: '#E5E7EB', color: '#111827' }} placeholder="Description" value={customCoding.description} onChange={e => setCustomCoding(p => ({ ...p, description: e.target.value }))} />
+                <input type="text" className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Title" value={customCoding.title} onChange={e => setCustomCoding(p => ({ ...p, title: e.target.value }))} />
+                <textarea className="w-full rounded-xl border px-4 py-3 text-sm outline-none min-h-[100px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Description" value={customCoding.description} onChange={e => setCustomCoding(p => ({ ...p, description: e.target.value }))} />
                 <div className="grid grid-cols-2 gap-4">
-                  <textarea className="rounded-xl border px-4 py-3 text-sm outline-none min-h-[70px]" style={{ borderColor: '#E5E7EB', color: '#111827' }} placeholder="Input Format" value={customCoding.inputFormat} onChange={e => setCustomCoding(p => ({ ...p, inputFormat: e.target.value }))} />
-                  <textarea className="rounded-xl border px-4 py-3 text-sm outline-none min-h-[70px]" style={{ borderColor: '#E5E7EB', color: '#111827' }} placeholder="Output Format" value={customCoding.outputFormat} onChange={e => setCustomCoding(p => ({ ...p, outputFormat: e.target.value }))} />
-                  <textarea className="rounded-xl border px-4 py-3 text-sm outline-none min-h-[70px]" style={{ borderColor: '#E5E7EB', color: '#111827' }} placeholder="Sample Input" value={customCoding.sampleInput} onChange={e => setCustomCoding(p => ({ ...p, sampleInput: e.target.value }))} />
-                  <textarea className="rounded-xl border px-4 py-3 text-sm outline-none min-h-[70px]" style={{ borderColor: '#E5E7EB', color: '#111827' }} placeholder="Sample Output" value={customCoding.sampleOutput} onChange={e => setCustomCoding(p => ({ ...p, sampleOutput: e.target.value }))} />
+                  <textarea className="rounded-xl border px-4 py-3 text-sm outline-none min-h-[70px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Input Format" value={customCoding.inputFormat} onChange={e => setCustomCoding(p => ({ ...p, inputFormat: e.target.value }))} />
+                  <textarea className="rounded-xl border px-4 py-3 text-sm outline-none min-h-[70px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Output Format" value={customCoding.outputFormat} onChange={e => setCustomCoding(p => ({ ...p, outputFormat: e.target.value }))} />
+                  <textarea className="rounded-xl border px-4 py-3 text-sm outline-none min-h-[70px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Sample Input" value={customCoding.sampleInput} onChange={e => setCustomCoding(p => ({ ...p, sampleInput: e.target.value }))} />
+                  <textarea className="rounded-xl border px-4 py-3 text-sm outline-none min-h-[70px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Sample Output" value={customCoding.sampleOutput} onChange={e => setCustomCoding(p => ({ ...p, sampleOutput: e.target.value }))} />
                 </div>
                 <div className="grid grid-cols-3 gap-4">
-                  <input type="text" className="rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#111827' }} placeholder="Languages (csv)" value={customCoding.supportedLanguages} onChange={e => setCustomCoding(p => ({ ...p, supportedLanguages: e.target.value }))} />
-                  <input type="number" className="rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#111827' }} placeholder="Time limit (ms)" value={customCoding.timeLimit} onChange={e => setCustomCoding(p => ({ ...p, timeLimit: Number(e.target.value) }))} />
-                  <input type="number" className="rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#111827' }} placeholder="Memory (MB)" value={customCoding.memoryLimit} onChange={e => setCustomCoding(p => ({ ...p, memoryLimit: Number(e.target.value) }))} />
+                  <input type="text" className="rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Languages (csv)" value={customCoding.supportedLanguages} onChange={e => setCustomCoding(p => ({ ...p, supportedLanguages: e.target.value }))} />
+                  <input type="number" className="rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Time limit (ms)" value={customCoding.timeLimit} onChange={e => setCustomCoding(p => ({ ...p, timeLimit: Number(e.target.value) }))} />
+                  <input type="number" className="rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Memory (MB)" value={customCoding.memoryLimit} onChange={e => setCustomCoding(p => ({ ...p, memoryLimit: Number(e.target.value) }))} />
                 </div>
-                <label className="flex items-center gap-2 text-sm" style={{ color: '#374151' }}>
+                <label className="flex items-center gap-2 text-sm" style={{ color: '#434B5E' }}>
                   <input type="checkbox" checked={customCoding.partialScoring} onChange={e => setCustomCoding(p => ({ ...p, partialScoring: e.target.checked }))} />
                   Enable partial scoring
                 </label>
                 <div>
                   <div className="flex justify-between items-center mb-2">
-                    <h4 className="text-sm font-medium" style={{ color: '#374151' }}>Test Cases</h4>
-                    <button onClick={addCodingTestCase} className="text-xs px-3 py-1 rounded-lg border" style={{ borderColor: '#E5E7EB', color: '#374151' }}>Add Test Case</button>
+                    <h4 className="text-sm font-medium" style={{ color: '#434B5E' }}>Test Cases</h4>
+                    <button onClick={addCodingTestCase} className="text-xs px-3 py-1 rounded-lg border" style={{ borderColor: '#E5E7EB', color: '#434B5E' }}>Add Test Case</button>
                   </div>
                   {customCodingTestCases.map((tc, idx) => (
                     <div key={idx} className="border rounded-xl p-3 mb-3" style={{ borderColor: '#F3F4F6' }}>
                       <div className="flex justify-between items-center mb-2">
-                        <p className="text-xs font-semibold" style={{ color: '#374151' }}>Test Case {idx + 1}</p>
+                        <p className="text-xs font-semibold" style={{ color: '#434B5E' }}>Test Case {idx + 1}</p>
                         <button onClick={() => removeCodingTestCase(idx)} className="text-xs px-2 py-0.5 rounded-lg" style={{ color: '#DC2626', backgroundColor: '#FEF2F2' }} disabled={customCodingTestCases.length <= 1}>Remove</button>
                       </div>
                       <div className="grid grid-cols-2 gap-3 mb-2">
-                        <textarea className="rounded-xl border px-3 py-2 text-sm outline-none min-h-[60px]" style={{ borderColor: '#E5E7EB', color: '#111827' }} placeholder="Input" value={tc.input} onChange={e => setCodingTestCaseField(idx, 'input', e.target.value)} />
-                        <textarea className="rounded-xl border px-3 py-2 text-sm outline-none min-h-[60px]" style={{ borderColor: '#E5E7EB', color: '#111827' }} placeholder="Expected Output" value={tc.expectedOutput} onChange={e => setCodingTestCaseField(idx, 'expectedOutput', e.target.value)} />
+                        <textarea className="rounded-xl border px-3 py-2 text-sm outline-none min-h-[60px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Input" value={tc.input} onChange={e => setCodingTestCaseField(idx, 'input', e.target.value)} />
+                        <textarea className="rounded-xl border px-3 py-2 text-sm outline-none min-h-[60px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Expected Output" value={tc.expectedOutput} onChange={e => setCodingTestCaseField(idx, 'expectedOutput', e.target.value)} />
                       </div>
                       <div className="flex gap-4 items-center">
-                        <label className="flex items-center gap-2 text-sm" style={{ color: '#374151' }}>
+                        <label className="flex items-center gap-2 text-sm" style={{ color: '#434B5E' }}>
                           <input type="checkbox" checked={tc.isHidden} onChange={e => setCodingTestCaseField(idx, 'isHidden', e.target.checked)} />
                           Hidden
                         </label>
-                        <input type="number" min={0} className="rounded-xl border px-3 py-1.5 text-sm outline-none w-24" style={{ borderColor: '#E5E7EB', color: '#111827' }} value={tc.marks} onChange={e => setCodingTestCaseField(idx, 'marks', Number(e.target.value))} />
+                        <input type="number" min={0} className="rounded-xl border px-3 py-1.5 text-sm outline-none w-24" style={{ borderColor: '#E5E7EB', color: '#11162A' }} value={tc.marks} onChange={e => setCodingTestCaseField(idx, 'marks', Number(e.target.value))} />
                       </div>
                     </div>
                   ))}
@@ -1222,14 +1229,14 @@ export default function TestDetails() {
             )}
             {customType === 'behavioral' && (
               <div className="space-y-4 border rounded-xl p-4 mb-4" style={{ borderColor: '#F3F4F6' }}>
-                <input type="text" className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#111827' }} placeholder="Title" value={customBehavioral.title} onChange={e => setCustomBehavioral(p => ({ ...p, title: e.target.value }))} />
-                <textarea className="w-full rounded-xl border px-4 py-3 text-sm outline-none min-h-[120px]" style={{ borderColor: '#E5E7EB', color: '#111827' }} placeholder="Question Description" value={customBehavioral.description} onChange={e => setCustomBehavioral(p => ({ ...p, description: e.target.value }))} />
-                <textarea className="w-full rounded-xl border px-4 py-3 text-sm outline-none min-h-[90px]" style={{ borderColor: '#E5E7EB', color: '#111827' }} placeholder="Expected Answer (optional)" value={customBehavioral.expectedAnswer} onChange={e => setCustomBehavioral(p => ({ ...p, expectedAnswer: e.target.value }))} />
+                <input type="text" className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Title" value={customBehavioral.title} onChange={e => setCustomBehavioral(p => ({ ...p, title: e.target.value }))} />
+                <textarea className="w-full rounded-xl border px-4 py-3 text-sm outline-none min-h-[120px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Question Description" value={customBehavioral.description} onChange={e => setCustomBehavioral(p => ({ ...p, description: e.target.value }))} />
+                <textarea className="w-full rounded-xl border px-4 py-3 text-sm outline-none min-h-[90px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Expected Answer (optional)" value={customBehavioral.expectedAnswer} onChange={e => setCustomBehavioral(p => ({ ...p, expectedAnswer: e.target.value }))} />
               </div>
             )}
             <div className="flex gap-2 justify-end">
-              <button onClick={() => { setShowCustomModal(false); resetCustomForm(); setActiveSectionId(null); }} className="rounded-xl border px-4 py-2 text-sm font-medium" style={{ borderColor: '#E5E7EB', color: '#374151' }} disabled={savingCustom}>Cancel</button>
-              <button onClick={handleAddCustomQuestion} className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ backgroundColor: '#10B981' }} disabled={savingCustom}>{savingCustom ? 'Adding...' : 'Add Custom Question'}</button>
+              <button onClick={() => { setShowCustomModal(false); resetCustomForm(); setActiveSectionId(null); }} className="rounded-xl border px-4 py-2 text-sm font-medium" style={{ borderColor: '#E5E7EB', color: '#434B5E' }} disabled={savingCustom}>Cancel</button>
+              <button onClick={handleAddCustomQuestion} className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ backgroundColor: '#F59E0B' }} disabled={savingCustom}>{savingCustom ? 'Adding...' : 'Add Custom Question'}</button>
             </div>
           </div>
         </div>
@@ -1242,16 +1249,16 @@ export default function TestDetails() {
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: '1px solid #F3F4F6' }}>
               <div>
-                <h2 className="text-base font-bold" style={{ color: '#111827' }}>Invite Candidates</h2>
-                <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>
-                  Upload a CSV or XLSX file with <span className="font-semibold" style={{ color: '#374151' }}>name, email</span> columns
+                <h2 className="text-base font-bold" style={{ color: '#11162A' }}>Invite Candidates</h2>
+                <p className="text-xs mt-0.5" style={{ color: '#6A7387' }}>
+                  Upload a CSV or XLSX file with <span className="font-semibold" style={{ color: '#434B5E' }}>name, email</span> columns
                 </p>
               </div>
               <button
                 onClick={closeInviteModal}
                 disabled={sendingInvitations}
                 className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-                style={{ color: '#9CA3AF' }}>
+                style={{ color: '#98A2B5' }}>
                 <X size={16} />
               </button>
             </div>
@@ -1260,9 +1267,9 @@ export default function TestDetails() {
             <div className="px-6 py-5 space-y-4">
               {/* File upload */}
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: '#374151' }}>Candidate File</label>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#434B5E' }}>Candidate File</label>
                 <label
-                  className="flex flex-col items-center justify-center w-full rounded-xl border-2 border-dashed cursor-pointer transition-colors hover:border-green-400"
+                  className="flex flex-col items-center justify-center w-full rounded-xl border-2 border-dashed cursor-pointer transition-colors hover:border-amber-400"
                   style={{ borderColor: '#E5E7EB', backgroundColor: '#FAFAFA', minHeight: '90px', padding: '16px' }}>
                   <input
                     type="file"
@@ -1273,13 +1280,13 @@ export default function TestDetails() {
                   />
                   {invitationFile ? (
                     <div className="flex items-center gap-2">
-                      <ClipboardCheck size={16} color="#10B981" />
-                      <span className="text-sm font-medium" style={{ color: '#059669' }}>{invitationFile.name}</span>
+                      <ClipboardCheck size={16} color="#F59E0B" />
+                      <span className="text-sm font-medium" style={{ color: '#D97706' }}>{invitationFile.name}</span>
                     </div>
                   ) : (
                     <>
-                      <Upload size={20} color="#9CA3AF" className="mb-2" />
-                      <span className="text-sm" style={{ color: '#6B7280' }}>Click to upload <span style={{ color: '#10B981', fontWeight: 600 }}>.csv</span> or <span style={{ color: '#10B981', fontWeight: 600 }}>.xlsx</span></span>
+                      <Upload size={20} color="#98A2B5" className="mb-2" />
+                      <span className="text-sm" style={{ color: '#6A7387' }}>Click to upload <span style={{ color: '#F59E0B', fontWeight: 600 }}>.csv</span> or <span style={{ color: '#F59E0B', fontWeight: 600 }}>.xlsx</span></span>
                     </>
                   )}
                 </label>
@@ -1287,7 +1294,7 @@ export default function TestDetails() {
 
               {/* Custom message */}
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: '#374151' }}>Custom Message <span style={{ color: '#9CA3AF', fontWeight: 400 }}>(optional)</span></label>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: '#434B5E' }}>Custom Message <span style={{ color: '#98A2B5', fontWeight: 400 }}>(optional)</span></label>
                 <textarea
                   value={customMessage}
                   onChange={e => setCustomMessage(e.target.value)}
@@ -1295,7 +1302,7 @@ export default function TestDetails() {
                   placeholder="Add a personal note to the invitation email..."
                   disabled={sendingInvitations}
                   className="w-full rounded-xl border px-4 py-3 text-sm outline-none resize-none"
-                  style={{ borderColor: '#E5E7EB', color: '#111827', backgroundColor: 'white', fontFamily: 'inherit' }}
+                  style={{ borderColor: '#E5E7EB', color: '#11162A', backgroundColor: 'white', fontFamily: 'inherit' }}
                 />
               </div>
 
@@ -1307,7 +1314,7 @@ export default function TestDetails() {
                 </div>
               )}
               {invitationSummary && (
-                <div className="rounded-xl px-4 py-3 text-sm" style={{ backgroundColor: '#ECFDF5', border: '1px solid #A7F3D0', color: '#059669' }}>
+                <div className="rounded-xl px-4 py-3 text-sm" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', color: '#D97706' }}>
                   <span className="font-semibold">Done!</span> Total: {invitationSummary.total} · Sent: {invitationSummary.sent} · Failed: {invitationSummary.failed}
                 </div>
               )}
@@ -1319,14 +1326,14 @@ export default function TestDetails() {
                 onClick={handleSendInvitations}
                 disabled={sendingInvitations || !invitationFile}
                 className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors"
-                style={{ backgroundColor: sendingInvitations || !invitationFile ? '#A7F3D0' : '#10B981', cursor: sendingInvitations || !invitationFile ? 'not-allowed' : 'pointer' }}>
+                style={{ backgroundColor: sendingInvitations || !invitationFile ? '#FDE68A' : '#F59E0B', cursor: sendingInvitations || !invitationFile ? 'not-allowed' : 'pointer' }}>
                 {sendingInvitations ? 'Sending...' : 'Send Invitations'}
               </button>
               <button
                 onClick={closeInviteModal}
                 disabled={sendingInvitations}
                 className="px-5 py-2.5 rounded-xl border text-sm font-medium transition-colors hover:bg-gray-50"
-                style={{ borderColor: '#E5E7EB', color: '#374151', backgroundColor: 'white' }}>
+                style={{ borderColor: '#E5E7EB', color: '#434B5E', backgroundColor: 'white' }}>
                 Cancel
               </button>
             </div>

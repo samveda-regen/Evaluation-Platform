@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import { Calendar } from 'lucide-react';
 
 interface Props {
@@ -34,16 +34,16 @@ function TimeCol({ label, items, selected, onSelect }: {
       {/* selected chip */}
       <div style={{
         width:'52px', padding:'6px 0', borderRadius:'6px', textAlign:'center',
-        backgroundColor:'#2563EB', color:'white', fontSize:'14px', fontWeight:700,
+        backgroundColor:'#F59E0B', color:'white', fontSize:'14px', fontWeight:700,
         marginBottom:'4px', flexShrink:0,
       }}>{selected}</div>
-      <p style={{ fontSize:'9px', fontWeight:600, color:'#9CA3AF', margin:'0 0 4px', textTransform:'uppercase', letterSpacing:'0.05em' }}>{label}</p>
+      <p style={{ fontSize:'9px', fontWeight:600, color:'#98A2B5', margin:'0 0 4px', textTransform:'uppercase', letterSpacing:'0.05em' }}>{label}</p>
       {/* scrollable rest */}
       <div ref={listRef} style={{ overflowY:'auto', maxHeight:'130px', width:'52px' }}>
         {items.filter(v => v !== selected).map(v => (
           <div key={v} onClick={() => onSelect(v)}
-            style={{ padding:'4px 0', textAlign:'center', fontSize:'12px', color:'#374151', cursor:'pointer', borderRadius:'4px' }}
-            onMouseEnter={e => (e.currentTarget.style.backgroundColor='#F3F4F6')}
+            style={{ padding:'4px 0', textAlign:'center', fontSize:'12px', color:'#434B5E', cursor:'pointer', borderRadius:'4px' }}
+            onMouseEnter={e => (e.currentTarget.style.backgroundColor='rgba(245,158,11,0.1)')}
             onMouseLeave={e => (e.currentTarget.style.backgroundColor='transparent')}>
             {v}
           </div>
@@ -57,6 +57,8 @@ export default function DateTimePicker({ value, onChange, placeholder, style }: 
   const [open, setOpen]           = useState(false);
   const [viewYear, setViewYear]   = useState(new Date().getFullYear());
   const [viewMonth, setViewMonth] = useState(new Date().getMonth());
+  const [editYear, setEditYear]   = useState(false);
+  const [yearInput, setYearInput] = useState('');
   const containerRef              = useRef<HTMLDivElement>(null);
 
   const selDate = parseValue(value);
@@ -142,13 +144,13 @@ export default function DateTimePicker({ value, onChange, placeholder, style }: 
       <div onClick={() => setOpen(p=>!p)} style={{
         width:'100%', padding:'10px 14px', borderRadius:'8px',
         border:'1.5px solid #E5E7EB', fontSize:'13px',
-        color: displayText ? '#111827' : '#9CA3AF',
+        color: displayText ? '#11162A' : '#98A2B5',
         backgroundColor:'white', cursor:'pointer', userSelect:'none',
         display:'flex', alignItems:'center', justifyContent:'space-between',
         boxSizing:'border-box',
       }}>
         <span>{displayText || (placeholder ?? 'Select date & time')}</span>
-        <Calendar width={14} height={14} stroke="#9CA3AF" strokeWidth={1.5} style={{ flexShrink:0, marginLeft:'8px' }} />
+        <Calendar width={14} height={14} stroke="#98A2B5" strokeWidth={1.5} style={{ flexShrink:0, marginLeft:'8px' }} />
       </div>
 
       {/* picker dropdown */}
@@ -156,7 +158,7 @@ export default function DateTimePicker({ value, onChange, placeholder, style }: 
         <div style={{
           position:'absolute', top:'calc(100% + 4px)', left:0, zIndex:200,
           backgroundColor:'white', borderRadius:'10px',
-          border:'1.5px solid #E5E7EB',
+          border:'1.5px solid #FDE68A',
           boxShadow:'0 8px 24px rgba(0,0,0,0.12)',
           display:'flex', overflow:'hidden',
         }}>
@@ -164,16 +166,39 @@ export default function DateTimePicker({ value, onChange, placeholder, style }: 
           <div style={{ padding:'12px 10px', width:'220px', flexShrink:0 }}>
             {/* month/year header */}
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'8px' }}>
-              <span style={{ fontWeight:700, fontSize:'12px', color:'#111827' }}>
-                {MONTHS[viewMonth]}, {viewYear} ▾
+              <span style={{ fontWeight:700, fontSize:'12px', color:'#11162A', display:'flex', alignItems:'center', gap:'3px' }}>
+                {MONTHS[viewMonth]},{' '}
+                {editYear ? (
+                  <input
+                    type="number"
+                    value={yearInput}
+                    autoFocus
+                    onChange={e => setYearInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { const y = parseInt(yearInput); if (!isNaN(y) && y > 1900 && y < 2200) setViewYear(y); setEditYear(false); }
+                      if (e.key === 'Escape') setEditYear(false);
+                    }}
+                    onBlur={() => { const y = parseInt(yearInput); if (!isNaN(y) && y > 1900 && y < 2200) setViewYear(y); setEditYear(false); }}
+                    style={{ width:'54px', fontSize:'12px', fontWeight:700, border:'1.5px solid #FDE68A', borderRadius:'4px', padding:'1px 4px', color:'#11162A', outline:'none', backgroundColor:'#FFFBEB' }}
+                  />
+                ) : (
+                  <span
+                    onClick={() => { setYearInput(String(viewYear)); setEditYear(true); }}
+                    title="Click to change year"
+                    style={{ cursor:'pointer', borderBottom:'1.5px dashed #F59E0B', color:'#D97706' }}
+                  >
+                    {viewYear}
+                  </span>
+                )}
+                {' '}▾
               </span>
               <div style={{ display:'flex', gap:'2px' }}>
                 {[{ label:'↑', fn: prevMonth }, { label:'↓', fn: nextMonth }].map(btn => (
                   <button key={btn.label} onClick={btn.fn} style={{
                     background:'none', border:'none', cursor:'pointer',
-                    fontSize:'13px', color:'#374151', padding:'1px 4px', borderRadius:'3px',
+                    fontSize:'13px', color:'#434B5E', padding:'1px 4px', borderRadius:'3px',
                   }}
-                    onMouseEnter={e=>(e.currentTarget.style.backgroundColor='#F3F4F6')}
+                    onMouseEnter={e=>(e.currentTarget.style.backgroundColor='rgba(245,158,11,0.1)')}
                     onMouseLeave={e=>(e.currentTarget.style.backgroundColor='transparent')}>
                     {btn.label}
                   </button>
@@ -184,7 +209,7 @@ export default function DateTimePicker({ value, onChange, placeholder, style }: 
             {/* weekday row */}
             <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', marginBottom:'3px' }}>
               {WEEKDAYS.map(d => (
-                <div key={d} style={{ textAlign:'center', fontSize:'10px', fontWeight:700, color:'#374151', padding:'2px 0' }}>{d}</div>
+                <div key={d} style={{ textAlign:'center', fontSize:'10px', fontWeight:700, color:'#434B5E', padding:'2px 0' }}>{d}</div>
               ))}
             </div>
 
@@ -201,11 +226,11 @@ export default function DateTimePicker({ value, onChange, placeholder, style }: 
                     style={{
                       textAlign:'center', fontSize:'11px', padding:'4px 0', border:'none',
                       borderRadius:'4px', cursor: cell.type==='curr' ? 'pointer' : 'default',
-                      backgroundColor: isSelected ? '#2563EB' : 'transparent',
+                      backgroundColor: isSelected ? '#F59E0B' : 'transparent',
                       color: isSelected ? 'white'
                            : cell.type!=='curr' ? '#D1D5DB'
-                           : isToday ? '#2563EB'
-                           : '#111827',
+                           : isToday ? '#D97706'
+                           : '#11162A',
                       fontWeight: isSelected ? 700 : 400,
                     }}
                     onMouseEnter={e=>{ if (cell.type==='curr' && !isSelected) e.currentTarget.style.backgroundColor='#F3F4F6'; }}
@@ -219,11 +244,11 @@ export default function DateTimePicker({ value, onChange, placeholder, style }: 
             {/* clear / today */}
             <div style={{ display:'flex', justifyContent:'space-between', marginTop:'8px', paddingTop:'6px', borderTop:'1px solid #F3F4F6' }}>
               <button onClick={() => { onChange(''); setOpen(false); }}
-                style={{ background:'none', border:'none', fontSize:'11px', color:'#2563EB', cursor:'pointer', fontWeight:500 }}>
+                style={{ background:'none', border:'none', fontSize:'11px', color:'#D97706', cursor:'pointer', fontWeight:500 }}>
                 Clear
               </button>
               <button onClick={() => { setViewMonth(today.getMonth()); setViewYear(today.getFullYear()); }}
-                style={{ background:'none', border:'none', fontSize:'11px', color:'#2563EB', cursor:'pointer', fontWeight:500 }}>
+                style={{ background:'none', border:'none', fontSize:'11px', color:'#D97706', cursor:'pointer', fontWeight:500 }}>
                 Today
               </button>
             </div>

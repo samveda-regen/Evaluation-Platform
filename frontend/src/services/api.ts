@@ -398,6 +398,12 @@ export const adminApi = {
   getVerificationStats: () =>
     api.get('/verification/admin/stats'),
 
+  deleteVerificationImages: (candidateId: string) =>
+    api.delete(`/verification/admin/${candidateId}/images`),
+
+  deleteVerificationRecord: (candidateId: string) =>
+    api.delete(`/verification/admin/${candidateId}`),
+
   // ID Verification Data - Admin
   getIdVerificationDocuments: (params?: {
     search?: string;
@@ -516,7 +522,10 @@ export const candidateApi = {
     api.get(`/verification/required/${testId}`),
 
   uploadFaceReference: (imageData: string) =>
-    api.post('/verification/face-reference', { imageData })
+    api.post('/verification/face-reference', { imageData }),
+
+  cancelMyPendingVerification: () =>
+    api.delete('/verification/my-submission'),
 };
 
 export default api;

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi, candidateApi } from '../../services/api';
@@ -133,7 +133,7 @@ export default function TestPreview() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#f0f2f7' }}>
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2" style={{ borderColor: '#10B981' }} />
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2" style={{ borderColor: '#F59E0B' }} />
       </div>
     );
   }
@@ -141,7 +141,7 @@ export default function TestPreview() {
   if (!test) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#f0f2f7' }}>
-        <p style={{ color: '#6B7280' }}>Test not found.</p>
+        <p style={{ color: '#6A7387' }}>Test not found.</p>
       </div>
     );
   }
@@ -212,10 +212,10 @@ export default function TestPreview() {
       {/* ── Nav bar ── */}
       <nav className="flex items-center justify-between px-8 py-4" style={{ backgroundColor: 'white' }}>
         <div className="flex items-center gap-3">
-          <p className="font-bold text-sm" style={{ color: '#111827' }}>TalentstaQ</p>
+          <p className="font-bold text-sm" style={{ color: '#11162A' }}>TalentstaQ</p>
         </div>
-        <div className="flex items-center gap-1.5 text-sm font-medium" style={{ color: '#10B981' }}>
-          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: '#10B981' }} />
+        <div className="flex items-center gap-1.5 text-sm font-medium" style={{ color: '#F59E0B' }}>
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: '#F59E0B' }} />
           Identity verified
         </div>
       </nav>
@@ -242,23 +242,23 @@ export default function TestPreview() {
         <div className="space-y-4">
           {/* Before you begin */}
           <div className="rounded-2xl p-8" style={{ backgroundColor: 'white', boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
-            <h1 className="text-2xl font-bold mb-1" style={{ color: '#111827' }}>Before you begin</h1>
-            <p className="text-sm mb-6" style={{ color: '#10B981' }}>
+            <h1 style={{ fontSize: "32px", fontWeight: 700, letterSpacing: "-0.02em", color: "#11162A", margin: "0 0 4px", lineHeight: 1.2 }}>Before you begin</h1>
+            <p className="text-sm mb-6" style={{ color: '#F59E0B' }}>
               {test.name} · {test.duration} minutes · {totalQ} question{totalQ !== 1 ? 's' : ''}
             </p>
 
             <div className="space-y-3">
               {rules.map((rule, i) => (
                 <div key={i} className="flex items-start gap-4 rounded-xl px-4 py-4" style={{ border: '1px solid #F3F4F6' }}>
-                  <div className="h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#111827' }}>
+                  <div className="h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#11162A' }}>
                     {rule.icon}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold mb-0.5" style={{ color: '#111827' }}>{rule.title}</p>
-                    <p className="text-sm leading-relaxed" style={{ color: '#6B7280' }}>
+                    <p className="text-sm font-semibold mb-0.5" style={{ color: '#11162A' }}>{rule.title}</p>
+                    <p className="text-sm leading-relaxed" style={{ color: '#6A7387' }}>
                       {rule.desc.split(/(full-screen|auto-submits|AI|flagged|violation)/gi).map((part, j) =>
                         /(full-screen|auto-submits|AI|flagged|violation)/i.test(part)
-                          ? <span key={j} style={{ color: '#10B981' }}>{part}</span>
+                          ? <span key={j} style={{ color: '#F59E0B' }}>{part}</span>
                           : part
                       )}
                     </p>
@@ -271,19 +271,19 @@ export default function TestPreview() {
           {/* Sections */}
           {(mcqCount > 0 || codingCount > 0 || behavioralCount > 0) && (
             <div className="rounded-2xl p-6" style={{ backgroundColor: 'white', boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
-              <h2 className="text-base font-semibold mb-4" style={{ color: '#111827' }}>Sections</h2>
+              <h2 className="text-base font-semibold mb-4" style={{ color: '#11162A' }}>Sections</h2>
               <div className="grid grid-cols-3 gap-4">
                 {[
                   { label: 'Multiple choice', count: mcqCount,        color: '#6366F1', icon: <CheckSquare  width={20} height={20} stroke="#6366F1" strokeWidth={1.5} /> },
-                  { label: 'Coding',          count: codingCount,     color: '#10B981', icon: <Code2        width={20} height={20} stroke="#10B981" strokeWidth={1.5} /> },
+                  { label: 'Coding',          count: codingCount,     color: '#F59E0B', icon: <Code2        width={20} height={20} stroke="#F59E0B" strokeWidth={1.5} /> },
                   { label: 'Behavioral',      count: behavioralCount, color: '#F59E0B', icon: <MessageSquare width={20} height={20} stroke="#F59E0B" strokeWidth={1.5} /> },
                 ].map(s => (
                   <div key={s.label} className="rounded-xl p-4 flex flex-col items-center gap-2 text-center" style={{ border: '1px solid #F3F4F6' }}>
                     <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#F9FAFB' }}>
                       {s.icon}
                     </div>
-                    <p className="text-sm font-semibold" style={{ color: '#374151' }}>{s.label}</p>
-                    <p className="text-2xl font-bold" style={{ color: '#111827' }}>{s.count}</p>
+                    <p className="text-sm font-semibold" style={{ color: '#434B5E' }}>{s.label}</p>
+                    <p className="text-2xl font-bold" style={{ color: '#11162A' }}>{s.count}</p>
                   </div>
                 ))}
               </div>
@@ -295,27 +295,27 @@ export default function TestPreview() {
         <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'white', boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
           {/* Camera preview */}
           <div className="relative flex items-center justify-center" style={{ backgroundColor: '#0d1117', height: '180px' }}>
-            <span className="absolute top-3 left-3 text-xs font-bold px-2.5 py-1 rounded-full" style={{ backgroundColor: '#10B981', color: 'white' }}>
+            <span className="absolute top-3 left-3 text-xs font-bold px-2.5 py-1 rounded-full" style={{ backgroundColor: '#F59E0B', color: 'white' }}>
               CAMERA OK
             </span>
-            <div className="h-16 w-16 rounded-full flex items-center justify-center text-xl font-bold text-white" style={{ backgroundColor: '#374151' }}>
+            <div className="h-16 w-16 rounded-full flex items-center justify-center text-xl font-bold text-white" style={{ backgroundColor: '#434B5E' }}>
               AS
             </div>
           </div>
 
           {/* System check */}
           <div className="p-5">
-            <p className="text-sm font-semibold mb-4" style={{ color: '#111827' }}>System check</p>
+            <p className="text-sm font-semibold mb-4" style={{ color: '#11162A' }}>System check</p>
             <div className="space-y-3">
               {systemChecks.map(check => (
                 <div key={check.label} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2" style={{ color: '#6B7280' }}>
+                  <div className="flex items-center gap-2" style={{ color: '#6A7387' }}>
                     {check.icon}
                     <span className="text-sm">{check.label}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium" style={{ color: '#10B981' }}>{check.status}</span>
-                    <div className="h-4 w-4 rounded-full flex items-center justify-center" style={{ backgroundColor: '#10B981' }}>
+                    <span className="text-xs font-medium" style={{ color: '#F59E0B' }}>{check.status}</span>
+                    <div className="h-4 w-4 rounded-full flex items-center justify-center" style={{ backgroundColor: '#F59E0B' }}>
                       <Check width={8} height={8} stroke="white" strokeWidth={3} />
                     </div>
                   </div>
@@ -333,11 +333,11 @@ export default function TestPreview() {
                 checked={accepted}
                 onChange={e => setAccepted(e.target.checked)}
                 className="mt-0.5 h-4 w-4 rounded"
-                style={{ accentColor: '#10B981' }}
+                style={{ accentColor: '#F59E0B' }}
               />
-              <span className="text-sm leading-relaxed" style={{ color: '#374151' }}>
+              <span className="text-sm leading-relaxed" style={{ color: '#434B5E' }}>
                 I have read the instructions and I'm ready to start in{' '}
-                <span style={{ color: '#10B981' }}>full-screen mode</span>.
+                <span style={{ color: '#F59E0B' }}>full-screen mode</span>.
               </span>
             </label>
 
@@ -346,7 +346,7 @@ export default function TestPreview() {
               disabled={!accepted || starting || noQuestions}
               className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-white transition-all"
               style={{
-                backgroundColor: (!accepted || noQuestions) ? '#D1FAE5' : '#10B981',
+                backgroundColor: (!accepted || noQuestions) ? '#FEF3C7' : '#F59E0B',
                 cursor: (!accepted || noQuestions) ? 'not-allowed' : 'pointer',
                 opacity: starting ? 0.8 : 1,
               }}
@@ -364,7 +364,7 @@ export default function TestPreview() {
               )}
             </button>
 
-            <p className="text-center text-xs" style={{ color: '#9CA3AF' }}>
+            <p className="text-center text-xs" style={{ color: '#98A2B5' }}>
               {noQuestions
                 ? 'Add questions to the test first'
                 : 'Runs the full candidate experience — timer starts immediately'}
