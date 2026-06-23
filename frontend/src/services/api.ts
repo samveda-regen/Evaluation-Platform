@@ -17,7 +17,7 @@ const isDevMode = Boolean(viteEnv.DEV);
 
 const resolvedApiBaseUrl =
   apiBaseUrlFromEnv ||
-  (isDevMode ? '/api' : isLocalBrowser ? 'http://localhost:3000/api' : '/api');
+  (isDevMode ? '/api' : isLocalBrowser ? 'http://localhost:4000/api' : '/api');
 
 const api = axios.create({
   baseURL: resolvedApiBaseUrl
