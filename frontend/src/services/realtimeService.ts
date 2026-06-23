@@ -11,7 +11,7 @@ const socketUrlFromEnv =
 const isDevMode = Boolean(viteEnv.DEV);
 
 const resolvedSocketUrl =
-  socketUrlFromEnv || (isDevMode && isLocalBrowser ? 'http://localhost:3000' : '/');
+  socketUrlFromEnv || (isDevMode && isLocalBrowser ? 'http://localhost:4000' : '/');
 
 export interface CandidateProctorStatusPayload {
   attemptId: string;
