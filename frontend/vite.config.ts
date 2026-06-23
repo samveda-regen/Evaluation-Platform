@@ -10,7 +10,7 @@ export default defineConfig({
       'unpreaching-unaugmentative-raelynn.ngrok-free.dev',
       'unimputable-reva-puzzledly.ngrok-free.dev'
     ],
-    port: 5175,
+    port: 6002,
     proxy: {
       '/api': {
         target: 'http://localhost:4000',
