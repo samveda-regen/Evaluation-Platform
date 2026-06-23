@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
@@ -50,7 +50,7 @@ export default function AdminLogin() {
 
       if (!err.response) {
         toast.error(
-          'Cannot reach backend API. Start backend on port 3000 and verify database setup.'
+          'Cannot reach backend API. Start backend on port 4000 and verify database setup.'
         );
       } else {
         toast.error(
