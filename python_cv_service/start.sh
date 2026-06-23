@@ -16,7 +16,7 @@
 set -e
 
 WORKERS="${WORKERS:-4}"
-PORT="${PORT:-8010}"
+PORT="${PORT:-9010}"
 
 echo "[CV Service] Starting with $WORKERS workers on port $PORT"
 
