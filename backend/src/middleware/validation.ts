@@ -22,6 +22,12 @@ export const adminRegisterValidation: ValidationChain[] = [
   body('name').trim().isLength({ min: 2 }).withMessage('Name must be at least 2 characters')
 ];
 
+export const integrationAdminRegisterValidation: ValidationChain[] = [
+  body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
+  body('password').optional().isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+  body('name').trim().isLength({ min: 2 }).withMessage('Name must be at least 2 characters')
+];
+
 // Test validation
 export const createTestValidation: ValidationChain[] = [
   body('name').trim().isLength({ min: 1 }).withMessage('Test name is required'),
