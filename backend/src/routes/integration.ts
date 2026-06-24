@@ -9,16 +9,16 @@ import {
   getTestCandidateResultsForIntegration,
   createTestWithAIAndInvite,
 } from '../controllers/integration.js';
-import { registerAdmin } from '../controllers/adminAuth.js';
+import { registerAdminFromIntegration } from '../controllers/adminAuth.js';
 import {
   handleValidationErrors,
-  adminRegisterValidation,
+  integrationAdminRegisterValidation,
 } from '../middleware/validation.js';
 
 const router = Router();
 
 // Recruiter app account provisioning
-router.post('/admin/register', integrationApiKeyAuth, adminRegisterValidation, handleValidationErrors, registerAdmin);
+router.post('/admin/register', integrationApiKeyAuth, integrationAdminRegisterValidation, handleValidationErrors, registerAdminFromIntegration);
 
 router.post('/auth/exchange', exchangeRecruiterToken);
 router.post('/auth/refresh', refreshIntegrationToken);
