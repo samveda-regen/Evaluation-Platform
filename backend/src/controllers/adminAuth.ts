@@ -1,8 +1,10 @@
 import { Response } from 'express';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { generateAdminToken } from '../utils/jwt.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import { sanitizeInput } from '../utils/sanitize.js';
+import { sendAdminWelcomeEmail } from '../services/emailService.js';
 import prisma from '../utils/db.js';
 
 export async function registerAdmin(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -69,6 +71,72 @@ export async function registerAdmin(req: AuthenticatedRequest, res: Response): P
     });
   } catch (error) {
     console.error('Admin registration error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function registerAdminFromIntegration(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { email, name, companyName, companyId } = req.body;
+    const rawPassword: string = req.body.password || crypto.randomBytes(12).toString('base64url');
+
+    const sanitizedEmail = sanitizeInput(email).toLowerCase();
+    const sanitizedName = sanitizeInput(name);
+
+    const existingAdmin = await prisma.admin.findUnique({ where: { email: sanitizedEmail } });
+    if (existingAdmin) {
+      res.status(400).json({ error: 'Admin with this email already exists' });
+      return;
+    }
+
+    const hashedPassword = await bcrypt.hash(rawPassword, 12);
+
+    let companyRecord: { id: string; name: string; externalCompanyId: string } | null = null;
+    if (companyId && companyName) {
+      companyRecord = await prisma.company.upsert({
+        where: { externalCompanyId: sanitizeInput(companyId) },
+        create: { externalCompanyId: sanitizeInput(companyId), name: sanitizeInput(companyName) },
+        update: { name: sanitizeInput(companyName) },
+      });
+    }
+
+    const admin = await prisma.admin.create({
+      data: {
+        email: sanitizedEmail,
+        password: hashedPassword,
+        name: sanitizedName,
+        ...(companyRecord ? { companyId: companyRecord.id } : {}),
+      },
+    });
+
+    const frontendUrl = process.env.FRONTEND_URL || 'https://humint.talentsatq.ai';
+    try {
+      await sendAdminWelcomeEmail({
+        to: sanitizedEmail,
+        name: sanitizedName,
+        password: rawPassword,
+        loginUrl: `${frontendUrl}/admin/login`,
+        companyName: companyRecord?.name,
+      });
+    } catch (emailError) {
+      console.error('Welcome email failed (account still created):', emailError);
+    }
+
+    const token = generateAdminToken({ id: admin.id, email: admin.email, role: 'admin' });
+
+    res.status(201).json({
+      message: 'Admin registered successfully. Welcome email sent.',
+      admin: {
+        id: admin.id,
+        email: admin.email,
+        name: admin.name,
+        companyName: companyRecord?.name ?? null,
+        companyExternalId: companyRecord?.externalCompanyId ?? null,
+      },
+      token,
+    });
+  } catch (error) {
+    console.error('Integration admin registration error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }
