@@ -586,6 +586,49 @@ export async function sendInvitationEmail(payload: InvitationEmailPayload): Prom
   }
 }
 
+interface AdminWelcomeEmailPayload {
+  to: string;
+  name: string;
+  password: string;
+  loginUrl: string;
+  companyName?: string;
+}
+
+export async function sendAdminWelcomeEmail(payload: AdminWelcomeEmailPayload): Promise<void> {
+  const subject = `Welcome to TalentstaQ — your account is ready`;
+  const textBody = `Hi ${payload.name},
+
+Your TalentstaQ admin account has been created${payload.companyName ? ` for ${payload.companyName}` : ''}.
+
+Login URL: ${payload.loginUrl}
+Email: ${payload.to}
+Temporary password: ${payload.password}
+
+Please log in and change your password as soon as possible.
+
+Best regards,
+TalentstaQ Team`;
+
+  const htmlBody = `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#374151;max-width:600px">
+<p>Hi ${escapeHtml(payload.name)},</p>
+<p>Your TalentstaQ admin account has been created${payload.companyName ? ` for <strong>${escapeHtml(payload.companyName)}</strong>` : ''}.</p>
+<table style="border-collapse:collapse;margin:16px 0">
+  <tr><td style="padding:6px 12px 6px 0;color:#6B7280">Login URL</td><td style="padding:6px 0"><a href="${payload.loginUrl}">${escapeHtml(payload.loginUrl)}</a></td></tr>
+  <tr><td style="padding:6px 12px 6px 0;color:#6B7280">Email</td><td style="padding:6px 0">${escapeHtml(payload.to)}</td></tr>
+  <tr><td style="padding:6px 12px 6px 0;color:#6B7280">Temporary password</td><td style="padding:6px 0"><code style="background:#F3F4F6;padding:2px 6px;border-radius:4px">${escapeHtml(payload.password)}</code></td></tr>
+</table>
+<p>Please log in and change your password as soon as possible.</p>
+<p>Best regards,<br/>TalentstaQ Team</p>
+</div>`;
+
+  try {
+    await sendMailViaResend(subject, textBody, htmlBody, payload.to);
+  } catch (error) {
+    console.error('Failed to send admin welcome email:', { error });
+    throw error;
+  }
+}
+
 export async function sendConfirmationEmail(payload: ConfirmationEmailPayload): Promise<void> {
   try {
     await sendMail(
