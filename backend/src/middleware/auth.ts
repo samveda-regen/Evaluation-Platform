@@ -1,4 +1,3 @@
-/** Authentication middleware for handling different types of authentication */
 import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { verifyToken } from '../utils/jwt.js';
