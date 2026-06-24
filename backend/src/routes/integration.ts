@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { integrationAuth, requireIntegrationScopes } from '../middleware/auth.js';
+import { integrationAuth, integrationApiKeyAuth, requireIntegrationScopes } from '../middleware/auth.js';
 import {
   exchangeRecruiterToken,
   refreshIntegrationToken,
@@ -9,8 +9,16 @@ import {
   getTestCandidateResultsForIntegration,
   createTestWithAIAndInvite,
 } from '../controllers/integration.js';
+import { registerAdmin } from '../controllers/adminAuth.js';
+import {
+  handleValidationErrors,
+  adminRegisterValidation,
+} from '../middleware/validation.js';
 
 const router = Router();
+
+// Recruiter app account provisioning
+router.post('/admin/register', integrationApiKeyAuth, adminRegisterValidation, handleValidationErrors, registerAdmin);
 
 router.post('/auth/exchange', exchangeRecruiterToken);
 router.post('/auth/refresh', refreshIntegrationToken);
