@@ -1,6 +1,6 @@
 import { Router, type Response } from 'express';
 import multer from 'multer';
-import { adminAuth, integrationApiKeyAuth } from '../middleware/auth.js';
+import { adminAuth } from '../middleware/auth.js';
 import type { AuthenticatedRequest } from '../types/index.js';
 import {
   handleValidationErrors,
@@ -91,7 +91,7 @@ const invitationUpload = multer({
 });
 
 // Auth routes
-router.post('/register', integrationApiKeyAuth, adminRegisterValidation, handleValidationErrors, registerAdmin);
+router.post('/register', adminRegisterValidation, handleValidationErrors, registerAdmin);
 router.post('/login', adminLoginValidation, handleValidationErrors, loginAdmin);
 router.get('/profile', adminAuth, getAdminProfile);
 router.put('/profile', adminAuth, updateAdminProfile);
