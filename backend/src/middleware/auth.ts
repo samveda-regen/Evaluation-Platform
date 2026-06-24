@@ -183,6 +183,20 @@ export function requireIntegrationScopes(scopes: string[]) {
   };
 }
 
+export function integrationApiKeyAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+  const apiKey = process.env.INTEGRATION_API_KEY;
+  if (!apiKey) {
+    res.status(503).json({ error: 'Integration not configured on this server' });
+    return;
+  }
+  const provided = req.headers['x-api-key'];
+  if (!provided || provided !== apiKey) {
+    res.status(401).json({ error: 'Invalid or missing API key' });
+    return;
+  }
+  next();
+}
+
 export function integrationAuthStrictExamToken(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
 
