@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
@@ -277,7 +277,7 @@ export default function TestInstructions() {
 
   if (loading || checkingVerification) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#F3F4F6' }}>
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--admin-border)' }}>
         <div className="animate-spin rounded-full h-10 w-10 border-2 border-amber-500 border-t-transparent" />
       </div>
     );
@@ -301,8 +301,8 @@ export default function TestInstructions() {
     (!test.proctorEnabled || deviceReady);
 
   return (
-    <div className="min-h-screen" style={{ background: '#F3F4F6' }}>
-      {/* ── Header ── */}
+    <div className="min-h-screen" style={{ background: 'var(--admin-border)' }}>
+      {/* -- Header -- */}
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -324,10 +324,10 @@ export default function TestInstructions() {
             </div>
           </div>
           {identityVerified && (
-            <div className="flex items-center gap-2 text-sm font-medium" style={{ color: '#F59E0B' }}>
+            <div className="flex items-center gap-2 text-sm font-medium" style={{ color: 'var(--admin-accent)' }}>
               <span
                 className="w-2 h-2 rounded-full"
-                style={{ background: '#F59E0B' }}
+                style={{ background: 'var(--admin-accent)' }}
               />
               Identity verified
             </div>
@@ -335,7 +335,7 @@ export default function TestInstructions() {
         </div>
       </header>
 
-      {/* ── Body ── */}
+      {/* -- Body -- */}
       <main className="max-w-5xl mx-auto px-6 py-8">
         {/* ID verification gate (shown inline if still pending) */}
         {verificationRequired && !verificationComplete && (
@@ -357,9 +357,9 @@ export default function TestInstructions() {
           </div>
         )}
 
-        {/* ── Two-column grid ── */}
+        {/* -- Two-column grid -- */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
-          {/* ── Left: Instructions ── */}
+          {/* -- Left: Instructions -- */}
           <div className="bg-white rounded-2xl p-8 shadow-sm">
             <h1 className="text-2xl font-bold text-gray-900">Before you begin</h1>
             <p className="text-sm text-gray-500 mt-1">
@@ -501,7 +501,7 @@ export default function TestInstructions() {
             )}
           </div>
 
-          {/* ── Right: System check ── */}
+          {/* -- Right: System check -- */}
           <div className="bg-white rounded-2xl shadow-sm overflow-hidden flex flex-col">
             {/* Camera area */}
             <div
@@ -512,7 +512,7 @@ export default function TestInstructions() {
               {deviceStatus.camera && (
                 <span
                   className="absolute top-3 left-3 text-white text-xs font-semibold px-2 py-0.5 rounded"
-                  style={{ background: '#F59E0B', letterSpacing: '0.05em' }}
+                  style={{ background: 'var(--admin-accent)', letterSpacing: '0.05em' }}
                 >
                   CAMERA OK
                 </span>
@@ -665,7 +665,7 @@ export default function TestInstructions() {
                 disabled={!canStart}
                 className="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-opacity"
                 style={{
-                  background: canStart ? '#F59E0B' : '#9CA3AF',
+                  background: canStart ? 'var(--admin-accent)' : '#9CA3AF',
                   color: 'white',
                   cursor: canStart ? 'pointer' : 'not-allowed',
                 }}
@@ -692,7 +692,7 @@ export default function TestInstructions() {
           </div>
         </div>
 
-        {/* ── Sections card ── */}
+        {/* -- Sections card -- */}
         <div className="bg-white rounded-2xl p-6 mt-6 shadow-sm">
           <p className="font-semibold text-gray-800 mb-5">Sections</p>
           <div className="flex flex-wrap gap-8">
@@ -702,7 +702,7 @@ export default function TestInstructions() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                 </svg>
               }
-              color="#D97706"
+              color="var(--admin-accent-hover)"
               bg="#FFF6EE"
               label="Multiple choice"
               count={test.questionCounts?.mcq}
@@ -724,7 +724,7 @@ export default function TestInstructions() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
               }
-              color="#D97706"
+              color="var(--admin-accent-hover)"
               bg="#FFF6EE"
               label="Behavioral"
               count={test.questionCounts?.behavioral}
@@ -736,7 +736,7 @@ export default function TestInstructions() {
   );
 }
 
-/* ── Helper components ── */
+/* -- Helper components -- */
 
 type CheckStatus = 'ok' | 'pending' | 'checking' | 'not-required';
 
@@ -771,7 +771,7 @@ function SystemCheckRow({
         ) : (
           <span
             className="text-xs font-medium"
-            style={{ color: isOk ? '#F59E0B' : '#9CA3AF' }}
+            style={{ color: isOk ? 'var(--admin-accent)' : '#9CA3AF' }}
           >
             {isOk ? okLabel : pendingLabel}
           </span>
@@ -779,13 +779,13 @@ function SystemCheckRow({
         {(isOk || isNotRequired) && (
           <span
             className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-            style={{ background: isOk ? '#FEF3C7' : '#F3F4F6' }}
+            style={{ background: isOk ? 'var(--admin-accent-disabled)' : 'var(--admin-border)' }}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="w-3 h-3"
               viewBox="0 0 20 20"
-              fill={isOk ? '#F59E0B' : '#9CA3AF'}
+              fill={isOk ? 'var(--admin-accent)' : '#9CA3AF'}
             >
               <path
                 fillRule="evenodd"
@@ -798,7 +798,7 @@ function SystemCheckRow({
         {!isOk && !isNotRequired && !isChecking && (
           <span
             className="w-5 h-5 rounded-full border-2 flex-shrink-0"
-            style={{ borderColor: '#E5E7EB' }}
+            style={{ borderColor: 'var(--admin-border)' }}
           />
         )}
       </div>

@@ -1,11 +1,11 @@
 /**
- * PhoneCapture — public page opened on the candidate's phone via QR code.
+ * PhoneCapture - public page opened on the candidate's phone via QR code.
  *
  * Flow:
- *  1. Validate session → open rear camera
+ *  1. Validate session -> open rear camera
  *  2. Auto-capture when ID is stable in frame (or manual "Capture Now")
- *  3. Preview → confirm → upload
- *  4. Poll for admin decision → show Approved / Rejected screen
+ *  3. Preview -> confirm -> upload
+ *  4. Poll for admin decision -> show Approved / Rejected screen
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
@@ -217,7 +217,7 @@ export default function PhoneCapture() {
   }, [startSampler]);
 
   useEffect(() => {
-    if (!sessionId) { setErrorMsg('Invalid link — no session ID found.'); setPageState('error'); return; }
+    if (!sessionId) { setErrorMsg('Invalid link - no session ID found.'); setPageState('error'); return; }
 
     fetch(`${API_BASE}/verification/phone-session/${sessionId}`)
       .then(r => r.json())
@@ -256,7 +256,7 @@ export default function PhoneCapture() {
   }, [captured, sessionId, startPolling]);
 
   const frameColor = stability > 0.7 ? '#22c55e' : stability > 0.3 ? '#f59e0b' : 'rgba(255,255,255,0.65)';
-  const statusText = stability > 0.5 ? 'Hold still…' : 'Place your ID flat inside the frame';
+  const statusText = stability > 0.5 ? 'Hold still...' : 'Place your ID flat inside the frame';
 
   if (pageState === 'loading') return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center">
@@ -290,7 +290,7 @@ export default function PhoneCapture() {
         <div className="bg-gray-800/60 border border-gray-700 rounded-xl p-4 space-y-2">
           <div className="flex items-center gap-2 justify-center">
             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400" />
-            <span className="text-blue-300 text-sm font-medium">Waiting for admin approval…</span>
+            <span className="text-blue-300 text-sm font-medium">Waiting for admin approval...</span>
           </div>
           <p className="text-gray-500 text-xs">Keep this tab open to see the result</p>
         </div>
@@ -338,7 +338,7 @@ export default function PhoneCapture() {
     <div className="min-h-screen bg-gray-950 flex items-center justify-center">
       <div className="text-center space-y-4">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-400 mx-auto" />
-        <p className="text-white font-medium">Sending photo…</p>
+        <p className="text-white font-medium">Sending photo...</p>
       </div>
     </div>
   );
@@ -392,7 +392,7 @@ export default function PhoneCapture() {
               <div className="absolute bottom-28 left-0 right-0 flex justify-center pointer-events-none">
                 <div className="bg-black/60 backdrop-blur-sm rounded-full px-4 py-1.5">
                   <span className="text-white text-sm font-medium tracking-wide">
-                    {stability >= 1 ? '✓ Capturing…' : `Hold still — ${Math.round(stability * 100)}%`}
+                    {stability >= 1 ? '✓ Capturing...' : `Hold still - ${Math.round(stability * 100)}%`}
                   </span>
                 </div>
               </div>

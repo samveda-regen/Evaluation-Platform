@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ProctorDashboard Component
  *
  * Admin dashboard for viewing proctoring data:
@@ -150,7 +150,7 @@ export default function ProctorDashboard() {
       case 'critical': return 'bg-red-100 text-red-800 border-red-200';
       case 'high': return 'bg-orange-100 text-orange-800 border-orange-200';
       case 'medium': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-      case 'low': return 'bg-blue-100 text-blue-800 border-blue-200';
+      case 'low': return 'bg-primary-100 text-primary-800 border-primary-200';
       default: return 'bg-gray-100 text-gray-800 border-gray-200';
     }
   };
@@ -194,7 +194,7 @@ export default function ProctorDashboard() {
       <div className="flex items-start gap-3">
         <BackButton mt="4px" />
         <div>
-          <h1 style={{ fontSize: "32px", fontWeight: 700, letterSpacing: "-0.02em", color: "#11162A", margin: 0, lineHeight: 1.2 }}>Trust Score Report</h1>
+          <h1 style={{ fontSize: "32px", fontWeight: 700, letterSpacing: "-0.02em", color: "var(--admin-text)", margin: 0, lineHeight: 1.2 }}>Trust Score Report</h1>
           <p className="text-gray-500">
             {session.attempt.candidate.name} - {session.attempt.test.name} (Matrix-aligned trust report)
           </p>

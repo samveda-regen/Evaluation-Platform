@@ -1,10 +1,10 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../context/authStore';
 import { adminApi } from '../services/api';
 import { getRealtimeSocket } from '../services/realtimeService';
 import {
-  X, ChevronRight, CheckCircle2, PlayCircle,
+  ChevronRight, ChevronLeft, CheckCircle2, PlayCircle,
 } from 'lucide-react';
 import Icon from './Icon';
 import talentstaQLogo from '../assets/assessment-icons/icons/Talentstaq logo dark.svg';
@@ -36,31 +36,31 @@ const navItems = [
     path: '/admin/dashboard',
     label: 'Dashboard',
     matchPrefix: '/admin/dashboard',
-    icon: <Icon name="dashboard" size={26} />,
+    icon: <Icon name="dashboard" size={20} />,
   },
   {
     path: '/admin/tests',
     label: 'Assessments',
     matchPrefix: '/admin/tests',
-    icon: <Icon name="total-assessments" size={26} />,
+    icon: <Icon name="total-assessments" size={20} />,
   },
   {
     path: '/admin/repository/question-bank',
     label: 'Question Library',
     matchPrefix: '/admin/repository',
-    icon: <Icon name="question-library" size={26} />,
+    icon: <Icon name="question-library" size={20} />,
   },
   {
     path: '/admin/trust-reports',
     label: 'Trust & Integrity',
     matchPrefix: '/admin/trust-reports',
-    icon: <Icon name="trust-and-integrity" size={26} />,
+    icon: <Icon name="trust-and-integrity" size={20} />,
   },
   {
     path: '/admin/id-verification-data',
     label: 'ID Verification',
     matchPrefix: '/admin/id-verification-data',
-    icon: <Icon name="id" size={26} />,
+    icon: <Icon name="id" size={20} />,
   },
 ];
 
@@ -107,6 +107,7 @@ export default function AdminLayout() {
 
   const [profileOpen, setProfileOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const initials =
     admin?.name
@@ -307,7 +308,7 @@ export default function AdminLayout() {
     };
   }, []);
 
-  /* ── Search: close dropdown when clicking outside ── */
+  /* -- Search: close dropdown when clicking outside -- */
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (searchContainerRef.current && !searchContainerRef.current.contains(e.target as Node)) {
@@ -318,7 +319,7 @@ export default function AdminLayout() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  /* ── Notifications: close dropdown when clicking outside ── */
+  /* -- Notifications: close dropdown when clicking outside -- */
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
@@ -329,7 +330,7 @@ export default function AdminLayout() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  /* ── Profile menu: close dropdown when clicking outside ── */
+  /* -- Profile menu: close dropdown when clicking outside -- */
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
@@ -340,7 +341,7 @@ export default function AdminLayout() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  /* ── Search: debounced query across tests, MCQs, coding questions, and pages ── */
+  /* -- Search: debounced query across tests, MCQs, coding questions, and pages -- */
   useEffect(() => {
     const q = searchQuery.trim();
     if (!q) { setSearchResults([]); setSearchOpen(false); return; }
@@ -418,10 +419,10 @@ export default function AdminLayout() {
   };
 
   const TYPE_BG: Record<SearchResultType, string> = {
-    test:   '#FFF6EE',
-    mcq:    '#FFF6EE',
-    coding: '#FFF6EE',
-    page:   '#F3F4F6',
+    test:   'var(--admin-accent-soft)',
+    mcq:    'var(--admin-accent-soft)',
+    coding: 'var(--admin-accent-soft)',
+    page:   'var(--admin-hover)',
   };
 
   const TYPE_LABEL: Record<SearchResultType, string> = {
@@ -442,26 +443,65 @@ export default function AdminLayout() {
   const isActiveItem = (matchPrefix: string) => location.pathname.startsWith(matchPrefix);
 
   return (
-    <div className="admin-shell flex h-screen overflow-hidden" style={{ background: '#F7F8FA' }}>
+    <div className="admin-shell flex h-screen overflow-hidden" style={{ background: 'var(--admin-bg)' }}>
 
-      {/* ── LEFT SIDEBAR ── */}
+      {/* -- LEFT SIDEBAR -- */}
       <aside
-        className="flex flex-col flex-shrink-0 h-full"
-        style={{ width: '220px', backgroundColor: '#ffffff', borderRight: '1px solid #E2E6EE' }}
+        className="admin-sidebar flex flex-col flex-shrink-0 h-full"
+        data-collapsed={sidebarCollapsed}
+        style={{
+          width: sidebarCollapsed ? '72px' : '240px',
+          backgroundColor: '#ffffff',
+          borderRight: '1px solid #E2E6EE',
+          transition: 'width 0.22s ease',
+        }}
       >
         {/* Logo */}
-        <div className="flex items-center justify-center py-4" style={{ borderBottom: '1px solid #E2E6EE' }}>
-          <img src={talentstaQLogo} alt="TalentstaQ" style={{ height: '50px', width: 'auto' }} />
+        <div
+          className="flex items-center"
+          style={{
+            height: '52px',
+            borderBottom: '1px solid #E2E6EE',
+            justifyContent: sidebarCollapsed ? 'center' : 'space-between',
+            padding: sidebarCollapsed ? '0 10px' : '0 12px 0 14px',
+          }}
+        >
+          {!sidebarCollapsed && (
+            <img src={talentstaQLogo} alt="TalentstaQ" style={{ height: '34px', width: 'auto', minWidth: 0 }} />
+          )}
+          <button
+            type="button"
+            className="icon-btn"
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            onClick={() => setSidebarCollapsed(v => !v)}
+            style={{
+              width: '30px',
+              height: '30px',
+              borderRadius: '50%',
+              border: 'none',
+              backgroundColor: 'transparent',
+              color: 'var(--admin-text-subtle)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            {sidebarCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+          </button>
         </div>
 
         {/* Navigation */}
-        <div className="flex-1 overflow-y-auto px-3 py-4">
-          <p
-            className="text-[9px] font-bold tracking-widest uppercase px-2 mb-3"
-            style={{ color: '#6A7387', fontFamily: 'var(--font-mono)' }}
-          >
-            Workspace
-          </p>
+        <div className="flex-1 overflow-y-auto py-4" style={{ paddingLeft: sidebarCollapsed ? '10px' : '12px', paddingRight: sidebarCollapsed ? '10px' : '12px' }}>
+          {!sidebarCollapsed && (
+            <p
+              className="text-[9px] font-bold tracking-widest uppercase px-2 mb-3"
+              style={{ color: 'var(--admin-text-subtle)', fontFamily: 'var(--font-mono)' }}
+            >
+              Workspace
+            </p>
+          )}
 
           <nav className="space-y-0.5">
             {navItems.map((item) => {
@@ -470,61 +510,24 @@ export default function AdminLayout() {
                 <Link
                   key={`${item.path}-${item.label}`}
                   to={item.path}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors"
+                  title={sidebarCollapsed ? item.label : undefined}
+                  className="flex items-center rounded-lg text-sm font-medium transition-colors"
                   style={{
-                    backgroundColor: active ? '#FFF6EE' : 'transparent',
-                    color: active ? '#E07B3C' : '#434B5E',
+                    backgroundColor: active ? 'var(--admin-nav-active)' : 'transparent',
+                    color: active ? 'white' : 'var(--admin-text-muted)',
+                    gap: sidebarCollapsed ? 0 : '12px',
+                    justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+                    padding: sidebarCollapsed ? '10px 0' : '10px 12px',
                   }}
-                  onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(245,158,11,0.08)'; (e.currentTarget as HTMLElement).style.color = '#D97706'; } }}
-                  onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; (e.currentTarget as HTMLElement).style.color = '#434B5E'; } }}
+                  onMouseEnter={e => { if (!active) { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--admin-hover)'; (e.currentTarget as HTMLElement).style.color = 'var(--admin-text)'; } }}
+                  onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--admin-text-muted)'; } }}
                 >
-                  <span style={{ color: active ? '#E07B3C' : '#98A2B5' }}>{item.icon}</span>
-                  {item.label}
+                  <span style={{ color: 'currentColor', display: 'inline-flex' }}>{item.icon}</span>
+                  {!sidebarCollapsed && item.label}
                 </Link>
               );
             })}
           </nav>
-        </div>
-
-        {/* AI Test Generator — Gemini-style */}
-        <div className="mx-3 mb-3">
-          <Link
-            to="/admin/tests/agent"
-            style={{
-              textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '10px',
-              padding: '10px 12px', borderRadius: '14px', transition: 'background-color 0.18s',
-            }}
-            onMouseEnter={e => {
-              const el = e.currentTarget as HTMLElement;
-              el.style.backgroundColor = 'rgba(224,123,60,0.08)';
-              const title = el.querySelector('[data-aititle]') as HTMLElement | null;
-              if (title) title.style.color = '#1F3556';
-              const glow = el.querySelector('[data-aiglow]') as HTMLElement | null;
-              if (glow) glow.style.opacity = '1';
-            }}
-            onMouseLeave={e => {
-              const el = e.currentTarget as HTMLElement;
-              el.style.backgroundColor = 'transparent';
-              const title = el.querySelector('[data-aititle]') as HTMLElement | null;
-              if (title) title.style.color = '#434B5E';
-              const glow = el.querySelector('[data-aiglow]') as HTMLElement | null;
-              if (glow) glow.style.opacity = '0.5';
-            }}
-          >
-            <div data-aiglow="" style={{ flexShrink: 0, transition: 'opacity 0.2s', opacity: 0.85 }}>
-              <Icon name="ai-generate" size={42} />
-            </div>
-
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p data-aititle="" style={{ fontSize: '12px', fontWeight: 600, margin: 0, color: '#434B5E', letterSpacing: '0.01em', transition: 'color 0.18s' }}>
-                AI Test Generator
-              </p>
-              <p style={{ fontSize: '10px', color: '#98A2B5', margin: '2px 0 0', lineHeight: 1.3 }}>
-                Auto-generate from job posting
-              </p>
-            </div>
-            <ChevronRight size={11} color="#98A2B5" style={{ flexShrink: 0 }} />
-          </Link>
         </div>
 
         {/* User Profile */}
@@ -532,26 +535,27 @@ export default function AdminLayout() {
           {/* Profile popup (opens upward) */}
           {profileOpen && (
             <div style={{
-              position: 'absolute', bottom: '100%', left: '8px', right: '8px',
+              position: 'absolute', bottom: '100%', left: sidebarCollapsed ? '8px' : '8px', right: sidebarCollapsed ? 'auto' : '8px',
+              width: sidebarCollapsed ? '220px' : undefined,
               marginBottom: '6px', backgroundColor: 'white', borderRadius: '12px',
-              boxShadow: '0 -4px 24px rgba(0,0,0,0.22)', border: '1px solid #E5E7EB',
+              boxShadow: '0 -4px 24px rgba(31,53,86,0.18)', border: '1px solid var(--admin-border)',
               overflow: 'hidden', zIndex: 200,
             }}>
               {/* Admin header */}
-              <div style={{ padding: '14px 14px 12px', borderBottom: '1px solid #F3F4F6', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#F59E0B', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: '12px' }}>
+              <div style={{ padding: '14px 14px 12px', borderBottom: '1px solid var(--admin-border)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--admin-accent)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 700, fontSize: '12px' }}>
                   {initials}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <p style={{ fontSize: '13px', fontWeight: 600, color: '#11162A', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--admin-text)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {admin?.name || 'Admin'}
                     </p>
-                    <span style={{ fontSize: '10px', fontWeight: 600, color: '#D97706', backgroundColor: '#FEF3C7', padding: '1px 7px', borderRadius: '20px', flexShrink: 0 }}>
+                    <span style={{ fontSize: '10px', fontWeight: 600, color: '#C45F20', backgroundColor: '#FFF0E5', padding: '1px 7px', borderRadius: '20px', flexShrink: 0 }}>
                       Admin
                     </span>
                   </div>
-                  <p style={{ fontSize: '11px', color: '#6A7387', margin: '1px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <p style={{ fontSize: '11px', color: 'var(--admin-text-muted)', margin: '1px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {admin?.companyName
                       ? `${admin.companyName} · ${admin.email}`
                       : admin?.email || ''}
@@ -565,12 +569,12 @@ export default function AdminLayout() {
                 <button
                   onClick={() => { setProfileOpen(false); navigate('/admin/profile'); }}
                   style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 14px', border: 'none', backgroundColor: 'transparent', cursor: 'pointer' }}
-                  onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#EDF0F7'; }}
+                  onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--admin-hover)'; }}
                   onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
                   <Icon name="my-profile" size={16} />
                   <div style={{ textAlign: 'left' }}>
-                    <p style={{ fontSize: '13px', color: '#434B5E', margin: 0, fontWeight: 500 }}>My profile</p>
-                    <p style={{ fontSize: '11px', color: '#98A2B5', margin: 0 }}>Personal details & password</p>
+                    <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: 0, fontWeight: 500 }}>My profile</p>
+                    <p style={{ fontSize: '11px', color: 'var(--admin-text-subtle)', margin: 0 }}>Personal details & password</p>
                   </div>
                 </button>
 
@@ -578,10 +582,10 @@ export default function AdminLayout() {
                 <button
                   onClick={() => { setProfileOpen(false); setNotifUnread(0); setNotifOpen(true); }}
                   style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 14px', border: 'none', backgroundColor: 'transparent', cursor: 'pointer' }}
-                  onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#EDF0F7'; }}
+                  onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--admin-hover)'; }}
                   onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}>
                   <Icon name="notification" size={16} />
-                  <p style={{ fontSize: '13px', color: '#434B5E', margin: 0, fontWeight: 500, flex: 1, textAlign: 'left' }}>Notifications</p>
+                  <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: 0, fontWeight: 500, flex: 1, textAlign: 'left' }}>Notifications</p>
                   {notifUnread > 0 && (
                     <span style={{ fontSize: '10px', fontWeight: 700, color: 'white', backgroundColor: '#EF4444', padding: '2px 7px', borderRadius: '20px', flexShrink: 0 }}>
                       {notifUnread > 9 ? '9+' : notifUnread}
@@ -591,7 +595,7 @@ export default function AdminLayout() {
               </div>
 
               {/* Sign out */}
-              <div style={{ borderTop: '1px solid #F3F4F6', padding: '5px 0' }}>
+              <div style={{ borderTop: '1px solid var(--admin-border)', padding: '5px 0' }}>
                 <button
                   onClick={() => { setProfileOpen(false); handleLogout(); }}
                   style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 14px', border: 'none', backgroundColor: 'transparent', cursor: 'pointer' }}
@@ -607,59 +611,74 @@ export default function AdminLayout() {
           {/* Trigger row */}
           <button
             onClick={() => setProfileOpen(o => !o)}
-            className="w-full flex items-center gap-2.5 px-3 py-3 transition-colors"
-            style={{ backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = '#F7F8FA'; }}
+            title={sidebarCollapsed ? (admin?.name || 'Admin') : undefined}
+            className="w-full flex items-center transition-colors"
+            style={{
+              backgroundColor: 'transparent',
+              border: 'none',
+              cursor: 'pointer',
+              gap: sidebarCollapsed ? 0 : '10px',
+              justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+              padding: sidebarCollapsed ? '12px 0' : '12px',
+            }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--admin-bg)'; }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}
           >
             <div
               className="h-8 w-8 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
-              style={{ backgroundColor: '#E07B3C' }}
+              style={{ backgroundColor: 'var(--admin-accent)' }}
             >
               {initials}
             </div>
-            <div className="flex-1 min-w-0 text-left">
-              <p className="text-xs font-medium truncate" style={{ color: '#252B3B' }}>
-                {admin?.name || 'Admin'}
-              </p>
-              <p className="text-[10px] truncate" style={{ color: '#6A7387' }}>
-                {admin?.companyName || 'Admin'}
-              </p>
-            </div>
-            <Icon
-              name="chevron-down"
-              size={14}
-              style={{ flexShrink: 0, transform: profileOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s', opacity: 0.5 }}
-            />
+            {!sidebarCollapsed && (
+              <>
+                <div className="flex-1 min-w-0 text-left">
+                  <p className="text-xs font-medium truncate" style={{ color: 'var(--admin-text)' }}>
+                    {admin?.name || 'Admin'}
+                  </p>
+                  <p className="text-[10px] truncate" style={{ color: 'var(--admin-text-muted)' }}>
+                    {admin?.companyName || 'Admin'}
+                  </p>
+                </div>
+                <Icon
+                  name="chevron-down"
+                  size={14}
+                  style={{ flexShrink: 0, transform: profileOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s', opacity: 0.5 }}
+                />
+              </>
+            )}
           </button>
         </div>
       </aside>
 
-      {/* ── MAIN AREA ── */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ backgroundColor: '#F7F8FA' }}>
+      {/* -- MAIN AREA -- */}
+      <div className="flex-1 flex flex-col h-full overflow-hidden" style={{ backgroundColor: 'var(--admin-bg)' }}>
 
         {/* Top Bar — hidden on profile page */}
         <header
-          className="flex items-center justify-between px-6 flex-shrink-0"
+          className="flex items-center justify-end gap-3 px-6 flex-shrink-0"
           style={{ display: location.pathname === '/admin/profile' ? 'none' : undefined,
+            position: 'sticky',
+            top: 0,
+            zIndex: 40,
             backgroundColor: 'white',
-            borderBottom: '1px solid #F3F4F6',
+            borderBottom: '1px solid var(--admin-border)',
             height: '52px',
           }}
         >
           {/* Search */}
-          <div ref={searchContainerRef} style={{ position: 'relative', flex: 1, maxWidth: '50%' }}>
+          <div ref={searchContainerRef} style={{ position: 'relative', flex: '0 1 360px', maxWidth: '360px', marginLeft: 'auto' }}>
             <div
               className="flex items-center gap-2 rounded-lg px-3"
               style={{
-                backgroundColor: 'white',
-                border: `1px solid ${searchOpen ? '#F59E0B' : '#E2E6EE'}`,
+                backgroundColor: 'var(--admin-surface-soft)',
+                border: `1px solid ${searchOpen ? 'var(--admin-accent)' : 'var(--admin-border)'}`,
                 height: '36px',
                 width: '100%',
                 transition: 'border-color 0.15s',
               }}
             >
-              <Icon name="search" size={15} style={{ opacity: 0.55 }} />
+              <Icon name="search" size={14} style={{ color: 'var(--admin-text-subtle)', flexShrink: 0 }} />
               <input
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
@@ -669,18 +688,9 @@ export default function AdminLayout() {
                   if (e.key === 'Enter' && searchResults.length === 1) handleSearchSelect(searchResults[0]);
                 }}
                 placeholder="Search candidates, tests..."
-                className="flex-1 bg-transparent text-sm outline-none"
-                style={{ color: '#434B5E' }}
+                className="admin-top-search-input flex-1 bg-transparent text-sm outline-none"
+                style={{ color: 'var(--admin-text)', fontSize: '14px', lineHeight: '20px', outline: 'none', boxShadow: 'none' }}
               />
-              {searchQuery && (
-                <button
-                  onClick={() => { setSearchQuery(''); setSearchResults([]); setSearchOpen(false); }}
-                  className="icon-btn"
-                  style={{ color: '#98A2B5', lineHeight: 1, flexShrink: 0, background: 'none', border: 'none', padding: '2px' }}
-                >
-                  <X size={12} />
-                </button>
-              )}
             </div>
 
             {/* Dropdown */}
@@ -689,19 +699,19 @@ export default function AdminLayout() {
                 style={{
                   position: 'absolute', top: '42px', left: 0, zIndex: 100,
                   width: '100%', minWidth: '360px', backgroundColor: 'white',
-                  borderRadius: '12px', border: '1px solid #F3F4F6',
+                  borderRadius: '12px', border: '1px solid var(--admin-border)',
                   boxShadow: '0 8px 32px rgba(0,0,0,0.14)', overflow: 'hidden',
                   maxHeight: '480px', overflowY: 'auto',
                 }}
               >
                 {searchLoading ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '16px' }}>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2" style={{ borderColor: '#E07B3C' }} />
-                    <span style={{ fontSize: '13px', color: '#98A2B5' }}>Searching…</span>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2" style={{ borderColor: 'var(--admin-accent)' }} />
+                    <span style={{ fontSize: '13px', color: 'var(--admin-text-subtle)' }}>Searching…</span>
                   </div>
                 ) : searchResults.length === 0 ? (
                   <div style={{ padding: '20px 16px', textAlign: 'center' }}>
-                    <p style={{ fontSize: '13px', color: '#98A2B5', margin: 0 }}>No results for "<strong style={{ color: '#434B5E' }}>{searchQuery}</strong>"</p>
+                    <p style={{ fontSize: '13px', color: 'var(--admin-text-subtle)', margin: 0 }}>No results for "<strong style={{ color: 'var(--admin-text-muted)' }}>{searchQuery}</strong>"</p>
                   </div>
                 ) : (
                   (() => {
@@ -713,7 +723,7 @@ export default function AdminLayout() {
                       <div key={group.type}>
                         <p style={{
                           padding: '10px 16px 4px',
-                          fontSize: '10px', fontWeight: 700, color: '#98A2B5',
+                          fontSize: '10px', fontWeight: 700, color: 'var(--admin-text-subtle)',
                           letterSpacing: '0.07em', margin: 0,
                           borderTop: group.type !== grouped[0].type ? '1px solid #F9FAFB' : 'none',
                         }}>
@@ -728,7 +738,7 @@ export default function AdminLayout() {
                               width: '100%', padding: '9px 16px', textAlign: 'left',
                               backgroundColor: 'transparent', border: 'none', cursor: 'pointer',
                             }}
-                            onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.06)')}
+                            onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--admin-accent-soft)')}
                             onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
                           >
                             <div style={{
@@ -739,10 +749,10 @@ export default function AdminLayout() {
                               {TYPE_ICON[result.type]}
                             </div>
                             <div style={{ minWidth: 0, flex: 1 }}>
-                              <p style={{ fontSize: '13px', fontWeight: 500, color: '#11162A', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--admin-text)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {result.name}
                               </p>
-                              <p style={{ fontSize: '11px', color: '#98A2B5', margin: 0 }}>{result.subtitle}</p>
+                              <p style={{ fontSize: '11px', color: 'var(--admin-text-subtle)', margin: 0 }}>{result.subtitle}</p>
                             </div>
                             <ChevronRight size={12} color="#D1D5DB" style={{ flexShrink: 0 }} />
                           </button>
@@ -756,7 +766,7 @@ export default function AdminLayout() {
           </div>
 
           {/* Right actions */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             {/* Notifications Bell */}
             <div ref={notifRef} style={{ position: 'relative' }}>
               <button
@@ -767,8 +777,8 @@ export default function AdminLayout() {
                     adminApi.markAllNotificationsRead().catch(() => {});
                   }
                 }}
-                className="icon-btn relative flex items-center justify-center rounded-full"
-                style={{ width: '38px', height: '38px', backgroundColor: '#EBEDF0', border: '1px solid #E2E5E9' }}
+                className="icon-btn relative flex items-center justify-center"
+                style={{ width: '38px', height: '38px', borderRadius: '8px', backgroundColor: 'transparent', border: '1px solid transparent', color: 'var(--admin-button-primary)' }}
               >
                 <Icon name="bell" size={20} />
                 {notifUnread > 0 && (
@@ -785,11 +795,11 @@ export default function AdminLayout() {
                 <div style={{
                   position: 'absolute', top: '40px', right: 0, zIndex: 200,
                   width: '340px', backgroundColor: 'white',
-                  borderRadius: '12px', border: '1px solid #F3F4F6',
+                  borderRadius: '12px', border: '1px solid var(--admin-border)',
                   boxShadow: '0 8px 32px rgba(0,0,0,0.14)', overflow: 'hidden',
                 }}>
-                  <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F3F4F6' }}>
-                    <span style={{ fontSize: '13px', fontWeight: 600, color: '#11162A' }}>Notifications</span>
+                  <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--admin-border)' }}>
+                    <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--admin-text)' }}>Notifications</span>
                     {notificationHistory.length > 0 && (
                       <button
                         onClick={() => {
@@ -797,7 +807,7 @@ export default function AdminLayout() {
                           setNotifUnread(0);
                           adminApi.clearAllNotifications().catch(() => {});
                         }}
-                        style={{ fontSize: '11px', color: '#6A7387', background: 'none', border: 'none', cursor: 'pointer' }}
+                        style={{ fontSize: '11px', color: 'var(--admin-text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}
                       >
                         Clear all
                       </button>
@@ -806,36 +816,36 @@ export default function AdminLayout() {
                   <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
                     {notificationHistory.length === 0 ? (
                       <div style={{ padding: '32px 16px', textAlign: 'center' }}>
-                        <p style={{ fontSize: '13px', color: '#98A2B5', margin: 0 }}>No notifications yet</p>
+                        <p style={{ fontSize: '13px', color: 'var(--admin-text-subtle)', margin: 0 }}>No notifications yet</p>
                       </div>
                     ) : (
                       notificationHistory.map(n => {
                         const isStarted = n.type === 'started';
                         return (
                           <div key={n.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '12px 16px', borderBottom: '1px solid #F9FAFB' }}>
-                            <div style={{ height: '32px', width: '32px', borderRadius: '50%', flexShrink: 0, backgroundColor: isStarted ? '#DBEAFE' : '#FEF3C7', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <div style={{ height: '32px', width: '32px', borderRadius: '50%', flexShrink: 0, backgroundColor: isStarted ? 'var(--admin-accent-disabled)' : 'var(--admin-accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               {isStarted
-                                ? <PlayCircle size={14} color="#3B82F6" />
-                                : <CheckCircle2 size={14} color="#D97706" />
+                                ? <PlayCircle size={14} color="var(--admin-accent)" />
+                                : <CheckCircle2 size={14} color="var(--admin-accent-hover)" />
                               }
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <p style={{ fontSize: '13px', fontWeight: 500, color: '#11162A', margin: 0 }}>
+                              <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--admin-text)', margin: 0 }}>
                                 {isStarted ? 'Exam Started' : (n.autoSubmit ? 'Test Auto-submitted' : 'Test Completed')}
                               </p>
-                              <p style={{ fontSize: '12px', color: '#6A7387', margin: '2px 0 0' }}>
+                              <p style={{ fontSize: '12px', color: 'var(--admin-text-muted)', margin: '2px 0 0' }}>
                                 <span style={{ fontWeight: 500 }}>{n.candidateName}</span>
                                 {isStarted ? ' started ' : (n.autoSubmit ? ' was auto-submitted for ' : ' completed ')}
                                 <span style={{ fontWeight: 500 }}>{n.testName}</span>
                               </p>
-                              <p style={{ fontSize: '11px', color: '#98A2B5', margin: '3px 0 0' }}>{relativeTime(n.timestamp)}</p>
+                              <p style={{ fontSize: '11px', color: 'var(--admin-text-subtle)', margin: '3px 0 0' }}>{relativeTime(n.timestamp)}</p>
                             </div>
                             <button
                               onClick={() => {
                                 setNotificationHistory(prev => prev.filter(x => x.id !== n.id));
                                 adminApi.deleteNotification(n.id).catch(() => {});
                               }}
-                              style={{ color: '#98A2B5', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, lineHeight: 1, fontSize: '16px', padding: '2px' }}
+                              style={{ color: 'var(--admin-text-subtle)', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, lineHeight: 1, fontSize: '16px', padding: '2px' }}
                             >
                               ×
                             </button>
@@ -848,13 +858,24 @@ export default function AdminLayout() {
               )}
             </div>
 
-
+            {/* User Details */}
+            <div className="flex items-center gap-2 pl-3 border-l" style={{ borderColor: 'var(--admin-border)' }}>
+              <button
+                onClick={() => navigate('/admin/profile')}
+                className="flex items-center justify-center h-8 w-8 rounded-full flex-shrink-0 hover:bg-gray-100"
+                style={{ backgroundColor: 'var(--admin-accent-soft)' }}
+              >
+                <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--admin-accent)' }}>
+                  {initials}
+                </span>
+              </button>
+            </div>
           </div>
         </header>
 
         {/* Page Content */}
         <main className="flex-1 overflow-auto">
-          <div className="p-6">
+          <div className="admin-page">
             <Outlet />
           </div>
         </main>
@@ -869,22 +890,22 @@ export default function AdminLayout() {
               <div
                 key={notification.id}
                 className="flex items-start gap-3 rounded-lg p-4 shadow-lg"
-                style={{ backgroundColor: 'white', border: `1px solid ${isStarted ? '#BFDBFE' : '#FEF3C7'}` }}
+                style={{ backgroundColor: 'white', border: `1px solid ${isStarted ? 'var(--admin-accent-disabled)' : 'var(--admin-accent-disabled)'}` }}
               >
                 <div
                   className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full"
-                  style={{ backgroundColor: isStarted ? '#DBEAFE' : '#FEF3C7' }}
+                  style={{ backgroundColor: isStarted ? 'var(--admin-accent-disabled)' : 'var(--admin-accent-soft)' }}
                 >
                   {isStarted
-                    ? <PlayCircle size={16} color="#3B82F6" />
-                    : <CheckCircle2 size={16} color="#D97706" />
+                    ? <PlayCircle size={16} color="var(--admin-accent)" />
+                    : <CheckCircle2 size={16} color="var(--admin-accent-hover)" />
                   }
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold" style={{ color: '#11162A' }}>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--admin-text)' }}>
                     {isStarted ? 'Exam Started' : (notification.autoSubmit ? 'Test Auto-submitted' : 'Test Completed')}
                   </p>
-                  <p className="mt-0.5 text-sm" style={{ color: '#6A7387' }}>
+                  <p className="mt-0.5 text-sm" style={{ color: 'var(--admin-text-muted)' }}>
                     <span className="font-medium">{notification.candidateName}</span>
                     {isStarted ? ' started ' : (notification.autoSubmit ? ' was auto-submitted for ' : ' completed ')}
                     <span className="font-medium">{notification.testName}</span>
@@ -893,7 +914,7 @@ export default function AdminLayout() {
                 <button
                   onClick={() => dismissCompletionPopup(notification.id)}
                   className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded"
-                  style={{ color: '#98A2B5', fontSize: '18px', lineHeight: 1 }}
+                  style={{ color: 'var(--admin-text-subtle)', fontSize: '18px', lineHeight: 1 }}
                 >
                   &times;
                 </button>

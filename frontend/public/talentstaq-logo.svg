@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 250" role="img" aria-labelledby="title">
+  <title id="title">TalentstaQ</title>
+  <text
+    x="72"
+    y="170"
+    fill="#1F3556"
+    font-family="Arial, Helvetica, Inter, sans-serif"
+    font-size="126"
+    font-weight="400"
+    letter-spacing="-4"
+  >Talentsta</text>
+  <g fill="none" stroke="#FF7F13" stroke-linecap="round" stroke-linejoin="round">
+    <ellipse cx="681" cy="125" rx="38" ry="55" stroke-width="23"/>
+    <path d="M666 174 C680 176 689 194 707 195 C720 196 729 190 736 184" stroke-width="14"/>
+  </g>
+</svg>

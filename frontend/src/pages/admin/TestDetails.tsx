@@ -1,5 +1,5 @@
-﻿import React, { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { Test, MCQQuestion, CodingQuestion } from '../../types';
@@ -98,22 +98,22 @@ function getTestStatus(test: Test): 'Published' | 'Draft' | 'Scheduled' | 'Archi
 
 const SCORE_BANDS = ['0-40', '40-55', '55-70', '70-85', '85-100'];
 
-/* ── Build display buckets — always show all 5 bands, defaulting to 0 ── */
+/* -- Build display buckets — always show all 5 bands, defaulting to 0 -- */
 function buildBuckets(dist: Record<string, number> | null, _totalMarks: number) {
   const source = dist ?? {};
   return SCORE_BANDS.map(label => ({ label, count: source[label] ?? 0 }));
 }
 
-/* ── Bar colour based on which percentage band it falls in vs passing score ── */
+/* -- Bar colour based on which percentage band it falls in vs passing score -- */
 function bandColor(label: string, passingPct: number): string {
   const upper = parseInt(label.split('-')[1] ?? '100', 10);
   const lower = parseInt(label.split('-')[0] ?? '0', 10);
-  if (upper <= passingPct - 15) return '#F87171'; // clearly failing → red
-  if (lower < passingPct)       return '#FCD34D'; // borderline → amber
-  return '#F59E0B';                                // passing → green
+  if (upper <= passingPct - 15) return '#F87171'; // clearly failing ? red
+  if (lower < passingPct)       return '#FCD34D'; // borderline ? amber
+  return 'var(--admin-accent)';                                // passing ? green
 }
 
-/* ── Score distribution bar chart ── */
+/* -- Score distribution bar chart -- */
 function ScoreBarChart({
   buckets,
   passingPct,
@@ -130,7 +130,7 @@ function ScoreBarChart({
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: '8px', height: '140px' }}>
         {buckets.map(b => {
           const heightPct = b.count > 0 ? (b.count / max) * 100 : 0;
-          const color = b.count > 0 ? bandColor(b.label, passingPct) : '#E5E7EB';
+          const color = b.count > 0 ? bandColor(b.label, passingPct) : 'var(--admin-border)';
           return (
             <div key={b.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '64px', gap: '6px', flexShrink: 0 }}>
               <div style={{ display: 'flex', alignItems: 'flex-end', width: '100%', height: '100px' }}>
@@ -142,18 +142,18 @@ function ScoreBarChart({
                   transition: 'height 0.3s',
                 }} />
               </div>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: '#434B5E' }}>{b.label}</span>
-              <span style={{ fontSize: '11px', color: '#6A7387' }}>{b.count}</span>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--admin-text-muted)' }}>{b.label}</span>
+              <span style={{ fontSize: '11px', color: 'var(--admin-text-muted)' }}>{b.count}</span>
             </div>
           );
         })}
       </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #F3F4F6' }}>
-        <span style={{ fontSize: '13px', color: '#6A7387' }}>
-          Passing score&nbsp;<strong style={{ color: '#11162A' }}>{passingPct}%</strong>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--admin-border)' }}>
+        <span style={{ fontSize: '13px', color: 'var(--admin-text-muted)' }}>
+          Passing score&nbsp;<strong style={{ color: 'var(--admin-text)' }}>{passingPct}%</strong>
         </span>
-        <span style={{ fontSize: '13px', color: '#6A7387' }}>
-          Pass rate&nbsp;<strong style={{ color: '#F59E0B' }}>{passRate != null ? Math.round(passRate) : 0}%</strong>
+        <span style={{ fontSize: '13px', color: 'var(--admin-text-muted)' }}>
+          Pass rate&nbsp;<strong style={{ color: 'var(--admin-accent)' }}>{passRate != null ? Math.round(passRate) : 0}%</strong>
         </span>
       </div>
     </div>
@@ -225,7 +225,7 @@ export default function TestDetails() {
   ]);
   const [customBehavioral, setCustomBehavioral] = useState({ title: '', description: '', expectedAnswer: '' });
 
-  /* ── Questions tab UI state ── */
+  /* -- Questions tab UI state -- */
   const [qSearch, setQSearch] = useState('');
   const [qTypeFilter, setQTypeFilter] = useState('all');
   const [qDiffFilter, setQDiffFilter] = useState('all');
@@ -467,7 +467,7 @@ export default function TestDetails() {
     return 'Warning: Question types are unbalanced across sections.';
   })();
 
-  /* ── Questions-tab computed values ── */
+  /* -- Questions-tab computed values -- */
   const allFlatQuestions = [...unsectionedQuestions, ...sections.flatMap(s => s.questions || [])];
   const qTextOf = (q: TestQuestion): string =>
     (q.questionType === 'mcq' ? q.mcqQuestion?.questionText
@@ -489,12 +489,12 @@ export default function TestDetails() {
 
   if (loading) {
     return (
-      <div style={{ backgroundColor: '#f4f6fb', margin: '-24px', padding: '24px', minHeight: 'calc(100vh - 52px)' }} className="flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2" style={{ borderColor: '#F59E0B' }} />
+      <div style={{ backgroundColor: '#F9FAFB', minHeight: '100%' }} className="flex items-center justify-center">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2" style={{ borderColor: 'var(--admin-accent)' }} />
       </div>
     );
   }
-  if (!test) return <div className="text-center py-12" style={{ color: '#6A7387' }}>Test not found</div>;
+  if (!test) return <div className="text-center py-12" style={{ color: 'var(--admin-text-muted)' }}>Test not found</div>;
 
   const status = getTestStatus(test);
   const mcqCount       = questions.filter(q => q.questionType === 'mcq').length;
@@ -515,61 +515,54 @@ export default function TestDetails() {
   const buckets       = buildBuckets(analytics?.scoreDistribution ?? null, test.totalMarks);
 
   const statusColors: Record<string, { bg: string; color: string; dot: string }> = {
-    Published: { bg: '#FFFBEB', color: '#D97706', dot: '#F59E0B' },
-    Draft:     { bg: '#F3F4F6', color: '#6A7387', dot: '#98A2B5' },
-    Scheduled: { bg: '#EFF6FF', color: '#1D4ED8', dot: '#3B82F6' },
+    Published: { bg: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)', dot: 'var(--admin-accent)' },
+    Draft:     { bg: 'var(--admin-border)', color: 'var(--admin-text-muted)', dot: 'var(--admin-text-subtle)' },
+    Scheduled: { bg: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)', dot: 'var(--admin-accent)' },
     Archived:  { bg: '#FFF7ED', color: '#C2410C', dot: '#F97316' },
   };
   const sc = statusColors[status];
 
-  const TABS: { id: ActiveTab | 'ai-proctoring' | 'settings'; label: string; icon: React.ReactNode }[] = [
-    { id: 'overview',      label: 'Overview',      icon: <LayoutDashboard size={14} color="#F59E0B" /> },
-    { id: 'questions',     label: 'Questions',     icon: <FileQuestion    size={14} color="#F59E0B" /> },
-    { id: 'candidates',    label: 'Candidates',    icon: <Users           size={14} color="#F59E0B" /> },
-    { id: 'ai-proctoring', label: 'AI Proctoring', icon: <ShieldCheck     size={14} color="#F59E0B" /> },
-    { id: 'settings',      label: 'Settings',      icon: <Settings2       size={14} color="#F59E0B" /> },
+  const TABS: { id: ActiveTab; label: string; icon: React.ReactNode }[] = [
+    { id: 'overview',      label: 'Overview',      icon: <LayoutDashboard size={15} /> },
+    { id: 'questions',     label: 'Questions',     icon: <FileQuestion    size={15} /> },
+    { id: 'candidates',    label: 'Candidates',    icon: <Users           size={15} /> },
+    { id: 'ai-proctoring', label: 'AI Proctoring', icon: <ShieldCheck     size={15} /> },
+    { id: 'settings',      label: 'Settings',      icon: <Settings2       size={15} /> },
   ];
 
   return (
-    <div style={{ backgroundColor: '#f4f6fb', margin: '-24px', padding: '24px', minHeight: 'calc(100vh - 52px)' }}>
-
-      {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm mb-5" style={{ color: '#98A2B5' }}>
-        <BackButton mt="0" />
-        <Link to="/admin/tests" className="hover:underline" style={{ color: '#98A2B5' }}>Assessments</Link>
-        <ChevronRight size={12} />
-        <span style={{ color: '#434B5E' }}>{test.name}</span>
-      </div>
+    <div style={{ backgroundColor: '#F9FAFB', minHeight: '100%' }}>
 
       {/* Header */}
-      <div className="rounded-2xl p-5 mb-5" style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+      <div style={{ marginBottom: '24px' }}>
         <div className="flex flex-wrap items-start justify-between gap-4">
           {/* Left: icon + name + meta */}
           <div className="flex items-start gap-4">
-            <div className="h-12 w-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)', boxShadow: '0 3px 10px rgba(245,158,11,0.35)' }}>
+            <BackButton mt="0" />
+            <div className="h-12 w-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(135deg, var(--admin-accent) 0%, var(--admin-accent-hover) 100%)', boxShadow: '0 3px 10px rgba(31, 53, 86, 0.22)' }}>
               <Layers size={22} color="white" strokeWidth={1.8} />
             </div>
             <div>
               <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-xl font-bold" style={{ color: '#11162A' }}>{test.name}</h1>
+                <h1 className="text-xl font-bold" style={{ color: 'var(--admin-text)' }}>{test.name}</h1>
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold"
                   style={{ backgroundColor: sc.bg, color: sc.color }}>
                   <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: sc.dot }} />
                   {status}
                 </span>
               </div>
-              <div className="flex items-center gap-4 mt-1.5 text-sm flex-wrap" style={{ color: '#6A7387' }}>
-                <span className="font-mono font-semibold" style={{ color: '#434B5E' }}>{test.testCode}</span>
+              <div className="flex items-center gap-4 mt-1.5 text-sm flex-wrap" style={{ color: 'var(--admin-text-muted)' }}>
+                <span className="font-mono font-semibold" style={{ color: 'var(--admin-text-muted)' }}>{test.testCode}</span>
                 <span className="flex items-center gap-1">
-                  <Timer size={12} color="#F59E0B" />
+                  <Timer size={12} color="var(--admin-accent)" />
                   {test.duration} min
                 </span>
                 <span className="flex items-center gap-1">
-                  <FileQuestion size={12} color="#F59E0B" />
+                  <FileQuestion size={12} color="var(--admin-accent)" />
                   {test._count?.questions ?? questions.length} questions
                 </span>
                 <span className="flex items-center gap-1">
-                  <Users size={12} color="#F59E0B" />
+                  <Users size={12} color="var(--admin-accent)" />
                   {totalAttempts} attempts
                 </span>
               </div>
@@ -579,34 +572,27 @@ export default function TestDetails() {
           {/* Right: action buttons */}
           <div className="flex items-center gap-2 flex-wrap">
             <button
-              className="flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium"
-              style={{ borderColor: '#FDE68A', color: '#D97706', backgroundColor: 'white', transition: 'background-color 0.15s, border-color 0.15s' }}
+              className="btn btn-secondary"
               onClick={() => window.open(`/admin/tests/${testId}/preview`, '_blank')}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(245,158,11,0.08)'; (e.currentTarget as HTMLElement).style.borderColor = '#F59E0B'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'white'; (e.currentTarget as HTMLElement).style.borderColor = '#FDE68A'; }}
             >
               <Eye size={14} />
               Preview
             </button>
             <button
               onClick={openInviteModal}
-              className="flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium"
-              style={{ borderColor: '#FDE68A', color: '#D97706', backgroundColor: 'white', transition: 'background-color 0.15s, border-color 0.15s' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(245,158,11,0.08)'; (e.currentTarget as HTMLElement).style.borderColor = '#F59E0B'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'white'; (e.currentTarget as HTMLElement).style.borderColor = '#FDE68A'; }}
+              className="btn btn-secondary"
             >
               <Link2 size={14} />
               Invite link
               {totalAttempts > 0 && (
-                <span className="h-5 w-5 rounded-full text-xs font-bold flex items-center justify-center" style={{ backgroundColor: '#F3F4F6', color: '#434B5E' }}>
+                <span className="text-xs font-bold" style={{ color: 'var(--admin-text-subtle)' }}>
                   {Math.min(totalAttempts, 9)}
                 </span>
               )}
             </button>
             <button
               onClick={handlePublish}
-              className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white"
-              style={{ backgroundColor: '#F59E0B' }}
+              className="btn btn-primary"
             >
               <Upload size={14} color="white" />
               {test.isActive ? 'Publish changes' : 'Publish'}
@@ -615,30 +601,25 @@ export default function TestDetails() {
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-1 mt-5 pt-4" style={{ borderTop: '1px solid #F3F4F6' }}>
+        <div
+          className="flex items-center gap-6 mt-5 overflow-x-auto"
+          style={{ borderBottom: '1px solid var(--admin-border-soft)' }}
+        >
           {TABS.map(tab => {
-            const isNavTab = false;
-            if (isNavTab) {
-              return (
-                <Link
-                  key={tab.id}
-                  to={`/admin/tests/${testId}/${tab.id}`}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium"
-                  style={{ color: '#6A7387' }}
-                >
-                  {tab.icon}{tab.label}
-                </Link>
-              );
-            }
+            const active = activeTab === tab.id;
             return (
               <button
+                type="button"
                 key={tab.id}
-                onClick={() => switchTab(tab.id as ActiveTab)}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                onClick={() => switchTab(tab.id)}
+                className="flex items-center gap-2 py-3 text-sm font-semibold transition-colors"
                 style={{
-                  backgroundColor: activeTab === tab.id ? '#FFFBEB' : 'white',
-                  color: activeTab === tab.id ? '#D97706' : '#6A7387',
-                  border: activeTab === tab.id ? '1.5px solid #FDE68A' : '1.5px solid #E5E7EB',
+                  color: active ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)',
+                  border: 0,
+                  borderBottom: active ? '2px solid var(--admin-accent)' : '2px solid transparent',
+                  background: 'transparent',
+                  marginBottom: '-1px',
+                  whiteSpace: 'nowrap',
                 }}
               >
                 {tab.icon}{tab.label}
@@ -648,7 +629,7 @@ export default function TestDetails() {
         </div>
       </div>
 
-      {/* ═══════════════ OVERVIEW TAB ═══════════════ */}
+      {/* --------------- OVERVIEW TAB --------------- */}
       {activeTab === 'overview' && (
         <div className="grid lg:grid-cols-[1fr_280px] gap-5">
           {/* Left */}
@@ -656,33 +637,33 @@ export default function TestDetails() {
             {/* 4 stat cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {[
-                { label: 'Attempts',   value: totalAttempts.toString(),                        icon: <Users         size={26} color="#F59E0B" /> },
-                { label: 'Completion', value: completionPct > 0 ? `${completionPct}%` : '-',  icon: <CheckCircle2  size={26} color="#F59E0B" /> },
-                { label: 'Avg score',  value: avgScore != null ? `${avgScore}%` : '-',         icon: <ClipboardCheck size={26} color="#F59E0B" /> },
-                { label: 'Avg trust',  value: avgTrust != null ? `${avgTrust}%` : '-',         icon: <ShieldCheck   size={26} color="#F59E0B" /> },
+                { label: 'Attempts',   value: totalAttempts.toString(),                        icon: <Users         size={26} color="var(--admin-accent)" /> },
+                { label: 'Completion', value: completionPct > 0 ? `${completionPct}%` : '-',  icon: <CheckCircle2  size={26} color="var(--admin-accent)" /> },
+                { label: 'Avg score',  value: avgScore != null ? `${avgScore}%` : '-',         icon: <ClipboardCheck size={26} color="var(--admin-accent)" /> },
+                { label: 'Avg trust',  value: avgTrust != null ? `${avgTrust}%` : '-',         icon: <ShieldCheck   size={26} color="var(--admin-accent)" /> },
               ].map(card => (
-                <div key={card.label} className="rounded-2xl p-5" style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+                <div key={card.label} className="p-5" style={{ backgroundColor: 'white', borderRadius: 'var(--admin-card-radius)', boxShadow: 'var(--admin-card-shadow)' }}>
                   <div className="mb-3">{card.icon}</div>
-                  <p className="text-3xl font-bold" style={{ color: '#11162A' }}>{card.value}</p>
-                  <p className="text-sm mt-1" style={{ color: '#6A7387' }}>{card.label}</p>
+                  <p className="text-3xl font-bold" style={{ color: 'var(--admin-text)' }}>{card.value}</p>
+                  <p className="text-sm mt-1" style={{ color: 'var(--admin-text-muted)' }}>{card.label}</p>
                 </div>
               ))}
             </div>
 
             {/* Score Statistics */}
             {analytics && analytics.completedAttempts > 0 && (analytics.highestScore != null || analytics.medianScore != null || analytics.lowestScore != null) && (
-              <div className="rounded-2xl p-6" style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
-                <h3 className="text-base font-semibold mb-5" style={{ color: '#11162A' }}>Score Statistics</h3>
+              <div className="p-6" style={{ backgroundColor: 'white', borderRadius: 'var(--admin-card-radius)', boxShadow: 'var(--admin-card-shadow)' }}>
+                <h3 className="text-base font-semibold mb-5" style={{ color: 'var(--admin-text)' }}>Score Statistics</h3>
                 <div style={{ display: 'flex', justifyContent: 'space-around', textAlign: 'center' }}>
                   {[
-                    { label: 'Highest', value: analytics.highestScore != null ? analytics.highestScore.toFixed(1) : '—', color: '#F59E0B' },
-                    { label: 'Median',  value: analytics.medianScore  != null ? analytics.medianScore.toFixed(1)  : '—', color: '#11162A' },
-                    { label: 'Average', value: avgScore != null ? `${avgScore}` : '—',                                    color: '#3B82F6' },
+                    { label: 'Highest', value: analytics.highestScore != null ? analytics.highestScore.toFixed(1) : '—', color: 'var(--admin-accent)' },
+                    { label: 'Median',  value: analytics.medianScore  != null ? analytics.medianScore.toFixed(1)  : '—', color: 'var(--admin-text)' },
+                    { label: 'Average', value: avgScore != null ? `${avgScore}` : '—',                                    color: 'var(--admin-accent)' },
                     { label: 'Lowest',  value: analytics.lowestScore  != null ? analytics.lowestScore.toFixed(1)  : '—', color: '#EF4444' },
                     { label: 'Flagged', value: analytics.flaggedAttempts != null ? String(analytics.flaggedAttempts) : '—', color: '#F97316' },
                   ].map(stat => (
                     <div key={stat.label}>
-                      <p style={{ fontSize: '12px', color: '#6A7387', margin: '0 0 6px' }}>{stat.label}</p>
+                      <p style={{ fontSize: '12px', color: 'var(--admin-text-muted)', margin: '0 0 6px' }}>{stat.label}</p>
                       <p style={{ fontSize: '22px', fontWeight: 700, color: stat.color, margin: 0 }}>{stat.value}</p>
                     </div>
                   ))}
@@ -691,8 +672,8 @@ export default function TestDetails() {
             )}
 
             {/* Score distribution */}
-            <div className="rounded-2xl p-6" style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
-              <h3 className="text-base font-semibold mb-4" style={{ color: '#11162A' }}>Score Distribution</h3>
+            <div className="p-6" style={{ backgroundColor: 'white', borderRadius: 'var(--admin-card-radius)', boxShadow: 'var(--admin-card-shadow)' }}>
+              <h3 className="text-base font-semibold mb-4" style={{ color: 'var(--admin-text)' }}>Score Distribution</h3>
               <ScoreBarChart buckets={buckets} passingPct={passingPct} passRate={passRatePct} />
             </div>
           </div>
@@ -700,19 +681,19 @@ export default function TestDetails() {
           {/* Right sidebar */}
           <div className="space-y-4">
             {/* Composition */}
-            <div className="rounded-2xl p-5" style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
-              <h3 className="text-sm font-semibold mb-4" style={{ color: '#11162A' }}>Composition</h3>
+            <div className="p-5" style={{ backgroundColor: 'white', borderRadius: 'var(--admin-card-radius)', boxShadow: 'var(--admin-card-shadow)' }}>
+              <h3 className="text-sm font-semibold mb-4" style={{ color: 'var(--admin-text)' }}>Composition</h3>
               {[
-                { label: 'MCQ',        count: mcqCount,        color: '#F59E0B' },
-                { label: 'Coding',     count: codingCount,     color: '#D97706' },
-                { label: 'Behavioral', count: behavioralCount, color: '#B45309' },
+                { label: 'MCQ',        count: mcqCount,        color: 'var(--admin-accent)' },
+                { label: 'Coding',     count: codingCount,     color: 'var(--admin-accent-hover)' },
+                { label: 'Behavioral', count: behavioralCount, color: 'var(--admin-accent-hover)' },
               ].map(item => (
                 <div key={item.label} className="mb-3">
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-sm font-medium" style={{ color: item.color }}>{item.label}</span>
-                    <span className="text-sm font-semibold" style={{ color: '#11162A' }}>{item.count}</span>
+                    <span className="text-sm font-semibold" style={{ color: 'var(--admin-text)' }}>{item.count}</span>
                   </div>
-                  <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: '#F3F4F6' }}>
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--admin-border)' }}>
                     <div className="h-full rounded-full" style={{ width: `${(item.count / compMax) * 100}%`, backgroundColor: item.color }} />
                   </div>
                 </div>
@@ -720,22 +701,22 @@ export default function TestDetails() {
             </div>
 
             {/* Quick actions */}
-            <div className="rounded-2xl p-5" style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
-              <h3 className="text-sm font-semibold mb-3" style={{ color: '#11162A' }}>Quick actions</h3>
+            <div className="p-5" style={{ backgroundColor: 'white', borderRadius: 'var(--admin-card-radius)', boxShadow: 'var(--admin-card-shadow)' }}>
+              <h3 className="text-sm font-semibold mb-3" style={{ color: 'var(--admin-text)' }}>Quick actions</h3>
               <div className="space-y-1">
                 {[
-                  { label: 'Edit questions',    icon: <FileQuestion    size={14} color="#F59E0B" />, action: () => switchTab('questions') },
-                  { label: 'Manage candidates', icon: <Users           size={14} color="#F59E0B" />, action: () => switchTab('candidates') },
-                  { label: 'Proctoring rules',  icon: <ShieldCheck     size={14} color="#F59E0B" />, action: () => switchTab('ai-proctoring') },
-                  { label: 'Full analytics',    icon: <LayoutDashboard size={14} color="#F59E0B" />, action: () => navigate(`/admin/tests/${testId}/analytics`) },
+                  { label: 'Edit questions',    icon: <FileQuestion    size={14} color="var(--admin-accent)" />, action: () => switchTab('questions') },
+                  { label: 'Manage candidates', icon: <Users           size={14} color="var(--admin-accent)" />, action: () => switchTab('candidates') },
+                  { label: 'Proctoring rules',  icon: <ShieldCheck     size={14} color="var(--admin-accent)" />, action: () => switchTab('ai-proctoring') },
+                  { label: 'Full analytics',    icon: <LayoutDashboard size={14} color="var(--admin-accent)" />, action: () => navigate(`/admin/tests/${testId}/analytics`) },
                 ].map(item => (
                   <button key={item.label} onClick={item.action}
                     className="w-full flex items-center justify-between px-3 py-3 rounded-xl text-sm font-medium"
-                    style={{ color: '#434B5E', transition: 'background-color 0.15s, color 0.15s' }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(245,158,11,0.08)'; (e.currentTarget as HTMLElement).style.color = '#D97706'; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; (e.currentTarget as HTMLElement).style.color = '#434B5E'; }}>
+                    style={{ color: 'var(--admin-text-muted)', transition: 'background-color 0.15s, color 0.15s' }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(31, 53, 86, 0.08)'; (e.currentTarget as HTMLElement).style.color = 'var(--admin-accent-hover)'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--admin-text-muted)'; }}>
                     <span className="flex items-center gap-2.5">{item.icon}{item.label}</span>
-                    <ChevronRight size={14} color="#98A2B5" />
+                    <ChevronRight size={14} color="var(--admin-text-subtle)" />
                   </button>
                 ))}
               </div>
@@ -744,39 +725,39 @@ export default function TestDetails() {
         </div>
       )}
 
-      {/* ═══════════════ QUESTIONS TAB ═══════════════ */}
+      {/* --------------- QUESTIONS TAB --------------- */}
       {activeTab === 'questions' && (
-        <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}>
+        <div className="overflow-hidden" style={{ backgroundColor: 'white', borderRadius: 'var(--admin-card-radius)', boxShadow: 'var(--admin-card-shadow)' }}>
 
           {/* Toolbar */}
-          <div className="flex flex-wrap items-center gap-3 px-5 py-4" style={{ borderBottom: '1px solid #F3F4F6' }}>
+          <div className="flex flex-wrap items-center gap-3 px-5 py-4" style={{ borderBottom: '1px solid var(--admin-border)' }}>
             {/* Search */}
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2" size={16} style={{ color: '#98A2B5' }} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2" size={16} style={{ color: 'var(--admin-text-subtle)' }} />
               <input
                 value={qSearch}
                 onChange={e => { setQSearch(e.target.value); setQPage(1); }}
                 placeholder="Search questions..."
-                className="pl-9 pr-4 py-2 rounded-xl border text-sm outline-none"
-                style={{ borderColor: '#E5E7EB', color: '#11162A', width: '220px', backgroundColor: 'white' }}
+                className="admin-filter-input pl-9 pr-4 py-2 rounded-xl border text-sm outline-none"
+                style={{ width: '220px' }}
               />
             </div>
             {/* Type filter */}
-            <div style={{ position: 'relative' }}>
+            <div style={{ position: 'relative', width: '150px', flexShrink: 0 }}>
               {showTypeDrop && <div className="fixed inset-0 z-20" onClick={() => setShowTypeDrop(false)} />}
               <button onClick={() => { setShowTypeDrop(v => !v); setShowDiffDrop(false); }}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm"
-                style={{ borderColor: '#E5E7EB', color: '#434B5E', backgroundColor: 'white', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                {qTypeFilter === 'all' ? 'All types' : qTypeFilter === 'mcq' ? 'MCQ' : qTypeFilter === 'coding' ? 'Coding' : 'Behavioral'}
-                <ChevronDown size={13} color="#98A2B5" />
+                className="flex items-center justify-between gap-1.5 px-3 py-2 rounded-xl border text-sm"
+                style={{ width: '100%', borderColor: 'var(--admin-border)', color: 'var(--admin-text-muted)', backgroundColor: 'white', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                <span className="truncate">{qTypeFilter === 'all' ? 'All types' : qTypeFilter === 'mcq' ? 'MCQ' : qTypeFilter === 'coding' ? 'Coding' : 'Behavioral'}</span>
+                <ChevronDown size={13} color="var(--admin-text-subtle)" />
               </button>
               {showTypeDrop && (
-                <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 30, backgroundColor: 'white', borderRadius: '10px', padding: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', border: '1px solid #E5E7EB', minWidth: '140px' }}>
+                <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 30, backgroundColor: 'white', borderRadius: '10px', padding: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', border: '1px solid var(--admin-border)', minWidth: '140px' }}>
                   {([['all','All types'],['mcq','MCQ'],['coding','Coding'],['behavioral','Behavioral']] as const).map(([val, label]) => (
                     <button key={val}
                       onClick={() => { setQTypeFilter(val); setQPage(1); setShowTypeDrop(false); }}
-                      style={{ width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', borderRadius: '7px', fontSize: '13px', cursor: 'pointer', backgroundColor: qTypeFilter === val ? '#F59E0B' : 'transparent', color: qTypeFilter === val ? 'white' : '#434B5E', fontWeight: qTypeFilter === val ? 600 : 400 }}
-                      onMouseEnter={e => { if (qTypeFilter !== val) e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.08)'; }}
+                      style={{ width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', borderRadius: '7px', fontSize: '13px', cursor: 'pointer', backgroundColor: qTypeFilter === val ? 'var(--admin-accent)' : 'transparent', color: qTypeFilter === val ? 'white' : 'var(--admin-text-muted)', fontWeight: qTypeFilter === val ? 600 : 400 }}
+                      onMouseEnter={e => { if (qTypeFilter !== val) e.currentTarget.style.backgroundColor = 'rgba(31, 53, 86, 0.08)'; }}
                       onMouseLeave={e => { if (qTypeFilter !== val) e.currentTarget.style.backgroundColor = 'transparent'; }}
                     >{label}</button>
                   ))}
@@ -784,21 +765,21 @@ export default function TestDetails() {
               )}
             </div>
             {/* Difficulty filter */}
-            <div style={{ position: 'relative' }}>
+            <div style={{ position: 'relative', width: '160px', flexShrink: 0 }}>
               {showDiffDrop && <div className="fixed inset-0 z-20" onClick={() => setShowDiffDrop(false)} />}
               <button onClick={() => { setShowDiffDrop(v => !v); setShowTypeDrop(false); }}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm"
-                style={{ borderColor: '#E5E7EB', color: '#434B5E', backgroundColor: 'white', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                {qDiffFilter === 'all' ? 'All difficulty' : qDiffFilter === 'easy' ? 'Easy' : qDiffFilter === 'medium' ? 'Medium' : 'Hard'}
-                <ChevronDown size={13} color="#98A2B5" />
+                className="flex items-center justify-between gap-1.5 px-3 py-2 rounded-xl border text-sm"
+                style={{ width: '100%', borderColor: 'var(--admin-border)', color: 'var(--admin-text-muted)', backgroundColor: 'white', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                <span className="truncate">{qDiffFilter === 'all' ? 'All difficulty' : qDiffFilter === 'easy' ? 'Easy' : qDiffFilter === 'medium' ? 'Medium' : 'Hard'}</span>
+                <ChevronDown size={13} color="var(--admin-text-subtle)" />
               </button>
               {showDiffDrop && (
-                <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 30, backgroundColor: 'white', borderRadius: '10px', padding: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', border: '1px solid #E5E7EB', minWidth: '140px' }}>
+                <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 30, backgroundColor: 'white', borderRadius: '10px', padding: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', border: '1px solid var(--admin-border)', minWidth: '140px' }}>
                   {([['all','All difficulty'],['easy','Easy'],['medium','Medium'],['hard','Hard']] as const).map(([val, label]) => (
                     <button key={val}
                       onClick={() => { setQDiffFilter(val); setQPage(1); setShowDiffDrop(false); }}
-                      style={{ width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', borderRadius: '7px', fontSize: '13px', cursor: 'pointer', backgroundColor: qDiffFilter === val ? '#F59E0B' : 'transparent', color: qDiffFilter === val ? 'white' : '#434B5E', fontWeight: qDiffFilter === val ? 600 : 400 }}
-                      onMouseEnter={e => { if (qDiffFilter !== val) e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.08)'; }}
+                      style={{ width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', borderRadius: '7px', fontSize: '13px', cursor: 'pointer', backgroundColor: qDiffFilter === val ? 'var(--admin-accent)' : 'transparent', color: qDiffFilter === val ? 'white' : 'var(--admin-text-muted)', fontWeight: qDiffFilter === val ? 600 : 400 }}
+                      onMouseEnter={e => { if (qDiffFilter !== val) e.currentTarget.style.backgroundColor = 'rgba(31, 53, 86, 0.08)'; }}
                       onMouseLeave={e => { if (qDiffFilter !== val) e.currentTarget.style.backgroundColor = 'transparent'; }}
                     >{label}</button>
                   ))}
@@ -808,31 +789,28 @@ export default function TestDetails() {
             <div className="flex-1" />
             {/* Section manager */}
             <button onClick={() => setShowSectionModal(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium"
-              style={{ borderColor: '#FDE68A', color: '#434B5E', backgroundColor: 'white' }}>
-              <Plus size={13} color="#F59E0B" />
+              className="btn btn-secondary">
+              <Plus size={13} />
               Section
             </button>
             {/* Add from Library */}
             <button onClick={() => navigate('/admin/repository/question-bank', { state: { fromTestId: testId, fromTestName: test?.name } })}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl border text-sm font-medium"
-              style={{ borderColor: '#FDE68A', color: '#434B5E', backgroundColor: 'white' }}>
-              <LibraryBig size={14} color="#F59E0B" />
+              className="btn btn-secondary">
+              <LibraryBig size={14} />
               Add from Library
             </button>
             {/* New question dropdown */}
             <div className="relative">
               {showNewQMenu && <div className="fixed inset-0 z-10" onClick={() => setShowNewQMenu(false)} />}
               <button onClick={() => setShowNewQMenu(v => !v)}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white"
-                style={{ backgroundColor: '#F59E0B' }}>
+                className="btn btn-primary">
                 <Plus size={13} color="white" />
                 New question
                 <ChevronDown size={12} color="white" />
               </button>
               {showNewQMenu && (
                 <div className="absolute right-0 top-full mt-1 w-40 rounded-xl border py-1 z-20"
-                  style={{ backgroundColor: 'white', borderColor: '#E5E7EB', boxShadow: '0 4px 16px rgba(0,0,0,0.10)' }}>
+                  style={{ backgroundColor: 'white', borderColor: 'var(--admin-border)', boxShadow: '0 4px 16px rgba(0,0,0,0.10)' }}>
                   {[
                     { label: 'MCQ', action: () => navigate('/admin/mcq/new') },
                     { label: 'Coding', action: () => navigate('/admin/coding/new') },
@@ -840,7 +818,7 @@ export default function TestDetails() {
                   ].map(item => (
                     <button key={item.label} onClick={() => { setShowNewQMenu(false); item.action(); }}
                       className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors"
-                      style={{ color: '#434B5E' }}>
+                      style={{ color: 'var(--admin-text-muted)' }}>
                       {item.label}
                     </button>
                   ))}
@@ -851,7 +829,7 @@ export default function TestDetails() {
 
           {/* Type coverage warning */}
           {typeCoverageWarning && (
-            <div className="mx-5 mt-4 rounded-xl border px-4 py-3 text-sm" style={{ borderColor: '#FDE68A', backgroundColor: '#FFFBEB', color: '#92400E' }}>
+            <div className="mx-5 mt-4 rounded-xl border px-4 py-3 text-sm" style={{ borderColor: 'var(--admin-accent-disabled)', backgroundColor: 'var(--admin-accent-soft)', color: '#92400E' }}>
               {typeCoverageWarning}
             </div>
           )}
@@ -859,11 +837,11 @@ export default function TestDetails() {
           {/* Selection banner */}
           {selectedQIds.size > 0 && (
             <div className="mx-5 mt-4 flex items-center gap-3 rounded-xl px-4 py-3"
-              style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
-              <span className="text-sm font-semibold" style={{ color: '#D97706' }}>{selectedQIds.size} selected</span>
+              style={{ backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
+              <span className="text-sm font-semibold" style={{ color: 'var(--admin-accent-hover)' }}>{selectedQIds.size} selected</span>
               <button onClick={handleDuplicateSelected}
                 className="px-3 py-1.5 rounded-lg border text-sm font-medium"
-                style={{ borderColor: '#E5E7EB', color: '#434B5E', backgroundColor: 'white' }}>
+                style={{ borderColor: 'var(--admin-border)', color: 'var(--admin-text-muted)', backgroundColor: 'white' }}>
                 Duplicate
               </button>
               <button onClick={handleRemoveSelected}
@@ -871,7 +849,7 @@ export default function TestDetails() {
                 style={{ color: '#DC2626', backgroundColor: '#FEF2F2' }}>
                 Remove
               </button>
-              <button onClick={() => setSelectedQIds(new Set())} className="ml-auto text-sm" style={{ color: '#98A2B5' }}>
+              <button onClick={() => setSelectedQIds(new Set())} className="ml-auto text-sm" style={{ color: 'var(--admin-text-subtle)' }}>
                 Clear
               </button>
             </div>
@@ -880,18 +858,18 @@ export default function TestDetails() {
           {/* Empty state or table */}
           {allFlatQuestions.length === 0 ? (
             <div className="px-5 py-16 text-center">
-              <div className="h-12 w-12 rounded-xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: '#F3F4F6' }}>
-                <FileQuestion size={22} color="#98A2B5" />
+              <div className="h-12 w-12 rounded-xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: 'var(--admin-border)' }}>
+                <FileQuestion size={22} color="var(--admin-text-subtle)" />
               </div>
-              <p className="text-sm font-medium" style={{ color: '#434B5E' }}>No questions yet</p>
-              <p className="text-sm mt-1" style={{ color: '#98A2B5' }}>Use "+ New question" or "Add from Library" to get started.</p>
+              <p className="text-sm font-medium" style={{ color: 'var(--admin-text-muted)' }}>No questions yet</p>
+              <p className="text-sm mt-1" style={{ color: 'var(--admin-text-subtle)' }}>Use "+ New question" or "Add from Library" to get started.</p>
             </div>
           ) : (
             <>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr style={{ borderBottom: '1px solid #F3F4F6' }}>
+                    <tr style={{ borderBottom: '1px solid var(--admin-border)' }}>
                       <th className="px-5 py-3 w-10">
                         <input type="checkbox"
                           checked={pagedQs.length > 0 && pagedQs.every(q => selectedQIds.has(q.id))}
@@ -904,12 +882,12 @@ export default function TestDetails() {
                               setSelectedQIds(next);
                             }
                           }}
-                          className="h-4 w-4 rounded" style={{ accentColor: '#F59E0B' }}
+                          className="h-4 w-4 rounded" style={{ accentColor: 'var(--admin-button-primary)' }}
                         />
                       </th>
                       {['#', 'QUESTION', 'TYPE', 'DIFFICULTY', 'POINTS'].map(col => (
                         <th key={col} className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide"
-                          style={{ color: '#98A2B5', whiteSpace: 'nowrap' }}>{col}</th>
+                          style={{ color: 'var(--admin-text-subtle)', whiteSpace: 'nowrap' }}>{col}</th>
                       ))}
                       <th className="px-3 py-3 w-10" />
                     </tr>
@@ -923,18 +901,18 @@ export default function TestDetails() {
                       const isSelected = selectedQIds.has(q.id);
 
                       const typeMap: Record<string, { label: string; bg: string; color: string; icon: JSX.Element }> = {
-                        mcq: { label: 'MCQ', bg: '#FFF6EE', color: '#D97706',
-                          icon: <CheckSquare size={11} color="#D97706" /> },
-                        coding: { label: 'Coding', bg: '#FFF6EE', color: '#C2410C',
+                        mcq: { label: 'MCQ', bg: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)',
+                          icon: <CheckSquare size={11} color="var(--admin-accent-hover)" /> },
+                        coding: { label: 'Coding', bg: 'var(--admin-accent-soft)', color: '#C2410C',
                           icon: <Code2 size={11} color="#C2410C" /> },
-                        behavioral: { label: 'Behavioral', bg: '#FEF3C7', color: '#D97706',
-                          icon: <Brain size={11} color="#D97706" /> },
+                        behavioral: { label: 'Behavioral', bg: 'var(--admin-accent-disabled)', color: 'var(--admin-accent-hover)',
+                          icon: <Brain size={11} color="var(--admin-accent-hover)" /> },
                       };
                       const tc = typeMap[q.questionType] || typeMap.mcq;
 
                       const diffMap: Record<string, { bg: string; color: string }> = {
-                        easy:   { bg: '#FEF3C7', color: '#D97706' },
-                        medium: { bg: '#FEF3C7', color: '#D97706' },
+                        easy:   { bg: 'var(--admin-accent-disabled)', color: 'var(--admin-accent-hover)' },
+                        medium: { bg: 'var(--admin-accent-disabled)', color: 'var(--admin-accent-hover)' },
                         hard:   { bg: '#FEE2E2', color: '#DC2626' },
                       };
                       const dc = diffMap[diff] || diffMap.medium;
@@ -959,7 +937,7 @@ export default function TestDetails() {
 
                       return (
                         <tr key={q.id} className="hover:bg-gray-50 transition-colors"
-                          style={{ borderBottom: '1px solid #F9FAFB', backgroundColor: isSelected ? '#FFFBEB' : undefined }}>
+                          style={{ borderBottom: '1px solid #F9FAFB', backgroundColor: isSelected ? 'var(--admin-accent-soft)' : undefined }}>
                           <td className="px-5 py-3.5">
                             <input type="checkbox" checked={isSelected}
                               onChange={e => {
@@ -967,10 +945,10 @@ export default function TestDetails() {
                                 if (e.target.checked) next.add(q.id); else next.delete(q.id);
                                 setSelectedQIds(next);
                               }}
-                              className="h-4 w-4 rounded" style={{ accentColor: '#F59E0B' }}
+                              className="h-4 w-4 rounded" style={{ accentColor: 'var(--admin-button-primary)' }}
                             />
                           </td>
-                          <td className="px-3 py-3.5 text-sm font-mono" style={{ color: '#98A2B5' }}>
+                          <td className="px-3 py-3.5 text-sm font-mono" style={{ color: 'var(--admin-text-subtle)' }}>
                             {String(globalIdx).padStart(2, '0')}
                           </td>
                           <td className="px-3 py-3.5 max-w-xs">
@@ -980,10 +958,10 @@ export default function TestDetails() {
                                 {tc.icon}
                               </div>
                               <div className="min-w-0">
-                                <p className="text-sm font-medium truncate" style={{ color: '#11162A', maxWidth: '340px' }}>
+                                <p className="text-sm font-medium truncate" style={{ color: 'var(--admin-text)', maxWidth: '340px' }}>
                                   {text.length > 75 ? text.slice(0, 75) + '…' : text}
                                 </p>
-                                <p className="text-xs mt-0.5" style={{ color: '#98A2B5' }}>
+                                <p className="text-xs mt-0.5" style={{ color: 'var(--admin-text-subtle)' }}>
                                   {subtitle}{sectionName ? ` · ${sectionName}` : ''}
                                 </p>
                               </div>
@@ -1002,7 +980,7 @@ export default function TestDetails() {
                             </span>
                           </td>
                           <td className="px-3 py-3.5">
-                            <span className="text-sm font-semibold" style={{ color: '#434B5E' }}>{marks}</span>
+                            <span className="text-sm font-semibold" style={{ color: 'var(--admin-text-muted)' }}>{marks}</span>
                           </td>
                           <td className="px-3 py-3.5">
                             <button onClick={() => handleRemoveQuestion(q.id)}
@@ -1019,27 +997,27 @@ export default function TestDetails() {
               </div>
 
               {/* Pagination footer */}
-              <div className="flex items-center justify-between px-5 py-4" style={{ borderTop: '1px solid #F3F4F6' }}>
-                <p className="text-sm" style={{ color: '#6A7387' }}>
+              <div className="flex items-center justify-between px-5 py-4" style={{ borderTop: '1px solid var(--admin-border)' }}>
+                <p className="text-sm" style={{ color: 'var(--admin-text-muted)' }}>
                   Showing {Math.min(qPage * Q_PAGE_SIZE, filteredQs.length)} of {filteredQs.length} questions
-                  <span className="font-semibold ml-1" style={{ color: '#434B5E' }}>· {totalQPoints} points total</span>
+                  <span className="font-semibold ml-1" style={{ color: 'var(--admin-text-muted)' }}>· {totalQPoints} points total</span>
                 </p>
                 {totalQPages > 1 && (
                   <div className="flex items-center gap-1">
                     <button onClick={() => setQPage(p => Math.max(1, p - 1))} disabled={qPage === 1}
                       className="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-40 transition-colors">
-                      <ChevronLeft size={14} color="#434B5E" />
+                      <ChevronLeft size={14} color="var(--admin-text-muted)" />
                     </button>
                     {Array.from({ length: totalQPages }, (_, i) => i + 1).map(p => (
                       <button key={p} onClick={() => setQPage(p)}
                         className="h-8 w-8 rounded-lg text-sm font-medium transition-colors"
-                        style={{ backgroundColor: qPage === p ? '#F59E0B' : 'transparent', color: qPage === p ? 'white' : '#434B5E' }}>
+                        style={{ backgroundColor: qPage === p ? 'var(--admin-accent)' : 'transparent', color: qPage === p ? 'white' : 'var(--admin-text-muted)' }}>
                         {p}
                       </button>
                     ))}
                     <button onClick={() => setQPage(p => Math.min(totalQPages, p + 1))} disabled={qPage === totalQPages}
                       className="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-40 transition-colors">
-                      <ChevronRight size={14} color="#434B5E" />
+                      <ChevronRight size={14} color="var(--admin-text-muted)" />
                     </button>
                   </div>
                 )}
@@ -1049,28 +1027,28 @@ export default function TestDetails() {
         </div>
       )}
 
-      {/* ═══════════════ CANDIDATES TAB ═══════════════ */}
+      {/* --------------- CANDIDATES TAB --------------- */}
       {activeTab === 'candidates' && <TestCandidatesPanel testId={testId!} onInvite={openInviteModal} />}
 
-      {/* ═══════════════ AI PROCTORING TAB ═══════════════ */}
+      {/* --------------- AI PROCTORING TAB --------------- */}
       {activeTab === 'ai-proctoring' && <TestAIProctoring />}
 
-      {/* ═══════════════ SETTINGS TAB ═══════════════ */}
+      {/* --------------- SETTINGS TAB --------------- */}
       {activeTab === 'settings' && <TestSettings />}
 
-      {/* ══ MODALS (all preserved) ══ */}
+      {/* -- MODALS (all preserved) -- */}
 
       {/* Add Section Modal */}
       {showSectionModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="rounded-2xl p-6 w-full max-w-lg" style={{ backgroundColor: 'white' }}>
-            <h3 className="text-lg font-semibold mb-1" style={{ color: '#11162A' }}>Add Section</h3>
-            <p className="text-sm mb-4" style={{ color: '#6A7387' }}>Each section will randomly pick 1 question per candidate.</p>
-            <label className="block text-sm font-medium mb-2" style={{ color: '#434B5E' }}>Section Name</label>
-            <input type="text" value={newSectionName} onChange={e => setNewSectionName(e.target.value)} className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none mb-4" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="e.g. Frontend Fundamentals" />
+            <h3 className="text-lg font-semibold mb-1" style={{ color: 'var(--admin-text)' }}>Add Section</h3>
+            <p className="text-sm mb-4" style={{ color: 'var(--admin-text-muted)' }}>Each section will randomly pick 1 question per candidate.</p>
+            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--admin-text-muted)' }}>Section Name</label>
+            <input type="text" value={newSectionName} onChange={e => setNewSectionName(e.target.value)} className="input mb-4" placeholder="e.g. Frontend Fundamentals" />
             <div className="flex gap-2 justify-end">
-              <button onClick={() => { setShowSectionModal(false); setNewSectionName(''); }} className="rounded-xl border px-4 py-2 text-sm font-medium" style={{ borderColor: '#E5E7EB', color: '#434B5E' }} disabled={creatingSection}>Cancel</button>
-              <button onClick={handleCreateSection} className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ backgroundColor: '#F59E0B' }} disabled={creatingSection}>{creatingSection ? 'Creating...' : 'Create Section'}</button>
+              <button onClick={() => { setShowSectionModal(false); setNewSectionName(''); }} className="btn btn-secondary" disabled={creatingSection}>Cancel</button>
+              <button onClick={handleCreateSection} className="btn btn-primary" disabled={creatingSection}>{creatingSection ? 'Creating...' : 'Create Section'}</button>
             </div>
           </div>
         </div>
@@ -1080,12 +1058,12 @@ export default function TestDetails() {
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-auto" style={{ backgroundColor: 'white' }}>
-            <h3 className="text-lg font-semibold mb-4" style={{ color: '#11162A' }}>
+            <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--admin-text)' }}>
               Add Existing {questionType === 'mcq' ? 'MCQ' : questionType === 'coding' ? 'Coding' : 'Behavioral'} Question
             </h3>
-            {activeSection && <p className="text-sm mb-4" style={{ color: '#6A7387' }}>Adding to section: <strong style={{ color: '#434B5E' }}>{activeSection.name}</strong></p>}
-            <label className="block text-sm font-medium mb-2" style={{ color: '#434B5E' }}>Select Question</label>
-            <select value={selectedQuestion} onChange={e => setSelectedQuestion(e.target.value)} className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none mb-4" style={{ borderColor: '#FDE68A', color: '#11162A', accentColor: '#F59E0B' }}>
+            {activeSection && <p className="text-sm mb-4" style={{ color: 'var(--admin-text-muted)' }}>Adding to section: <strong style={{ color: 'var(--admin-text-muted)' }}>{activeSection.name}</strong></p>}
+            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--admin-text-muted)' }}>Select Question</label>
+            <select value={selectedQuestion} onChange={e => setSelectedQuestion(e.target.value)} className="input mb-4">
               <option value="">Select a question...</option>
               {availableQuestions.map(q => {
                 const usage = sectionUsageMap.get(`${questionType}:${q.id}`);
@@ -1098,11 +1076,11 @@ export default function TestDetails() {
               })}
             </select>
             {selectedQuestionUsage && selectedQuestionUsage.length > 0 && (
-              <p className="text-sm mb-4" style={{ color: '#F59E0B' }}>This question is already in section{selectedQuestionUsage.length > 1 ? 's' : ''} {selectedQuestionUsage.join(', ')}.</p>
+              <p className="text-sm mb-4" style={{ color: 'var(--admin-accent)' }}>This question is already in section{selectedQuestionUsage.length > 1 ? 's' : ''} {selectedQuestionUsage.join(', ')}.</p>
             )}
             <div className="flex gap-2 justify-end">
-              <button onClick={() => { setShowAddModal(false); setSelectedQuestion(''); setActiveSectionId(null); }} className="rounded-xl border px-4 py-2 text-sm font-medium" style={{ borderColor: '#E5E7EB', color: '#434B5E' }}>Cancel</button>
-              <button onClick={handleAddQuestion} className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ backgroundColor: '#F59E0B' }}>Add Question</button>
+              <button onClick={() => { setShowAddModal(false); setSelectedQuestion(''); setActiveSectionId(null); }} className="btn btn-secondary">Cancel</button>
+              <button onClick={handleAddQuestion} className="btn btn-primary">Add Question</button>
             </div>
           </div>
         </div>
@@ -1112,11 +1090,11 @@ export default function TestDetails() {
       {showCustomModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="rounded-2xl p-6 w-full max-w-3xl max-h-[90vh] overflow-auto" style={{ backgroundColor: 'white' }}>
-            <h3 className="text-lg font-semibold mb-4" style={{ color: '#11162A' }}>Add Custom Question</h3>
-            {activeSection && <p className="text-sm mb-4" style={{ color: '#6A7387' }}>Adding to: <strong>{activeSection.name}</strong></p>}
+            <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--admin-text)' }}>Add Custom Question</h3>
+            {activeSection && <p className="text-sm mb-4" style={{ color: 'var(--admin-text-muted)' }}>Adding to: <strong>{activeSection.name}</strong></p>}
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: '#434B5E' }}>Question Type</label>
+                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--admin-text-muted)' }}>Question Type</label>
                 <CustomSelect
                   value={customType}
                   onChange={v => setCustomType(v as 'mcq' | 'coding' | 'behavioral')}
@@ -1125,11 +1103,11 @@ export default function TestDetails() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: '#434B5E' }}>Marks</label>
-                <input type="number" min={1} value={customMarks} onChange={e => setCustomMarks(Number(e.target.value))} className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#11162A' }} />
+                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--admin-text-muted)' }}>Marks</label>
+                <input type="number" min={1} value={customMarks} onChange={e => setCustomMarks(Number(e.target.value))} className="input" />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: '#434B5E' }}>Difficulty</label>
+                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--admin-text-muted)' }}>Difficulty</label>
                 <CustomSelect
                   value={customDifficulty}
                   onChange={v => setCustomDifficulty(v as 'easy' | 'medium' | 'hard')}
@@ -1138,89 +1116,89 @@ export default function TestDetails() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1" style={{ color: '#434B5E' }}>Topic (optional)</label>
-                <input type="text" value={customTopic} onChange={e => setCustomTopic(e.target.value)} className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#11162A' }} />
+                <label className="block text-sm font-medium mb-1" style={{ color: 'var(--admin-text-muted)' }}>Topic (optional)</label>
+                <input type="text" value={customTopic} onChange={e => setCustomTopic(e.target.value)} className="input" />
               </div>
             </div>
             <div className="mb-4">
-              <label className="block text-sm font-medium mb-1" style={{ color: '#434B5E' }}>Tags (comma separated)</label>
-              <input type="text" value={customTags} onChange={e => setCustomTags(e.target.value)} className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="communication, sql" />
+              <label className="block text-sm font-medium mb-1" style={{ color: 'var(--admin-text-muted)' }}>Tags (comma separated)</label>
+              <input type="text" value={customTags} onChange={e => setCustomTags(e.target.value)} className="input" placeholder="communication, sql" />
             </div>
             {customType === 'mcq' && (
-              <div className="space-y-4 border rounded-xl p-4 mb-4" style={{ borderColor: '#F3F4F6' }}>
+              <div className="space-y-4 border rounded-xl p-4 mb-4" style={{ borderColor: 'var(--admin-border)' }}>
                 <div>
-                  <label className="block text-sm font-medium mb-1" style={{ color: '#434B5E' }}>Question Text</label>
-                  <textarea className="w-full rounded-xl border px-4 py-3 text-sm outline-none min-h-[90px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} value={customMCQ.questionText} onChange={e => setCustomMCQ(p => ({ ...p, questionText: e.target.value }))} />
+                  <label className="block text-sm font-medium mb-1" style={{ color: 'var(--admin-text-muted)' }}>Question Text</label>
+                  <textarea className="input min-h-[90px]" value={customMCQ.questionText} onChange={e => setCustomMCQ(p => ({ ...p, questionText: e.target.value }))} />
                 </div>
                 <div>
                   <div className="flex justify-between items-center mb-2">
-                    <label className="text-sm font-medium" style={{ color: '#434B5E' }}>Options</label>
-                    <button onClick={addMCQOption} className="text-xs font-semibold px-3 py-1 rounded-lg border" style={{ borderColor: '#E5E7EB', color: '#434B5E' }}>Add Option</button>
+                    <label className="text-sm font-medium" style={{ color: 'var(--admin-text-muted)' }}>Options</label>
+                    <button onClick={addMCQOption} className="text-xs font-semibold px-3 py-1 rounded-lg border" style={{ borderColor: 'var(--admin-border)', color: 'var(--admin-text-muted)' }}>Add Option</button>
                   </div>
                   {customMCQ.options.map((opt, idx) => (
                     <div key={idx} className="flex gap-2 items-center mb-2">
-                      <span className="text-sm w-6" style={{ color: '#98A2B5' }}>{idx + 1}.</span>
-                      <input type="text" value={opt} onChange={e => setMCQOption(idx, e.target.value)} className="flex-1 rounded-xl border px-3 py-2 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#11162A' }} />
+                      <span className="text-sm w-6" style={{ color: 'var(--admin-text-subtle)' }}>{idx + 1}.</span>
+                      <input type="text" value={opt} onChange={e => setMCQOption(idx, e.target.value)} className="input flex-1" />
                       <button onClick={() => removeMCQOption(idx)} className="text-xs px-2 py-1 rounded-lg" style={{ color: '#DC2626', backgroundColor: '#FEF2F2' }} disabled={customMCQ.options.length <= 2}>Remove</button>
                     </div>
                   ))}
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium mb-1" style={{ color: '#434B5E' }}>Correct Option Numbers (e.g. 1,3)</label>
-                    <input type="text" value={customMCQ.correctAnswers} onChange={e => setCustomMCQ(p => ({ ...p, correctAnswers: e.target.value }))} className="w-full rounded-xl border px-3 py-2 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#11162A' }} />
+                    <label className="block text-sm font-medium mb-1" style={{ color: 'var(--admin-text-muted)' }}>Correct Option Numbers (e.g. 1,3)</label>
+                    <input type="text" value={customMCQ.correctAnswers} onChange={e => setCustomMCQ(p => ({ ...p, correctAnswers: e.target.value }))} className="input" />
                   </div>
-                  <label className="flex items-center gap-2 mt-7 text-sm" style={{ color: '#434B5E' }}>
+                  <label className="flex items-center gap-2 mt-7 text-sm" style={{ color: 'var(--admin-text-muted)' }}>
                     <input type="checkbox" checked={customMCQ.isMultipleChoice} onChange={e => setCustomMCQ(p => ({ ...p, isMultipleChoice: e.target.checked }))} />
                     Multiple correct answers
                   </label>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1" style={{ color: '#434B5E' }}>Explanation (optional)</label>
-                  <textarea className="w-full rounded-xl border px-4 py-3 text-sm outline-none min-h-[80px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} value={customMCQ.explanation} onChange={e => setCustomMCQ(p => ({ ...p, explanation: e.target.value }))} />
+                  <label className="block text-sm font-medium mb-1" style={{ color: 'var(--admin-text-muted)' }}>Explanation (optional)</label>
+                  <textarea className="input min-h-[80px]" value={customMCQ.explanation} onChange={e => setCustomMCQ(p => ({ ...p, explanation: e.target.value }))} />
                 </div>
               </div>
             )}
             {customType === 'coding' && (
-              <div className="space-y-4 border rounded-xl p-4 mb-4" style={{ borderColor: '#F3F4F6' }}>
-                <input type="text" className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Title" value={customCoding.title} onChange={e => setCustomCoding(p => ({ ...p, title: e.target.value }))} />
-                <textarea className="w-full rounded-xl border px-4 py-3 text-sm outline-none min-h-[100px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Description" value={customCoding.description} onChange={e => setCustomCoding(p => ({ ...p, description: e.target.value }))} />
+              <div className="space-y-4 border rounded-xl p-4 mb-4" style={{ borderColor: 'var(--admin-border)' }}>
+                <input type="text" className="input" placeholder="Title" value={customCoding.title} onChange={e => setCustomCoding(p => ({ ...p, title: e.target.value }))} />
+                <textarea className="input min-h-[100px]" placeholder="Description" value={customCoding.description} onChange={e => setCustomCoding(p => ({ ...p, description: e.target.value }))} />
                 <div className="grid grid-cols-2 gap-4">
-                  <textarea className="rounded-xl border px-4 py-3 text-sm outline-none min-h-[70px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Input Format" value={customCoding.inputFormat} onChange={e => setCustomCoding(p => ({ ...p, inputFormat: e.target.value }))} />
-                  <textarea className="rounded-xl border px-4 py-3 text-sm outline-none min-h-[70px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Output Format" value={customCoding.outputFormat} onChange={e => setCustomCoding(p => ({ ...p, outputFormat: e.target.value }))} />
-                  <textarea className="rounded-xl border px-4 py-3 text-sm outline-none min-h-[70px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Sample Input" value={customCoding.sampleInput} onChange={e => setCustomCoding(p => ({ ...p, sampleInput: e.target.value }))} />
-                  <textarea className="rounded-xl border px-4 py-3 text-sm outline-none min-h-[70px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Sample Output" value={customCoding.sampleOutput} onChange={e => setCustomCoding(p => ({ ...p, sampleOutput: e.target.value }))} />
+                  <textarea className="input min-h-[70px]" placeholder="Input Format" value={customCoding.inputFormat} onChange={e => setCustomCoding(p => ({ ...p, inputFormat: e.target.value }))} />
+                  <textarea className="input min-h-[70px]" placeholder="Output Format" value={customCoding.outputFormat} onChange={e => setCustomCoding(p => ({ ...p, outputFormat: e.target.value }))} />
+                  <textarea className="input min-h-[70px]" placeholder="Sample Input" value={customCoding.sampleInput} onChange={e => setCustomCoding(p => ({ ...p, sampleInput: e.target.value }))} />
+                  <textarea className="input min-h-[70px]" placeholder="Sample Output" value={customCoding.sampleOutput} onChange={e => setCustomCoding(p => ({ ...p, sampleOutput: e.target.value }))} />
                 </div>
                 <div className="grid grid-cols-3 gap-4">
-                  <input type="text" className="rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Languages (csv)" value={customCoding.supportedLanguages} onChange={e => setCustomCoding(p => ({ ...p, supportedLanguages: e.target.value }))} />
-                  <input type="number" className="rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Time limit (ms)" value={customCoding.timeLimit} onChange={e => setCustomCoding(p => ({ ...p, timeLimit: Number(e.target.value) }))} />
-                  <input type="number" className="rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Memory (MB)" value={customCoding.memoryLimit} onChange={e => setCustomCoding(p => ({ ...p, memoryLimit: Number(e.target.value) }))} />
+                  <input type="text" className="input" placeholder="Languages (csv)" value={customCoding.supportedLanguages} onChange={e => setCustomCoding(p => ({ ...p, supportedLanguages: e.target.value }))} />
+                  <input type="number" className="input" placeholder="Time limit (ms)" value={customCoding.timeLimit} onChange={e => setCustomCoding(p => ({ ...p, timeLimit: Number(e.target.value) }))} />
+                  <input type="number" className="input" placeholder="Memory (MB)" value={customCoding.memoryLimit} onChange={e => setCustomCoding(p => ({ ...p, memoryLimit: Number(e.target.value) }))} />
                 </div>
-                <label className="flex items-center gap-2 text-sm" style={{ color: '#434B5E' }}>
+                <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--admin-text-muted)' }}>
                   <input type="checkbox" checked={customCoding.partialScoring} onChange={e => setCustomCoding(p => ({ ...p, partialScoring: e.target.checked }))} />
                   Enable partial scoring
                 </label>
                 <div>
                   <div className="flex justify-between items-center mb-2">
-                    <h4 className="text-sm font-medium" style={{ color: '#434B5E' }}>Test Cases</h4>
-                    <button onClick={addCodingTestCase} className="text-xs px-3 py-1 rounded-lg border" style={{ borderColor: '#E5E7EB', color: '#434B5E' }}>Add Test Case</button>
+                    <h4 className="text-sm font-medium" style={{ color: 'var(--admin-text-muted)' }}>Test Cases</h4>
+                    <button onClick={addCodingTestCase} className="text-xs px-3 py-1 rounded-lg border" style={{ borderColor: 'var(--admin-border)', color: 'var(--admin-text-muted)' }}>Add Test Case</button>
                   </div>
                   {customCodingTestCases.map((tc, idx) => (
-                    <div key={idx} className="border rounded-xl p-3 mb-3" style={{ borderColor: '#F3F4F6' }}>
+                    <div key={idx} className="border rounded-xl p-3 mb-3" style={{ borderColor: 'var(--admin-border)' }}>
                       <div className="flex justify-between items-center mb-2">
-                        <p className="text-xs font-semibold" style={{ color: '#434B5E' }}>Test Case {idx + 1}</p>
+                        <p className="text-xs font-semibold" style={{ color: 'var(--admin-text-muted)' }}>Test Case {idx + 1}</p>
                         <button onClick={() => removeCodingTestCase(idx)} className="text-xs px-2 py-0.5 rounded-lg" style={{ color: '#DC2626', backgroundColor: '#FEF2F2' }} disabled={customCodingTestCases.length <= 1}>Remove</button>
                       </div>
                       <div className="grid grid-cols-2 gap-3 mb-2">
-                        <textarea className="rounded-xl border px-3 py-2 text-sm outline-none min-h-[60px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Input" value={tc.input} onChange={e => setCodingTestCaseField(idx, 'input', e.target.value)} />
-                        <textarea className="rounded-xl border px-3 py-2 text-sm outline-none min-h-[60px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Expected Output" value={tc.expectedOutput} onChange={e => setCodingTestCaseField(idx, 'expectedOutput', e.target.value)} />
+                        <textarea className="input min-h-[60px]" placeholder="Input" value={tc.input} onChange={e => setCodingTestCaseField(idx, 'input', e.target.value)} />
+                        <textarea className="input min-h-[60px]" placeholder="Expected Output" value={tc.expectedOutput} onChange={e => setCodingTestCaseField(idx, 'expectedOutput', e.target.value)} />
                       </div>
                       <div className="flex gap-4 items-center">
-                        <label className="flex items-center gap-2 text-sm" style={{ color: '#434B5E' }}>
+                        <label className="flex items-center gap-2 text-sm" style={{ color: 'var(--admin-text-muted)' }}>
                           <input type="checkbox" checked={tc.isHidden} onChange={e => setCodingTestCaseField(idx, 'isHidden', e.target.checked)} />
                           Hidden
                         </label>
-                        <input type="number" min={0} className="rounded-xl border px-3 py-1.5 text-sm outline-none w-24" style={{ borderColor: '#E5E7EB', color: '#11162A' }} value={tc.marks} onChange={e => setCodingTestCaseField(idx, 'marks', Number(e.target.value))} />
+                        <input type="number" min={0} className="input w-24" value={tc.marks} onChange={e => setCodingTestCaseField(idx, 'marks', Number(e.target.value))} />
                       </div>
                     </div>
                   ))}
@@ -1228,15 +1206,15 @@ export default function TestDetails() {
               </div>
             )}
             {customType === 'behavioral' && (
-              <div className="space-y-4 border rounded-xl p-4 mb-4" style={{ borderColor: '#F3F4F6' }}>
-                <input type="text" className="w-full rounded-xl border px-4 py-2.5 text-sm outline-none" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Title" value={customBehavioral.title} onChange={e => setCustomBehavioral(p => ({ ...p, title: e.target.value }))} />
-                <textarea className="w-full rounded-xl border px-4 py-3 text-sm outline-none min-h-[120px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Question Description" value={customBehavioral.description} onChange={e => setCustomBehavioral(p => ({ ...p, description: e.target.value }))} />
-                <textarea className="w-full rounded-xl border px-4 py-3 text-sm outline-none min-h-[90px]" style={{ borderColor: '#E5E7EB', color: '#11162A' }} placeholder="Expected Answer (optional)" value={customBehavioral.expectedAnswer} onChange={e => setCustomBehavioral(p => ({ ...p, expectedAnswer: e.target.value }))} />
+              <div className="space-y-4 border rounded-xl p-4 mb-4" style={{ borderColor: 'var(--admin-border)' }}>
+                <input type="text" className="input" placeholder="Title" value={customBehavioral.title} onChange={e => setCustomBehavioral(p => ({ ...p, title: e.target.value }))} />
+                <textarea className="input min-h-[120px]" placeholder="Question Description" value={customBehavioral.description} onChange={e => setCustomBehavioral(p => ({ ...p, description: e.target.value }))} />
+                <textarea className="input min-h-[90px]" placeholder="Expected Answer (optional)" value={customBehavioral.expectedAnswer} onChange={e => setCustomBehavioral(p => ({ ...p, expectedAnswer: e.target.value }))} />
               </div>
             )}
             <div className="flex gap-2 justify-end">
-              <button onClick={() => { setShowCustomModal(false); resetCustomForm(); setActiveSectionId(null); }} className="rounded-xl border px-4 py-2 text-sm font-medium" style={{ borderColor: '#E5E7EB', color: '#434B5E' }} disabled={savingCustom}>Cancel</button>
-              <button onClick={handleAddCustomQuestion} className="rounded-xl px-4 py-2 text-sm font-semibold text-white" style={{ backgroundColor: '#F59E0B' }} disabled={savingCustom}>{savingCustom ? 'Adding...' : 'Add Custom Question'}</button>
+              <button onClick={() => { setShowCustomModal(false); resetCustomForm(); setActiveSectionId(null); }} className="btn btn-secondary" disabled={savingCustom}>Cancel</button>
+              <button onClick={handleAddCustomQuestion} className="btn btn-primary" disabled={savingCustom}>{savingCustom ? 'Adding...' : 'Add Custom Question'}</button>
             </div>
           </div>
         </div>
@@ -1247,18 +1225,18 @@ export default function TestDetails() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}>
           <div className="rounded-2xl w-full max-w-lg overflow-hidden" style={{ backgroundColor: 'white', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: '1px solid #F3F4F6' }}>
+            <div className="flex items-center justify-between px-6 py-5" style={{ borderBottom: '1px solid var(--admin-border)' }}>
               <div>
-                <h2 className="text-base font-bold" style={{ color: '#11162A' }}>Invite Candidates</h2>
-                <p className="text-xs mt-0.5" style={{ color: '#6A7387' }}>
-                  Upload a CSV or XLSX file with <span className="font-semibold" style={{ color: '#434B5E' }}>name, email</span> columns
+                <h2 className="text-base font-bold" style={{ color: 'var(--admin-text)' }}>Invite Candidates</h2>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--admin-text-muted)' }}>
+                  Upload a CSV or XLSX file with <span className="font-semibold" style={{ color: 'var(--admin-text-muted)' }}>name, email</span> columns
                 </p>
               </div>
               <button
                 onClick={closeInviteModal}
                 disabled={sendingInvitations}
                 className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-                style={{ color: '#98A2B5' }}>
+                style={{ color: 'var(--admin-text-subtle)' }}>
                 <X size={16} />
               </button>
             </div>
@@ -1267,10 +1245,10 @@ export default function TestDetails() {
             <div className="px-6 py-5 space-y-4">
               {/* File upload */}
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: '#434B5E' }}>Candidate File</label>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--admin-text-muted)' }}>Candidate File</label>
                 <label
                   className="flex flex-col items-center justify-center w-full rounded-xl border-2 border-dashed cursor-pointer transition-colors hover:border-amber-400"
-                  style={{ borderColor: '#E5E7EB', backgroundColor: '#FAFAFA', minHeight: '90px', padding: '16px' }}>
+                  style={{ borderColor: 'var(--admin-border)', backgroundColor: '#FAFAFA', minHeight: '90px', padding: '16px' }}>
                   <input
                     type="file"
                     accept=".csv,.xlsx"
@@ -1280,13 +1258,13 @@ export default function TestDetails() {
                   />
                   {invitationFile ? (
                     <div className="flex items-center gap-2">
-                      <ClipboardCheck size={16} color="#F59E0B" />
-                      <span className="text-sm font-medium" style={{ color: '#D97706' }}>{invitationFile.name}</span>
+                      <ClipboardCheck size={16} color="var(--admin-accent)" />
+                      <span className="text-sm font-medium" style={{ color: 'var(--admin-accent-hover)' }}>{invitationFile.name}</span>
                     </div>
                   ) : (
                     <>
-                      <Upload size={20} color="#98A2B5" className="mb-2" />
-                      <span className="text-sm" style={{ color: '#6A7387' }}>Click to upload <span style={{ color: '#F59E0B', fontWeight: 600 }}>.csv</span> or <span style={{ color: '#F59E0B', fontWeight: 600 }}>.xlsx</span></span>
+                      <Upload size={20} color="var(--admin-text-subtle)" className="mb-2" />
+                      <span className="text-sm" style={{ color: 'var(--admin-text-muted)' }}>Click to upload <span style={{ color: 'var(--admin-accent)', fontWeight: 600 }}>.csv</span> or <span style={{ color: 'var(--admin-accent)', fontWeight: 600 }}>.xlsx</span></span>
                     </>
                   )}
                 </label>
@@ -1294,7 +1272,7 @@ export default function TestDetails() {
 
               {/* Custom message */}
               <div>
-                <label className="block text-sm font-medium mb-1.5" style={{ color: '#434B5E' }}>Custom Message <span style={{ color: '#98A2B5', fontWeight: 400 }}>(optional)</span></label>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--admin-text-muted)' }}>Custom Message <span style={{ color: 'var(--admin-text-subtle)', fontWeight: 400 }}>(optional)</span></label>
                 <textarea
                   value={customMessage}
                   onChange={e => setCustomMessage(e.target.value)}
@@ -1302,38 +1280,38 @@ export default function TestDetails() {
                   placeholder="Add a personal note to the invitation email..."
                   disabled={sendingInvitations}
                   className="w-full rounded-xl border px-4 py-3 text-sm outline-none resize-none"
-                  style={{ borderColor: '#E5E7EB', color: '#11162A', backgroundColor: 'white', fontFamily: 'inherit' }}
+                  style={{ borderColor: 'var(--admin-border)', color: 'var(--admin-text)', backgroundColor: 'white', fontFamily: 'inherit' }}
                 />
               </div>
 
               {/* Status banners */}
               {sendingInvitations && (
-                <div className="flex items-center gap-2 rounded-xl px-4 py-3 text-sm" style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', color: '#1D4ED8' }}>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2" style={{ borderColor: '#1D4ED8', flexShrink: 0 }} />
+                <div className="flex items-center gap-2 rounded-xl px-4 py-3 text-sm" style={{ backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)', color: 'var(--admin-accent-hover)' }}>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2" style={{ borderColor: 'var(--admin-accent-hover)', flexShrink: 0 }} />
                   Sending in batches of 10. Please wait...
                 </div>
               )}
               {invitationSummary && (
-                <div className="rounded-xl px-4 py-3 text-sm" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', color: '#D97706' }}>
+                <div className="rounded-xl px-4 py-3 text-sm" style={{ backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)', color: 'var(--admin-accent-hover)' }}>
                   <span className="font-semibold">Done!</span> Total: {invitationSummary.total} · Sent: {invitationSummary.sent} · Failed: {invitationSummary.failed}
                 </div>
               )}
             </div>
 
             {/* Footer */}
-            <div className="flex items-center gap-3 px-6 py-4" style={{ borderTop: '1px solid #F3F4F6' }}>
+            <div className="flex items-center gap-3 px-6 py-4" style={{ borderTop: '1px solid var(--admin-border)' }}>
               <button
                 onClick={handleSendInvitations}
                 disabled={sendingInvitations || !invitationFile}
                 className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors"
-                style={{ backgroundColor: sendingInvitations || !invitationFile ? '#FDE68A' : '#F59E0B', cursor: sendingInvitations || !invitationFile ? 'not-allowed' : 'pointer' }}>
+                style={{ backgroundColor: sendingInvitations || !invitationFile ? 'var(--admin-accent-disabled)' : 'var(--admin-accent)', cursor: sendingInvitations || !invitationFile ? 'not-allowed' : 'pointer' }}>
                 {sendingInvitations ? 'Sending...' : 'Send Invitations'}
               </button>
               <button
                 onClick={closeInviteModal}
                 disabled={sendingInvitations}
                 className="px-5 py-2.5 rounded-xl border text-sm font-medium transition-colors hover:bg-gray-50"
-                style={{ borderColor: '#E5E7EB', color: '#434B5E', backgroundColor: 'white' }}>
+                style={{ borderColor: 'var(--admin-border)', color: 'var(--admin-text-muted)', backgroundColor: 'white' }}>
                 Cancel
               </button>
             </div>
