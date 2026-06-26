@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../../services/api';
@@ -169,6 +169,17 @@ export default function CustomQuestions() {
   };
 
   const handleToggleQuestion = async (question: RepositoryQuestion) => {
+    const nextEnabled = !question.isEnabled;
+    const applyEnabledState = (items: RepositoryQuestion[]) => {
+      const updated = items.map((item) =>
+        item.id === question.id ? { ...item, isEnabled: nextEnabled } : item
+      );
+
+      if (enabledFilter === 'enabled') return updated.filter((item) => item.isEnabled);
+      if (enabledFilter === 'disabled') return updated.filter((item) => !item.isEnabled);
+      return updated;
+    };
+
     try {
       if (question.isEnabled) {
         await adminApi.disableCustomRepositoryQuestion(question.id, question.repositoryCategory);
@@ -177,7 +188,7 @@ export default function CustomQuestions() {
         await adminApi.enableCustomRepositoryQuestion(question.id, question.repositoryCategory);
         toast.success('Question enabled');
       }
-      await loadQuestions();
+      setQuestions(applyEnabledState);
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } } };
       toast.error(err.response?.data?.error || 'Failed to update question status');
@@ -587,14 +598,14 @@ export default function CustomQuestions() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
                     <div className="flex flex-wrap items-center gap-2 mb-2">
-                      <span className="badge badge-info">{question.repositoryCategory}</span>
+                      <span className="badge badge-meta">{question.repositoryCategory}</span>
                       <span className={`badge ${question.isEnabled ? 'badge-success' : 'badge-danger'}`}>
                         {question.isEnabled ? 'Enabled' : 'Disabled'}
                       </span>
-                      <span className="text-sm text-gray-500">{question.marks} marks</span>
-                      <span className="text-sm text-gray-500 capitalize">{question.difficulty}</span>
+                      <span className="badge badge-meta">{question.marks} marks</span>
+                      <span className="badge badge-meta capitalize">{question.difficulty}</span>
                       {question.topic && (
-                        <span className="text-sm text-gray-500">Topic: {question.topic}</span>
+                        <span className="badge badge-meta">{question.topic}</span>
                       )}
                     </div>
 
@@ -645,7 +656,7 @@ export default function CustomQuestions() {
                         {question.tags.map((item) => (
                           <span
                             key={`${question.id}-${item}`}
-                            className="text-xs bg-gray-100 px-2 py-1 rounded"
+                            className="badge badge-meta"
                           >
                             {item}
                           </span>

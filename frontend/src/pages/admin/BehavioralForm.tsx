@@ -1,8 +1,8 @@
-﻿import { useState, useEffect } from 'react';
-import { useNavigate, useParams, useLocation, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
-import { ChevronRight, Check, Info } from 'lucide-react';
+import { Check, Info } from 'lucide-react';
 import BackButton from '../../components/BackButton';
 
 type Difficulty = 'easy' | 'medium' | 'hard';
@@ -74,37 +74,30 @@ export default function BehavioralForm() {
 
   const diffStyle = (d: Difficulty): React.CSSProperties => {
     const active = formData.difficulty === d;
-    if (!active) return { backgroundColor: '#F9FAFB', color: '#6A7387', border: '1.5px solid #E5E7EB' };
-    return { backgroundColor: '#FFFBEB', color: '#D97706', border: '1.5px solid #F59E0B' };
+    if (!active) return { backgroundColor: '#F9FAFB', color: 'var(--admin-text-muted)', border: '1.5px solid var(--admin-border)' };
+    return { backgroundColor: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)', border: '1.5px solid var(--admin-accent)' };
   };
 
   const inputSx: React.CSSProperties = {
     width: '100%', padding: '10px 14px', borderRadius: '10px',
-    border: '1.5px solid #E5E7EB', fontSize: '14px', color: '#11162A',
+    border: '1.5px solid var(--admin-border)', fontSize: '14px', color: 'var(--admin-text)',
     outline: 'none', boxSizing: 'border-box', backgroundColor: 'white',
     resize: 'none',
   };
 
   return (
-    <div style={{ backgroundColor: '#f4f6fb', margin: '-24px', minHeight: 'calc(100vh - 52px)' }}>
+    <div style={{ backgroundColor: '#F9FAFB', minHeight: '100%' }}>
 
       {/* Header */}
-      <div style={{ backgroundColor: 'white', borderBottom: '1px solid #F3F4F6' }} className="px-8 py-5">
-        <div className="flex items-center gap-2 text-sm mb-4" style={{ color: '#98A2B5' }}>
-          <Link to="/admin/repository/question-bank" className="hover:underline" style={{ color: '#98A2B5' }}>
-            Question Library
-          </Link>
-          <ChevronRight width={12} height={12} stroke="#98A2B5" strokeWidth={1.5} />
-          <span style={{ color: '#434B5E' }}>Behavioral</span>
-        </div>
+      <div style={{ marginBottom: '24px' }}>
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
             <BackButton />
             <div>
-              <h1 style={{ fontSize: "32px", fontWeight: 700, letterSpacing: "-0.02em", color: "#11162A", margin: 0, lineHeight: 1.2 }}>
+              <h1 style={{ fontSize: "32px", fontWeight: 700, letterSpacing: "-0.02em", color: "var(--admin-text)", margin: 0, lineHeight: 1.2 }}>
                 {isEditing ? 'Edit Behavioral Question' : 'New Behavioral Question'}
               </h1>
-              <p className="text-sm mt-1" style={{ color: '#6A7387' }}>
+              <p className="text-sm mt-1" style={{ color: 'var(--admin-text-muted)' }}>
                 Open-ended · evaluates soft skills & culture fit
               </p>
             </div>
@@ -112,16 +105,14 @@ export default function BehavioralForm() {
           <div className="flex items-center gap-3 flex-shrink-0">
             <button
               onClick={() => navigate(-1)}
-              className="px-5 py-2.5 rounded-xl border text-sm font-medium"
-              style={{ borderColor: '#E5E7EB', color: '#434B5E', backgroundColor: 'white' }}
+              className="btn btn-secondary"
             >
               Cancel
             </button>
             <button
               onClick={handleSubmit}
               disabled={loading}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
-              style={{ backgroundColor: loading ? '#FDE68A' : '#F59E0B' }}
+              className="btn btn-primary"
             >
               <Check width={13} height={13} stroke="white" strokeWidth={2.5} />
               {loading ? 'Saving…' : isEditing ? 'Save changes' : 'Save question'}
@@ -132,7 +123,7 @@ export default function BehavioralForm() {
 
       {/* Body */}
       <div
-        className="max-w-6xl mx-auto px-8 py-6"
+        className="max-w-6xl mx-auto"
         style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: '24px', alignItems: 'start' }}
       >
         {/* Left */}
@@ -140,10 +131,10 @@ export default function BehavioralForm() {
 
           {/* Question card */}
           <div className="rounded-2xl p-6" style={{ backgroundColor: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-            <p className="text-xs font-bold uppercase tracking-widest mb-5" style={{ color: '#98A2B5' }}>QUESTION</p>
+            <p className="text-xs font-bold uppercase tracking-widest mb-5" style={{ color: 'var(--admin-text-subtle)' }}>QUESTION</p>
 
             <div className="mb-5">
-              <label className="block text-sm font-medium mb-2" style={{ color: '#434B5E' }}>
+              <label className="block text-sm font-medium mb-2" style={{ color: 'var(--admin-text-muted)' }}>
                 Title <span style={{ color: '#EF4444' }}>*</span>
               </label>
               <input
@@ -156,8 +147,8 @@ export default function BehavioralForm() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: '#434B5E' }}>
-                Description / Prompt <span style={{ color: '#98A2B5', fontWeight: 400 }}>(optional)</span>
+              <label className="block text-sm font-medium mb-2" style={{ color: 'var(--admin-text-muted)' }}>
+                Description / Prompt <span style={{ color: 'var(--admin-text-subtle)', fontWeight: 400 }}>(optional)</span>
               </label>
               <textarea
                 value={formData.description}
@@ -171,8 +162,8 @@ export default function BehavioralForm() {
 
           {/* Expected answer card */}
           <div className="rounded-2xl p-6" style={{ backgroundColor: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-            <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: '#98A2B5' }}>EXPECTED ANSWER</p>
-            <p className="text-xs mb-4" style={{ color: '#98A2B5' }}>Used as a benchmark during review. Not shown to candidates.</p>
+            <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--admin-text-subtle)' }}>EXPECTED ANSWER</p>
+            <p className="text-xs mb-4" style={{ color: 'var(--admin-text-subtle)' }}>Used as a benchmark during review. Not shown to candidates.</p>
             <textarea
               value={formData.expectedAnswer}
               onChange={e => setFormData({ ...formData, expectedAnswer: e.target.value })}
@@ -186,11 +177,11 @@ export default function BehavioralForm() {
         {/* Right */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div className="rounded-2xl p-5" style={{ backgroundColor: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-            <p className="text-sm font-bold mb-5" style={{ color: '#11162A' }}>Properties</p>
+            <p className="text-sm font-bold mb-5" style={{ color: 'var(--admin-text)' }}>Properties</p>
 
             {/* Category */}
             <div className="mb-4">
-              <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: '#6A7387' }}>Category</label>
+              <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: 'var(--admin-text-muted)' }}>Category</label>
               <input
                 type="text"
                 value={formData.topic}
@@ -202,7 +193,7 @@ export default function BehavioralForm() {
 
             {/* Difficulty */}
             <div className="mb-4">
-              <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: '#6A7387' }}>Difficulty</label>
+              <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: 'var(--admin-text-muted)' }}>Difficulty</label>
               <div className="flex gap-2">
                 {(['easy', 'medium', 'hard'] as Difficulty[]).map(d => (
                   <button
@@ -219,7 +210,7 @@ export default function BehavioralForm() {
 
             {/* Points */}
             <div className="mb-4">
-              <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: '#6A7387' }}>Points</label>
+              <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: 'var(--admin-text-muted)' }}>Points</label>
               <input
                 type="number" min={1}
                 value={formData.marks}
@@ -230,12 +221,12 @@ export default function BehavioralForm() {
 
             {/* Tags */}
             <div>
-              <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: '#6A7387' }}>Tags</label>
+              <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: 'var(--admin-text-muted)' }}>Tags</label>
               <div className="flex flex-wrap gap-1.5">
                 {formData.tags.map(tag => (
-                  <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium" style={{ backgroundColor: '#F3F4F6', color: '#434B5E' }}>
+                  <span key={tag} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium" style={{ backgroundColor: 'var(--admin-border)', color: 'var(--admin-text-muted)' }}>
                     {tag}
-                    <button type="button" onClick={() => removeTag(tag)} style={{ color: '#98A2B5', lineHeight: 1 }}>×</button>
+                    <button type="button" onClick={() => removeTag(tag)} style={{ color: 'var(--admin-text-subtle)', lineHeight: 1 }}>×</button>
                   </span>
                 ))}
                 {showTagInput ? (
@@ -248,7 +239,7 @@ export default function BehavioralForm() {
                     }}
                     onBlur={() => { addTag(); setShowTagInput(false); }}
                     className="px-2.5 py-1 text-xs rounded-full border outline-none"
-                    style={{ borderColor: '#F59E0B', backgroundColor: 'white', width: '64px', color: '#11162A' }}
+                    style={{ borderColor: 'var(--admin-accent)', backgroundColor: 'white', width: '64px', color: 'var(--admin-text)' }}
                     placeholder="tag…"
                   />
                 ) : (
@@ -256,7 +247,7 @@ export default function BehavioralForm() {
                     type="button"
                     onClick={() => setShowTagInput(true)}
                     className="inline-flex items-center justify-center w-6 h-6 rounded-full text-sm font-bold"
-                    style={{ backgroundColor: '#F3F4F6', color: '#6A7387' }}
+                    style={{ backgroundColor: 'var(--admin-border)', color: 'var(--admin-text-muted)' }}
                   >
                     +
                   </button>
@@ -266,9 +257,9 @@ export default function BehavioralForm() {
           </div>
 
           {/* Tip panel */}
-          <div className="rounded-2xl p-5" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
+          <div className="rounded-2xl p-5" style={{ backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
             <div className="flex items-center gap-2 mb-1">
-              <Info width={14} height={14} stroke="#F59E0B" strokeWidth={1.5} />
+              <Info width={14} height={14} stroke="var(--admin-accent)" strokeWidth={1.5} />
               <p className="text-sm font-bold" style={{ color: '#92400E' }}>Tip</p>
             </div>
             <p className="text-xs leading-relaxed" style={{ color: '#78350F' }}>

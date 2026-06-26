@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 interface Option { value: string; label: string }
 
@@ -12,45 +12,46 @@ interface Props {
 
 export default function CustomSelect({ value, onChange, options, style, className }: Props) {
   const [open, setOpen] = useState(false);
+  const optionSignature = useMemo(() => options.map(o => `${o.value}:${o.label}`).join('|'), [options]);
   const selected = options.find(o => o.value === value) ?? options[0];
+  const longestLabelLength = Math.max(0, ...options.map(o => o.label.length), selected?.label.length ?? 0);
+  const stableWidth = `max(12rem, ${longestLabelLength + 5}ch)`;
+  const wrapperStyle: React.CSSProperties = {
+    display: 'inline-block',
+    width: style?.width ?? stableWidth,
+    minWidth: style?.minWidth ?? stableWidth,
+    maxWidth: style?.maxWidth ?? '100%',
+    flexShrink: 0,
+    ...style,
+  };
+
+  useEffect(() => {
+    setOpen(false);
+  }, [optionSignature, value]);
 
   return (
     <>
       {open && <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />}
-      <div className={`relative z-40 ${className ?? ''}`} style={{ display: 'inline-block', ...style }}>
+      <div className={`relative ${open ? 'z-50' : 'z-10'} ${className ?? ''}`} style={wrapperStyle}>
         <button
           type="button"
+          className="ui-field ui-select-trigger"
           onClick={() => setOpen(v => !v)}
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
-            width: '100%', padding: '10px 14px', borderRadius: '10px',
-            border: `1px solid ${open ? '#FDE68A' : '#E5E7EB'}`,
-            backgroundColor: 'white', fontSize: '14px', color: '#11162A',
-            cursor: 'pointer', outline: 'none', whiteSpace: 'nowrap',
-          }}>
+          data-open={open ? 'true' : undefined}>
           <span>{selected?.label}</span>
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
-            <path d="M2 4L6 8L10 4" stroke="#98A2B5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0, color: 'var(--admin-text-subtle)' }}>
+            <path d="M2 4L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </button>
         {open && (
-          <div style={{
-            position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, minWidth: '100%',
-            backgroundColor: 'white', borderRadius: '10px', border: '1px solid #FDE68A',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.10)', overflow: 'hidden', zIndex: 50,
-          }}>
+          <div className="ui-popover">
             {options.map(opt => (
               <button
                 key={opt.value}
                 type="button"
                 onClick={() => { onChange(opt.value); setOpen(false); }}
-                style={{
-                  width: '100%', textAlign: 'left', padding: '9px 14px', fontSize: '14px',
-                  backgroundColor: opt.value === value ? '#FEF3C7' : 'white',
-                  color: '#11162A', border: 'none', cursor: 'pointer', display: 'block',
-                }}
-                onMouseEnter={e => { if (opt.value !== value) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#FFFBEB'; }}
-                onMouseLeave={e => { if (opt.value !== value) (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'white'; }}>
+                className="ui-menu-item"
+                data-active={opt.value === value ? 'true' : undefined}>
                 {opt.label}
               </button>
             ))}

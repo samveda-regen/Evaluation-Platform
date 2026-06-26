@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
@@ -6,7 +6,7 @@ import { TestAttempt } from '../../types';
 import { FileDown, Mail, ChevronRight, XCircle, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react';
 import Icon from '../../components/Icon';
 
-/* ─── Interfaces ─── */
+/* --- Interfaces --- */
 interface InvitationRow {
   id: string;
   name: string;
@@ -29,8 +29,8 @@ interface TestCandidatesPanelProps {
   onInvite?: () => void;
 }
 
-/* ─── Helpers ─── */
-const AVATAR_COLORS = ['#6366F1','#8B5CF6','#F59E0B','#F59E0B','#3B82F6','#EF4444','#EC4899','#F97316'];
+/* --- Helpers --- */
+const AVATAR_COLORS = ['var(--admin-data-blue)','var(--admin-data-blue-soft)','var(--admin-accent)','var(--admin-accent)','var(--admin-accent)','#EF4444','#EC4899','#F97316'];
 function avatarBg(name: string) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
@@ -58,9 +58,9 @@ function getCandStatus(invite: InvitationRow, attempt?: TestAttempt): CandStatus
   return 'Invited';
 }
 const STATUS_CFG: Record<CandStatus, { bg: string; color: string; dot: string; label: string }> = {
-  'Submitted':   { bg:'#FFFBEB', color:'#D97706', dot:'#F59E0B', label:'Submitted' },
-  'In progress': { bg:'#EFF6FF', color:'#2563EB', dot:'#3B82F6', label:'In progress' },
-  'Invited':     { bg:'#F3F4F6', color:'#6A7387', dot:'#98A2B5', label:'Invited' },
+  'Submitted':   { bg:'var(--admin-accent-soft)', color:'var(--admin-accent-hover)', dot:'var(--admin-accent)', label:'Submitted' },
+  'In progress': { bg:'var(--admin-accent-soft)', color:'var(--admin-accent-link)', dot:'var(--admin-accent)', label:'In progress' },
+  'Invited':     { bg:'var(--admin-border)', color:'var(--admin-text-muted)', dot:'var(--admin-text-subtle)', label:'Invited' },
   'Expired':     { bg:'#FEF2F2', color:'#DC2626', dot:'#EF4444', label:'Expired' },
   'Failed':      { bg:'#FEF2F2', color:'#DC2626', dot:'#EF4444', label:'Failed' },
 };
@@ -123,23 +123,23 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
     } catch { toast.error('Export failed'); } finally { setExporting(false); }
   };
 
-  /* ── Build attempt lookup by email ── */
+  /* -- Build attempt lookup by email -- */
   const attemptByEmail = new Map<string, TestAttempt>();
   attempts.forEach(a => { const e = a.candidate?.email?.toLowerCase(); if (e) attemptByEmail.set(e, a); });
 
-  /* ── Merge invitations + attempts ── */
+  /* -- Merge invitations + attempts -- */
   const rows = (invData?.invitations || []).map(inv => ({
     inv,
     attempt: attemptByEmail.get(inv.email.toLowerCase()),
   }));
 
-  /* ── Stat counts ── */
+  /* -- Stat counts -- */
   const invitedCount  = rows.length;
   const inProgCount   = rows.filter(r => getCandStatus(r.inv, r.attempt) === 'In progress').length;
   const submittedCount= rows.filter(r => getCandStatus(r.inv, r.attempt) === 'Submitted').length;
   const flaggedCount  = rows.filter(r => (r.attempt?.violations ?? 0) > 0).length;
 
-  /* ── Filter ── */
+  /* -- Filter -- */
   const q = search.trim().toLowerCase();
   const filtered = rows.filter(({ inv, attempt }) => {
     const matchSearch = !q || inv.name.toLowerCase().includes(q) || inv.email.toLowerCase().includes(q);
@@ -149,21 +149,21 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
     return s === statusFilter;
   });
 
-  /* ── Selected candidate ── */
+  /* -- Selected candidate -- */
   const selectedRow = selectedId ? rows.find(r => r.inv.id === selectedId) : null;
   const selInv  = selectedRow?.inv;
   const selAttempt = selectedRow?.attempt;
   const selScorePct = selAttempt?.score != null && test?.totalMarks
     ? Math.round((selAttempt.score / test.totalMarks) * 100) : null;
 
-  /* ── Section performance (proportional estimate) ── */
+  /* -- Section performance (proportional estimate) -- */
   const sectionBars = selScorePct != null ? [
     { label: 'MCQ',        pct: Math.min(100, selScorePct + 5) },
     { label: 'Coding',     pct: Math.max(0,   selScorePct - 14) },
     { label: 'Behavioral', pct: Math.min(100, selScorePct + 10) },
   ] : [];
 
-  /* ── Integrity flags (derive from violation count) ── */
+  /* -- Integrity flags (derive from violation count) -- */
   const viol = selAttempt?.violations ?? 0;
   const integrityFlags: string[] = viol > 0 ? [
     `Tab switch ×${Math.ceil(viol / 2)}`,
@@ -173,13 +173,13 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
 
   const isLoading = invLoading || resLoading;
 
-  /* ── Stat card component ── */
+  /* -- Stat card component -- */
   const StatCard = ({ label, count, borderColor }: { label: string; count: number; borderColor: string }) => (
     <div className="rounded-2xl px-6 py-5 flex items-start gap-3"
       style={{ backgroundColor:'white', boxShadow:'0 1px 4px rgba(0,0,0,0.06)', borderLeft:`4px solid ${borderColor}` }}>
       <div>
-        <p className="text-3xl font-bold" style={{ color:'#11162A' }}>{count}</p>
-        <p className="text-sm mt-0.5" style={{ color:'#6A7387' }}>{label}</p>
+        <p className="text-3xl font-bold" style={{ color:'var(--admin-text)' }}>{count}</p>
+        <p className="text-sm mt-0.5" style={{ color:'var(--admin-text-muted)' }}>{label}</p>
       </div>
     </div>
   );
@@ -187,31 +187,31 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
   return (
     <div style={{ position:'relative' }}>
 
-      {/* ── 4 Stat cards ── */}
+      {/* -- 4 Stat cards -- */}
       <div className="grid grid-cols-4 gap-4 mb-5">
-        <StatCard label="Invited"     count={invitedCount}   borderColor="#F59E0B" />
-        <StatCard label="In progress" count={inProgCount}    borderColor="#F59E0B" />
-        <StatCard label="Submitted"   count={submittedCount} borderColor="#F59E0B" />
+        <StatCard label="Invited"     count={invitedCount}   borderColor="var(--admin-accent)" />
+        <StatCard label="In progress" count={inProgCount}    borderColor="var(--admin-accent)" />
+        <StatCard label="Submitted"   count={submittedCount} borderColor="var(--admin-accent)" />
         <StatCard label="Flagged"     count={flaggedCount}   borderColor="#EF4444" />
       </div>
 
-      {/* ── Toolbar ── */}
+      {/* -- Toolbar -- */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
         {/* Search */}
         <div className="relative flex-1 min-w-[220px] max-w-xs">
           <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-md"
-            style={{ width:22, height:22, backgroundColor:'#FFF6EE' }}>
+            style={{ width:22, height:22, backgroundColor:'var(--admin-accent-soft)' }}>
             <Icon name="search" size={13} />
           </div>
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search candidates..."
-            className="w-full pr-4 py-2 rounded-xl border text-sm outline-none"
-            style={{ paddingLeft:'36px', borderColor:'#E5E7EB', color:'#11162A', backgroundColor:'white' }}
+            className="admin-filter-input w-full pr-4 py-2 rounded-xl border text-sm outline-none"
+            style={{ paddingLeft:'36px' }}
           />
         </div>
         {/* Status filter */}
         {showStatusDrop && <div className="fixed inset-0 z-10" onClick={() => setShowStatusDrop(false)} />}
-        <div className="relative z-20">
+        <div className="relative z-20 flex-shrink-0" style={{ width: '150px' }}>
           {(() => {
             const STATUS_OPTIONS = [
               { value:'all',         label:'All status' },
@@ -225,25 +225,25 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
               <>
                 <button
                   onClick={() => setShowStatusDrop(v => !v)}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm cursor-pointer"
-                  style={{ borderColor:'#FDE68A', color:'#D97706', backgroundColor:'white', minWidth:'120px' }}>
-                  <span className="flex-1 text-left">{selected.label}</span>
+                  className="btn btn-secondary"
+                  style={{ width:'100%' }}>
+                  <span className="flex-1 text-left truncate">{selected.label}</span>
                   <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                    <path d="M2 4L6 8L10 4" stroke="#D97706" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M2 4L6 8L10 4" stroke="var(--admin-accent-hover)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                   </svg>
                 </button>
                 {showStatusDrop && (
                   <div className="absolute left-0 mt-1 rounded-xl overflow-hidden"
-                    style={{ minWidth:'140px', backgroundColor:'white', boxShadow:'0 4px 16px rgba(0,0,0,0.10)', border:'1px solid #FDE68A' }}>
+                    style={{ minWidth:'140px', backgroundColor:'white', boxShadow:'0 4px 16px rgba(0,0,0,0.10)', border:'1px solid var(--admin-accent-disabled)' }}>
                     {STATUS_OPTIONS.map(opt => (
                       <button key={opt.value}
                         onClick={() => { setStatusFilter(opt.value); setShowStatusDrop(false); }}
                         className="w-full text-left px-4 py-2 text-sm"
                         style={{
-                          backgroundColor: opt.value === statusFilter ? '#FEF3C7' : 'white',
-                          color: '#D97706',
+                          backgroundColor: opt.value === statusFilter ? 'var(--admin-accent-disabled)' : 'white',
+                          color: 'var(--admin-accent-hover)',
                         }}
-                        onMouseEnter={e => { if (opt.value !== statusFilter) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#FFFBEB'; }}
+                        onMouseEnter={e => { if (opt.value !== statusFilter) (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--admin-accent-soft)'; }}
                         onMouseLeave={e => { if (opt.value !== statusFilter) (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'white'; }}
                       >
                         {opt.label}
@@ -260,41 +260,39 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
 
         {/* Export CSV */}
         <button onClick={handleExport} disabled={exporting}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-medium"
-          style={{ borderColor:'#E5E7EB', color:'#434B5E', backgroundColor:'white' }}>
-          <FileDown width={14} height={14} color="#F59E0B" />
+          className="btn btn-secondary">
+          <FileDown width={14} height={14} color="var(--admin-accent)" />
           {exporting ? 'Exporting…' : 'Export CSV'}
         </button>
 
         {/* Invite candidates */}
         <button onClick={onInvite}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white"
-          style={{ backgroundColor:'#F59E0B' }}>
+          className="btn btn-primary">
           <Mail width={14} height={14} stroke="white" />
           Invite candidates
         </button>
       </div>
 
-      {/* ── Table ── */}
+      {/* -- Table -- */}
       <div className="rounded-2xl overflow-hidden" style={{ backgroundColor:'white', boxShadow:'0 1px 4px rgba(0,0,0,0.07)' }}>
         {/* Table header */}
         <div className="grid px-5 py-3" style={{
           gridTemplateColumns:'minmax(220px,1fr) 140px 90px 90px 100px 130px 36px',
-          borderBottom:'1px solid #F3F4F6',
+          borderBottom:'1px solid var(--admin-border)',
         }}>
           {['CANDIDATE','STATUS','SCORE','TRUST','TIME','INTEGRITY',''].map(col => (
-            <span key={col} className="text-xs font-semibold uppercase tracking-wide" style={{ color:'#98A2B5' }}>{col}</span>
+            <span key={col} className="text-xs font-semibold uppercase tracking-wide" style={{ color:'var(--admin-text-subtle)' }}>{col}</span>
           ))}
         </div>
 
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor:'#F59E0B' }} />
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor:'var(--admin-accent)' }} />
           </div>
         ) : filtered.length === 0 ? (
           <div className="py-16 text-center">
-            <p className="text-sm font-medium" style={{ color:'#434B5E' }}>No candidates found</p>
-            <p className="text-xs mt-1" style={{ color:'#98A2B5' }}>
+            <p className="text-sm font-medium" style={{ color:'var(--admin-text-muted)' }}>No candidates found</p>
+            <p className="text-xs mt-1" style={{ color:'var(--admin-text-subtle)' }}>
               {invData?.invitations.length ? 'Try adjusting your filters.' : 'Invite candidates to get started.'}
             </p>
           </div>
@@ -306,16 +304,16 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
               const scorePct = attempt?.score != null && test?.totalMarks
                 ? Math.round((attempt.score / test.totalMarks) * 100) : null;
               const trust = attempt?.trustScore != null ? Math.round(attempt.trustScore) : null;
-              const trustDot = trust != null ? (trust >= 80 ? '#F59E0B' : trust >= 60 ? '#F59E0B' : '#EF4444') : '#E5E7EB';
-              const scoreCol = scorePct != null ? (scorePct >= 70 ? '#F59E0B' : scorePct >= 50 ? '#F59E0B' : '#EF4444') : '#6A7387';
+              const trustDot = trust != null ? (trust >= 80 ? 'var(--admin-accent)' : trust >= 60 ? 'var(--admin-accent)' : '#EF4444') : 'var(--admin-border)';
+              const scoreCol = scorePct != null ? (scorePct >= 70 ? 'var(--admin-accent)' : scorePct >= 50 ? 'var(--admin-accent)' : '#EF4444') : 'var(--admin-text-muted)';
               const time = fmtDuration(attempt?.startTime, attempt?.endTime);
               const viol = attempt?.violations ?? 0;
               const integrity = status === 'In progress' ? 'Live'
                 : status === 'Invited' || status === 'Expired' ? 'Not started'
                 : viol === 0 ? 'Clean' : `${viol} flag${viol > 1 ? 's' : ''}`;
               const integrityCl = integrity === 'Live' ? '#0891B2'
-                : integrity === 'Clean' ? '#D97706'
-                : integrity === 'Not started' ? '#98A2B5' : '#DC2626';
+                : integrity === 'Clean' ? 'var(--admin-accent-hover)'
+                : integrity === 'Not started' ? 'var(--admin-text-subtle)' : '#DC2626';
               const isSelected = selectedId === inv.id;
 
               return (
@@ -325,7 +323,7 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
                     gridTemplateColumns:'minmax(220px,1fr) 140px 90px 90px 100px 130px 36px',
                     borderBottom:'1px solid #F9FAFB',
                     alignItems:'center',
-                    backgroundColor: isSelected ? '#FFFBEB' : undefined,
+                    backgroundColor: isSelected ? 'var(--admin-accent-soft)' : undefined,
                   }}
                   onClick={() => setSelectedId(prev => prev === inv.id ? null : inv.id)}>
 
@@ -336,8 +334,8 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
                       {initials(inv.name)}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold truncate" style={{ color:'#11162A' }}>{inv.name}</p>
-                      <p className="text-xs truncate" style={{ color:'#6A7387' }}>{inv.email}</p>
+                      <p className="text-sm font-semibold truncate" style={{ color:'var(--admin-text)' }}>{inv.name}</p>
+                      <p className="text-xs truncate" style={{ color:'var(--admin-text-muted)' }}>{inv.email}</p>
                     </div>
                   </div>
 
@@ -358,13 +356,13 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
                   {/* Trust */}
                   <div className="flex items-center gap-1.5">
                     <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: trustDot }} />
-                    <span className="text-sm font-semibold" style={{ color:'#434B5E' }}>
+                    <span className="text-sm font-semibold" style={{ color:'var(--admin-text-muted)' }}>
                       {trust != null ? trust : '—'}
                     </span>
                   </div>
 
                   {/* Time */}
-                  <span className="text-sm" style={{ color:'#434B5E' }}>{time}</span>
+                  <span className="text-sm" style={{ color:'var(--admin-text-muted)' }}>{time}</span>
 
                   {/* Integrity */}
                   <span className="text-sm font-semibold" style={{ color: integrityCl }}>{integrity}</span>
@@ -388,7 +386,7 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
         )}
       </div>
 
-      {/* ── Right slide-over panel ── */}
+      {/* -- Right slide-over panel -- */}
       {selectedId && selInv && (
         <>
           {/* Backdrop */}
@@ -400,7 +398,7 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
             style={{ width:'380px', backgroundColor:'white', boxShadow:'-4px 0 24px rgba(0,0,0,0.12)' }}>
 
             {/* Header */}
-            <div className="px-6 pt-6 pb-4" style={{ borderBottom:'1px solid #F3F4F6' }}>
+            <div className="px-6 pt-6 pb-4" style={{ borderBottom:'1px solid var(--admin-border)' }}>
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   <div className="h-11 w-11 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-white"
@@ -408,13 +406,13 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
                     {initials(selInv.name)}
                   </div>
                   <div>
-                    <p className="text-sm font-bold" style={{ color:'#11162A' }}>{selInv.name}</p>
-                    <p className="text-xs" style={{ color:'#6A7387' }}>{selInv.email}</p>
+                    <p className="text-sm font-bold" style={{ color:'var(--admin-text)' }}>{selInv.name}</p>
+                    <p className="text-xs" style={{ color:'var(--admin-text-muted)' }}>{selInv.email}</p>
                   </div>
                 </div>
                 <button onClick={() => setSelectedId(null)}
                   className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-                  style={{ color:'#98A2B5' }}>
+                  style={{ color:'var(--admin-text-subtle)' }}>
                   <XCircle width={16} height={16} />
                 </button>
               </div>
@@ -430,9 +428,9 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
                   { label:'Time',  value: fmtDuration(selAttempt?.startTime, selAttempt?.endTime) },
                 ].map(({ label, value }) => (
                   <div key={label} className="rounded-xl p-3 text-center"
-                    style={{ backgroundColor:'#F9FAFB', border:'1px solid #F3F4F6' }}>
-                    <p className="text-base font-bold" style={{ color:'#11162A' }}>{value}</p>
-                    <p className="text-xs mt-0.5" style={{ color:'#6A7387' }}>{label}</p>
+                    style={{ backgroundColor:'#F9FAFB', border:'1px solid var(--admin-border)' }}>
+                    <p className="text-base font-bold" style={{ color:'var(--admin-text)' }}>{value}</p>
+                    <p className="text-xs mt-0.5" style={{ color:'var(--admin-text-muted)' }}>{label}</p>
                   </div>
                 ))}
               </div>
@@ -440,19 +438,19 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
               {/* Section performance */}
               {sectionBars.length > 0 && (
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color:'#98A2B5' }}>
+                  <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color:'var(--admin-text-subtle)' }}>
                     Section Performance
                   </p>
                   <div className="space-y-3">
                     {sectionBars.map(({ label, pct }) => (
                       <div key={label}>
                         <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm font-medium" style={{ color:'#434B5E' }}>{label}</span>
-                          <span className="text-sm font-semibold" style={{ color:'#11162A' }}>{pct}%</span>
+                          <span className="text-sm font-medium" style={{ color:'var(--admin-text-muted)' }}>{label}</span>
+                          <span className="text-sm font-semibold" style={{ color:'var(--admin-text)' }}>{pct}%</span>
                         </div>
-                        <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor:'#F3F4F6' }}>
+                        <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor:'var(--admin-border)' }}>
                           <div className="h-full rounded-full transition-all"
-                            style={{ width:`${pct}%`, backgroundColor:'#F59E0B' }} />
+                            style={{ width:`${pct}%`, backgroundColor:'var(--admin-accent)' }} />
                         </div>
                       </div>
                     ))}
@@ -462,15 +460,15 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
 
               {/* Integrity flags */}
               <div>
-                <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color:'#98A2B5' }}>
+                <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color:'var(--admin-text-subtle)' }}>
                   Integrity Flags
                 </p>
                 {integrityFlags.length === 0 ? (
                   <div className="flex items-center gap-2 py-2">
-                    <div className="h-5 w-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor:'#FFFBEB' }}>
-                      <CheckCircle2 width={10} height={10} style={{ color:'#F59E0B' }} />
+                    <div className="h-5 w-5 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor:'var(--admin-accent-soft)' }}>
+                      <CheckCircle2 width={10} height={10} style={{ color:'var(--admin-accent)' }} />
                     </div>
-                    <span className="text-sm" style={{ color:'#D97706' }}>No integrity issues</span>
+                    <span className="text-sm" style={{ color:'var(--admin-accent-hover)' }}>No integrity issues</span>
                   </div>
                 ) : (
                   <div className="space-y-2.5">
@@ -491,7 +489,7 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
                   onClick={() => selAttempt?.id && navigate(`/admin/attempts/${selAttempt.id}`)}
                   disabled={!selAttempt?.id}
                   className="flex-1 py-3 rounded-xl text-sm font-semibold text-white transition-colors"
-                  style={{ backgroundColor: selAttempt?.id ? '#F59E0B' : '#FDE68A', cursor: selAttempt?.id ? 'pointer' : 'not-allowed' }}>
+                  style={{ backgroundColor: selAttempt?.id ? 'var(--admin-accent)' : 'var(--admin-accent-disabled)', cursor: selAttempt?.id ? 'pointer' : 'not-allowed' }}>
                   View full attempt
                 </button>
                 <button
@@ -507,8 +505,8 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
                   })()}
                   disabled={!selAttempt?.id}
                   className="p-3 rounded-xl border flex items-center justify-center"
-                  style={{ borderColor:'#E5E7EB', backgroundColor:'white', cursor: selAttempt?.id ? 'pointer' : 'not-allowed' }}>
-                  <FileDown width={16} height={16} style={{ color:'#434B5E' }} />
+                  style={{ borderColor:'var(--admin-border)', backgroundColor:'white', cursor: selAttempt?.id ? 'pointer' : 'not-allowed' }}>
+                  <FileDown width={16} height={16} style={{ color:'var(--admin-text-muted)' }} />
                 </button>
                 <button
                   onClick={() => handleDeleteCandidate(selInv.id, selInv.name)}

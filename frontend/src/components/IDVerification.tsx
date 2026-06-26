@@ -88,7 +88,7 @@ export default function IDVerification({
           setStep('result');
           return;
         }
-      } catch { /* no existing record — normal flow */ }
+      } catch { /* no existing record - normal flow */ }
       setInitialCheckDone(true);
     };
     void checkExistingStatus();
@@ -191,7 +191,7 @@ export default function IDVerification({
     setInitialCheckDone(true);
   };
 
-  // Loading guard — don't show form until initial status check completes
+  // Loading guard - don't show form until initial status check completes
   if (!initialCheckDone && !result) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}>
@@ -206,7 +206,7 @@ export default function IDVerification({
         return (
           <div className="text-center space-y-6">
             <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto" style={{ background: '#FFF6EE' }}>
-              <ShieldCheck className="w-10 h-10" style={{ color: '#F59E0B' }} />
+              <ShieldCheck className="w-10 h-10" style={{ color: 'var(--admin-accent)' }} />
             </div>
             <div>
               <h2 className="text-2xl font-bold text-gray-800">Identity Verification</h2>
@@ -235,7 +235,7 @@ export default function IDVerification({
               <button
                 onClick={() => setStep('document')}
                 className="flex-1 py-3 rounded-xl font-semibold text-sm text-white"
-                style={{ background: '#F59E0B' }}
+                style={{ background: 'var(--admin-accent)' }}
               >
                 Start Verification
               </button>
@@ -312,7 +312,7 @@ export default function IDVerification({
                 onClick={() => { if (!documentImage) { toast.error('Please upload your ID document'); return; } setStep('selfie'); startCamera(); }}
                 disabled={!documentImage}
                 className="flex-1 py-3 rounded-xl text-sm font-semibold text-white disabled:opacity-50"
-                style={{ background: '#F59E0B' }}
+                style={{ background: 'var(--admin-accent)' }}
               >
                 Continue
               </button>
@@ -340,7 +340,7 @@ export default function IDVerification({
               )}
             </div>
             <canvas ref={canvasRef} className="hidden" />
-            <div className="rounded-lg p-3 text-sm" style={{ background: '#FFF6EE', border: '1px solid #FDE68A', color: '#92400E' }}>
+            <div className="rounded-lg p-3 text-sm" style={{ background: '#FFF6EE', border: '1px solid var(--admin-accent-disabled)', color: '#92400E' }}>
               <strong>Tips:</strong> Look directly at the camera, ensure good lighting, and keep a neutral expression.
             </div>
             <div className="flex gap-3">
@@ -348,7 +348,7 @@ export default function IDVerification({
                 Back
               </button>
               {!selfieImage ? (
-                <button onClick={handleCaptureSelfie} className="flex-1 py-3 rounded-xl text-sm font-semibold text-white" style={{ background: '#F59E0B' }}>
+                <button onClick={handleCaptureSelfie} className="flex-1 py-3 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--admin-accent)' }}>
                   Capture Selfie
                 </button>
               ) : (
@@ -356,7 +356,7 @@ export default function IDVerification({
                   <button onClick={() => { setSelfieImage(null); startCamera(); }} className="px-5 py-3 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50">
                     Retake
                   </button>
-                  <button onClick={submitVerification} className="flex-1 py-3 rounded-xl text-sm font-semibold text-white" style={{ background: '#F59E0B' }}>
+                  <button onClick={submitVerification} className="flex-1 py-3 rounded-xl text-sm font-semibold text-white" style={{ background: 'var(--admin-accent)' }}>
                     Submit Verification
                   </button>
                 </>
@@ -368,9 +368,9 @@ export default function IDVerification({
       case 'processing':
         return (
           <div className="text-center py-12 space-y-4">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-2 mx-auto" style={{ borderColor: '#F59E0B' }} />
+            <div className="animate-spin rounded-full h-16 w-16 border-b-2 mx-auto" style={{ borderColor: 'var(--admin-accent)' }} />
             <h2 className="text-xl font-bold text-gray-800">Submitting Verification</h2>
-            <p className="text-gray-600">Uploading your documents…</p>
+            <p className="text-gray-600">Uploading your documents...</p>
           </div>
         );
 
@@ -380,13 +380,13 @@ export default function IDVerification({
           return (
             <div className="text-center space-y-6">
               <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto" style={{ background: '#FFF6EE' }}>
-                <CheckCircle2 className="w-10 h-10" style={{ color: '#F59E0B' }} />
+                <CheckCircle2 className="w-10 h-10" style={{ color: 'var(--admin-accent)' }} />
               </div>
               <div>
-                <h2 className="text-2xl font-bold" style={{ color: '#D97706' }}>Identity Verified!</h2>
+                <h2 className="text-2xl font-bold" style={{ color: 'var(--admin-accent-hover)' }}>Identity Verified!</h2>
                 <p className="text-gray-600 mt-2">Your identity has been approved. You may now proceed with the test.</p>
               </div>
-              <button onClick={onVerified} className="w-full py-3 rounded-xl font-semibold text-sm text-white" style={{ background: '#F59E0B' }}>
+              <button onClick={onVerified} className="w-full py-3 rounded-xl font-semibold text-sm text-white" style={{ background: 'var(--admin-accent)' }}>
                 Continue to Test
               </button>
             </div>
@@ -408,41 +408,41 @@ export default function IDVerification({
                 onClick={handleResubmit}
                 disabled={cancelling}
                 className="w-full py-3 rounded-xl font-semibold text-sm text-white disabled:opacity-60"
-                style={{ background: '#F59E0B' }}
+                style={{ background: 'var(--admin-accent)' }}
               >
-                {cancelling ? 'Resetting…' : 'Try Again'}
+                {cancelling ? 'Resetting...' : 'Try Again'}
               </button>
             </div>
           );
         }
 
-        // Submitted — waiting for admin decision
+        // Submitted - waiting for admin decision
         if (result?.status === 'pending') {
           return (
             <div className="text-center space-y-6">
               <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto" style={{ background: '#FFF6EE' }}>
-                <Clock className="w-10 h-10 animate-pulse" style={{ color: '#F59E0B' }} />
+                <Clock className="w-10 h-10 animate-pulse" style={{ color: 'var(--admin-accent)' }} />
               </div>
               <div>
                 <h2 className="text-2xl font-bold text-gray-800">Under Review</h2>
                 <p className="text-gray-600 mt-2">Your ID has been submitted and is awaiting admin approval. This page will update automatically.</p>
               </div>
-              <div className="flex items-center justify-center gap-2 text-sm" style={{ color: '#D97706' }}>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2" style={{ borderColor: '#F59E0B' }} />
-                Waiting for admin decision…
+              <div className="flex items-center justify-center gap-2 text-sm" style={{ color: 'var(--admin-accent-hover)' }}>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2" style={{ borderColor: 'var(--admin-accent)' }} />
+                Waiting for admin decision...
               </div>
               <button
                 onClick={handleResubmit}
                 disabled={cancelling}
                 className="w-full py-2.5 rounded-xl text-sm font-medium text-gray-600 border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
               >
-                {cancelling ? 'Cancelling…' : 'Submit a different photo'}
+                {cancelling ? 'Cancelling...' : 'Submit a different photo'}
               </button>
             </div>
           );
         }
 
-        // Fallback — submission error
+        // Fallback - submission error
         return (
           <div className="text-center space-y-6">
             <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto">
@@ -456,7 +456,7 @@ export default function IDVerification({
               <button
                 onClick={() => { setDocumentImage(null); setSelfieImage(null); setResult(null); setPendingPollState(null); setStep('intro'); setInitialCheckDone(true); }}
                 className="flex-1 py-3 rounded-xl text-sm font-semibold text-white"
-                style={{ background: '#F59E0B' }}
+                style={{ background: 'var(--admin-accent)' }}
               >
                 Try Again
               </button>
@@ -480,8 +480,8 @@ export default function IDVerification({
             const active = (step === 'document' && i === 0) || (step === 'selfie' && i <= 1) || (step === 'processing' && i <= 2);
             return (
               <>
-                <div key={`dot-${i}`} className="w-3 h-3 rounded-full" style={{ background: active ? '#F59E0B' : '#E5E7EB' }} />
-                {i < 2 && <div key={`line-${i}`} className="w-16 h-1" style={{ background: (step === 'selfie' && i === 0) || step === 'processing' ? '#F59E0B' : '#E5E7EB' }} />}
+                <div key={`dot-${i}`} className="w-3 h-3 rounded-full" style={{ background: active ? 'var(--admin-accent)' : 'var(--admin-border)' }} />
+                {i < 2 && <div key={`line-${i}`} className="w-16 h-1" style={{ background: (step === 'selfie' && i === 0) || step === 'processing' ? 'var(--admin-accent)' : 'var(--admin-border)' }} />}
               </>
             );
           })}

@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
@@ -100,52 +100,48 @@ function toFormState(t: Test): FormState {
   };
 }
 
-/* ── Toggle ── */
+/* -- Toggle -- */
 function Toggle({ on, onChange }: { on: boolean; onChange: () => void }) {
   return (
-    <button type="button" onClick={onChange}
-      style={{
-        position:'relative', flexShrink:0, width:'48px', height:'26px',
-        borderRadius:'13px', backgroundColor: on ? '#F59E0B' : '#D1D5DB',
-        border:'none', cursor:'pointer', transition:'background-color 0.2s',
-      }} aria-pressed={on}>
-      <span style={{
-        position:'absolute', top:'3px',
-        left: on ? '23px' : '3px',
-        width:'20px', height:'20px', borderRadius:'50%',
-        backgroundColor:'white', boxShadow:'0 1px 3px rgba(0,0,0,0.2)',
-        transition:'left 0.2s',
-      }} />
+    <button
+      type="button"
+      onClick={onChange}
+      className="admin-toggle"
+      data-size="lg"
+      data-state={on ? 'on' : 'off'}
+      aria-pressed={on}
+    >
+      <span className="admin-toggle__knob" />
     </button>
   );
 }
 
-/* ── Toggle row ── */
+/* -- Toggle row -- */
 function ToggleRow({ label, desc, on, onChange, last }: {
   label: string; desc: string; on: boolean; onChange: () => void; last?: boolean;
 }) {
   return (
     <div style={{
       display:'flex', alignItems:'center', justifyContent:'space-between', gap:'16px',
-      padding:'18px 0', borderBottom: last ? 'none' : '1px solid #F3F4F6',
+      padding:'18px 0', borderBottom: last ? 'none' : '1px solid var(--admin-border)',
     }}>
       <div>
-        <p style={{ fontSize:'14px', fontWeight:500, color:'#11162A', margin:'0 0 3px' }}>{label}</p>
-        <p style={{ fontSize:'12px', color:'#98A2B5', margin:0 }}>{desc}</p>
+        <p style={{ fontSize:'14px', fontWeight:500, color:'var(--admin-text)', margin:'0 0 3px' }}>{label}</p>
+        <p style={{ fontSize:'12px', color:'var(--admin-text-subtle)', margin:0 }}>{desc}</p>
       </div>
       <Toggle on={on} onChange={onChange} />
     </div>
   );
 }
 
-/* ── shared input style ── */
+/* -- shared input style -- */
 const inputSx: React.CSSProperties = {
   width:'100%', padding:'10px 14px', borderRadius:'10px',
-  border:'1px solid #E5E7EB', backgroundColor:'white', color:'#11162A',
+  border:'1.5px solid var(--admin-border)', backgroundColor:'white', color:'var(--admin-heading)',
   fontSize:'14px', outline:'none', fontFamily:'inherit', boxSizing:'border-box',
 };
 const labelSx: React.CSSProperties = {
-  display:'block', fontSize:'13px', fontWeight:500, color:'#434B5E', marginBottom:'6px',
+  display:'block', fontSize:'13px', fontWeight:500, color:'var(--admin-text)', marginBottom:'6px',
 };
 
 export default function TestSettings() {
@@ -248,7 +244,7 @@ export default function TestSettings() {
   };
 
   const handleDiscard = () => {
-    if (original) { setForm(original); toast('Changes discarded', { icon: '↺' }); }
+    if (original) { setForm(original); toast('Changes discarded', { icon: '?' }); }
   };
 
   const handleDeleteTest = async () => {
@@ -263,7 +259,7 @@ export default function TestSettings() {
 
   if (loading) return (
     <div style={{ display:'flex', justifyContent:'center', padding:'80px 0' }}>
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor:'#F59E0B' }} />
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor:'var(--admin-accent)' }} />
     </div>
   );
   if (!form) return null;
@@ -277,25 +273,22 @@ export default function TestSettings() {
     { id:'danger',   label:'Danger zone' },
   ];
 
-  /* ── danger zone action row ── */
+  /* -- danger zone action row -- */
   const DangerRow = ({ label, desc, btnLabel, btnRed, onClick, last }: {
     label: string; desc: string; btnLabel: string; btnRed?: boolean; onClick: () => void; last?: boolean;
   }) => (
     <div style={{
       display:'flex', alignItems:'center', justifyContent:'space-between', gap:'16px',
-      padding:'18px 0', borderBottom: last ? 'none' : '1px solid #F3F4F6',
+      padding:'18px 0', borderBottom: last ? 'none' : '1px solid var(--admin-border)',
     }}>
       <div>
-        <p style={{ fontSize:'14px', fontWeight:500, color:'#11162A', margin:'0 0 3px' }}>{label}</p>
-        <p style={{ fontSize:'12px', color:'#98A2B5', margin:0 }}>{desc}</p>
+        <p style={{ fontSize:'14px', fontWeight:500, color:'var(--admin-text)', margin:'0 0 3px' }}>{label}</p>
+        <p style={{ fontSize:'12px', color:'var(--admin-text-subtle)', margin:0 }}>{desc}</p>
       </div>
       <button type="button" onClick={onClick}
+        className={btnRed ? 'btn btn-danger' : 'btn btn-secondary'}
         style={{
-          padding:'7px 18px', borderRadius:'8px', cursor:'pointer',
-          fontSize:'13px', fontWeight:600, whiteSpace:'nowrap',
-          border: btnRed ? 'none' : '1.5px solid #E5E7EB',
-          backgroundColor: btnRed ? '#EF4444' : 'white',
-          color: btnRed ? 'white' : '#434B5E',
+          fontSize:'13px', whiteSpace:'nowrap',
         }}>
         {btnLabel}
       </button>
@@ -305,7 +298,7 @@ export default function TestSettings() {
   return (
     <div style={{ display:'flex', flexDirection:'column', minHeight:'500px' }}>
 
-      {/* ── MAIN GRID ── */}
+      {/* -- MAIN GRID -- */}
       <div style={{ display:'grid', gridTemplateColumns:'220px 1fr', gap:'0', flex:1 }}>
 
         {/* LEFT SIDEBAR */}
@@ -319,12 +312,12 @@ export default function TestSettings() {
                   display:'flex', alignItems:'center', justifyContent:'space-between',
                   width:'100%', padding:'10px 14px', borderRadius:'10px',
                   border:'none', cursor:'pointer', marginBottom:'2px',
-                  backgroundColor: active ? '#F59E0B' : 'transparent',
-                  color: active ? 'white' : '#434B5E',
+                  backgroundColor: active ? 'var(--admin-accent)' : 'transparent',
+                  color: active ? 'white' : 'var(--admin-text)',
                   fontSize:'14px', fontWeight: active ? 600 : 400,
                   textAlign:'left', transition:'background-color 0.15s',
                 }}
-                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = 'rgba(245,158,11,0.08)'; }}
+                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--admin-accent-soft)'; }}
                 onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.backgroundColor = 'transparent'; }}>
                 <span>{p.label}</span>
                 {active && <ChevronRight size={14} color="white" />}
@@ -336,14 +329,14 @@ export default function TestSettings() {
         {/* RIGHT CONTENT CARD */}
         <div style={{ paddingLeft:'8px', paddingBottom:'24px' }}>
           <div style={{
-            backgroundColor:'white', borderRadius:'14px',
-            boxShadow:'0 1px 8px rgba(0,0,0,0.07)', padding:'28px 32px',
+            backgroundColor:'white', borderRadius:'var(--admin-card-radius)',
+            boxShadow:'var(--admin-card-shadow)', border:'1px solid var(--admin-border)', padding:'28px 32px',
           }}>
 
-            {/* ─── GENERAL ─── */}
+            {/* --- GENERAL --- */}
             {activePanel === 'general' && (
               <div style={{ display:'flex', flexDirection:'column', gap:'20px' }}>
-                <p style={{ fontSize:'18px', fontWeight:700, color:'#11162A', margin:0 }}>General</p>
+                <p style={{ fontSize:'18px', fontWeight:700, color:'var(--admin-text)', margin:0 }}>General</p>
 
                 <div>
                   <label style={labelSx}>Test title</label>
@@ -365,19 +358,19 @@ export default function TestSettings() {
                     {showCategoryDrop && <div className="fixed inset-0 z-10" onClick={() => setShowCategoryDrop(false)} />}
                     <div style={{ position:'relative', zIndex: 20 }}>
                       <button type="button" onClick={() => setShowCategoryDrop(v => !v)}
-                        style={{ ...inputSx, display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer', borderColor: showCategoryDrop ? '#FDE68A' : '#E5E7EB' }}>
+                        style={{ ...inputSx, display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer', borderColor: showCategoryDrop ? 'var(--admin-accent)' : 'var(--admin-border)' }}>
                         <span>{form.category}</span>
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                          <path d="M2 4L6 8L10 4" stroke="#98A2B5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M2 4L6 8L10 4" stroke="var(--admin-text-subtle)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       </button>
                       {showCategoryDrop && (
-                        <div style={{ position:'absolute', top:'calc(100% + 4px)', left:0, right:0, backgroundColor:'white', borderRadius:'10px', border:'1px solid #FDE68A', boxShadow:'0 4px 16px rgba(0,0,0,0.10)', overflow:'hidden', zIndex:30, maxHeight:'220px', overflowY:'auto' }}>
+                        <div style={{ position:'absolute', top:'calc(100% + 4px)', left:0, right:0, backgroundColor:'white', borderRadius:'10px', border:'1px solid var(--admin-accent)', boxShadow:'0 4px 16px rgba(0,0,0,0.10)', overflow:'hidden', zIndex:30, maxHeight:'220px', overflowY:'auto' }}>
                           {CATEGORIES.map(c => (
                             <button key={c} type="button"
                               onClick={() => { patch({ category: c }); setShowCategoryDrop(false); }}
-                              style={{ width:'100%', textAlign:'left', padding:'9px 14px', fontSize:'14px', backgroundColor: c === form.category ? '#FEF3C7' : 'white', color:'#11162A', border:'none', cursor:'pointer' }}
-                              onMouseEnter={e => { if (c !== form.category) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#FFFBEB'; }}
+                              style={{ width:'100%', textAlign:'left', padding:'9px 14px', fontSize:'14px', backgroundColor: c === form.category ? 'var(--admin-accent-soft)' : 'white', color:'var(--admin-text)', border:'none', cursor:'pointer' }}
+                              onMouseEnter={e => { if (c !== form.category) (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--admin-accent-soft)'; }}
                               onMouseLeave={e => { if (c !== form.category) (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'white'; }}>
                               {c}
                             </button>
@@ -392,19 +385,19 @@ export default function TestSettings() {
                     {showLanguageDrop && <div className="fixed inset-0 z-10" onClick={() => setShowLanguageDrop(false)} />}
                     <div style={{ position:'relative', zIndex: 20 }}>
                       <button type="button" onClick={() => setShowLanguageDrop(v => !v)}
-                        style={{ ...inputSx, display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer', borderColor: showLanguageDrop ? '#FDE68A' : '#E5E7EB' }}>
+                        style={{ ...inputSx, display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer', borderColor: showLanguageDrop ? 'var(--admin-accent)' : 'var(--admin-border)' }}>
                         <span>{form.language}</span>
                         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                          <path d="M2 4L6 8L10 4" stroke="#98A2B5" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M2 4L6 8L10 4" stroke="var(--admin-text-subtle)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       </button>
                       {showLanguageDrop && (
-                        <div style={{ position:'absolute', top:'calc(100% + 4px)', left:0, right:0, backgroundColor:'white', borderRadius:'10px', border:'1px solid #FDE68A', boxShadow:'0 4px 16px rgba(0,0,0,0.10)', overflow:'hidden', zIndex:30 }}>
+                        <div style={{ position:'absolute', top:'calc(100% + 4px)', left:0, right:0, backgroundColor:'white', borderRadius:'10px', border:'1px solid var(--admin-accent)', boxShadow:'0 4px 16px rgba(0,0,0,0.10)', overflow:'hidden', zIndex:30 }}>
                           {LANGUAGES.map(l => (
                             <button key={l} type="button"
                               onClick={() => { patch({ language: l }); setShowLanguageDrop(false); }}
-                              style={{ width:'100%', textAlign:'left', padding:'9px 14px', fontSize:'14px', backgroundColor: l === form.language ? '#FEF3C7' : 'white', color:'#11162A', border:'none', cursor:'pointer' }}
-                              onMouseEnter={e => { if (l !== form.language) (e.currentTarget as HTMLButtonElement).style.backgroundColor = '#FFFBEB'; }}
+                              style={{ width:'100%', textAlign:'left', padding:'9px 14px', fontSize:'14px', backgroundColor: l === form.language ? 'var(--admin-accent-soft)' : 'white', color:'var(--admin-text)', border:'none', cursor:'pointer' }}
+                              onMouseEnter={e => { if (l !== form.language) (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--admin-accent-soft)'; }}
                               onMouseLeave={e => { if (l !== form.language) (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'white'; }}>
                               {l}
                             </button>
@@ -417,10 +410,10 @@ export default function TestSettings() {
               </div>
             )}
 
-            {/* ─── ACCESS & SCHEDULING ─── */}
+            {/* --- ACCESS & SCHEDULING --- */}
             {activePanel === 'access' && (
               <div>
-                <p style={{ fontSize:'18px', fontWeight:700, color:'#11162A', margin:'0 0 24px' }}>
+                <p style={{ fontSize:'18px', fontWeight:700, color:'var(--admin-text)', margin:'0 0 24px' }}>
                   Access &amp; scheduling
                 </p>
 
@@ -443,10 +436,10 @@ export default function TestSettings() {
               </div>
             )}
 
-            {/* ─── TEST BEHAVIOR ─── */}
+            {/* --- TEST BEHAVIOR --- */}
             {activePanel === 'behavior' && (
               <div>
-                <p style={{ fontSize:'18px', fontWeight:700, color:'#11162A', margin:'0 0 4px' }}>Test behavior</p>
+                <p style={{ fontSize:'18px', fontWeight:700, color:'var(--admin-text)', margin:'0 0 4px' }}>Test behavior</p>
 
                 <ToggleRow label="Randomize question order"  desc="Shuffle per candidate"               on={form.shuffleQuestions}       onChange={() => patch({ shuffleQuestions: !form.shuffleQuestions })} />
                 <ToggleRow label="Randomize answer options"  desc="Shuffle MCQ choices"                 on={form.shuffleOptions}         onChange={() => patch({ shuffleOptions: !form.shuffleOptions })} />
@@ -457,10 +450,10 @@ export default function TestSettings() {
               </div>
             )}
 
-            {/* ─── RESULTS & GRADING ─── */}
+            {/* --- RESULTS & GRADING --- */}
             {activePanel === 'grading' && (
               <div>
-                <p style={{ fontSize:'18px', fontWeight:700, color:'#11162A', margin:'0 0 24px' }}>Results &amp; grading</p>
+                <p style={{ fontSize:'18px', fontWeight:700, color:'var(--admin-text)', margin:'0 0 24px' }}>Results &amp; grading</p>
 
                 {/* Passing score + Grading mode */}
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px', marginBottom:'8px' }}>
@@ -487,24 +480,24 @@ export default function TestSettings() {
               </div>
             )}
 
-            {/* ─── EMAIL ─── */}
+            {/* --- EMAIL --- */}
             {activePanel === 'email' && (
               <div>
-                <p style={{ fontSize:'18px', fontWeight:700, color:'#11162A', margin:'0 0 4px' }}>Email Insights</p>
-                <p style={{ fontSize:'13px', color:'#6A7387', margin:'0 0 20px' }}>
+                <p style={{ fontSize:'18px', fontWeight:700, color:'var(--admin-text)', margin:'0 0 4px' }}>Email Insights</p>
+                <p style={{ fontSize:'13px', color:'var(--admin-text-muted)', margin:'0 0 20px' }}>
                   Customize the emails sent to candidates during the assessment lifecycle.
                 </p>
 
                 {/* Tabs */}
-                <div style={{ display:'flex', borderBottom:'2px solid #F3F4F6', marginBottom:'24px' }}>
+                <div style={{ display:'flex', borderBottom:'2px solid var(--admin-border)', marginBottom:'24px' }}>
                   {(['invite','confirm'] as EmailTab[]).map(tab => (
                     <button key={tab} type="button"
                       onClick={() => setEmailTab(tab)}
                       style={{
                         padding:'8px 18px', border:'none', background:'none', cursor:'pointer',
                         fontSize:'13px', fontWeight: emailTab === tab ? 600 : 400,
-                        color: emailTab === tab ? '#F59E0B' : '#6A7387',
-                        borderBottom: emailTab === tab ? '2px solid #F59E0B' : '2px solid transparent',
+                        color: emailTab === tab ? 'var(--admin-accent)' : 'var(--admin-text-muted)',
+                        borderBottom: emailTab === tab ? '2px solid var(--admin-accent)' : '2px solid transparent',
                         marginBottom:'-2px', transition:'color 0.15s',
                       }}>
                       {tab === 'invite' ? 'Invite Email' : 'Confirmation Email'}
@@ -520,45 +513,38 @@ export default function TestSettings() {
                   return (
                     <div>
                       {/* Description */}
-                      <p style={{ fontSize:'12px', color:'#98A2B5', margin:'0 0 16px' }}>
+                      <p style={{ fontSize:'12px', color:'var(--admin-text-subtle)', margin:'0 0 16px' }}>
                         {isInvite
                           ? 'This email is sent to candidates when you invite them to take the test.'
                           : 'This email is sent to candidates when they complete the test.'}
                       </p>
 
                       {emailEditing === editKey ? (
-                        /* ── Edit mode ── */
+                        /* -- Edit mode -- */
                         <div>
                           <div style={{ marginBottom:'14px' }}>
-                            <label style={{ display:'block', fontSize:'12px', fontWeight:600, color:'#434B5E', marginBottom:'6px' }}>Subject</label>
+                            <label style={{ display:'block', fontSize:'12px', fontWeight:600, color:'var(--admin-text-muted)', marginBottom:'6px' }}>Subject</label>
                             <input type="text"
                               value={emailDraft.subject}
                               onChange={e => setEmailDraft(d => ({ ...d, subject: e.target.value }))}
-                              style={{
-                                width:'100%', padding:'9px 12px', borderRadius:'8px',
-                                border:'1.5px solid #FEF3C7', backgroundColor:'#FAFFFE',
-                                fontSize:'13px', color:'#11162A', outline:'none', boxSizing:'border-box',
-                              }}
+                              className="input"
+                              style={{ fontSize:'13px' }}
                             />
                           </div>
 
                           <div style={{ marginBottom:'14px' }}>
-                            <label style={{ display:'block', fontSize:'12px', fontWeight:600, color:'#434B5E', marginBottom:'6px' }}>Body</label>
+                            <label style={{ display:'block', fontSize:'12px', fontWeight:600, color:'var(--admin-text-muted)', marginBottom:'6px' }}>Body</label>
                             <textarea
                               value={emailDraft.body}
                               onChange={e => setEmailDraft(d => ({ ...d, body: e.target.value }))}
                               rows={12}
-                              style={{
-                                width:'100%', padding:'10px 12px', borderRadius:'8px',
-                                border:'1.5px solid #FEF3C7', backgroundColor:'#FAFFFE',
-                                fontSize:'13px', color:'#11162A', outline:'none', boxSizing:'border-box',
-                                fontFamily:'inherit', lineHeight:'1.7', maxHeight:'480px',
-                              }}
+                              className="input"
+                              style={{ fontSize:'13px', fontFamily:'inherit', lineHeight:'1.7', maxHeight:'480px' }}
                             />
                           </div>
 
                           <div style={{ marginBottom:'16px' }}>
-                            <p style={{ fontSize:'11px', fontWeight:600, color:'#98A2B5', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'0.05em' }}>
+                            <p style={{ fontSize:'11px', fontWeight:600, color:'var(--admin-text-subtle)', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'0.05em' }}>
                               Click a variable to insert it
                             </p>
                             <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
@@ -566,8 +552,8 @@ export default function TestSettings() {
                                 <button key={v.key} type="button" title={v.desc}
                                   onClick={() => setEmailDraft(d => ({ ...d, body: d.body + v.key }))}
                                   style={{
-                                    fontSize:'11px', fontWeight:600, color:'#D97706',
-                                    backgroundColor:'#FEF3C7', padding:'2px 8px', borderRadius:'20px',
+                                    fontSize:'11px', fontWeight:600, color:'var(--admin-accent-hover)',
+                                    backgroundColor:'var(--admin-accent-disabled)', padding:'2px 8px', borderRadius:'20px',
                                     border:'none', cursor:'pointer',
                                   }}>{v.key}</button>
                               ))}
@@ -578,47 +564,37 @@ export default function TestSettings() {
                             <button type="button"
                               onClick={() => setEmailEditing(null)}
                               disabled={emailSaving}
-                              style={{
-                                padding:'8px 18px', borderRadius:'10px',
-                                border:'1.5px solid #E5E7EB', backgroundColor:'white',
-                                fontSize:'13px', fontWeight:500, color:'#434B5E',
-                                cursor: emailSaving ? 'not-allowed' : 'pointer',
-                              }}>Cancel</button>
+                              className="btn btn-secondary">Cancel</button>
                             <button type="button"
                               onClick={handleEmailSave}
                               disabled={emailSaving}
-                              style={{
-                                padding:'8px 20px', borderRadius:'10px',
-                                border:'none', backgroundColor: emailSaving ? '#FDE68A' : '#F59E0B',
-                                fontSize:'13px', fontWeight:600, color:'white',
-                                cursor: emailSaving ? 'not-allowed' : 'pointer',
-                              }}>
+                              className="btn btn-primary">
                               {emailSaving ? 'Saving…' : 'Save Changes'}
                             </button>
                           </div>
                         </div>
                       ) : (
-                        /* ── Preview mode ── */
+                        /* -- Preview mode -- */
                         <div>
-                          <div style={{ marginBottom:'16px', backgroundColor:'#F9FAFB', borderRadius:'10px', padding:'12px 16px', border:'1px solid #E5E7EB' }}>
-                            <p style={{ fontSize:'11px', fontWeight:600, color:'#98A2B5', margin:'0 0 4px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Subject</p>
-                            <p style={{ fontSize:'13px', color:'#434B5E', margin:0 }}>{subject}</p>
+                          <div style={{ marginBottom:'16px', backgroundColor:'#F9FAFB', borderRadius:'10px', padding:'12px 16px', border:'1px solid var(--admin-border)' }}>
+                            <p style={{ fontSize:'11px', fontWeight:600, color:'var(--admin-text-subtle)', margin:'0 0 4px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Subject</p>
+                            <p style={{ fontSize:'13px', color:'var(--admin-text-muted)', margin:0 }}>{subject}</p>
                           </div>
 
-                          <div style={{ backgroundColor:'#F9FAFB', borderRadius:'10px', padding:'16px', border:'1px solid #E5E7EB', marginBottom:'16px' }}>
-                            <p style={{ fontSize:'11px', fontWeight:600, color:'#98A2B5', margin:'0 0 10px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Body</p>
-                            <pre style={{ fontSize:'13px', color:'#434B5E', margin:0, whiteSpace:'pre-wrap', fontFamily:'inherit', lineHeight:'1.7' }}>
+                          <div style={{ backgroundColor:'#F9FAFB', borderRadius:'10px', padding:'16px', border:'1px solid var(--admin-border)', marginBottom:'16px' }}>
+                            <p style={{ fontSize:'11px', fontWeight:600, color:'var(--admin-text-subtle)', margin:'0 0 10px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Body</p>
+                            <pre style={{ fontSize:'13px', color:'var(--admin-text-muted)', margin:0, whiteSpace:'pre-wrap', fontFamily:'inherit', lineHeight:'1.7' }}>
                               {body}
                             </pre>
                           </div>
 
                           <div style={{ marginBottom:'16px' }}>
-                            <p style={{ fontSize:'11px', fontWeight:600, color:'#98A2B5', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Available variables</p>
+                            <p style={{ fontSize:'11px', fontWeight:600, color:'var(--admin-text-subtle)', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Available variables</p>
                             <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
                               {AVAILABLE_VARS.filter(v => isInvite || v.key !== '{{test_link}}').map(v => (
                                 <span key={v.key} title={v.desc} style={{
-                                  fontSize:'11px', fontWeight:600, color:'#D97706',
-                                  backgroundColor:'#FEF3C7', padding:'2px 8px', borderRadius:'20px',
+                                  fontSize:'11px', fontWeight:600, color:'var(--admin-accent-hover)',
+                                  backgroundColor:'var(--admin-accent-disabled)', padding:'2px 8px', borderRadius:'20px',
                                   cursor:'default',
                                 }}>{v.key}</span>
                               ))}
@@ -628,12 +604,7 @@ export default function TestSettings() {
                           <div style={{ display:'flex', justifyContent:'flex-end', gap:'10px' }}>
                             <button type="button"
                               onClick={() => openEmailEdit(editKey)}
-                              style={{
-                                display:'flex', alignItems:'center', gap:'6px',
-                                padding:'8px 18px', borderRadius:'10px',
-                                border:'1.5px solid #E5E7EB', backgroundColor:'white',
-                                fontSize:'13px', fontWeight:500, color:'#434B5E', cursor:'pointer',
-                              }}>
+                              className="btn btn-secondary">
                               <Pencil size={13} />
                               Edit {isInvite ? 'Invite' : 'Confirmation'} Email
                             </button>
@@ -646,27 +617,27 @@ export default function TestSettings() {
 
                 {!emailTemplates && (
                   <div style={{ display:'flex', justifyContent:'center', padding:'40px 0' }}>
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2" style={{ borderColor:'#F59E0B' }} />
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2" style={{ borderColor:'var(--admin-accent)' }} />
                   </div>
                 )}
               </div>
             )}
 
-            {/* ─── DANGER ZONE ─── */}
+            {/* --- DANGER ZONE --- */}
             {activePanel === 'danger' && (
               <div>
-                <p style={{ fontSize:'18px', fontWeight:700, color:'#11162A', margin:'0 0 4px' }}>Danger zone</p>
-                <p style={{ fontSize:'13px', color:'#6A7387', margin:'0 0 8px' }}>These actions are irreversible.</p>
+                <p style={{ fontSize:'18px', fontWeight:700, color:'var(--admin-text)', margin:'0 0 4px' }}>Danger zone</p>
+                <p style={{ fontSize:'13px', color:'var(--admin-text-muted)', margin:'0 0 8px' }}>These actions are irreversible.</p>
 
                 <DangerRow
                   label="Archive test"   desc="Hide from candidates, keep data"
                   btnLabel="Archive"
-                  onClick={() => toast('Archive coming soon', { icon: '📦' })}
+                  onClick={() => toast('Archive coming soon', { icon: '??' })}
                 />
                 <DangerRow
                   label="Duplicate test" desc="Create an editable copy"
                   btnLabel="Duplicate"
-                  onClick={() => toast('Duplicate coming soon', { icon: '📋' })}
+                  onClick={() => toast('Duplicate coming soon', { icon: '??' })}
                 />
                 <DangerRow
                   label="Delete test"    desc="Permanently remove test & attempts"
@@ -681,35 +652,24 @@ export default function TestSettings() {
         </div>
       </div>
 
-      {/* ── BOTTOM BAR ── */}
+      {/* -- BOTTOM BAR -- */}
       <div style={{
         display:'flex', alignItems:'center', justifyContent:'flex-end', gap:'12px',
         padding:'16px 0 4px',
-        borderTop:'1px solid #F3F4F6',
+        borderTop:'1px solid var(--admin-border)',
         marginTop:'16px',
       }}>
-        <button type="button" onClick={handleDiscard}
-          style={{
-            padding:'9px 22px', borderRadius:'10px',
-            border:'1.5px solid #E5E7EB', backgroundColor:'white',
-            fontSize:'14px', fontWeight:500, color:'#434B5E', cursor:'pointer',
-          }}>
+        <button type="button" onClick={handleDiscard} className="btn btn-secondary">
           Discard
         </button>
         <button type="button" onClick={handleSave} disabled={saving}
-          style={{
-            display:'flex', alignItems:'center', gap:'6px',
-            padding:'9px 22px', borderRadius:'10px',
-            border:'none', backgroundColor: saving ? '#FDE68A' : '#F59E0B',
-            fontSize:'14px', fontWeight:600, color:'white',
-            cursor: saving ? 'not-allowed' : 'pointer',
-          }}>
+          className="btn btn-primary">
           {!saving && <Check size={14} color="white" />}
           {saving ? 'Saving…' : 'Save changes'}
         </button>
       </div>
 
-      {/* ── DELETE CONFIRM MODAL ── */}
+      {/* -- DELETE CONFIRM MODAL -- */}
       {showDeleteConfirm && (
         <div style={{
           position:'fixed', inset:0, zIndex:50,
@@ -727,28 +687,21 @@ export default function TestSettings() {
               }}>
                 <Trash2 size={18} color="#DC2626" />
               </div>
-              <p style={{ fontSize:'16px', fontWeight:700, color:'#11162A', margin:0 }}>Delete test?</p>
+              <p style={{ fontSize:'16px', fontWeight:700, color:'var(--admin-text)', margin:0 }}>Delete test?</p>
             </div>
-            <p style={{ fontSize:'14px', color:'#6A7387', margin:'0 0 24px', lineHeight:'1.6' }}>
+            <p style={{ fontSize:'14px', color:'var(--admin-text-muted)', margin:'0 0 24px', lineHeight:'1.6' }}>
               This will permanently delete the test and all candidate attempts, results, and invitations.
-              This action <strong style={{ color:'#434B5E' }}>cannot be undone</strong>.
+              This action <strong style={{ color:'var(--admin-text-muted)' }}>cannot be undone</strong>.
             </p>
             <div style={{ display:'flex', gap:'10px' }}>
               <button type="button" onClick={() => setShowDeleteConfirm(false)}
-                style={{
-                  flex:1, padding:'10px', borderRadius:'10px',
-                  border:'1.5px solid #E5E7EB', backgroundColor:'white',
-                  fontSize:'14px', fontWeight:500, color:'#434B5E', cursor:'pointer',
-                }}>
+                className="btn btn-secondary"
+                style={{ flex:1 }}>
                 Cancel
               </button>
               <button type="button" onClick={handleDeleteTest} disabled={deleting}
-                style={{
-                  flex:1, padding:'10px', borderRadius:'10px',
-                  border:'none', backgroundColor: deleting ? '#FCA5A5' : '#DC2626',
-                  fontSize:'14px', fontWeight:600, color:'white',
-                  cursor: deleting ? 'not-allowed' : 'pointer',
-                }}>
+                className="btn btn-danger"
+                style={{ flex:1 }}>
                 {deleting ? 'Deleting…' : 'Yes, delete'}
               </button>
             </div>

@@ -4,7 +4,7 @@ import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { CreditCard, Camera, CheckCircle2, XCircle, Trash2 } from 'lucide-react';
 
-/* ── Types ── */
+/* -- Types -- */
 interface VerificationStats {
   verified: number;
   pending: number;
@@ -31,7 +31,7 @@ interface VerificationDetail extends VerificationCandidate {
   };
 }
 
-/* ── Avatar helpers ── */
+/* -- Avatar helpers -- */
 const AVATAR_BG: string[] = [
   '#374151','#1E40AF','#065F46','#92400E','#7C3AED','#B91C1C','#0E7490','#4D7C0F',
 ];
@@ -46,19 +46,19 @@ function initials(name: string): string {
   return (parts[0]?.[0] ?? name.replace(/[^a-zA-Z]/g,'')[0] ?? '?').toUpperCase();
 }
 
-/* ── Status config ── */
+/* -- Status config -- */
 type StatusKey = 'verified' | 'pending' | 'mismatch';
 const STATUS_CFG: Record<StatusKey, { label: string; dot: string; color: string }> = {
   verified: { label: 'Verified',       dot: '#10B981', color: '#059669' },
-  pending:  { label: 'Pending review', dot: '#F59E0B', color: '#D97706' },
+  pending:  { label: 'Pending review', dot: 'var(--admin-accent)', color: 'var(--admin-accent-hover)' },
   mismatch: { label: 'Mismatch',       dot: '#EF4444', color: '#DC2626' },
 };
 
-/* ── Image placeholder ── */
+/* -- Image placeholder -- */
 function ImgPlaceholder({ icon }: { icon: 'document' | 'camera' }) {
   return (
     <div style={{
-      flex: 1, backgroundColor: '#F3F4F6', borderRadius: '10px', minHeight: '140px',
+      flex: 1, backgroundColor: 'var(--admin-border)', borderRadius: '10px', minHeight: '140px',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px',
     }}>
       {icon === 'document' ? (
@@ -70,11 +70,11 @@ function ImgPlaceholder({ icon }: { icon: 'document' | 'camera' }) {
   );
 }
 
-/* ── Deleted image notice ── */
+/* -- Deleted image notice -- */
 function DeletedImg() {
   return (
     <div style={{
-      backgroundColor: '#F9FAFB', borderRadius: '10px', minHeight: '140px', border: '1.5px dashed #E5E7EB',
+      backgroundColor: '#F9FAFB', borderRadius: '10px', minHeight: '140px', border: '1.5px dashed var(--admin-border)',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '12px',
     }}>
       <Trash2 width={22} height={22} style={{ color: '#D1D5DB' }} />
@@ -85,7 +85,7 @@ function DeletedImg() {
   );
 }
 
-/* ── Safe image with fallback to DeletedImg on 404 ── */
+/* -- Safe image with fallback to DeletedImg on 404 -- */
 function VerifImg({ src, alt, icon }: { src?: string; alt: string; icon: 'document' | 'camera' }) {
   const [failed, setFailed] = useState(false);
   if (!src)   return <ImgPlaceholder icon={icon} />;
@@ -100,7 +100,7 @@ function VerifImg({ src, alt, icon }: { src?: string; alt: string; icon: 'docume
   );
 }
 
-/* ── Check row ── */
+/* -- Check row -- */
 function CheckRow({ label, pass }: { label: string; pass: boolean }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -114,7 +114,7 @@ function CheckRow({ label, pass }: { label: string; pass: boolean }) {
   );
 }
 
-/* ── Reject reason modal ── */
+/* -- Reject reason modal -- */
 function RejectModal({ onConfirm, onCancel }: { onConfirm: (reason: string) => void; onCancel: () => void }) {
   const [reason, setReason] = useState('');
   return (
@@ -131,13 +131,13 @@ function RejectModal({ onConfirm, onCancel }: { onConfirm: (reason: string) => v
           placeholder="Enter rejection reason..."
           rows={3}
           style={{
-            width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1.5px solid #E5E7EB',
+            width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1.5px solid var(--admin-border)',
             fontSize: '13px', color: '#374151', outline: 'none', boxSizing: 'border-box', backgroundColor: 'white',
           }}
         />
         <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
           <button onClick={onCancel}
-            style={{ flex: 1, padding: '9px', borderRadius: '8px', border: '1.5px solid #E5E7EB', backgroundColor: 'white', fontSize: '13px', fontWeight: 500, color: '#374151', cursor: 'pointer' }}>
+            style={{ flex: 1, padding: '9px', borderRadius: '8px', border: '1.5px solid var(--admin-border)', backgroundColor: 'white', fontSize: '13px', fontWeight: 500, color: '#374151', cursor: 'pointer' }}>
             Cancel
           </button>
           <button onClick={() => onConfirm(reason || 'Rejected by admin')} disabled={!reason.trim()}
@@ -150,7 +150,7 @@ function RejectModal({ onConfirm, onCancel }: { onConfirm: (reason: string) => v
   );
 }
 
-/* ── Confirm modal ── */
+/* -- Confirm modal -- */
 function ConfirmModal({ title, body, confirmLabel, confirmColor, onConfirm, onCancel }: {
   title: string; body: string; confirmLabel: string; confirmColor: string;
   onConfirm: () => void; onCancel: () => void;
@@ -162,7 +162,7 @@ function ConfirmModal({ title, body, confirmLabel, confirmColor, onConfirm, onCa
         <p style={{ fontSize: '13px', color: '#6B7280', margin: '0 0 20px' }}>{body}</p>
         <div style={{ display: 'flex', gap: '10px' }}>
           <button onClick={onCancel}
-            style={{ flex: 1, padding: '9px', borderRadius: '8px', border: '1.5px solid #E5E7EB', backgroundColor: 'white', fontSize: '13px', fontWeight: 500, color: '#374151', cursor: 'pointer' }}>
+            style={{ flex: 1, padding: '9px', borderRadius: '8px', border: '1.5px solid var(--admin-border)', backgroundColor: 'white', fontSize: '13px', fontWeight: 500, color: '#374151', cursor: 'pointer' }}>
             Cancel
           </button>
           <button onClick={onConfirm}
@@ -328,30 +328,25 @@ export default function IDVerificationData() {
 
   const conf      = selected?.confidence ?? 0;
   const hasConf   = selected?.confidence !== undefined && selected.confidence !== null;
-  const confColor = conf >= 80 ? '#10B981' : conf >= 60 ? '#F59E0B' : '#EF4444';
+  const confColor = conf >= 80 ? '#10B981' : conf >= 60 ? 'var(--admin-accent)' : '#EF4444';
   const selStatus = selected ? STATUS_CFG[selected.status] : null;
 
   return (
     <div style={{ backgroundColor: '#F9FAFB', minHeight: '100%' }}>
 
-      {/* ── HEADER ── */}
-      <div style={{ marginBottom: '20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#9CA3AF', marginBottom: '6px' }}>
-          <span style={{ cursor: 'pointer', color: '#6B7280' }} onClick={() => navigate('/admin/dashboard')}>Workspace</span>
-          <span>›</span>
-          <span>ID Verification</span>
-        </div>
-        <h1 style={{ fontSize: '26px', fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>ID Verification</h1>
-        <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>Photo ID checks matched against webcam capture before test start.</p>
+      {/* -- HEADER -- */}
+      <div style={{ marginBottom: '24px' }}>
+        <h1 className="text-2xl font-bold" style={{ color: 'var(--admin-text)', margin: 0 }}>ID Verification</h1>
+        <p className="text-sm mt-0.5" style={{ color: 'var(--admin-text-muted)' }}>Photo ID checks matched against webcam capture before test start.</p>
       </div>
 
-      {/* ── KPI CARDS ── */}
+      {/* -- KPI CARDS -- */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '22px' }}>
         {[
-          { value: stats?.verified      ?? '—', label: 'Verified',        bar: '#F59E0B' },
-          { value: stats?.pending       ?? '—', label: 'Pending',         bar: '#F59E0B' },
-          { value: stats?.mismatch      ?? '—', label: 'Mismatch',        bar: '#EF4444' },
-          { value: stats ? `${Math.round(stats.avgConfidence)}%` : '—', label: 'Avg confidence', bar: '#F59E0B' },
+          { value: stats?.verified      ?? '-', label: 'Verified',        bar: 'var(--admin-accent)' },
+          { value: stats?.pending       ?? '-', label: 'Pending',         bar: 'var(--admin-accent)' },
+          { value: stats?.mismatch      ?? '-', label: 'Mismatch',        bar: '#EF4444' },
+          { value: stats ? `${Math.round(stats.avgConfidence)}%` : '-', label: 'Avg confidence', bar: 'var(--admin-accent)' },
         ].map(kpi => (
           <div key={kpi.label} style={{
             backgroundColor: 'white', borderRadius: '14px', padding: '20px 22px',
@@ -366,15 +361,15 @@ export default function IDVerificationData() {
         ))}
       </div>
 
-      {/* ── 2-COLUMN LAYOUT ── */}
+      {/* -- 2-COLUMN LAYOUT -- */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 400px', gap: '16px', alignItems: 'start' }}>
 
-        {/* ── LEFT: Verification queue ── */}
+        {/* -- LEFT: Verification queue -- */}
         <div style={{ backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', padding: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
             <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#111827', margin: 0 }}>Verification queue</h2>
             {/* Filter tabs */}
-            <div style={{ display: 'flex', gap: '4px', backgroundColor: '#F3F4F6', borderRadius: '8px', padding: '3px' }}>
+            <div style={{ display: 'flex', gap: '4px', backgroundColor: 'var(--admin-border)', borderRadius: '8px', padding: '3px' }}>
               {(['pending', 'all', 'verified', 'rejected'] as const).map(f => (
                 <button key={f} onClick={() => setQueueFilter(f)}
                   style={{
@@ -393,7 +388,7 @@ export default function IDVerificationData() {
 
           {loadingQueue ? (
             <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: '#F59E0B' }} />
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: 'var(--admin-accent)' }} />
             </div>
           ) : queue.length === 0 ? (
             <p style={{ color: '#9CA3AF', fontSize: '14px', textAlign: 'center', padding: '40px 0' }}>No verifications found</p>
@@ -407,10 +402,10 @@ export default function IDVerificationData() {
                   <button key={c.candidateId} onClick={() => loadDetail(c.candidateId)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 16px', borderRadius: '12px',
-                      border: 'none', backgroundColor: isActive ? '#FFFBEB' : 'white',
+                      border: 'none', backgroundColor: isActive ? 'var(--admin-accent-soft)' : 'white',
                       cursor: 'pointer', textAlign: 'left', width: '100%', transition: 'background-color 0.12s',
                     }}
-                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = 'rgba(245,158,11,0.08)'; }}
+                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = 'rgba(31, 53, 86, 0.08)'; }}
                     onMouseLeave={e => { if (!isActive) e.currentTarget.style.backgroundColor = 'white'; }}>
 
                     <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -447,11 +442,11 @@ export default function IDVerificationData() {
           )}
         </div>
 
-        {/* ── RIGHT: Detail panel ── */}
+        {/* -- RIGHT: Detail panel -- */}
         <div style={{ backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', padding: '24px' }}>
           {loadingDetail ? (
             <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: '#F59E0B' }} />
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: 'var(--admin-accent)' }} />
             </div>
           ) : !selected ? (
             <p style={{ color: '#9CA3AF', fontSize: '14px', textAlign: 'center', padding: '80px 0' }}>Select a candidate</p>
@@ -470,7 +465,7 @@ export default function IDVerificationData() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   {selStatus && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 10px', borderRadius: '20px', backgroundColor: selected.status === 'verified' ? '#ECFDF5' : selected.status === 'mismatch' ? '#FEF2F2' : '#FFFBEB' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 10px', borderRadius: '20px', backgroundColor: selected.status === 'verified' ? '#ECFDF5' : selected.status === 'mismatch' ? '#FEF2F2' : 'var(--admin-accent-soft)' }}>
                       <div style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: selStatus.dot }} />
                       <span style={{ fontSize: '12px', fontWeight: 600, color: selStatus.color }}>{selStatus.label}</span>
                     </div>
@@ -507,7 +502,7 @@ export default function IDVerificationData() {
                       }}
                     >
                       <Trash2 width={11} height={11} />
-                      {deletingImgs ? 'Deleting…' : 'Delete images'}
+                      {deletingImgs ? 'Deleting...' : 'Delete images'}
                     </button>
                   )}
                 </div>
@@ -528,10 +523,10 @@ export default function IDVerificationData() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>Face match confidence</span>
                   <span style={{ fontSize: '16px', fontWeight: 700, color: hasConf ? confColor : '#9CA3AF' }}>
-                    {hasConf ? `${Math.round(conf)}%` : '—'}
+                    {hasConf ? `${Math.round(conf)}%` : '-'}
                   </span>
                 </div>
-                <div style={{ height: '6px', borderRadius: '3px', backgroundColor: '#F3F4F6', overflow: 'hidden' }}>
+                <div style={{ height: '6px', borderRadius: '3px', backgroundColor: 'var(--admin-border)', overflow: 'hidden' }}>
                   <div style={{ height: '100%', width: hasConf ? `${Math.min(100, conf)}%` : '0%', backgroundColor: confColor, borderRadius: '3px', transition: 'width 0.4s ease' }} />
                 </div>
               </div>
@@ -558,21 +553,21 @@ export default function IDVerificationData() {
                     opacity: rejecting ? 0.7 : 1,
                   }}>
                   <XCircle width={16} height={16} />
-                  {rejecting ? 'Rejecting…' : 'Reject'}
+                  {rejecting ? 'Rejecting...' : 'Reject'}
                 </button>
                 <button
                   onClick={handleApprove}
                   disabled={approving || selected.status === 'verified'}
                   style={{
                     padding: '12px', borderRadius: '10px', border: 'none',
-                    backgroundColor: selected.status === 'verified' ? '#FDE68A' : '#F59E0B',
+                    backgroundColor: selected.status === 'verified' ? 'var(--admin-accent-disabled)' : 'var(--admin-accent)',
                     color: 'white', fontSize: '14px', fontWeight: 600,
                     cursor: selected.status === 'verified' ? 'not-allowed' : 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                     opacity: approving ? 0.7 : 1,
                   }}>
                   <CheckCircle2 width={14} height={14} />
-                  {approving ? 'Approving…' : 'Approve & verify'}
+                  {approving ? 'Approving...' : 'Approve & verify'}
                 </button>
               </div>
             </>
@@ -580,7 +575,7 @@ export default function IDVerificationData() {
         </div>
       </div>
 
-      {/* ── Modals ── */}
+      {/* -- Modals -- */}
       {showReject && (
         <RejectModal onConfirm={handleReject} onCancel={() => setShowReject(false)} />
       )}

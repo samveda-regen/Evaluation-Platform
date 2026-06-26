@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Target, Shuffle, BarChart2, CheckCircle2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
+import { BriefcaseBusiness, Check, ClipboardCheck, ListChecks, Settings2 } from 'lucide-react';
 import { adminApi } from '../../services/api';
 import DateTimePicker from '../../components/DateTimePicker';
 import CustomSelect from '../../components/CustomSelect';
 
-/* ── Types ── */
+/* -- Types -- */
 interface JobProfile {
   title: string;
   experience: string;
@@ -35,7 +35,7 @@ interface TestSettings {
   maxViolations: number;
 }
 
-/* ── Recognized skill list for autocomplete ── */
+/* -- Recognized skill list for autocomplete -- */
 const SKILL_SUGGESTIONS = [
   'JavaScript','TypeScript','Python','Java','C++','C#','Go','Rust','Ruby','PHP','Swift','Kotlin','Scala',
   'React','Vue.js','Angular','Next.js','Nuxt.js','Svelte',
@@ -51,7 +51,21 @@ const SKILL_SUGGESTIONS = [
   'Networking','Cybersecurity','DevOps','Cloud Computing','Agile','Scrum','Git',
 ];
 
-/* ── Frontend skill extraction (mirrors backend analyzeJobLocal) ── */
+const EXPERIENCE_OPTIONS = [
+  { value: '0-2 years', label: '0-2 years (Entry Level)' },
+  { value: '2-5 years', label: '2-5 years (Mid-Level)' },
+  { value: '5+ years',  label: '5+ years (Senior)' },
+];
+
+function normalizeExperienceLevel(value?: string): string {
+  if (!value) return '0-2 years';
+  const normalized = value.trim().toLowerCase();
+  if (normalized.includes('5+') || normalized.includes('senior') || normalized.includes('lead')) return '5+ years';
+  if (normalized.includes('3-5') || normalized.includes('2-5') || normalized.includes('mid')) return '2-5 years';
+  return '0-2 years';
+}
+
+/* -- Frontend skill extraction (mirrors backend analyzeJobLocal) -- */
 function extractSkillsLocally(title: string, description?: string): string[] {
   const text = `${title} ${description || ''}`;
   const patterns: [RegExp, string][] = [
@@ -75,35 +89,41 @@ function extractSkillsLocally(title: string, description?: string): string[] {
   return skills.slice(0, 8);
 }
 
-/* ── 4-step progress indicator (stretching connectors) ── */
+/* -- 4-step progress indicator (stretching connectors) -- */
 function StepIndicator({ current }: { current: number }) {
-  const steps = ['Job Profile', 'Skills & Settings', 'Review Selection', 'Finalize Settings'];
+  const steps = [
+    { label: 'Job Profile', icon: BriefcaseBusiness },
+    { label: 'Skills & Settings', icon: ListChecks },
+    { label: 'Review Selection', icon: ClipboardCheck },
+    { label: 'Finalize Settings', icon: Settings2 },
+  ];
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '32px', width: '100%' }}>
-      {steps.flatMap((label, i) => {
+      {steps.flatMap((stepItem, i) => {
         const n = i + 1;
         const active = n === current;
         const done = n < current;
+        const Icon = stepItem.icon;
         const items = [
           <div key={`step-${n}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
             <div style={{
               width: '40px', height: '40px', borderRadius: '50%',
-              backgroundColor: active || done ? '#F59E0B' : '#E5E7EB',
-              color: active || done ? 'white' : '#98A2B5',
+              backgroundColor: active || done ? 'var(--admin-accent)' : 'var(--admin-border)',
+              color: active || done ? 'white' : 'var(--admin-text-subtle)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: '14px', fontWeight: 700,
-              boxShadow: active ? '0 0 0 4px rgba(245,158,11,0.18)' : 'none',
+              boxShadow: active ? '0 0 0 4px var(--admin-focus-ring)' : 'none',
               transition: 'all 0.2s',
             }}>
-              {done ? '✓' : n}
+              {done ? <Check size={16} strokeWidth={2.4} /> : <Icon size={16} strokeWidth={2.2} />}
             </div>
             <span style={{
               fontSize: '11px',
-              color: active ? '#D97706' : done ? '#6A7387' : '#98A2B5',
+              color: active ? 'var(--admin-accent-hover)' : done ? 'var(--admin-text-muted)' : 'var(--admin-text-subtle)',
               fontWeight: active ? 700 : 400,
               whiteSpace: 'nowrap',
             }}>
-              {label}
+              {stepItem.label}
             </span>
           </div>,
         ];
@@ -111,7 +131,7 @@ function StepIndicator({ current }: { current: number }) {
           items.push(
             <div key={`conn-${n}`} style={{
               flex: 1, height: '2px',
-              backgroundColor: done ? '#F59E0B' : '#E5E7EB',
+              backgroundColor: done ? 'var(--admin-accent)' : 'var(--admin-border)',
               marginTop: '20px', minWidth: '40px',
               transition: 'background-color 0.3s',
             }} />
@@ -123,191 +143,9 @@ function StepIndicator({ current }: { current: number }) {
   );
 }
 
-/* ── Right-side info panels ── */
-const infoCard: React.CSSProperties = {
-  backgroundColor: 'white', borderRadius: '12px', padding: '22px',
-  boxShadow: '0 1px 4px rgba(0,0,0,0.07)', position: 'sticky', top: '20px',
-};
-const infoHeading: React.CSSProperties = {
-  fontSize: '10px', fontWeight: 700, color: '#98A2B5', letterSpacing: '0.08em',
-  textTransform: 'uppercase', margin: '0 0 16px',
-};
-
-function HowItWorksPanel() {
-  const items = [
-    { n: 1, title: 'Describe the role', desc: 'Enter a job title and optional description to give the AI context about the position.' },
-    { n: 2, title: 'Set skills & limits', desc: 'Review AI-suggested skills, set MCQ and coding question counts, and choose difficulty.' },
-    { n: 3, title: 'Review AI selection', desc: 'The AI picks the best-matching questions from your library based on skills and difficulty.' },
-    { n: 4, title: 'Finalize & publish', desc: 'Configure test dates, passing marks, and shuffle settings, then create and share.' },
-  ];
-  return (
-    <div style={infoCard}>
-      <p style={infoHeading}>How it works</p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        {items.map(item => (
-          <div key={item.n} style={{ display: 'flex', gap: '12px' }}>
-            <div style={{
-              width: '26px', height: '26px', borderRadius: '50%',
-              backgroundColor: '#FEF3C7', color: '#D97706',
-              fontSize: '12px', fontWeight: 700,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-            }}>
-              {item.n}
-            </div>
-            <div>
-              <p style={{ fontSize: '13px', fontWeight: 600, color: '#11162A', margin: '0 0 3px' }}>{item.title}</p>
-              <p style={{ fontSize: '12px', color: '#6A7387', margin: 0, lineHeight: '1.55' }}>{item.desc}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div style={{ marginTop: '20px', borderTop: '1px solid #F3F4F6', paddingTop: '16px' }}>
-        <p style={{ fontSize: '12px', color: '#98A2B5', margin: 0, lineHeight: '1.6' }}>
-          The AI analyzes your job requirements and selects the most relevant questions from your existing question library.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function SkillsTipsPanel({ skills, difficulty, mcqCount, codingCount }: {
-  skills: string[]; difficulty: string; mcqCount: number; codingCount: number;
-}) {
-  const tips = [
-    { Icon: Target,      grad: 'linear-gradient(135deg,#F59E0B,#D97706)', shadow: 'rgba(245,158,11,0.35)', title: 'Add 3–8 skills',       desc: 'More specific skills = better question matching from your library.' },
-    { Icon: Shuffle,     grad: 'linear-gradient(135deg,#FB923C,#F59E0B)', shadow: 'rgba(251,146,60,0.35)',  title: 'Mix broad & specific', desc: 'e.g., "Python" + "Django" + "REST APIs" for better coverage.' },
-    { Icon: BarChart2,   grad: 'linear-gradient(135deg,#FBBF24,#F59E0B)', shadow: 'rgba(251,191,36,0.35)',  title: 'Use Mixed difficulty', desc: 'Recommended for balanced assessments across all levels.' },
-    { Icon: CheckCircle2,grad: 'linear-gradient(135deg,#F59E0B,#B45309)', shadow: 'rgba(180,83,9,0.3)',     title: 'MCQ + Coding combo',  desc: '10 MCQ + 2 coding is a solid starting point for most roles.' },
-  ];
-  return (
-    <div style={infoCard}>
-      <p style={infoHeading}>Tips for best results</p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        {tips.map(tip => (
-          <div key={tip.title} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-            <div style={{
-              width: '32px', height: '32px', borderRadius: '9px', flexShrink: 0,
-              background: tip.grad, boxShadow: `0 2px 8px ${tip.shadow}`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <tip.Icon size={16} color="white" strokeWidth={2} />
-            </div>
-            <div>
-              <p style={{ fontSize: '12px', fontWeight: 600, color: '#11162A', margin: '0 0 2px', marginTop: '2px' }}>{tip.title}</p>
-              <p style={{ fontSize: '12px', color: '#6A7387', margin: 0, lineHeight: '1.5' }}>{tip.desc}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-      {skills.length > 0 && (
-        <div style={{ marginTop: '18px', borderTop: '1px solid #F3F4F6', paddingTop: '14px' }}>
-          <p style={{ fontSize: '11px', fontWeight: 600, color: '#98A2B5', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>Current config</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', fontSize: '12px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6A7387' }}>Skills</span>
-              <span style={{ fontWeight: 600, color: '#11162A' }}>{skills.length}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6A7387' }}>MCQ</span>
-              <span style={{ fontWeight: 600, color: '#11162A' }}>{mcqCount}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6A7387' }}>Coding</span>
-              <span style={{ fontWeight: 600, color: '#11162A' }}>{codingCount}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: '#6A7387' }}>Difficulty</span>
-              <span style={{ fontWeight: 600, color: '#11162A', textTransform: 'capitalize' }}>{difficulty}</span>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ReviewPanel({ selection }: { selection: QuestionSelection }) {
-  const total = selection.mcqQuestionIds.length + selection.codingQuestionIds.length;
-  const previews = [
-    ...(selection.mcqPreviews || []).slice(0, 3).map(p => ({ ...p, type: 'MCQ' })),
-    ...(selection.codingPreviews || []).slice(0, 2).map(p => ({ ...p, type: 'Coding' })),
-  ];
-  return (
-    <div style={infoCard}>
-      <p style={infoHeading}>Selection summary</p>
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
-        <div style={{ flex: 1, borderRadius: '10px', padding: '14px', backgroundColor: '#FFFBEB', textAlign: 'center' }}>
-          <p style={{ fontSize: '28px', fontWeight: 700, color: '#F59E0B', margin: 0, lineHeight: 1 }}>{selection.mcqQuestionIds.length}</p>
-          <p style={{ fontSize: '11px', color: '#D97706', margin: '4px 0 0', fontWeight: 600 }}>MCQ</p>
-        </div>
-        <div style={{ flex: 1, borderRadius: '10px', padding: '14px', backgroundColor: '#FFF7ED', textAlign: 'center' }}>
-          <p style={{ fontSize: '28px', fontWeight: 700, color: '#D97706', margin: 0, lineHeight: 1 }}>{selection.codingQuestionIds.length}</p>
-          <p style={{ fontSize: '11px', color: '#C2410C', margin: '4px 0 0', fontWeight: 600 }}>Coding</p>
-        </div>
-        <div style={{ flex: 1, borderRadius: '10px', padding: '14px', backgroundColor: '#F9FAFB', textAlign: 'center' }}>
-          <p style={{ fontSize: '28px', fontWeight: 700, color: '#434B5E', margin: 0, lineHeight: 1 }}>{total}</p>
-          <p style={{ fontSize: '11px', color: '#6A7387', margin: '4px 0 0', fontWeight: 600 }}>Total</p>
-        </div>
-      </div>
-      {previews.length > 0 && (
-        <>
-          <p style={{ fontSize: '11px', fontWeight: 600, color: '#98A2B5', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 10px' }}>Question previews</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {previews.map((p, idx) => (
-              <div key={idx} style={{ padding: '10px 12px', borderRadius: '8px', backgroundColor: '#F9FAFB', border: '1px solid #F3F4F6' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                  <span style={{ fontSize: '10px', fontWeight: 600, padding: '2px 7px', borderRadius: '999px', backgroundColor: p.type === 'MCQ' ? '#FFFBEB' : '#FFF7ED', color: p.type === 'MCQ' ? '#D97706' : '#C2410C' }}>{p.type}</span>
-                  <span style={{ fontSize: '10px', color: '#98A2B5', textTransform: 'capitalize' }}>{p.difficulty}</span>
-                </div>
-                <p style={{ fontSize: '12px', color: '#434B5E', margin: 0, lineHeight: '1.45', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                  {p.text}
-                </p>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function FinalizePanel({ selection, jobProfile }: { selection: QuestionSelection | null; jobProfile: JobProfile }) {
-  if (!selection) return null;
-  return (
-    <div style={infoCard}>
-      <p style={infoHeading}>Selected questions</p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '18px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', backgroundColor: '#FFFBEB' }}>
-          <span style={{ fontSize: '13px', color: '#D97706', fontWeight: 600 }}>MCQ Questions</span>
-          <span style={{ fontSize: '13px', fontWeight: 700, color: '#F59E0B' }}>{selection.mcqQuestionIds.length}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 12px', borderRadius: '8px', backgroundColor: '#FFF7ED' }}>
-          <span style={{ fontSize: '13px', color: '#C2410C', fontWeight: 600 }}>Coding Questions</span>
-          <span style={{ fontSize: '13px', fontWeight: 700, color: '#D97706' }}>{selection.codingQuestionIds.length}</span>
-        </div>
-      </div>
-      <p style={{ fontSize: '11px', fontWeight: 600, color: '#98A2B5', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 10px' }}>Job profile</p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '12px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ color: '#6A7387' }}>Title</span>
-          <span style={{ fontWeight: 600, color: '#11162A', textAlign: 'right', maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{jobProfile.title || '—'}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ color: '#6A7387' }}>Experience</span>
-          <span style={{ fontWeight: 600, color: '#11162A' }}>{jobProfile.experience}</span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ color: '#6A7387' }}>Suggested duration</span>
-          <span style={{ fontWeight: 600, color: '#11162A' }}>{selection.suggestedDuration} min</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ══════════════════════════════════════════════════════
+/* ======================================================
    MAIN COMPONENT
-══════════════════════════════════════════════════════ */
+====================================================== */
 export default function AgentTestForm() {
   const navigate = useNavigate();
   const [step,      setStep]      = useState(1);
@@ -335,7 +173,7 @@ export default function AgentTestForm() {
     negativeMarking: 0, shuffleQuestions: true, shuffleOptions: true, maxViolations: 3,
   });
 
-  /* ── skill helpers ── */
+  /* -- skill helpers -- */
   const filteredSuggestions = skillInput.trim().length > 0
     ? SKILL_SUGGESTIONS.filter(s =>
         s.toLowerCase().includes(skillInput.trim().toLowerCase()) && !skills.includes(s)
@@ -356,7 +194,7 @@ export default function AgentTestForm() {
   };
   const removeSkill = (s: string) => setSkills(prev => prev.filter(x => x !== s));
 
-  /* ── Step 1 → 2 ── */
+  /* -- Step 1 -> 2 -- */
   const handleAnalyzeJob = async () => {
     if (!jobProfile.title.trim()) { toast.error('Job title is required'); return; }
     setAnalyzing(true);
@@ -368,7 +206,7 @@ export default function AgentTestForm() {
         setDifficulty(d.suggestedDifficulty || 'mixed');
         setMcqCount(d.suggestedMcqCount || 10);
         setCodingCount(d.suggestedCodingCount || 2);
-        setJobProfile(p => ({ ...p, experience: d.experienceLevel || p.experience }));
+        setJobProfile(p => ({ ...p, experience: normalizeExperienceLevel(d.experienceLevel || p.experience) }));
         toast.success('Role analyzed! Review skills and settings below');
       }
     } catch {
@@ -383,7 +221,7 @@ export default function AgentTestForm() {
     }
   };
 
-  /* ── Step 2 → 3 ── */
+  /* -- Step 2 -> 3 -- */
   const handleGenerateTest = async () => {
     if (!skills.length)             { toast.error('At least one skill is required'); return; }
     if (!mcqCount && !codingCount)  { toast.error('At least one question type must be > 0'); return; }
@@ -418,7 +256,7 @@ export default function AgentTestForm() {
     }
   };
 
-  /* ── Step 4 → create ── */
+  /* -- Step 4 -> create -- */
   const handleCreateTest = async () => {
     if (!selection)                  { toast.error('No test selection available'); return; }
     if (!testSettings.startTime)     { toast.error('Start time is required'); return; }
@@ -445,38 +283,39 @@ export default function AgentTestForm() {
     }
   };
 
-  /* ── shared styles ── */
+  /* -- shared styles -- */
   const card: React.CSSProperties = {
-    backgroundColor: 'white', borderRadius: '12px', padding: '28px',
-    boxShadow: '0 1px 4px rgba(0,0,0,0.08)',
+    backgroundColor: 'white', borderRadius: '12px', padding: '24px',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.06)', border: '1px solid var(--admin-border)',
+    height: '100%', overflowY: 'auto', boxSizing: 'border-box',
   };
   const lbl: React.CSSProperties = {
-    display: 'block', fontSize: '13px', fontWeight: 600, color: '#434B5E', marginBottom: '6px',
+    display: 'block', fontSize: 'var(--admin-control-font-size)', fontWeight: 600, color: 'var(--admin-text-muted)', marginBottom: '6px',
   };
   const inp: React.CSSProperties = {
-    width: '100%', padding: '10px 14px', borderRadius: '8px',
-    border: '1.5px solid #E5E7EB', fontSize: '13px', color: '#11162A',
+    width: '100%', padding: 'var(--admin-field-padding-y) var(--admin-field-padding-x)', borderRadius: 'var(--admin-field-radius)',
+    border: '1.5px solid var(--admin-border)', fontSize: 'var(--admin-control-font-size)', color: 'var(--admin-text)',
     outline: 'none', boxSizing: 'border-box', backgroundColor: 'white',
   };
   const btnPrimary: React.CSSProperties = {
-    padding: '10px 24px', borderRadius: '8px', border: 'none',
-    backgroundColor: '#F59E0B', fontSize: '13px', fontWeight: 600,
+    padding: 'var(--admin-control-padding-y) var(--admin-control-padding-x-primary)', borderRadius: 'var(--admin-control-radius)', border: '1px solid var(--admin-accent)',
+    backgroundColor: 'var(--admin-accent)', fontSize: '14px', lineHeight: '1.25rem', fontWeight: 600,
     color: 'white', cursor: 'pointer',
   };
   const btnSecondary: React.CSSProperties = {
-    padding: '10px 20px', borderRadius: '8px',
-    border: '1.5px solid #E5E7EB', backgroundColor: 'white',
-    fontSize: '13px', fontWeight: 500, color: '#434B5E', cursor: 'pointer',
+    padding: 'var(--admin-control-padding-y) var(--admin-control-padding-x)', borderRadius: 'var(--admin-control-radius)',
+    border: '1px solid var(--admin-border)', backgroundColor: 'white',
+    fontSize: '14px', lineHeight: '1.25rem', fontWeight: 500, color: 'var(--admin-text)', cursor: 'pointer',
   };
   const btnDisabled: React.CSSProperties = {
-    ...btnPrimary, backgroundColor: '#FDE68A', cursor: 'not-allowed', opacity: 0.8,
+    ...btnPrimary, backgroundColor: 'var(--admin-accent-disabled)', cursor: 'not-allowed', opacity: 0.8,
   };
   const focus = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    e.target.style.borderColor = '#F59E0B';
+    e.target.style.borderColor = 'var(--admin-border-focus)';
     if (e.target instanceof HTMLInputElement && e.target.type === 'number') e.target.select();
   };
   const blur = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
-    (e.target.style.borderColor = '#E5E7EB');
+    (e.target.style.borderColor = 'var(--admin-border)');
 
   const parseNum = (val: string, fallback: number, min = 0) => {
     const n = val === '' ? fallback : Number(val);
@@ -484,32 +323,41 @@ export default function AgentTestForm() {
   };
 
   return (
-    <div style={{ backgroundColor: '#F9FAFB', minHeight: '100%' }}>
+    <div style={{
+      backgroundColor: '#F9FAFB',
+      height: 'calc(100vh - 100px)',
+      minHeight: '560px',
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
+    }}>
+      <div style={{
+        width: '100%',
+        maxWidth: '1360px',
+        margin: '0 auto',
+        height: '100%',
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+      }}>
 
-      {/* Breadcrumb */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#98A2B5', marginBottom: '10px' }}>
-        <Link to="/admin/tests" style={{ color: '#6A7387', textDecoration: 'none' }}>Assessments</Link>
-        <span>›</span>
-        <span>AI Generator</span>
-      </div>
-
-      <h1 style={{ fontSize: '32px', fontWeight: 700, letterSpacing: '-0.02em', color: '#11162A', margin: '0 0 4px', lineHeight: 1.2 }}>AI Test Generator</h1>
-      <p style={{ fontSize: '13px', color: '#6A7387', margin: '0 0 28px' }}>
+      <h1 className="text-2xl font-bold" style={{ color: 'var(--admin-text)', margin: '0 0 4px', lineHeight: 1.2 }}>AI Test Generator</h1>
+      <p className="text-sm" style={{ color: 'var(--admin-text-muted)', margin: '0 0 24px' }}>
         Let AI help you create a test by analyzing job requirements and selecting appropriate questions
       </p>
 
       <StepIndicator current={step} />
 
-      {/* Two-column layout: form left, info panel right */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 290px', gap: '20px', alignItems: 'start' }}>
+      <div style={{
+        width: '100%',
+        flex: 1,
+        minHeight: 0,
+      }}>
 
-        {/* ── LEFT: Form ── */}
-        <div>
-
-          {/* ════════════ STEP 1: Job Profile ════════════ */}
+          {/* ============ STEP 1: Job Profile ============ */}
           {step === 1 && (
             <div style={card}>
-              <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#11162A', margin: '0 0 20px' }}>Step 1: Define Job Profile</h2>
+              <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 20px' }}>Step 1: Define Job Profile</h2>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
@@ -527,19 +375,14 @@ export default function AgentTestForm() {
                     <CustomSelect
                       value={jobProfile.experience}
                       onChange={v => setJobProfile(p => ({ ...p, experience: v }))}
-                      options={[
-                        { value:'0-1 years', label:'0-1 years (Entry Level)' },
-                        { value:'1-3 years', label:'1-3 years (Junior)' },
-                        { value:'3-5 years', label:'3-5 years (Mid-Level)' },
-                        { value:'5+ years',  label:'5+ years (Senior)' },
-                      ]}
+                      options={EXPERIENCE_OPTIONS}
                       style={{ width:'100%' }}
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label style={lbl}>Job Description <span style={{ fontSize: '12px', fontWeight: 400, color: '#98A2B5' }}>(Optional — helps AI pick better questions)</span></label>
+                  <label style={lbl}>Job Description <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--admin-text-subtle)' }}>(Optional - helps AI pick better questions)</span></label>
                   <textarea
                     value={jobProfile.description}
                     onChange={e => setJobProfile(p => ({ ...p, description: e.target.value }))}
@@ -573,10 +416,10 @@ export default function AgentTestForm() {
             </div>
           )}
 
-          {/* ════════════ STEP 2: Skills & Test Settings ════════════ */}
+          {/* ============ STEP 2: Skills & Test Settings ============ */}
           {step === 2 && (
             <div style={card}>
-              <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#11162A', margin: '0 0 20px' }}>Step 2: Skills & Test Settings</h2>
+              <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 20px' }}>Step 2: Skills & Test Settings</h2>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
                 {/* Skills */}
@@ -588,22 +431,22 @@ export default function AgentTestForm() {
                       <input type="text"
                         value={skillInput}
                         onChange={e => { setSkillInput(e.target.value); setShowSuggestions(true); }}
-                        onFocus={() => setShowSuggestions(true)}
+                        onFocus={e => { setShowSuggestions(true); focus(e); }}
                         onKeyDown={e => {
                           if (e.key === 'Enter') { e.preventDefault(); if (filteredSuggestions.length) addSkill(filteredSuggestions[0]); else addSkill(); }
                           if (e.key === 'Escape') setShowSuggestions(false);
                         }}
                         placeholder="Type a skill and press Enter or click Add"
-                        style={{ ...inp, width: '100%', boxSizing: 'border-box' }} onFocus={focus} onBlur={blur}
+                        style={{ ...inp, width: '100%', boxSizing: 'border-box' }} onBlur={blur}
                         autoComplete="off"
                       />
                       {showSuggestions && filteredSuggestions.length > 0 && (
-                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, marginTop: '2px', backgroundColor: 'white', border: '1.5px solid #FDE68A', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.10)', overflow: 'hidden' }}>
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, marginTop: '2px', backgroundColor: 'white', border: '1.5px solid var(--admin-accent-disabled)', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.10)', overflow: 'hidden' }}>
                           {filteredSuggestions.map(s => (
                             <button key={s} type="button"
                               onMouseDown={e => { e.preventDefault(); addSkill(s); }}
-                              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', color: '#11162A' }}
-                              onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#FFFBEB')}
+                              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', color: 'var(--admin-text)' }}
+                              onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--admin-accent-soft)')}
                               onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
                             >
                               {s}
@@ -615,25 +458,25 @@ export default function AgentTestForm() {
                     <button type="button" onClick={() => addSkill()} style={{ ...btnPrimary, padding: '10px 20px' }}>Add</button>
                   </div>
                   {skills.length > 0 ? (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '12px', borderRadius: '8px', backgroundColor: '#FAFAFA', border: '1px solid #F3F4F6' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '2px 0 0' }}>
                       {skills.map(skill => (
                         <span key={skill} style={{
                           display: 'inline-flex', alignItems: 'center', gap: '4px',
                           padding: '5px 12px', borderRadius: '999px',
-                          backgroundColor: '#FFFBEB', color: '#D97706',
+                          backgroundColor: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)',
                           fontSize: '13px', fontWeight: 500,
-                          border: '1px solid #FDE68A',
+                          border: '1px solid var(--admin-accent-disabled)',
                         }}>
                           {skill}
                           <button type="button" onClick={() => removeSkill(skill)}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#D97706', fontSize: '16px', lineHeight: 1, padding: '0 0 0 2px' }}>
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--admin-accent-hover)', fontSize: '16px', lineHeight: 1, padding: '0 0 0 2px' }}>
                             ×
                           </button>
                         </span>
                       ))}
                     </div>
                   ) : (
-                    <p style={{ fontSize: '12px', color: '#98A2B5', margin: 0 }}>No skills added yet. Add at least one skill to continue.</p>
+                    <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: 0 }}>No skills added yet. Add at least one skill to continue.</p>
                   )}
                 </div>
 
@@ -687,62 +530,62 @@ export default function AgentTestForm() {
             </div>
           )}
 
-          {/* ════════════ STEP 3: Review AI Selection ════════════ */}
+          {/* ============ STEP 3: Review AI Selection ============ */}
           {step === 3 && selection && (
             <div style={card}>
-              <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#11162A', margin: '0 0 20px' }}>Step 3: Review AI Selection</h2>
+              <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 20px' }}>Step 3: Review AI Selection</h2>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
                 {/* MCQ / Coding counts */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-                  <div style={{ borderRadius: '10px', padding: '20px', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
-                    <p style={{ fontSize: '13px', fontWeight: 600, color: '#D97706', margin: '0 0 8px' }}>MCQ Questions</p>
-                    <p style={{ fontSize: '44px', fontWeight: 700, color: '#F59E0B', margin: '0 0 2px', lineHeight: 1 }}>{selection.mcqQuestionIds.length}</p>
-                    <p style={{ fontSize: '12px', color: '#92400E', margin: 0, fontWeight: 500 }}>selected from library</p>
+                  <div style={{ borderRadius: '10px', padding: '20px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
+                    <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--admin-accent-hover)', margin: '0 0 8px' }}>MCQ Questions</p>
+                    <p style={{ fontSize: '44px', fontWeight: 700, color: 'var(--admin-accent)', margin: '0 0 2px', lineHeight: 1 }}>{selection.mcqQuestionIds.length}</p>
+                    <p style={{ fontSize: '12px', color: 'var(--admin-text-muted)', margin: 0, fontWeight: 500 }}>selected from library</p>
                   </div>
-                  <div style={{ borderRadius: '10px', padding: '20px', backgroundColor: '#FFF7ED', border: '1px solid #FED7AA' }}>
-                    <p style={{ fontSize: '13px', fontWeight: 600, color: '#C2410C', margin: '0 0 8px' }}>Coding Questions</p>
-                    <p style={{ fontSize: '44px', fontWeight: 700, color: '#D97706', margin: '0 0 2px', lineHeight: 1 }}>{selection.codingQuestionIds.length}</p>
-                    <p style={{ fontSize: '12px', color: '#92400E', margin: 0, fontWeight: 500 }}>selected from library</p>
+                  <div style={{ borderRadius: '10px', padding: '20px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
+                    <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--admin-accent-hover)', margin: '0 0 8px' }}>Coding Questions</p>
+                    <p style={{ fontSize: '44px', fontWeight: 700, color: 'var(--admin-accent-hover)', margin: '0 0 2px', lineHeight: 1 }}>{selection.codingQuestionIds.length}</p>
+                    <p style={{ fontSize: '12px', color: 'var(--admin-text-muted)', margin: 0, fontWeight: 500 }}>selected from library</p>
                   </div>
                 </div>
 
                 {/* AI Reasoning */}
                 {selection.reasoning && (
-                  <div style={{ borderRadius: '10px', padding: '16px', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
-                    <p style={{ fontSize: '12px', fontWeight: 700, color: '#D97706', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>AI Reasoning</p>
-                    <p style={{ fontSize: '13px', color: '#92400E', margin: 0, lineHeight: '1.7' }}>{selection.reasoning}</p>
+                  <div style={{ borderRadius: '10px', padding: '16px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
+                    <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--admin-accent-hover)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>AI Reasoning</p>
+                    <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: 0, lineHeight: '1.7' }}>{selection.reasoning}</p>
                   </div>
                 )}
 
                 {/* Suggested settings summary */}
-                <div style={{ borderRadius: '10px', padding: '16px 18px', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
+                <div style={{ borderRadius: '10px', padding: '16px 18px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)', display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
                   <div>
-                    <p style={{ fontSize: '11px', fontWeight: 600, color: '#98A2B5', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 4px' }}>Suggested Duration</p>
-                    <p style={{ fontSize: '20px', fontWeight: 700, color: '#D97706', margin: 0 }}>{selection.suggestedDuration} <span style={{ fontSize: '13px', fontWeight: 500 }}>min</span></p>
+                    <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 4px' }}>Suggested Duration</p>
+                    <p style={{ fontSize: '20px', fontWeight: 700, color: 'var(--admin-accent-hover)', margin: 0 }}>{selection.suggestedDuration} <span style={{ fontSize: '13px', fontWeight: 500 }}>min</span></p>
                   </div>
                   <div style={{ flex: 1 }}>
-                    <p style={{ fontSize: '11px', fontWeight: 600, color: '#98A2B5', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 4px' }}>Suggested Test Name</p>
-                    <p style={{ fontSize: '14px', fontWeight: 600, color: '#D97706', margin: 0 }}>{selection.suggestedTestName}</p>
+                    <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 4px' }}>Suggested Test Name</p>
+                    <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--admin-accent-hover)', margin: 0 }}>{selection.suggestedTestName}</p>
                   </div>
                 </div>
 
                 {/* Warnings */}
                 {selection.mcqQuestionIds.length + selection.codingQuestionIds.length === 0 && (
-                  <div style={{ borderRadius: '10px', padding: '14px 16px', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
-                    <p style={{ fontSize: '13px', color: '#92400E', margin: 0, lineHeight: '1.5' }}>
+                  <div style={{ borderRadius: '10px', padding: '14px 16px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
+                    <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: 0, lineHeight: '1.5' }}>
                       No matching questions found in the library. Please{' '}
-                      <a href="/admin/mcq/new" style={{ color: '#D97706', fontWeight: 600 }}>add MCQ questions</a>
+                      <a href="/admin/mcq/new" style={{ color: 'var(--admin-accent-hover)', fontWeight: 600 }}>add MCQ questions</a>
                       {' or '}
-                      <a href="/admin/coding/new" style={{ color: '#D97706', fontWeight: 600 }}>coding questions</a>
+                      <a href="/admin/coding/new" style={{ color: 'var(--admin-accent-hover)', fontWeight: 600 }}>coding questions</a>
                       {' '}first, then regenerate.
                     </p>
                   </div>
                 )}
                 {(selection.mcqQuestionIds.length < mcqCount || selection.codingQuestionIds.length < codingCount) &&
                  selection.mcqQuestionIds.length + selection.codingQuestionIds.length > 0 && (
-                  <div style={{ borderRadius: '10px', padding: '14px 16px', backgroundColor: '#FFF7ED', border: '1px solid #FED7AA' }}>
-                    <p style={{ fontSize: '13px', color: '#9A3412', margin: 0 }}>
+                  <div style={{ borderRadius: '10px', padding: '14px 16px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
+                    <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: 0 }}>
                       Note: Fewer questions were selected than requested. Consider adding more questions with relevant tags to your library.
                     </p>
                   </div>
@@ -756,10 +599,10 @@ export default function AgentTestForm() {
             </div>
           )}
 
-          {/* ════════════ STEP 4: Finalize Test Settings ════════════ */}
+          {/* ============ STEP 4: Finalize Test Settings ============ */}
           {step === 4 && (
             <div style={card}>
-              <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#11162A', margin: '0 0 20px' }}>Step 4: Finalize Test Settings</h2>
+              <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 20px' }}>Step 4: Finalize Test Settings</h2>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
@@ -807,7 +650,7 @@ export default function AgentTestForm() {
                     />
                   </div>
                   <div>
-                    <label style={lbl}>End Time <span style={{ fontSize: '12px', fontWeight: 400, color: '#98A2B5' }}>(Optional)</span></label>
+                    <label style={lbl}>End Time <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--admin-text-subtle)' }}>(Optional)</span></label>
                     <DateTimePicker
                       value={testSettings.endTime}
                       onChange={v => setTestSettings(p => ({ ...p, endTime: v }))}
@@ -832,13 +675,13 @@ export default function AgentTestForm() {
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '24px', padding: '14px 16px', borderRadius: '8px', backgroundColor: '#F9FAFB', border: '1px solid #F3F4F6' }}>
+                <div style={{ display: 'flex', gap: '24px', padding: '14px 16px', borderRadius: '8px', backgroundColor: '#F9FAFB', border: '1px solid var(--admin-border)' }}>
                   {(['shuffleQuestions', 'shuffleOptions'] as const).map(key => (
-                    <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#434B5E' }}>
+                    <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: 'var(--admin-text-muted)' }}>
                       <input type="checkbox"
                         checked={testSettings[key]}
                         onChange={e => setTestSettings(p => ({ ...p, [key]: e.target.checked }))}
-                        style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#F59E0B' }}
+                        style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--admin-button-primary)' }}
                       />
                       {key === 'shuffleQuestions' ? 'Shuffle Questions' : 'Shuffle Options'}
                     </label>
@@ -858,16 +701,7 @@ export default function AgentTestForm() {
               </div>
             </div>
           )}
-        </div>
-
-        {/* ── RIGHT: Info panel ── */}
-        <div>
-          {step === 1 && <HowItWorksPanel />}
-          {step === 2 && <SkillsTipsPanel skills={skills} difficulty={difficulty} mcqCount={mcqCount} codingCount={codingCount} />}
-          {step === 3 && selection && <ReviewPanel selection={selection} />}
-          {step === 4 && <FinalizePanel selection={selection} jobProfile={jobProfile} />}
-        </div>
-
+      </div>
       </div>
     </div>
   );

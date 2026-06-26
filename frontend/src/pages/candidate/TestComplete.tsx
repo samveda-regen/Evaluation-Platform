@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTestStore } from '../../context/testStore';
 import { useAuthStore } from '../../context/authStore';
@@ -89,12 +89,12 @@ export default function TestComplete() {
   return (
     <div
       className="min-h-screen flex flex-col items-center justify-center px-4 py-12"
-      style={{ background: '#F3F4F6' }}
+      style={{ background: 'var(--admin-border)' }}
     >
       {/* Icon */}
       <div
         className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 shadow-lg"
-        style={{ background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)' }}
+        style={{ background: 'linear-gradient(135deg, var(--admin-accent) 0%, var(--admin-accent-hover) 100%)' }}
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -125,7 +125,7 @@ export default function TestComplete() {
       {/* Stats card */}
       <div
         className="w-full max-w-md bg-white rounded-2xl shadow-sm mb-4 overflow-hidden"
-        style={{ border: '1px solid #E5E7EB' }}
+        style={{ border: '1px solid var(--admin-border)' }}
       >
         <div className="grid grid-cols-2">
           {/* Answered */}
@@ -135,7 +135,7 @@ export default function TestComplete() {
               className="w-5 h-5"
               fill="none"
               viewBox="0 0 24 24"
-              stroke="#F59E0B"
+              stroke="var(--admin-accent)"
               strokeWidth={1.8}
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
@@ -147,13 +147,13 @@ export default function TestComplete() {
           </div>
 
           {/* Time taken */}
-          <div className="flex flex-col items-center py-6 px-4 gap-2" style={{ borderLeft: '1px solid #E5E7EB' }}>
+          <div className="flex flex-col items-center py-6 px-4 gap-2" style={{ borderLeft: '1px solid var(--admin-border)' }}>
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="w-5 h-5"
               fill="none"
               viewBox="0 0 24 24"
-              stroke="#F59E0B"
+              stroke="var(--admin-accent)"
               strokeWidth={1.8}
             >
               <circle cx="12" cy="12" r="9" />
@@ -169,7 +169,7 @@ export default function TestComplete() {
       {/* Status steps card */}
       <div
         className="w-full max-w-md bg-white rounded-2xl shadow-sm mb-8 px-6 py-5 space-y-4"
-        style={{ border: '1px solid #E5E7EB' }}
+        style={{ border: '1px solid var(--admin-border)' }}
       >
         {[
           { label: 'Submission confirmed', detail: `Today, ${submittedAt.split('·')[1]?.trim() || new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}` },
@@ -180,13 +180,13 @@ export default function TestComplete() {
             <div className="flex items-center gap-3">
               <span
                 className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
-                style={{ background: '#FEF3C7' }}
+                style={{ background: 'var(--admin-accent-disabled)' }}
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   className="w-3.5 h-3.5"
                   viewBox="0 0 20 20"
-                  fill="#F59E0B"
+                  fill="var(--admin-accent)"
                 >
                   <path
                     fillRule="evenodd"
@@ -214,7 +214,7 @@ export default function TestComplete() {
         <button
           onClick={handleDownloadReceipt}
           className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
-          style={{ background: '#F59E0B' }}
+          style={{ background: 'var(--admin-accent)' }}
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -237,7 +237,7 @@ export default function TestComplete() {
         <a
           href="mailto:support@talentstaq.io"
           className="font-medium"
-          style={{ color: '#F59E0B' }}
+          style={{ color: 'var(--admin-accent)' }}
         >
           support@talentstaq.io
         </a>

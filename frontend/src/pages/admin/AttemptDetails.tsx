@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
@@ -15,7 +15,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 
-/* ── Types ── */
+/* -- Types -- */
 interface AttemptData {
   attempt: {
     id: string;
@@ -56,8 +56,8 @@ interface AttemptData {
   }>;
 }
 
-/* ── Helpers ── */
-const AVATAR_COLORS = ['#6366F1','#8B5CF6','#F59E0B','#F59E0B','#3B82F6','#EF4444','#EC4899','#F97316'];
+/* -- Helpers -- */
+const AVATAR_COLORS = ['var(--admin-data-blue)','var(--admin-data-blue-soft)','var(--admin-accent)','var(--admin-accent)','var(--admin-accent)','#EF4444','#EC4899','#F97316'];
 function avatarBg(name: string) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
@@ -68,9 +68,9 @@ function initials(name: string) {
   return p.length >= 2 ? (p[0][0]+p[1][0]).toUpperCase() : (p[0]?.[0] ?? name.replace(/[^a-zA-Z]/g,'')[0] ?? '?').toUpperCase();
 }
 function fmtDuration(start: string, end?: string | null): string {
-  if (!end) return '—';
+  if (!end) return '-';
   const mins = Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60000);
-  if (mins <= 0) return '—';
+  if (mins <= 0) return '-';
   if (mins < 60) return `${mins}m`;
   return `${Math.floor(mins/60)}h ${String(mins%60).padStart(2,'0')}m`;
 }
@@ -78,7 +78,7 @@ function safeDiv(num: number, den: number): number {
   return den > 0 ? Math.min(100, Math.round((num / den) * 100)) : 0;
 }
 
-/* ── SVG score ring (large) ── */
+/* -- SVG score ring (large) -- */
 function ScoreRing({ pct, size = 120, score, label }: { pct: number; size?: number; score: string; label: string }) {
   const sw   = 10;
   const r    = (size - sw) / 2;
@@ -87,20 +87,20 @@ function ScoreRing({ pct, size = 120, score, label }: { pct: number; size?: numb
   return (
     <div style={{ position:'relative', width:`${size}px`, height:`${size}px`, flexShrink:0 }}>
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#E5E7EB" strokeWidth={sw} />
-        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#F59E0B" strokeWidth={sw}
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--admin-border)" strokeWidth={sw} />
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--admin-accent)" strokeWidth={sw}
           strokeDasharray={circ} strokeDashoffset={off} strokeLinecap="round"
           transform={`rotate(-90 ${size/2} ${size/2})`} />
       </svg>
       <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
-        <span style={{ fontSize:'22px', fontWeight:700, color:'#11162A', lineHeight:1 }}>{score}</span>
-        <span style={{ fontSize:'10px', color:'#98A2B5', letterSpacing:'0.05em', marginTop:'2px' }}>{label}</span>
+        <span style={{ fontSize:'22px', fontWeight:700, color:'var(--admin-text)', lineHeight:1 }}>{score}</span>
+        <span style={{ fontSize:'10px', color:'var(--admin-text-subtle)', letterSpacing:'0.05em', marginTop:'2px' }}>{label}</span>
       </div>
     </div>
   );
 }
 
-/* ── Small donut for section breakdown ── */
+/* -- Small donut for section breakdown -- */
 function SectionDonut({ pct, color, label, sub }: { pct: number; color: string; label: string; sub: string }) {
   const size = 100, sw = 9;
   const r    = (size - sw) / 2;
@@ -110,27 +110,27 @@ function SectionDonut({ pct, color, label, sub }: { pct: number; color: string; 
     <div style={{ textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center', gap:'8px' }}>
       <div style={{ position:'relative', width:`${size}px`, height:`${size}px` }}>
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-          <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#E5E7EB" strokeWidth={sw} />
+          <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--admin-border)" strokeWidth={sw} />
           <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={sw}
             strokeDasharray={circ} strokeDashoffset={off} strokeLinecap="round"
             transform={`rotate(-90 ${size/2} ${size/2})`} />
         </svg>
         <div style={{ position:'absolute', inset:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-          <span style={{ fontSize:'18px', fontWeight:700, color:'#11162A' }}>{pct}%</span>
+          <span style={{ fontSize:'18px', fontWeight:700, color:'var(--admin-text)' }}>{pct}%</span>
         </div>
       </div>
       <div>
-        <p style={{ fontSize:'13px', fontWeight:600, color:'#434B5E', margin:'0 0 2px' }}>{label}</p>
-        <p style={{ fontSize:'11px', color:'#98A2B5', margin:0 }}>{sub}</p>
+        <p style={{ fontSize:'13px', fontWeight:600, color:'var(--admin-text-muted)', margin:'0 0 2px' }}>{label}</p>
+        <p style={{ fontSize:'11px', color:'var(--admin-text-subtle)', margin:0 }}>{sub}</p>
       </div>
     </div>
   );
 }
 
-/* ── Answer review filter ── */
+/* -- Answer review filter -- */
 type ReviewFilter = 'all' | 'correct' | 'incorrect';
 
-/* ── Violation tag color ── */
+/* -- Violation tag color -- */
 const VIOLATION_EVENTS = new Set(['tab_switch','focus_loss','fullscreen_exit','camera_off','face_not_detected','multiple_faces','phone_detected']);
 function isViolation(eventType: string) { return VIOLATION_EVENTS.has(eventType); }
 
@@ -179,14 +179,14 @@ export default function AttemptDetails() {
 
   if (loading) return (
     <div style={{ display:'flex', justifyContent:'center', padding:'80px 0' }}>
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor:'#F59E0B' }} />
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor:'var(--admin-accent)' }} />
     </div>
   );
   if (!data) return null;
 
   const { attempt, test, candidate, mcqAnswers, codingAnswers, behavioralAnswers, activityLogs } = data;
 
-  /* ── Score calculations ── */
+  /* -- Score calculations -- */
   const scoreRaw   = attempt.score ?? 0;
   const scorePct   = safeDiv(scoreRaw, test.totalMarks);
   const passed     = test.passingMarks != null ? scoreRaw >= test.passingMarks : scorePct >= 60;
@@ -194,7 +194,7 @@ export default function AttemptDetails() {
     ? `above ${Math.round((test.passingMarks / test.totalMarks) * 100)}%`
     : 'above 60%';
 
-  /* ── Section percentages ── */
+  /* -- Section percentages -- */
   const mcqTotal   = mcqAnswers.reduce((s, a) => s + a.marks, 0);
   const mcqObtained= mcqAnswers.reduce((s, a) => s + a.marksObtained, 0);
   const mcqPct     = safeDiv(mcqObtained, mcqTotal);
@@ -210,7 +210,7 @@ export default function AttemptDetails() {
   const behPct     = safeDiv(behObtained, behTotal);
   const behRating  = behPct >= 80 ? 'Strong' : behPct >= 60 ? 'Good' : behPct >= 40 ? 'Fair' : 'Weak';
 
-  /* ── Per-type filtered answer lists ── */
+  /* -- Per-type filtered answer lists -- */
   const filteredMCQ = mcqAnswers.filter(a => {
     if (reviewFilter === 'correct')   return a.isCorrect;
     if (reviewFilter === 'incorrect') return !a.isCorrect;
@@ -228,7 +228,7 @@ export default function AttemptDetails() {
   });
   const totalFiltered = filteredMCQ.length + filteredCoding.length + filteredBehavioral.length;
 
-  /* ── Integrity: violation tag summary ── */
+  /* -- Integrity: violation tag summary -- */
   const violationCounts: Record<string, number> = {};
   activityLogs.forEach(log => {
     if (isViolation(log.eventType)) {
@@ -237,7 +237,7 @@ export default function AttemptDetails() {
   });
   const trustScore = Math.max(20, 100 - attempt.violations * 8);
 
-  /* ── integrity tags ── */
+  /* -- integrity tags -- */
   const integrityTags: Array<{ label: string; positive: boolean }> = [];
   Object.entries(violationCounts).forEach(([evt, cnt]) => {
     integrityTags.push({ label: `${violationLabel(evt)} x${cnt}`, positive: false });
@@ -252,11 +252,11 @@ export default function AttemptDetails() {
     integrityTags.push({ label: 'No phone detected', positive: true });
   }
 
-  /* ── Duration ── */
+  /* -- Duration -- */
   const duration = fmtDuration(attempt.startTime, attempt.submittedAt || attempt.endTime);
   const totalQs  = mcqAnswers.length + codingAnswers.length + behavioralAnswers.length;
 
-  /* ── Test info subtitle ── */
+  /* -- Test info subtitle -- */
   const submittedStr = attempt.submittedAt
     ? `Submitted ${format(new Date(attempt.submittedAt), 'PPp')}`
     : attempt.status.replace('_', ' ');
@@ -265,41 +265,32 @@ export default function AttemptDetails() {
   return (
     <div style={{ backgroundColor:'#F9FAFB', minHeight:'100%' }}>
 
-      {/* ── BREADCRUMB ── */}
-      <div style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'12px', color:'#98A2B5', marginBottom:'10px' }}>
-        <span style={{ cursor:'pointer', color:'#6A7387' }} onClick={() => navigate('/admin/tests')}>Assessments</span>
-        <span>›</span>
-        <span style={{ cursor:'pointer', color:'#6A7387' }} onClick={() => navigate(`/admin/tests/${test.id}?tab=candidates`)}>Candidates</span>
-        <span>›</span>
-        <span>Attempt</span>
-      </div>
-
-      {/* ── HEADER (candidate name + subtitle + actions) ── */}
+      {/* -- HEADER (candidate name + subtitle + actions) -- */}
       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:'24px' }}>
         <div style={{ display:'flex', alignItems:'flex-start', gap:'12px' }}>
           <BackButton />
           <div>
-            <h1 style={{ fontSize:"32px", fontWeight:700, letterSpacing:"-0.02em", color:"#11162A", margin:"0 0 4px", lineHeight:1.2 }}>{candidate.name}</h1>
-            <p style={{ fontSize:'13px', color:'#98A2B5', margin:0 }}>
-              {test.name} &nbsp;·&nbsp; {submittedStr}
+            <h1 style={{ fontSize:"32px", fontWeight:700, letterSpacing:"-0.02em", color:"var(--admin-text)", margin:"0 0 4px", lineHeight:1.2 }}>{candidate.name}</h1>
+            <p style={{ fontSize:'13px', color:'var(--admin-text-subtle)', margin:0 }}>
+              {test.name} | {submittedStr}
             </p>
           </div>
         </div>
         <div style={{ display:'flex', gap:'8px', flexShrink:0 }}>
-          <button onClick={() => toast('PDF download coming soon', { icon: '📄' })}
+          <button onClick={() => toast('PDF download coming soon')}
             style={{
               display:'flex', alignItems:'center', gap:'5px', padding:'8px 14px',
-              border:'1.5px solid #E5E7EB', borderRadius:'8px', backgroundColor:'white',
-              fontSize:'13px', fontWeight:500, color:'#434B5E', cursor:'pointer',
+              border:'1.5px solid var(--admin-border)', borderRadius:'8px', backgroundColor:'white',
+              fontSize:'13px', fontWeight:500, color:'var(--admin-text-muted)', cursor:'pointer',
             }}>
             <FileDown size={16} />
             Download PDF
           </button>
-          <button onClick={() => toast('Email sent to candidate', { icon: '📧' })}
+          <button onClick={() => toast('Email sent to candidate')}
             style={{
               display:'flex', alignItems:'center', gap:'5px', padding:'8px 14px',
-              border:'1.5px solid #E5E7EB', borderRadius:'8px', backgroundColor:'white',
-              fontSize:'13px', fontWeight:500, color:'#434B5E', cursor:'pointer',
+              border:'1.5px solid var(--admin-border)', borderRadius:'8px', backgroundColor:'white',
+              fontSize:'13px', fontWeight:500, color:'var(--admin-text-muted)', cursor:'pointer',
             }}>
             <Mail size={16} />
             Email result
@@ -308,7 +299,7 @@ export default function AttemptDetails() {
             style={{
               display:'flex', alignItems:'center', gap:'5px', padding:'8px 16px',
               border:'none', borderRadius:'8px',
-              backgroundColor: reviewed ? '#D97706' : '#F59E0B',
+              backgroundColor: reviewed ? 'var(--admin-accent-hover)' : 'var(--admin-accent)',
               fontSize:'13px', fontWeight:600, color:'white', cursor:'pointer',
             }}>
             <CheckCheck size={15} color="white" />
@@ -317,10 +308,10 @@ export default function AttemptDetails() {
         </div>
       </div>
 
-      {/* ── MAIN 2-COLUMN GRID ── */}
+      {/* -- MAIN 2-COLUMN GRID -- */}
       <div style={{ display:'grid', gridTemplateColumns:'280px 1fr', gap:'20px', alignItems:'start' }}>
 
-        {/* ── LEFT PANEL ── */}
+        {/* -- LEFT PANEL -- */}
         <div style={{
           backgroundColor:'white', borderRadius:'14px', padding:'24px 20px',
           boxShadow:'0 1px 6px rgba(0,0,0,0.06)', display:'flex', flexDirection:'column', alignItems:'center', gap:'6px',
@@ -334,8 +325,8 @@ export default function AttemptDetails() {
           }}>
             {initials(candidate.name)}
           </div>
-          <p style={{ fontSize:'16px', fontWeight:600, color:'#11162A', margin:0 }}>{candidate.name}</p>
-          <p style={{ fontSize:'12px', color:'#98A2B5', margin:'0 0 12px' }}>{candidate.email}</p>
+          <p style={{ fontSize:'16px', fontWeight:600, color:'var(--admin-text)', margin:0 }}>{candidate.name}</p>
+          <p style={{ fontSize:'12px', color:'var(--admin-text-subtle)', margin:'0 0 12px' }}>{candidate.email}</p>
 
           {/* Score ring */}
           <ScoreRing
@@ -347,27 +338,27 @@ export default function AttemptDetails() {
 
           {/* Passed / Failed badge */}
           <p style={{ fontSize:'12px', fontWeight:500, margin:'8px 0 0',
-            color: passed ? '#D97706' : '#DC2626' }}>
-            {passed ? '✓' : '✗'} {passed ? 'Passed' : 'Failed'} · {passPctLabel}
+            color: passed ? 'var(--admin-accent-hover)' : '#DC2626' }}>
+            {passed ? 'Passed' : 'Failed'} | {passPctLabel}
           </p>
 
           {/* Divider */}
-          <div style={{ width:'100%', height:'1px', backgroundColor:'#F3F4F6', margin:'16px 0' }} />
+          <div style={{ width:'100%', height:'1px', backgroundColor:'var(--admin-border)', margin:'16px 0' }} />
 
           {/* Attempt details */}
           <div style={{ width:'100%' }}>
-            <p style={{ fontSize:'13px', fontWeight:600, color:'#11162A', margin:'0 0 12px' }}>Attempt details</p>
+            <p style={{ fontSize:'13px', fontWeight:600, color:'var(--admin-text)', margin:'0 0 12px' }}>Attempt details</p>
             {[
               { k: 'Started',      v: format(new Date(attempt.startTime), 'hh:mm a') },
-              { k: 'Submitted',    v: attempt.submittedAt ? format(new Date(attempt.submittedAt), 'hh:mm a') : '—' },
+              { k: 'Submitted',    v: attempt.submittedAt ? format(new Date(attempt.submittedAt), 'hh:mm a') : '-' },
               { k: 'Duration',     v: duration },
               { k: 'Questions',    v: `${totalQs} / ${totalQs}` },
               { k: 'Score',        v: `${scoreRaw} / ${test.totalMarks}` },
               { k: 'Violations',   v: String(attempt.violations) },
             ].map(({ k, v }) => (
               <div key={k} style={{ display:'flex', justifyContent:'space-between', marginBottom:'8px' }}>
-                <span style={{ fontSize:'12px', color:'#98A2B5' }}>{k}</span>
-                <span style={{ fontSize:'12px', fontWeight:500, color:'#434B5E' }}>{v}</span>
+                <span style={{ fontSize:'12px', color:'var(--admin-text-subtle)' }}>{k}</span>
+                <span style={{ fontSize:'12px', fontWeight:500, color:'var(--admin-text-muted)' }}>{v}</span>
               </div>
             ))}
           </div>
@@ -376,18 +367,18 @@ export default function AttemptDetails() {
           <div style={{ width:'100%', display:'flex', flexDirection:'column', gap:'8px', marginTop:'8px' }}>
             <button onClick={handleReEvaluate} disabled={reEvaluating}
               style={{
-                width:'100%', padding:'8px', borderRadius:'8px', border:'1.5px solid #E5E7EB',
-                backgroundColor:'white', fontSize:'12px', fontWeight:500, color:'#434B5E',
+                width:'100%', padding:'8px', borderRadius:'8px', border:'1.5px solid var(--admin-border)',
+                backgroundColor:'white', fontSize:'12px', fontWeight:500, color:'var(--admin-text-muted)',
                 cursor: reEvaluating ? 'not-allowed' : 'pointer',
               }}>
-              {reEvaluating ? 'Re-evaluating…' : 'Re-evaluate'}
+              {reEvaluating ? 'Re-evaluating...' : 'Re-evaluate'}
             </button>
             <button onClick={handleFlag}
               style={{
                 width:'100%', padding:'8px', borderRadius:'8px', border:'none',
-                backgroundColor: attempt.isFlagged ? '#FFFBEB' : '#FEF2F2',
+                backgroundColor: attempt.isFlagged ? 'var(--admin-accent-soft)' : '#FEF2F2',
                 fontSize:'12px', fontWeight:500,
-                color: attempt.isFlagged ? '#D97706' : '#DC2626',
+                color: attempt.isFlagged ? 'var(--admin-accent-hover)' : '#DC2626',
                 cursor:'pointer',
               }}>
               {attempt.isFlagged ? 'Remove flag' : 'Flag attempt'}
@@ -395,24 +386,24 @@ export default function AttemptDetails() {
           </div>
         </div>
 
-        {/* ── RIGHT PANEL ── */}
+        {/* -- RIGHT PANEL -- */}
         <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
 
           {/* Section breakdown */}
           <div style={{ backgroundColor:'white', borderRadius:'14px', padding:'22px 24px', boxShadow:'0 1px 6px rgba(0,0,0,0.06)' }}>
-            <p style={{ fontSize:'15px', fontWeight:600, color:'#11162A', margin:'0 0 20px' }}>Section breakdown</p>
+            <p style={{ fontSize:'15px', fontWeight:600, color:'var(--admin-text)', margin:'0 0 20px' }}>Section breakdown</p>
             <div style={{ display:'flex', gap:'32px', justifyContent:'flex-start' }}>
               {mcqAnswers.length > 0 && (
-                <SectionDonut pct={mcqPct} color="#F59E0B" label="MCQ" sub={`${mcqCorrect}/${mcqAnswers.length}`} />
+                <SectionDonut pct={mcqPct} color="var(--admin-accent)" label="MCQ" sub={`${mcqCorrect}/${mcqAnswers.length}`} />
               )}
               {codingAnswers.length > 0 && (
-                <SectionDonut pct={codPct} color="#F59E0B" label="Coding" sub={`${codPassed}/${codingAnswers.length}`} />
+                <SectionDonut pct={codPct} color="var(--admin-accent)" label="Coding" sub={`${codPassed}/${codingAnswers.length}`} />
               )}
               {behavioralAnswers.length > 0 && (
-                <SectionDonut pct={behPct} color="#6366F1" label="Behavioral" sub={behRating} />
+                <SectionDonut pct={behPct} color="var(--admin-data-blue)" label="Behavioral" sub={behRating} />
               )}
               {mcqAnswers.length === 0 && codingAnswers.length === 0 && behavioralAnswers.length === 0 && (
-                <p style={{ fontSize:'13px', color:'#98A2B5' }}>No answers recorded</p>
+                <p style={{ fontSize:'13px', color:'var(--admin-text-subtle)' }}>No answers recorded</p>
               )}
             </div>
           </div>
@@ -420,39 +411,39 @@ export default function AttemptDetails() {
           {/* Answer review */}
           <div style={{ backgroundColor:'white', borderRadius:'14px', padding:'22px 24px', boxShadow:'0 1px 6px rgba(0,0,0,0.06)' }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'20px' }}>
-              <p style={{ fontSize:'15px', fontWeight:600, color:'#11162A', margin:0 }}>Answer review</p>
-              <div style={{ display:'flex', gap:'2px', backgroundColor:'#F3F4F6', borderRadius:'8px', padding:'3px' }}>
+              <p style={{ fontSize:'15px', fontWeight:600, color:'var(--admin-text)', margin:0 }}>Answer review</p>
+              <div style={{ display:'flex', gap:'2px', backgroundColor:'var(--admin-border)', borderRadius:'8px', padding:'3px' }}>
                 {(['all','correct','incorrect'] as const).map(f => (
                   <button key={f} onClick={() => setReviewFilter(f)}
                     style={{
                       padding:'4px 12px', borderRadius:'6px', border:'none', cursor:'pointer',
                       fontSize:'12px', fontWeight:500, textTransform:'capitalize',
-                      backgroundColor: reviewFilter === f ? '#F59E0B' : 'transparent',
-                      color: reviewFilter === f ? 'white' : '#6A7387',
+                      backgroundColor: reviewFilter === f ? 'var(--admin-accent)' : 'transparent',
+                      color: reviewFilter === f ? 'white' : 'var(--admin-text-muted)',
                     }}>{f.charAt(0).toUpperCase() + f.slice(1)}</button>
                 ))}
               </div>
             </div>
 
             {totalFiltered === 0 ? (
-              <p style={{ fontSize:'13px', color:'#98A2B5', textAlign:'center', padding:'20px 0' }}>No answers match this filter</p>
+              <p style={{ fontSize:'13px', color:'var(--admin-text-subtle)', textAlign:'center', padding:'20px 0' }}>No answers match this filter</p>
             ) : (
               <div style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
 
-                {/* ── MCQ cards ── */}
+                {/* -- MCQ cards -- */}
                 {filteredMCQ.map((ans, i) => (
-                  <div key={ans.questionId} style={{ borderRadius:'12px', border:`1.5px solid ${ans.isCorrect ? '#FDE68A' : '#FECACA'}`, overflow:'hidden' }}>
+                  <div key={ans.questionId} style={{ borderRadius:'12px', border:`1.5px solid ${ans.isCorrect ? 'var(--admin-accent-disabled)' : '#FECACA'}`, overflow:'hidden' }}>
                     {/* MCQ header */}
-                    <div style={{ padding:'13px 16px', backgroundColor: ans.isCorrect ? '#FFFBEB' : '#FFF1F2', display:'flex', alignItems:'flex-start', gap:'10px' }}>
+                    <div style={{ padding:'13px 16px', backgroundColor: ans.isCorrect ? 'var(--admin-accent-soft)' : '#FFF1F2', display:'flex', alignItems:'flex-start', gap:'10px' }}>
                       <span style={{ fontSize:'11px', fontWeight:700, padding:'3px 8px', borderRadius:'20px', backgroundColor:'#EDE9FE', color:'#6D28D9', flexShrink:0, whiteSpace:'nowrap' }}>
                         MCQ {i + 1}
                       </span>
-                      <p style={{ fontSize:'13px', fontWeight:600, color:'#11162A', margin:0, flex:1, lineHeight:'1.5' }}>{ans.questionText}</p>
+                      <p style={{ fontSize:'13px', fontWeight:600, color:'var(--admin-text)', margin:0, flex:1, lineHeight:'1.5' }}>{ans.questionText}</p>
                       <div style={{ flexShrink:0, textAlign:'right' }}>
-                        <span style={{ fontSize:'13px', fontWeight:700, color: ans.isCorrect ? '#D97706' : '#DC2626' }}>
+                        <span style={{ fontSize:'13px', fontWeight:700, color: ans.isCorrect ? 'var(--admin-accent-hover)' : '#DC2626' }}>
                           {ans.marksObtained} / {ans.marks}
                         </span>
-                        <p style={{ fontSize:'10px', color:'#98A2B5', margin:'1px 0 0' }}>marks</p>
+                        <p style={{ fontSize:'10px', color:'var(--admin-text-subtle)', margin:'1px 0 0' }}>marks</p>
                       </div>
                     </div>
                     {/* Options */}
@@ -460,9 +451,9 @@ export default function AttemptDetails() {
                       {ans.options.map((opt, oi) => {
                         const isSelected = ans.selectedOptions.includes(oi);
                         const isCorrect  = ans.correctAnswers.includes(oi);
-                        let bg = '#F9FAFB', border = '1px solid #E5E7EB', textColor = '#434B5E';
-                        if (isCorrect && isSelected)  { bg = '#FEF3C7'; border = '1.5px solid #F59E0B'; textColor = '#92400E'; }
-                        else if (isCorrect)            { bg = '#FFFBEB'; border = '1.5px dashed #FCD34D'; textColor = '#D97706'; }
+                        let bg = '#F9FAFB', border = '1px solid var(--admin-border)', textColor = 'var(--admin-text-muted)';
+                        if (isCorrect && isSelected)  { bg = 'var(--admin-accent-disabled)'; border = '1.5px solid var(--admin-accent)'; textColor = '#92400E'; }
+                        else if (isCorrect)            { bg = 'var(--admin-accent-soft)'; border = '1.5px dashed #FCD34D'; textColor = 'var(--admin-accent-hover)'; }
                         else if (isSelected)           { bg = '#FEF2F2'; border = '1.5px solid #FCA5A5'; textColor = '#DC2626'; }
                         return (
                           <div key={oi} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'9px 12px', borderRadius:'8px', backgroundColor:bg, border }}>
@@ -470,14 +461,14 @@ export default function AttemptDetails() {
                               width:'22px', height:'22px', borderRadius:'50%', flexShrink:0,
                               display:'flex', alignItems:'center', justifyContent:'center',
                               fontSize:'11px', fontWeight:700,
-                              backgroundColor: isCorrect ? '#F59E0B' : isSelected ? '#FCA5A5' : '#E5E7EB',
-                              color: isCorrect ? 'white' : isSelected ? 'white' : '#6A7387',
+                              backgroundColor: isCorrect ? 'var(--admin-accent)' : isSelected ? '#FCA5A5' : 'var(--admin-border)',
+                              color: isCorrect ? 'white' : isSelected ? 'white' : 'var(--admin-text-muted)',
                             }}>
                               {String.fromCharCode(65 + oi)}
                             </span>
                             <span style={{ fontSize:'13px', color:textColor, flex:1 }}>{opt}</span>
-                            {isCorrect && isSelected  && <CheckCircle2 size={14} color="#F59E0B" />}
-                            {isCorrect && !isSelected && <span style={{ fontSize:'10px', color:'#D97706', fontWeight:600 }}>Correct</span>}
+                            {isCorrect && isSelected  && <CheckCircle2 size={14} color="var(--admin-accent)" />}
+                            {isCorrect && !isSelected && <span style={{ fontSize:'10px', color:'var(--admin-accent-hover)', fontWeight:600 }}>Correct</span>}
                             {isSelected && !isCorrect && <XCircle size={14} color="#EF4444" />}
                           </div>
                         );
@@ -486,27 +477,27 @@ export default function AttemptDetails() {
                   </div>
                 ))}
 
-                {/* ── Coding cards ── */}
+                {/* -- Coding cards -- */}
                 {filteredCoding.map((ans, i) => {
                   const passedTc = ans.testResults?.filter(t => t.passed).length ?? 0;
                   const totalTc  = ans.testResults?.length ?? 0;
                   const isGood   = ans.marksObtained > 0;
                   return (
-                    <div key={ans.questionId} style={{ borderRadius:'12px', border:`1.5px solid ${isGood ? '#FDE68A' : '#FECACA'}`, overflow:'hidden' }}>
+                    <div key={ans.questionId} style={{ borderRadius:'12px', border:`1.5px solid ${isGood ? 'var(--admin-accent-disabled)' : '#FECACA'}`, overflow:'hidden' }}>
                       {/* Coding header */}
-                      <div style={{ padding:'13px 16px', backgroundColor: isGood ? '#FFFBEB' : '#FFF1F2', display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap' }}>
-                        <span style={{ fontSize:'11px', fontWeight:700, padding:'3px 8px', borderRadius:'20px', backgroundColor:'#FEF3C7', color:'#92400E', flexShrink:0 }}>
+                      <div style={{ padding:'13px 16px', backgroundColor: isGood ? 'var(--admin-accent-soft)' : '#FFF1F2', display:'flex', alignItems:'center', gap:'10px', flexWrap:'wrap' }}>
+                        <span style={{ fontSize:'11px', fontWeight:700, padding:'3px 8px', borderRadius:'20px', backgroundColor:'var(--admin-accent-disabled)', color:'#92400E', flexShrink:0 }}>
                           Coding {i + 1}
                         </span>
-                        <p style={{ fontSize:'13px', fontWeight:600, color:'#11162A', margin:0, flex:1 }}>{ans.title}</p>
-                        <span style={{ fontSize:'11px', padding:'2px 10px', borderRadius:'20px', backgroundColor:'#F3F4F6', color:'#434B5E', fontWeight:500 }}>
+                        <p style={{ fontSize:'13px', fontWeight:600, color:'var(--admin-text)', margin:0, flex:1 }}>{ans.title}</p>
+                        <span style={{ fontSize:'11px', padding:'2px 10px', borderRadius:'20px', backgroundColor:'var(--admin-border)', color:'var(--admin-text-muted)', fontWeight:500 }}>
                           {ans.language}
                         </span>
                         <div style={{ flexShrink:0, textAlign:'right' }}>
-                          <span style={{ fontSize:'13px', fontWeight:700, color: isGood ? '#D97706' : '#DC2626' }}>
+                          <span style={{ fontSize:'13px', fontWeight:700, color: isGood ? 'var(--admin-accent-hover)' : '#DC2626' }}>
                             {ans.marksObtained} / {ans.marks}
                           </span>
-                          <p style={{ fontSize:'10px', color:'#98A2B5', margin:'1px 0 0' }}>marks</p>
+                          <p style={{ fontSize:'10px', color:'var(--admin-text-subtle)', margin:'1px 0 0' }}>marks</p>
                         </div>
                       </div>
 
@@ -516,7 +507,7 @@ export default function AttemptDetails() {
                           <span style={{ width:'10px', height:'10px', borderRadius:'50%', backgroundColor:'#FF5F57', display:'inline-block' }} />
                           <span style={{ width:'10px', height:'10px', borderRadius:'50%', backgroundColor:'#FEBC2E', display:'inline-block' }} />
                           <span style={{ width:'10px', height:'10px', borderRadius:'50%', backgroundColor:'#28C840', display:'inline-block' }} />
-                          <span style={{ fontSize:'11px', color:'#6A7387', marginLeft:'6px' }}>{ans.language}</span>
+                          <span style={{ fontSize:'11px', color:'var(--admin-text-muted)', marginLeft:'6px' }}>{ans.language}</span>
                         </div>
                         <div style={{ padding:'14px 16px', maxHeight:'380px', overflowY:'auto' }}>
                           <pre style={{ margin:0, fontSize:'12.5px', color:'#E2E8F0', fontFamily:'"Fira Code", "Cascadia Code", "Consolas", monospace', whiteSpace:'pre-wrap', wordBreak:'break-word', lineHeight:'1.7' }}>
@@ -529,11 +520,11 @@ export default function AttemptDetails() {
                       {ans.testResults && ans.testResults.length > 0 && (
                         <div style={{ padding:'14px 16px' }}>
                           <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'10px' }}>
-                            <p style={{ fontSize:'12px', fontWeight:600, color:'#11162A', margin:0 }}>Test cases</p>
+                            <p style={{ fontSize:'12px', fontWeight:600, color:'var(--admin-text)', margin:0 }}>Test cases</p>
                             <span style={{
                               fontSize:'11px', padding:'2px 10px', borderRadius:'20px', fontWeight:600,
-                              backgroundColor: passedTc === totalTc ? '#FFFBEB' : '#FEF2F2',
-                              color: passedTc === totalTc ? '#D97706' : '#DC2626',
+                              backgroundColor: passedTc === totalTc ? 'var(--admin-accent-soft)' : '#FEF2F2',
+                              color: passedTc === totalTc ? 'var(--admin-accent-hover)' : '#DC2626',
                             }}>
                               {passedTc} / {totalTc} passed
                             </span>
@@ -543,19 +534,19 @@ export default function AttemptDetails() {
                               <div key={ti} style={{
                                 display:'flex', alignItems:'flex-start', gap:'8px', padding:'9px 12px',
                                 borderRadius:'8px',
-                                backgroundColor: tc.passed ? '#FFFBEB' : '#FEF2F2',
-                                border: `1px solid ${tc.passed ? '#FDE68A' : '#FECACA'}`,
+                                backgroundColor: tc.passed ? 'var(--admin-accent-soft)' : '#FEF2F2',
+                                border: `1px solid ${tc.passed ? 'var(--admin-accent-disabled)' : '#FECACA'}`,
                               }}>
                                 {tc.passed
-                                  ? <CheckCircle2 size={14} color="#F59E0B" style={{ flexShrink:0, marginTop:'1px' }} />
+                                  ? <CheckCircle2 size={14} color="var(--admin-accent)" style={{ flexShrink:0, marginTop:'1px' }} />
                                   : <XCircle size={14} color="#EF4444" style={{ flexShrink:0, marginTop:'1px' }} />
                                 }
                                 <div style={{ flex:1 }}>
-                                  <span style={{ fontSize:'12px', fontWeight:600, color: tc.passed ? '#D97706' : '#DC2626' }}>
+                                  <span style={{ fontSize:'12px', fontWeight:600, color: tc.passed ? 'var(--admin-accent-hover)' : '#DC2626' }}>
                                     Test case {ti + 1}: {tc.passed ? 'Passed' : 'Failed'}
                                   </span>
                                   {!tc.passed && tc.error && (
-                                    <p style={{ fontSize:'11px', color:'#6A7387', margin:'3px 0 0', fontFamily:'monospace', whiteSpace:'pre-wrap' }}>{tc.error}</p>
+                                    <p style={{ fontSize:'11px', color:'var(--admin-text-muted)', margin:'3px 0 0', fontFamily:'monospace', whiteSpace:'pre-wrap' }}>{tc.error}</p>
                                   )}
                                 </div>
                               </div>
@@ -567,33 +558,33 @@ export default function AttemptDetails() {
                   );
                 })}
 
-                {/* ── Behavioral cards ── */}
+                {/* -- Behavioral cards -- */}
                 {filteredBehavioral.map((ans, i) => {
                   const score = ans.marksObtained ?? 0;
                   return (
-                    <div key={ans.questionId} style={{ borderRadius:'12px', border:'1.5px solid #FDE68A', overflow:'hidden' }}>
+                    <div key={ans.questionId} style={{ borderRadius:'12px', border:'1.5px solid var(--admin-accent-disabled)', overflow:'hidden' }}>
                       {/* Behavioral header */}
-                      <div style={{ padding:'13px 16px', backgroundColor:'#FFFBEB', display:'flex', alignItems:'flex-start', gap:'10px' }}>
-                        <span style={{ fontSize:'11px', fontWeight:700, padding:'3px 8px', borderRadius:'20px', backgroundColor:'#FEF3C7', color:'#92400E', flexShrink:0, whiteSpace:'nowrap' }}>
+                      <div style={{ padding:'13px 16px', backgroundColor:'var(--admin-accent-soft)', display:'flex', alignItems:'flex-start', gap:'10px' }}>
+                        <span style={{ fontSize:'11px', fontWeight:700, padding:'3px 8px', borderRadius:'20px', backgroundColor:'var(--admin-accent-disabled)', color:'#92400E', flexShrink:0, whiteSpace:'nowrap' }}>
                           Behavioral {i + 1}
                         </span>
                         <div style={{ flex:1 }}>
-                          <p style={{ fontSize:'13px', fontWeight:600, color:'#11162A', margin:'0 0 2px' }}>{ans.title}</p>
-                          {ans.description && <p style={{ fontSize:'12px', color:'#6A7387', margin:0 }}>{ans.description}</p>}
+                          <p style={{ fontSize:'13px', fontWeight:600, color:'var(--admin-text)', margin:'0 0 2px' }}>{ans.title}</p>
+                          {ans.description && <p style={{ fontSize:'12px', color:'var(--admin-text-muted)', margin:0 }}>{ans.description}</p>}
                         </div>
                         <div style={{ flexShrink:0, textAlign:'right' }}>
-                          <span style={{ fontSize:'13px', fontWeight:700, color: score > 0 ? '#D97706' : '#DC2626' }}>
+                          <span style={{ fontSize:'13px', fontWeight:700, color: score > 0 ? 'var(--admin-accent-hover)' : '#DC2626' }}>
                             {score} / {ans.marks}
                           </span>
-                          <p style={{ fontSize:'10px', color:'#98A2B5', margin:'1px 0 0' }}>marks</p>
+                          <p style={{ fontSize:'10px', color:'var(--admin-text-subtle)', margin:'1px 0 0' }}>marks</p>
                         </div>
                       </div>
                       {/* Answer text */}
                       <div style={{ padding:'14px 16px' }}>
-                        <p style={{ fontSize:'11px', fontWeight:600, color:'#98A2B5', textTransform:'uppercase', letterSpacing:'0.05em', margin:'0 0 8px' }}>
+                        <p style={{ fontSize:'11px', fontWeight:600, color:'var(--admin-text-subtle)', textTransform:'uppercase', letterSpacing:'0.05em', margin:'0 0 8px' }}>
                           Candidate's answer
                         </p>
-                        <p style={{ fontSize:'13px', color:'#434B5E', margin:0, lineHeight:'1.7', whiteSpace:'pre-wrap' }}>
+                        <p style={{ fontSize:'13px', color:'var(--admin-text-muted)', margin:0, lineHeight:'1.7', whiteSpace:'pre-wrap' }}>
                           {ans.answerText || '(No answer provided)'}
                         </p>
                       </div>
@@ -608,15 +599,15 @@ export default function AttemptDetails() {
           {/* Integrity summary */}
           <div style={{
             borderRadius:'14px', padding:'18px 22px',
-            backgroundColor:'#FFFBEB', border:'1.5px solid #FDE68A',
+            backgroundColor:'var(--admin-accent-soft)', border:'1.5px solid var(--admin-accent-disabled)',
           }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'10px' }}>
               <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
-                <ShieldCheck width={24} height={24} stroke="#D97706" strokeWidth={2} />
-                <span style={{ fontSize:'14px', fontWeight:600, color:'#11162A' }}>Integrity summary</span>
+                <ShieldCheck width={24} height={24} stroke="var(--admin-accent-hover)" strokeWidth={2} />
+                <span style={{ fontSize:'14px', fontWeight:600, color:'var(--admin-text)' }}>Integrity summary</span>
               </div>
-              <span style={{ fontSize:'13px', color:'#6A7387' }}>
-                Trust score <span style={{ fontSize:'15px', fontWeight:700, color:'#11162A' }}>{trustScore}</span>
+              <span style={{ fontSize:'13px', color:'var(--admin-text-muted)' }}>
+                Trust score <span style={{ fontSize:'15px', fontWeight:700, color:'var(--admin-text)' }}>{trustScore}</span>
               </span>
             </div>
 
@@ -624,24 +615,24 @@ export default function AttemptDetails() {
               {integrityTags.map((tag, i) => (
                 <span key={i} style={{
                   fontSize:'11px', padding:'3px 10px', borderRadius:'20px', fontWeight:500,
-                  backgroundColor: tag.positive ? '#FFFBEB' : '#FEF3C7',
+                  backgroundColor: tag.positive ? 'var(--admin-accent-soft)' : 'var(--admin-accent-disabled)',
                   color: tag.positive ? '#065F46' : '#92400E',
                 }}>
-                  • {tag.label}
+                  {tag.label}
                 </span>
               ))}
               {integrityTags.length === 0 && (
-                <span style={{ fontSize:'12px', color:'#98A2B5' }}>No proctoring events recorded</span>
+                <span style={{ fontSize:'12px', color:'var(--admin-text-subtle)' }}>No proctoring events recorded</span>
               )}
             </div>
 
             <button onClick={() => navigate(`/admin/attempts/${attemptId}/proctoring`)}
               style={{
                 background:'none', border:'none', padding:0, cursor:'pointer',
-                fontSize:'12px', color:'#F59E0B', fontWeight:500, display:'flex', alignItems:'center', gap:'4px',
+                fontSize:'12px', color:'var(--admin-accent)', fontWeight:500, display:'flex', alignItems:'center', gap:'4px',
               }}>
               View full trust report
-              <ChevronRight size={12} color="#F59E0B" />
+              <ChevronRight size={12} color="var(--admin-accent)" />
             </button>
           </div>
 
@@ -651,3 +642,4 @@ export default function AttemptDetails() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import Editor from '@monaco-editor/react';
@@ -606,10 +606,10 @@ export default function TestInterface() {
   };
 
   const difficultyColor: Record<string, string> = {
-    easy: '#F59E0B', medium: '#F59E0B', hard: '#EF4444',
+    easy: 'var(--admin-accent-hover)', medium: 'var(--admin-accent-hover)', hard: 'var(--admin-accent-hover)',
   };
   const typeColor: Record<string, string> = {
-    mcq: '#D97706', coding: '#C2410C', behavioral: '#EA580C',
+    mcq: 'var(--admin-accent-hover)', coding: 'var(--admin-accent-hover)', behavioral: 'var(--admin-accent-hover)',
   };
   const typeLabel: Record<string, string> = {
     mcq: 'Multiple choice', coding: 'Coding', behavioral: 'Behavioral',
@@ -621,9 +621,9 @@ export default function TestInterface() {
   const behavioralText = currentQuestion.type === 'behavioral' ? (behavioralAnswers[currentQuestion.questionId] || '') : '';
   const wordCount = getWordCount(behavioralText);
 
-  // ── Question Palette ──────────────────────────────────────────────────
+  // -- Question Palette --------------------------------------------------
   const Palette = () => (
-    <aside className="w-52 border-l bg-white flex flex-col overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
+    <aside className="w-52 border-l bg-white flex flex-col overflow-hidden" style={{ borderColor: 'var(--admin-border)' }}>
       <div className="px-4 pt-5 pb-3">
         <div className="flex items-center justify-between mb-3">
           <span className="text-sm font-semibold text-gray-700">Question palette</span>
@@ -633,7 +633,7 @@ export default function TestInterface() {
         <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
           <div
             className="h-full rounded-full transition-all"
-            style={{ width: `${(getAnsweredCount() / questions.length) * 100}%`, background: '#F59E0B' }}
+            style={{ width: `${(getAnsweredCount() / questions.length) * 100}%`, background: 'var(--admin-accent)' }}
           />
         </div>
       </div>
@@ -646,13 +646,13 @@ export default function TestInterface() {
             const answered = isAnswered(idx);
             const marked = markedForReview.has(idx);
 
-            let bg = '#FFFFFF';
+            let bg = 'transparent';
             let border = '#D1D5DB';
             let textColor = '#6B7280';
 
-            if (isCurrent) { bg = '#111827'; border = '#111827'; textColor = '#FFFFFF'; }
-            else if (marked) { bg = '#FEF3C7'; border = '#F59E0B'; textColor = '#92400E'; }
-            else if (answered) { bg = '#FEF3C7'; border = '#FDE68A'; textColor = '#065F46'; }
+            if (isCurrent) { bg = 'transparent'; border = '#111827'; textColor = '#111827'; }
+            else if (marked) { bg = 'transparent'; border = 'var(--admin-accent)'; textColor = 'var(--admin-accent)'; }
+            else if (answered) { bg = 'transparent'; border = 'var(--admin-accent)'; textColor = 'var(--admin-accent)'; }
 
             return (
               <button
@@ -662,8 +662,8 @@ export default function TestInterface() {
                   saveCurrentAnswer();
                   setCurrentQuestion(idx);
                 }}
-                className="aspect-square rounded-lg text-xs font-semibold transition-colors flex items-center justify-center"
-                style={{ background: bg, border: `1.5px solid ${border}`, color: textColor }}
+                className="aspect-square rounded-lg text-xs font-semibold transition-colors flex items-center justify-center outline-none focus:outline-none focus-visible:outline-none"
+                style={{ background: bg, border: `1.5px solid ${border}`, color: textColor, outline: 'none', boxShadow: 'none' }}
               >
                 {idx + 1}
               </button>
@@ -673,10 +673,10 @@ export default function TestInterface() {
       </div>
 
       {/* Legend */}
-      <div className="border-t px-4 py-4 space-y-2" style={{ borderColor: '#E5E7EB' }}>
+      <div className="border-t px-4 py-4 space-y-2" style={{ borderColor: 'var(--admin-border)' }}>
         {[
-          { color: '#FEF3C7', border: '#FDE68A', label: 'Answered' },
-          { color: '#FEF3C7', border: '#F59E0B', label: 'Marked for review' },
+          { color: 'var(--admin-accent-disabled)', border: 'var(--admin-accent-disabled)', label: 'Answered' },
+          { color: 'var(--admin-accent-disabled)', border: 'var(--admin-accent)', label: 'Marked for review' },
           { color: '#111827', border: '#111827', label: 'Current' },
           { color: '#FFFFFF', border: '#D1D5DB', label: 'Not visited' },
         ].map(({ color, border, label }) => (
@@ -689,9 +689,9 @@ export default function TestInterface() {
     </aside>
   );
 
-  // ── Bottom nav bar ───────────────────────────────────────────────────
+  // -- Bottom nav bar ---------------------------------------------------
   const BottomNav = () => (
-    <footer className="bg-white border-t flex items-center justify-between px-6 py-3" style={{ borderColor: '#E5E7EB' }}>
+    <footer className="bg-white border-t flex items-center justify-between px-6 py-3" style={{ borderColor: 'var(--admin-border)' }}>
       <button
         onClick={() => {
           if (isTestFrozen || currentQuestionIndex === 0) return;
@@ -710,7 +710,7 @@ export default function TestInterface() {
       <button
         onClick={toggleMarkForReview}
         className="flex items-center gap-2 text-sm font-medium transition-colors"
-        style={{ color: markedForReview.has(currentQuestionIndex) ? '#D97706' : '#9CA3AF' }}
+        style={{ color: markedForReview.has(currentQuestionIndex) ? 'var(--admin-accent-hover)' : '#9CA3AF' }}
       >
         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill={markedForReview.has(currentQuestionIndex) ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 21l1.9-5.7a8.5 8.5 0 113.8 3.8z" />
@@ -722,7 +722,7 @@ export default function TestInterface() {
         onClick={handleSaveAndNext}
         disabled={isTestFrozen}
         className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity disabled:opacity-50"
-        style={{ background: '#F59E0B' }}
+        style={{ background: 'var(--admin-accent)' }}
       >
         {currentQuestionIndex === questions.length - 1 ? 'Submit Test' : 'Save & Next'}
         {currentQuestionIndex < questions.length - 1 && (
@@ -768,7 +768,7 @@ export default function TestInterface() {
             </div>
             <h2 className="text-lg font-bold text-gray-900 mb-2">Fullscreen Required</h2>
             <p className="text-sm text-gray-500 mb-6">You exited fullscreen. Click below to continue your test.</p>
-            <button onClick={handleReenterFullscreen} className="w-full py-3 rounded-xl font-semibold text-white text-sm" style={{ background: '#F59E0B' }}>
+            <button onClick={handleReenterFullscreen} className="w-full py-3 rounded-xl font-semibold text-white text-sm" style={{ background: 'var(--admin-accent)' }}>
               Continue in Fullscreen
             </button>
           </div>
@@ -800,7 +800,7 @@ export default function TestInterface() {
         </div>
       )}
 
-      {/* ── Header ── */}
+      {/* -- Header -- */}
       <header className="flex items-center justify-between px-5 py-3 flex-shrink-0 relative z-10" style={{ background: '#0F172A' }}>
         {/* Left: back + logo + test name + proctoring */}
         <div className="flex items-center gap-3">
@@ -820,8 +820,8 @@ export default function TestInterface() {
           <span className="text-white font-semibold text-sm">{testName}</span>
           {proctorEnabled && (
             <div className="flex items-center gap-1.5 px-3 py-1 rounded-full" style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.35)' }}>
-              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#F59E0B' }} />
-              <span className="text-xs font-medium" style={{ color: '#F59E0B' }}>Proctoring active</span>
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'var(--admin-accent)' }} />
+              <span className="text-xs font-medium" style={{ color: 'var(--admin-accent)' }}>Proctoring active</span>
             </div>
           )}
         </div>
@@ -844,13 +844,13 @@ export default function TestInterface() {
           )}
           {/* Timer */}
           <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: timeRemaining < 300000 ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)', border: `1px solid ${timeRemaining < 300000 ? 'rgba(239,68,68,0.35)' : 'rgba(245,158,11,0.35)'}` }}>
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke={timeRemaining < 300000 ? '#EF4444' : '#F59E0B'} strokeWidth={1.8}>
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke={timeRemaining < 300000 ? '#EF4444' : 'var(--admin-accent)'} strokeWidth={1.8}>
               <circle cx="12" cy="12" r="9" />
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />
             </svg>
             <span
               className="text-sm font-bold font-mono tabular-nums"
-              style={{ color: timeRemaining < 300000 ? '#EF4444' : '#F59E0B' }}
+              style={{ color: timeRemaining < 300000 ? '#EF4444' : 'var(--admin-accent)' }}
             >
               {formatTime(timeRemaining)}
             </span>
@@ -858,14 +858,14 @@ export default function TestInterface() {
         </div>
       </header>
 
-      {/* ── Content ── */}
+      {/* -- Content -- */}
       <div className="flex flex-1 overflow-hidden relative z-10">
         {isCoding ? (
-          // ── Coding: three-column layout ──
+          // -- Coding: three-column layout --
           <>
             <div className="flex flex-1 overflow-hidden">
               {/* Description panel */}
-              <div className="w-[42%] bg-white overflow-y-auto border-r flex-shrink-0" style={{ borderColor: '#E5E7EB' }}>
+              <div className="w-[42%] bg-white overflow-y-auto border-r flex-shrink-0" style={{ borderColor: 'var(--admin-border)' }}>
                 <div className="p-6">
                   {/* Breadcrumb */}
                   <div className="flex items-center gap-2 flex-wrap mb-4">
@@ -894,17 +894,17 @@ export default function TestInterface() {
 
                   {/* Examples */}
                   {(currentQuestion.sampleInput || currentQuestion.sampleOutput) && (
-                    <div className="rounded-xl p-4 mb-4" style={{ background: '#F8FAFC', border: '1px solid #E5E7EB' }}>
+                    <div className="rounded-xl p-4 mb-4" style={{ background: '#F8FAFC', border: '1px solid var(--admin-border)' }}>
                       <p className="text-xs font-semibold text-gray-600 mb-2">Examples</p>
                       {currentQuestion.sampleInput && (
                         <pre className="text-xs font-mono text-gray-600 mb-1">
-                          {'→ '}
+                          {'? '}
                           {currentQuestion.sampleInput}
                         </pre>
                       )}
                       {currentQuestion.sampleOutput && (
                         <pre className="text-xs font-mono text-gray-600">
-                          {'← '}
+                          {'? '}
                           {currentQuestion.sampleOutput}
                         </pre>
                       )}
@@ -942,7 +942,7 @@ export default function TestInterface() {
                   {currentQuestion.mediaAssets && currentQuestion.mediaAssets.length > 0 && (
                     <div className="mt-4 space-y-3">
                       {currentQuestion.mediaAssets.map((asset) => (
-                        <div key={asset.id} className="rounded-lg overflow-hidden border" style={{ borderColor: '#E5E7EB' }}>
+                        <div key={asset.id} className="rounded-lg overflow-hidden border" style={{ borderColor: 'var(--admin-border)' }}>
                           {asset.mediaType === 'image' && <img src={asset.storageUrl} alt={asset.originalName} className="w-full h-auto object-contain max-h-64" />}
                           {asset.mediaType === 'video' && <video src={asset.storageUrl} controls className="w-full" preload="metadata" />}
                         </div>
@@ -1000,8 +1000,8 @@ export default function TestInterface() {
                 <div className="border-t px-4 py-2.5 flex items-center justify-between" style={{ background: '#252526', borderColor: '#3E3E42' }}>
                   <div>
                     {codeOutput && !runningCode && (
-                      <span className="text-xs font-medium" style={{ color: codeOutput.startsWith('Error') ? '#EF4444' : '#F59E0B' }}>
-                        {codeOutput.startsWith('Error') ? '✗ ' : '✓ '}
+                      <span className="text-xs font-medium" style={{ color: codeOutput.startsWith('Error') ? '#EF4444' : 'var(--admin-accent)' }}>
+                        {codeOutput.startsWith('Error') ? '? ' : '? '}
                         {codeOutput.startsWith('Error') ? 'Error in code' : 'Code ran successfully'}
                       </span>
                     )}
@@ -1027,9 +1027,9 @@ export default function TestInterface() {
                       onClick={handleSubmitCode}
                       disabled={isTestFrozen || codeSubmitted}
                       className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-60 transition-colors"
-                      style={{ background: codeSubmitted ? '#D97706' : '#F59E0B' }}
+                      style={{ background: codeSubmitted ? 'var(--admin-accent-hover)' : 'var(--admin-accent)' }}
                     >
-                      {codeSubmitted ? '✓ Saved' : 'Submit code'}
+                      {codeSubmitted ? '? Saved' : 'Submit code'}
                     </button>
                   </div>
                 </div>
@@ -1047,7 +1047,7 @@ export default function TestInterface() {
             <Palette />
           </>
         ) : (
-          // ── MCQ / Behavioral: two-column layout ──
+          // -- MCQ / Behavioral: two-column layout --
           <>
             <main className="flex-1 overflow-y-auto px-10 py-8">
               <div className="max-w-2xl mx-auto">
@@ -1072,7 +1072,7 @@ export default function TestInterface() {
                 </div>
 
                 {currentQuestion.type === 'mcq' ? (
-                  // ── MCQ ──
+                  // -- MCQ --
                   <>
                     <h2 className="text-xl font-bold text-gray-900 mb-6 leading-snug">
                       {currentQuestion.questionText}
@@ -1082,7 +1082,7 @@ export default function TestInterface() {
                     {currentQuestion.mediaAssets && currentQuestion.mediaAssets.length > 0 && (
                       <div className="mb-6 space-y-3">
                         {currentQuestion.mediaAssets.map((asset) => (
-                          <div key={asset.id} className="rounded-xl overflow-hidden border" style={{ borderColor: '#E5E7EB' }}>
+                          <div key={asset.id} className="rounded-xl overflow-hidden border" style={{ borderColor: 'var(--admin-border)' }}>
                             {asset.mediaType === 'image' && <img src={asset.storageUrl} alt={asset.originalName} className="w-full h-auto object-contain max-h-80" />}
                             {asset.mediaType === 'video' && <video src={asset.storageUrl} controls className="w-full" preload="metadata" />}
                             {asset.mediaType === 'audio' && (
@@ -1106,14 +1106,14 @@ export default function TestInterface() {
                             onClick={() => handleMCQSelect(option.originalIndex)}
                             className="w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all"
                             style={{
-                              borderColor: isSelected ? '#F59E0B' : '#E5E7EB',
-                              background: isSelected ? '#FFFBEB' : '#FFFFFF',
+                              borderColor: isSelected ? 'var(--admin-accent)' : 'var(--admin-border)',
+                              background: isSelected ? 'var(--admin-accent-soft)' : '#FFFFFF',
                             }}
                           >
                             <span
                               className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0 transition-colors"
                               style={{
-                                background: isSelected ? '#F59E0B' : '#F3F4F6',
+                                background: isSelected ? 'var(--admin-accent)' : 'var(--admin-border)',
                                 color: isSelected ? '#FFFFFF' : '#6B7280',
                               }}
                             >
@@ -1121,7 +1121,7 @@ export default function TestInterface() {
                             </span>
                             <span className="flex-1 text-sm text-gray-700">{option.text}</span>
                             {isSelected && (
-                              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 flex-shrink-0" viewBox="0 0 20 20" fill="#F59E0B">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 flex-shrink-0" viewBox="0 0 20 20" fill="var(--admin-accent)">
                                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                               </svg>
                             )}
@@ -1143,13 +1143,13 @@ export default function TestInterface() {
                     </div>
                   </>
                 ) : (
-                  // ── Behavioral ──
+                  // -- Behavioral --
                   <>
                     <h2 className="text-xl font-bold text-gray-900 mb-2 leading-snug">
                       {currentQuestion.title || currentQuestion.questionText}
                     </h2>
                     {currentQuestion.description && (
-                      <p className="text-sm mb-5" style={{ color: '#F59E0B' }}>
+                      <p className="text-sm mb-5" style={{ color: 'var(--admin-accent)' }}>
                         {currentQuestion.description}
                       </p>
                     )}
@@ -1162,9 +1162,9 @@ export default function TestInterface() {
                         rows={12}
                         placeholder="Write your response here..."
                         className="w-full rounded-xl border px-4 py-4 text-sm text-gray-700 resize-none outline-none transition-colors"
-                        style={{ borderColor: '#E5E7EB', background: '#FFFFFF', lineHeight: '1.6' }}
-                        onFocus={(e) => (e.target.style.borderColor = '#F59E0B')}
-                        onBlur={(e) => (e.target.style.borderColor = '#E5E7EB')}
+                        style={{ borderColor: 'var(--admin-border)', background: '#FFFFFF', lineHeight: '1.6' }}
+                        onFocus={(e) => (e.target.style.borderColor = 'var(--admin-accent)')}
+                        onBlur={(e) => (e.target.style.borderColor = 'var(--admin-border)')}
                       />
                       {/* Word count + auto-saved */}
                       <div className="flex items-center justify-between mt-2 px-1">
@@ -1172,7 +1172,7 @@ export default function TestInterface() {
                           {wordCount} {wordCount === 1 ? 'word' : 'words'} · {behavioralText.length} characters
                         </span>
                         {autoSaved && (
-                          <span className="flex items-center gap-1 text-xs" style={{ color: '#F59E0B' }}>
+                          <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--admin-accent)' }}>
                             <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
                               <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                             </svg>
@@ -1190,10 +1190,10 @@ export default function TestInterface() {
         )}
       </div>
 
-      {/* ── Bottom nav ── */}
+      {/* -- Bottom nav -- */}
       <BottomNav />
 
-      {/* ── Submit confirmation modal ── */}
+      {/* -- Submit confirmation modal -- */}
       {showConfirmSubmit && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
@@ -1214,7 +1214,7 @@ export default function TestInterface() {
               <button
                 onClick={() => setShowConfirmSubmit(false)}
                 className="flex-1 py-3 rounded-xl font-semibold text-sm border text-gray-700 hover:bg-gray-50 transition-colors"
-                style={{ borderColor: '#E5E7EB' }}
+                style={{ borderColor: 'var(--admin-border)' }}
               >
                 Cancel
               </button>
@@ -1231,12 +1231,12 @@ export default function TestInterface() {
         </div>
       )}
 
-      {/* ── Exit / Go back confirmation modal ── */}
+      {/* -- Exit / Go back confirmation modal -- */}
       {showExitConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
-            <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: '#FEF3C7' }}>
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="#D97706" strokeWidth={2}>
+            <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: 'var(--admin-accent-disabled)' }}>
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="var(--admin-accent-hover)" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
               </svg>
             </div>
@@ -1248,14 +1248,14 @@ export default function TestInterface() {
               <button
                 onClick={() => setShowExitConfirm(false)}
                 className="flex-1 py-3 rounded-xl font-semibold text-sm border text-gray-700 hover:bg-gray-50 transition-colors"
-                style={{ borderColor: '#E5E7EB' }}
+                style={{ borderColor: 'var(--admin-border)' }}
               >
                 Stay
               </button>
               <button
                 onClick={() => { setShowExitConfirm(false); navigate(-1); }}
                 className="flex-1 py-3 rounded-xl font-semibold text-sm text-white transition-colors"
-                style={{ background: '#F59E0B' }}
+                style={{ background: 'var(--admin-accent)' }}
               >
                 Exit Test
               </button>
