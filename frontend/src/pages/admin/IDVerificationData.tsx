@@ -4,7 +4,7 @@ import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { CreditCard, Camera, CheckCircle2, XCircle, Trash2 } from 'lucide-react';
 
-/* ── Types ── */
+/* -- Types -- */
 interface VerificationStats {
   verified: number;
   pending: number;
@@ -31,7 +31,7 @@ interface VerificationDetail extends VerificationCandidate {
   };
 }
 
-/* ── Avatar helpers ── */
+/* -- Avatar helpers -- */
 const AVATAR_BG: string[] = [
   '#374151','#1E40AF','#065F46','#92400E','#7C3AED','#B91C1C','#0E7490','#4D7C0F',
 ];
@@ -41,24 +41,24 @@ function avatarBg(name: string): string {
   return AVATAR_BG[sum % AVATAR_BG.length];
 }
 function initials(name: string): string {
-  const parts = name.trim().split(' ');
+  const parts = name.trim().split(/\s+/).map(w => w.replace(/[^a-zA-Z]/g, '')).filter(Boolean);
   if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
+  return (parts[0]?.[0] ?? name.replace(/[^a-zA-Z]/g,'')[0] ?? '?').toUpperCase();
 }
 
-/* ── Status config ── */
+/* -- Status config -- */
 type StatusKey = 'verified' | 'pending' | 'mismatch';
 const STATUS_CFG: Record<StatusKey, { label: string; dot: string; color: string }> = {
-  verified: { label: 'Verified',        dot: '#10B981', color: '#059669' },
-  pending:  { label: 'Pending review',  dot: '#F59E0B', color: '#D97706' },
-  mismatch: { label: 'Mismatch',        dot: '#EF4444', color: '#DC2626' },
+  verified: { label: 'Verified',       dot: '#10B981', color: '#059669' },
+  pending:  { label: 'Pending review', dot: 'var(--admin-accent)', color: 'var(--admin-accent-hover)' },
+  mismatch: { label: 'Mismatch',       dot: '#EF4444', color: '#DC2626' },
 };
 
-/* ── Image placeholder ── */
+/* -- Image placeholder -- */
 function ImgPlaceholder({ icon }: { icon: 'document' | 'camera' }) {
   return (
     <div style={{
-      flex: 1, backgroundColor: '#F3F4F6', borderRadius: '10px', minHeight: '140px',
+      flex: 1, backgroundColor: 'var(--admin-border)', borderRadius: '10px', minHeight: '140px',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px',
     }}>
       {icon === 'document' ? (
@@ -70,11 +70,11 @@ function ImgPlaceholder({ icon }: { icon: 'document' | 'camera' }) {
   );
 }
 
-/* ── Deleted image notice (Option B: images removed after verification) ── */
+/* -- Deleted image notice -- */
 function DeletedImg() {
   return (
     <div style={{
-      backgroundColor: '#F9FAFB', borderRadius: '10px', minHeight: '140px', border: '1.5px dashed #E5E7EB',
+      backgroundColor: '#F9FAFB', borderRadius: '10px', minHeight: '140px', border: '1.5px dashed var(--admin-border)',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '6px', padding: '12px',
     }}>
       <Trash2 width={22} height={22} style={{ color: '#D1D5DB' }} />
@@ -85,11 +85,11 @@ function DeletedImg() {
   );
 }
 
-/* ── Safe image with fallback to DeletedImg on 404 ── */
+/* -- Safe image with fallback to DeletedImg on 404 -- */
 function VerifImg({ src, alt, icon }: { src?: string; alt: string; icon: 'document' | 'camera' }) {
   const [failed, setFailed] = useState(false);
-  if (!src)          return <ImgPlaceholder icon={icon} />;
-  if (failed)        return <DeletedImg />;
+  if (!src)   return <ImgPlaceholder icon={icon} />;
+  if (failed) return <DeletedImg />;
   return (
     <img
       src={src}
@@ -100,7 +100,7 @@ function VerifImg({ src, alt, icon }: { src?: string; alt: string; icon: 'docume
   );
 }
 
-/* ── Check row ── */
+/* -- Check row -- */
 function CheckRow({ label, pass }: { label: string; pass: boolean }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -114,7 +114,7 @@ function CheckRow({ label, pass }: { label: string; pass: boolean }) {
   );
 }
 
-/* ── Reject reason modal ── */
+/* -- Reject reason modal -- */
 function RejectModal({ onConfirm, onCancel }: { onConfirm: (reason: string) => void; onCancel: () => void }) {
   const [reason, setReason] = useState('');
   return (
@@ -131,14 +131,13 @@ function RejectModal({ onConfirm, onCancel }: { onConfirm: (reason: string) => v
           placeholder="Enter rejection reason..."
           rows={3}
           style={{
-            width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1.5px solid #E5E7EB',
-            fontSize: '13px', color: '#374151', outline: 'none', boxSizing: 'border-box',
-            backgroundColor: 'white',
+            width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1.5px solid var(--admin-border)',
+            fontSize: '13px', color: '#374151', outline: 'none', boxSizing: 'border-box', backgroundColor: 'white',
           }}
         />
         <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
           <button onClick={onCancel}
-            style={{ flex: 1, padding: '9px', borderRadius: '8px', border: '1.5px solid #E5E7EB', backgroundColor: 'white', fontSize: '13px', fontWeight: 500, color: '#374151', cursor: 'pointer' }}>
+            style={{ flex: 1, padding: '9px', borderRadius: '8px', border: '1.5px solid var(--admin-border)', backgroundColor: 'white', fontSize: '13px', fontWeight: 500, color: '#374151', cursor: 'pointer' }}>
             Cancel
           </button>
           <button onClick={() => onConfirm(reason || 'Rejected by admin')} disabled={!reason.trim()}
@@ -151,37 +150,55 @@ function RejectModal({ onConfirm, onCancel }: { onConfirm: (reason: string) => v
   );
 }
 
+/* -- Confirm modal -- */
+function ConfirmModal({ title, body, confirmLabel, confirmColor, onConfirm, onCancel }: {
+  title: string; body: string; confirmLabel: string; confirmColor: string;
+  onConfirm: () => void; onCancel: () => void;
+}) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ backgroundColor: 'white', borderRadius: '14px', padding: '28px', width: '380px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
+        <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#111827', margin: '0 0 8px' }}>{title}</h3>
+        <p style={{ fontSize: '13px', color: '#6B7280', margin: '0 0 20px' }}>{body}</p>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button onClick={onCancel}
+            style={{ flex: 1, padding: '9px', borderRadius: '8px', border: '1.5px solid var(--admin-border)', backgroundColor: 'white', fontSize: '13px', fontWeight: 500, color: '#374151', cursor: 'pointer' }}>
+            Cancel
+          </button>
+          <button onClick={onConfirm}
+            style={{ flex: 1, padding: '9px', borderRadius: '8px', border: 'none', backgroundColor: confirmColor, fontSize: '13px', fontWeight: 600, color: 'white', cursor: 'pointer' }}>
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function IDVerificationData() {
   const navigate = useNavigate();
 
-  const [stats,         setStats]         = useState<VerificationStats | null>(null);
-  const [queue,         setQueue]         = useState<VerificationCandidate[]>([]);
-  const [selected,      setSelected]      = useState<VerificationDetail | null>(null);
-  const [loadingQueue,  setLoadingQueue]  = useState(true);
-  const [loadingDetail, setLoadingDetail] = useState(false);
-  const [approving,     setApproving]     = useState(false);
-  const [rejecting,     setRejecting]     = useState(false);
-  const [deletingImgs,  setDeletingImgs]  = useState(false);
+  const [stats,          setStats]          = useState<VerificationStats | null>(null);
+  const [queue,          setQueue]          = useState<VerificationCandidate[]>([]);
+  const [selected,       setSelected]       = useState<VerificationDetail | null>(null);
+  const [loadingQueue,   setLoadingQueue]   = useState(true);
+  const [loadingDetail,  setLoadingDetail]  = useState(false);
+  const [approving,      setApproving]      = useState(false);
+  const [rejecting,      setRejecting]      = useState(false);
+  const [deletingImgs,   setDeletingImgs]   = useState(false);
   const [deletingRecord, setDeletingRecord] = useState(false);
-  const [showReject,    setShowReject]    = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showReject,     setShowReject]     = useState(false);
+  const [showDeleteImgsConfirm,   setShowDeleteImgsConfirm]   = useState(false);
   const [showDeleteRecordConfirm, setShowDeleteRecordConfirm] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<{ candidateId: string; name: string } | null>(null);
-  const [queueFilter,   setQueueFilter]   = useState<'pending' | 'all' | 'verified' | 'rejected'>('pending');
+  const [deleteTarget,   setDeleteTarget]   = useState<{ candidateId: string; name: string } | null>(null);
+  const [queueFilter,    setQueueFilter]    = useState<'pending' | 'all' | 'verified' | 'rejected'>('pending');
 
-  /* load stats + queue on mount and when filter changes */
-  useEffect(() => {
-    void loadStats();
-  }, []);
-
-  useEffect(() => {
-    void loadQueue(queueFilter);
-  }, [queueFilter]);
+  useEffect(() => { void loadStats(); }, []);
+  useEffect(() => { void loadQueue(queueFilter); }, [queueFilter]);
 
   const loadStats = async () => {
     try {
       const { data } = await adminApi.getVerificationStats();
-      // Backend wraps counts inside data.stats
       const s = data.stats ?? data;
       setStats({
         verified:      s.verified      ?? s.total_verified      ?? 0,
@@ -204,13 +221,12 @@ export default function IDVerificationData() {
           return {
             candidateId:   String(v.candidateId   ?? v.candidate_id   ?? v.id ?? ''),
             candidateName: String(nested?.name ?? v.candidateName ?? v.candidate_name ?? v.name ?? 'Unknown'),
-            documentType:  String(v.idDocumentType ?? v.documentType  ?? v.document_type  ?? v.docType ?? 'ID'),
+            documentType:  String(v.idDocumentType ?? v.documentType ?? v.document_type ?? v.docType ?? 'ID'),
             status:        normaliseStatus(String(v.verificationStatus ?? v.status ?? 'pending')),
           };
         }
       );
       setQueue(items);
-      /* auto-select first pending/mismatch, else first item */
       const first = items.find(i => i.status === 'pending' || i.status === 'mismatch') ?? items[0];
       if (first) void loadDetail(first.candidateId);
     } catch { toast.error('Failed to load verification queue'); }
@@ -227,7 +243,6 @@ export default function IDVerificationData() {
     setLoadingDetail(true);
     try {
       const { data } = await adminApi.getVerificationDetails(candidateId);
-      // Backend returns { success, identity } — fall through wrappers
       const d = (data.verification ?? data.identity ?? data) as Record<string, unknown>;
       const nested = d.candidate as Record<string, unknown> | undefined;
       const faceScore = typeof d.faceMatchScore === 'number' ? d.faceMatchScore : undefined;
@@ -248,10 +263,6 @@ export default function IDVerificationData() {
       });
     } catch { toast.error('Failed to load candidate details'); }
     finally { setLoadingDetail(false); }
-  };
-
-  const handleSelectCandidate = (c: VerificationCandidate) => {
-    void loadDetail(c.candidateId);
   };
 
   const handleApprove = async () => {
@@ -287,15 +298,14 @@ export default function IDVerificationData() {
 
   const handleDeleteImages = async () => {
     if (!selected) return;
-    setShowDeleteConfirm(false);
+    setShowDeleteImgsConfirm(false);
     setDeletingImgs(true);
     try {
       await adminApi.deleteVerificationImages(selected.candidateId);
       toast.success('Images deleted');
       setSelected(s => s ? { ...s, idDocumentUrl: undefined, webcamCaptureUrl: undefined } : s);
-    } catch {
-      toast.error('Failed to delete images');
-    } finally { setDeletingImgs(false); }
+    } catch { toast.error('Failed to delete images'); }
+    finally { setDeletingImgs(false); }
   };
 
   const handleDeleteRecord = async () => {
@@ -318,30 +328,25 @@ export default function IDVerificationData() {
 
   const conf      = selected?.confidence ?? 0;
   const hasConf   = selected?.confidence !== undefined && selected.confidence !== null;
-  const confColor = conf >= 80 ? '#10B981' : conf >= 60 ? '#F59E0B' : '#EF4444';
+  const confColor = conf >= 80 ? '#10B981' : conf >= 60 ? 'var(--admin-accent)' : '#EF4444';
   const selStatus = selected ? STATUS_CFG[selected.status] : null;
 
   return (
     <div style={{ backgroundColor: '#F9FAFB', minHeight: '100%' }}>
 
-      {/* ── HEADER ── */}
-      <div style={{ marginBottom: '20px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#9CA3AF', marginBottom: '6px' }}>
-          <span style={{ cursor: 'pointer', color: '#6B7280' }} onClick={() => navigate('/admin/dashboard')}>Workspace</span>
-          <span>›</span>
-          <span>ID Verification</span>
-        </div>
-        <h1 style={{ fontSize: '26px', fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>ID Verification</h1>
-        <p style={{ fontSize: '13px', color: '#6B7280', margin: 0 }}>Photo ID checks matched against webcam capture before test start.</p>
+      {/* -- HEADER -- */}
+      <div style={{ marginBottom: '24px' }}>
+        <h1 className="text-2xl font-bold" style={{ color: 'var(--admin-text)', margin: 0 }}>ID Verification</h1>
+        <p className="text-sm mt-0.5" style={{ color: 'var(--admin-text-muted)' }}>Photo ID checks matched against webcam capture before test start.</p>
       </div>
 
-      {/* ── KPI CARDS ── */}
+      {/* -- KPI CARDS -- */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '14px', marginBottom: '22px' }}>
         {[
-          { value: stats?.verified      ?? '—', label: 'Verified',        bar: '#10B981' },
-          { value: stats?.pending       ?? '—', label: 'Pending',         bar: '#F59E0B' },
-          { value: stats?.mismatch      ?? '—', label: 'Mismatch',        bar: '#EF4444' },
-          { value: stats ? `${Math.round(stats.avgConfidence)}%` : '—', label: 'Avg confidence', bar: '#3B82F6' },
+          { value: stats?.verified      ?? '-', label: 'Verified',        bar: 'var(--admin-accent)' },
+          { value: stats?.pending       ?? '-', label: 'Pending',         bar: 'var(--admin-accent)' },
+          { value: stats?.mismatch      ?? '-', label: 'Mismatch',        bar: '#EF4444' },
+          { value: stats ? `${Math.round(stats.avgConfidence)}%` : '-', label: 'Avg confidence', bar: 'var(--admin-accent)' },
         ].map(kpi => (
           <div key={kpi.label} style={{
             backgroundColor: 'white', borderRadius: '14px', padding: '20px 22px',
@@ -356,18 +361,17 @@ export default function IDVerificationData() {
         ))}
       </div>
 
-      {/* ── 2-COLUMN LAYOUT ── */}
+      {/* -- 2-COLUMN LAYOUT -- */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 400px', gap: '16px', alignItems: 'start' }}>
 
-        {/* ── LEFT: Verification queue ── */}
+        {/* -- LEFT: Verification queue -- */}
         <div style={{ backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', padding: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
             <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#111827', margin: 0 }}>Verification queue</h2>
-            <div style={{ display: 'flex', gap: '4px', backgroundColor: '#F3F4F6', borderRadius: '8px', padding: '3px' }}>
+            {/* Filter tabs */}
+            <div style={{ display: 'flex', gap: '4px', backgroundColor: 'var(--admin-border)', borderRadius: '8px', padding: '3px' }}>
               {(['pending', 'all', 'verified', 'rejected'] as const).map(f => (
-                <button
-                  key={f}
-                  onClick={() => setQueueFilter(f)}
+                <button key={f} onClick={() => setQueueFilter(f)}
                   style={{
                     padding: '4px 10px', borderRadius: '6px', border: 'none', fontSize: '11px', fontWeight: 600, cursor: 'pointer',
                     backgroundColor: queueFilter === f ? 'white' : 'transparent',
@@ -384,7 +388,7 @@ export default function IDVerificationData() {
 
           {loadingQueue ? (
             <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: '#10B981' }} />
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: 'var(--admin-accent)' }} />
             </div>
           ) : queue.length === 0 ? (
             <p style={{ color: '#9CA3AF', fontSize: '14px', textAlign: 'center', padding: '40px 0' }}>No verifications found</p>
@@ -392,30 +396,27 @@ export default function IDVerificationData() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
               {queue.map(c => {
                 const isActive = selected?.candidateId === c.candidateId;
-                const cfg      = STATUS_CFG[c.status];
-                const bg       = avatarBg(c.candidateName);
+                const cfg = STATUS_CFG[c.status];
+                const bg = avatarBg(c.candidateName);
                 return (
-                  <button key={c.candidateId} onClick={() => handleSelectCandidate(c)}
+                  <button key={c.candidateId} onClick={() => loadDetail(c.candidateId)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 16px', borderRadius: '12px',
-                      border: 'none', backgroundColor: isActive ? '#F0FDF4' : 'white',
+                      border: 'none', backgroundColor: isActive ? 'var(--admin-accent-soft)' : 'white',
                       cursor: 'pointer', textAlign: 'left', width: '100%', transition: 'background-color 0.12s',
                     }}
-                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = '#EDF0F7'; }}
+                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = 'rgba(31, 53, 86, 0.08)'; }}
                     onMouseLeave={e => { if (!isActive) e.currentTarget.style.backgroundColor = 'white'; }}>
 
-                    {/* Avatar */}
                     <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                       <span style={{ fontSize: '13px', fontWeight: 700, color: 'white' }}>{initials(c.candidateName)}</span>
                     </div>
 
-                    {/* Name + doc type */}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: '14px', fontWeight: 600, color: '#111827', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.candidateName}</p>
                       <p style={{ fontSize: '12px', color: '#9CA3AF', margin: '2px 0 0' }}>{c.documentType}</p>
                     </div>
 
-                    {/* Status */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
                         <div style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: cfg.dot }} />
@@ -441,11 +442,11 @@ export default function IDVerificationData() {
           )}
         </div>
 
-        {/* ── RIGHT: Detail panel ── */}
+        {/* -- RIGHT: Detail panel -- */}
         <div style={{ backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', padding: '24px' }}>
           {loadingDetail ? (
             <div style={{ display: 'flex', justifyContent: 'center', padding: '80px 0' }}>
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: '#10B981' }} />
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: 'var(--admin-accent)' }} />
             </div>
           ) : !selected ? (
             <p style={{ color: '#9CA3AF', fontSize: '14px', textAlign: 'center', padding: '80px 0' }}>Select a candidate</p>
@@ -464,7 +465,7 @@ export default function IDVerificationData() {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   {selStatus && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 10px', borderRadius: '20px', backgroundColor: selected.status === 'verified' ? '#ECFDF5' : selected.status === 'mismatch' ? '#FEF2F2' : '#FFFBEB' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '4px 10px', borderRadius: '20px', backgroundColor: selected.status === 'verified' ? '#ECFDF5' : selected.status === 'mismatch' ? '#FEF2F2' : 'var(--admin-accent-soft)' }}>
                       <div style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: selStatus.dot }} />
                       <span style={{ fontSize: '12px', fontWeight: 600, color: selStatus.color }}>{selStatus.label}</span>
                     </div>
@@ -491,9 +492,8 @@ export default function IDVerificationData() {
                   <span style={{ fontSize: '10px', fontWeight: 700, color: '#9CA3AF', letterSpacing: '0.08em' }}>VERIFICATION IMAGES</span>
                   {(selected.idDocumentUrl || selected.webcamCaptureUrl) && (
                     <button
-                      onClick={() => setShowDeleteConfirm(true)}
+                      onClick={() => setShowDeleteImgsConfirm(true)}
                       disabled={deletingImgs}
-                      title="Delete stored images"
                       style={{
                         display: 'flex', alignItems: 'center', gap: '4px', padding: '3px 8px',
                         borderRadius: '6px', border: '1px solid #FCA5A5', backgroundColor: '#FEF2F2',
@@ -502,17 +502,17 @@ export default function IDVerificationData() {
                       }}
                     >
                       <Trash2 width={11} height={11} />
-                      {deletingImgs ? 'Deleting…' : 'Delete images'}
+                      {deletingImgs ? 'Deleting...' : 'Delete images'}
                     </button>
                   )}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
-                    <p style={{ fontSize: '10px', color: '#9CA3AF', margin: '0 0 6px' }}>ID DOCUMENT</p>
+                    <p style={{ fontSize: '10px', fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.06em', margin: '0 0 6px' }}>ID DOCUMENT</p>
                     <VerifImg src={selected.idDocumentUrl} alt="ID Document" icon="document" />
                   </div>
                   <div>
-                    <p style={{ fontSize: '10px', color: '#9CA3AF', margin: '0 0 6px' }}>WEBCAM CAPTURE</p>
+                    <p style={{ fontSize: '10px', fontWeight: 600, color: '#9CA3AF', letterSpacing: '0.06em', margin: '0 0 6px' }}>WEBCAM CAPTURE</p>
                     <VerifImg src={selected.webcamCaptureUrl} alt="Webcam capture" icon="camera" />
                   </div>
                 </div>
@@ -522,12 +522,12 @@ export default function IDVerificationData() {
               <div style={{ marginBottom: '16px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <span style={{ fontSize: '13px', fontWeight: 600, color: '#374151' }}>Face match confidence</span>
-                  <span style={{ fontSize: '16px', fontWeight: 700, color: confColor }}>{hasConf ? `${Math.round(conf)}%` : '—'}</span>
+                  <span style={{ fontSize: '16px', fontWeight: 700, color: hasConf ? confColor : '#9CA3AF' }}>
+                    {hasConf ? `${Math.round(conf)}%` : '-'}
+                  </span>
                 </div>
-                <div style={{ height: '6px', borderRadius: '3px', backgroundColor: '#F3F4F6', overflow: 'hidden' }}>
-                  {hasConf && (
-                    <div style={{ height: '100%', width: `${Math.max(2, Math.min(100, conf))}%`, backgroundColor: confColor, borderRadius: '3px', transition: 'width 0.4s ease' }} />
-                  )}
+                <div style={{ height: '6px', borderRadius: '3px', backgroundColor: 'var(--admin-border)', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: hasConf ? `${Math.min(100, conf)}%` : '0%', backgroundColor: confColor, borderRadius: '3px', transition: 'width 0.4s ease' }} />
                 </div>
               </div>
 
@@ -547,25 +547,27 @@ export default function IDVerificationData() {
                   style={{
                     padding: '12px', borderRadius: '10px', border: 'none',
                     backgroundColor: selected.status === 'mismatch' ? '#FCA5A5' : '#EF4444',
-                    color: 'white', fontSize: '14px', fontWeight: 600, cursor: selected.status === 'mismatch' ? 'not-allowed' : 'pointer',
+                    color: 'white', fontSize: '14px', fontWeight: 600,
+                    cursor: selected.status === 'mismatch' ? 'not-allowed' : 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                     opacity: rejecting ? 0.7 : 1,
                   }}>
                   <XCircle width={16} height={16} />
-                  {rejecting ? 'Rejecting…' : 'Reject'}
+                  {rejecting ? 'Rejecting...' : 'Reject'}
                 </button>
                 <button
                   onClick={handleApprove}
                   disabled={approving || selected.status === 'verified'}
                   style={{
                     padding: '12px', borderRadius: '10px', border: 'none',
-                    backgroundColor: selected.status === 'verified' ? '#6EE7B7' : '#10B981',
-                    color: 'white', fontSize: '14px', fontWeight: 600, cursor: selected.status === 'verified' ? 'not-allowed' : 'pointer',
+                    backgroundColor: selected.status === 'verified' ? 'var(--admin-accent-disabled)' : 'var(--admin-accent)',
+                    color: 'white', fontSize: '14px', fontWeight: 600,
+                    cursor: selected.status === 'verified' ? 'not-allowed' : 'pointer',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
                     opacity: approving ? 0.7 : 1,
                   }}>
                   <CheckCircle2 width={14} height={14} />
-                  {approving ? 'Approving…' : 'Approve & verify'}
+                  {approving ? 'Approving...' : 'Approve & verify'}
                 </button>
               </div>
             </>
@@ -573,73 +575,29 @@ export default function IDVerificationData() {
         </div>
       </div>
 
-      {/* ── Reject modal ── */}
+      {/* -- Modals -- */}
       {showReject && (
-        <RejectModal
-          onConfirm={handleReject}
-          onCancel={() => setShowReject(false)}
+        <RejectModal onConfirm={handleReject} onCancel={() => setShowReject(false)} />
+      )}
+      {showDeleteImgsConfirm && (
+        <ConfirmModal
+          title="Delete verification images?"
+          body="This will permanently remove the stored ID document and webcam capture images. The verification record will remain."
+          confirmLabel="Delete images"
+          confirmColor="#EF4444"
+          onConfirm={handleDeleteImages}
+          onCancel={() => setShowDeleteImgsConfirm(false)}
         />
       )}
-
-      {/* ── Delete record confirm ── */}
       {showDeleteRecordConfirm && (
-        <div style={{
-          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 50,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <div style={{ backgroundColor: 'white', borderRadius: '14px', padding: '28px', width: '380px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-              <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Trash2 width={17} height={17} style={{ color: '#DC2626' }} />
-              </div>
-              <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#111827', margin: 0 }}>Delete Verification Record?</h3>
-            </div>
-            <p style={{ fontSize: '13px', color: '#6B7280', margin: '0 0 20px', lineHeight: 1.5 }}>
-              This will permanently delete the entire verification record for{' '}
-              <strong>{deleteTarget?.name ?? selected?.candidateName}</strong>, including images and all scores. This cannot be undone.
-            </p>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={() => { setShowDeleteRecordConfirm(false); setDeleteTarget(null); }}
-                style={{ flex: 1, padding: '9px', borderRadius: '8px', border: '1.5px solid #E5E7EB', backgroundColor: 'white', fontSize: '13px', fontWeight: 500, color: '#374151', cursor: 'pointer' }}>
-                Cancel
-              </button>
-              <button onClick={handleDeleteRecord} disabled={deletingRecord}
-                style={{ flex: 1, padding: '9px', borderRadius: '8px', border: 'none', backgroundColor: '#EF4444', fontSize: '13px', fontWeight: 600, color: 'white', cursor: 'pointer', opacity: deletingRecord ? 0.7 : 1 }}>
-                {deletingRecord ? 'Deleting…' : 'Yes, Delete Record'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Delete images confirm ── */}
-      {showDeleteConfirm && (
-        <div style={{
-          position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 50,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <div style={{ backgroundColor: 'white', borderRadius: '14px', padding: '28px', width: '380px', boxShadow: '0 20px 60px rgba(0,0,0,0.2)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-              <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Trash2 width={17} height={17} style={{ color: '#DC2626' }} />
-              </div>
-              <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#111827', margin: 0 }}>Delete Verification Images?</h3>
-            </div>
-            <p style={{ fontSize: '13px', color: '#6B7280', margin: '0 0 20px', lineHeight: 1.5 }}>
-              This will permanently delete the ID document and webcam capture for <strong>{selected?.candidateName}</strong>. The verification record and scores will be kept. This cannot be undone.
-            </p>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={() => setShowDeleteConfirm(false)}
-                style={{ flex: 1, padding: '9px', borderRadius: '8px', border: '1.5px solid #E5E7EB', backgroundColor: 'white', fontSize: '13px', fontWeight: 500, color: '#374151', cursor: 'pointer' }}>
-                Cancel
-              </button>
-              <button onClick={handleDeleteImages}
-                style={{ flex: 1, padding: '9px', borderRadius: '8px', border: 'none', backgroundColor: '#EF4444', fontSize: '13px', fontWeight: 600, color: 'white', cursor: 'pointer' }}>
-                Yes, Delete Images
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmModal
+          title="Delete entire verification record?"
+          body={`This will permanently delete all verification data for ${deleteTarget?.name ?? selected?.candidateName ?? 'this candidate'}, including images. This cannot be undone.`}
+          confirmLabel="Delete record"
+          confirmColor="#EF4444"
+          onConfirm={handleDeleteRecord}
+          onCancel={() => { setShowDeleteRecordConfirm(false); setDeleteTarget(null); }}
+        />
       )}
     </div>
   );
