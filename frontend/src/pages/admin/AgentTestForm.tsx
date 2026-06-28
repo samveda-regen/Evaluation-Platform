@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
+import { BriefcaseBusiness, Check, ClipboardCheck, ListChecks, Settings2 } from 'lucide-react';
 import { adminApi } from '../../services/api';
 import DateTimePicker from '../../components/DateTimePicker';
+import CustomSelect from '../../components/CustomSelect';
 
-/* ── Types ── */
+/* -- Types -- */
 interface JobProfile {
   title: string;
   experience: string;
@@ -33,7 +35,37 @@ interface TestSettings {
   maxViolations: number;
 }
 
-/* ── Frontend skill extraction (mirrors backend analyzeJobLocal) ── */
+/* -- Recognized skill list for autocomplete -- */
+const SKILL_SUGGESTIONS = [
+  'JavaScript','TypeScript','Python','Java','C++','C#','Go','Rust','Ruby','PHP','Swift','Kotlin','Scala',
+  'React','Vue.js','Angular','Next.js','Nuxt.js','Svelte',
+  'Node.js','Express.js','Django','Flask','FastAPI','Spring Boot','Laravel','Rails','ASP.NET',
+  'HTML','CSS','Tailwind CSS','Bootstrap','SASS/SCSS',
+  'SQL','MySQL','PostgreSQL','MongoDB','Redis','Elasticsearch','DynamoDB','SQLite','Cassandra','Firebase',
+  'REST APIs','GraphQL','gRPC','WebSockets','Microservices',
+  'AWS','Azure','GCP','Docker','Kubernetes','Terraform','CI/CD','Jenkins','GitHub Actions','Linux',
+  'Machine Learning','Deep Learning','Data Science','NLP','Computer Vision','TensorFlow','PyTorch','scikit-learn',
+  'Data Structures','Algorithms','System Design','Problem Solving','Object-Oriented Programming','Design Patterns',
+  'React Native','Flutter','Android','iOS',
+  'Apache Spark','Kafka','ETL','Data Engineering','Hadoop',
+  'Networking','Cybersecurity','DevOps','Cloud Computing','Agile','Scrum','Git',
+];
+
+const EXPERIENCE_OPTIONS = [
+  { value: '0-2 years', label: '0-2 years (Entry Level)' },
+  { value: '2-5 years', label: '2-5 years (Mid-Level)' },
+  { value: '5+ years',  label: '5+ years (Senior)' },
+];
+
+function normalizeExperienceLevel(value?: string): string {
+  if (!value) return '0-2 years';
+  const normalized = value.trim().toLowerCase();
+  if (normalized.includes('5+') || normalized.includes('senior') || normalized.includes('lead')) return '5+ years';
+  if (normalized.includes('3-5') || normalized.includes('2-5') || normalized.includes('mid')) return '2-5 years';
+  return '0-2 years';
+}
+
+/* -- Frontend skill extraction (mirrors backend analyzeJobLocal) -- */
 function extractSkillsLocally(title: string, description?: string): string[] {
   const text = `${title} ${description || ''}`;
   const patterns: [RegExp, string][] = [
@@ -57,44 +89,63 @@ function extractSkillsLocally(title: string, description?: string): string[] {
   return skills.slice(0, 8);
 }
 
-/* ── 4-step progress indicator ── */
+/* -- 4-step progress indicator (stretching connectors) -- */
 function StepIndicator({ current }: { current: number }) {
-  const steps = ['Job Profile', 'Skills & Settings', 'Review Selection', 'Finalize Settings'];
+  const steps = [
+    { label: 'Job Profile', icon: BriefcaseBusiness },
+    { label: 'Skills & Settings', icon: ListChecks },
+    { label: 'Review Selection', icon: ClipboardCheck },
+    { label: 'Finalize Settings', icon: Settings2 },
+  ];
   return (
-    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '28px' }}>
-      {steps.map((label, i) => {
+    <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '32px', width: '100%' }}>
+      {steps.flatMap((stepItem, i) => {
         const n = i + 1;
         const active = n === current;
-        const done   = n < current;
-        return (
-          <div key={n} style={{ display: 'flex', alignItems: 'center' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-              <div style={{
-                width: '38px', height: '38px', borderRadius: '50%',
-                backgroundColor: active || done ? '#1D4ED8' : '#E5E7EB',
-                color: active || done ? 'white' : '#9CA3AF',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '14px', fontWeight: 700, flexShrink: 0,
-              }}>
-                {done ? '✓' : n}
-              </div>
-              <span style={{ fontSize: '11px', color: active ? '#1D4ED8' : done ? '#6B7280' : '#9CA3AF', fontWeight: active ? 600 : 400, whiteSpace: 'nowrap' }}>
-                {label}
-              </span>
+        const done = n < current;
+        const Icon = stepItem.icon;
+        const items = [
+          <div key={`step-${n}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+            <div style={{
+              width: '40px', height: '40px', borderRadius: '50%',
+              backgroundColor: active || done ? 'var(--admin-accent)' : 'var(--admin-border)',
+              color: active || done ? 'white' : 'var(--admin-text-subtle)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '14px', fontWeight: 700,
+              boxShadow: active ? '0 0 0 4px var(--admin-focus-ring)' : 'none',
+              transition: 'all 0.2s',
+            }}>
+              {done ? <Check size={16} strokeWidth={2.4} /> : <Icon size={16} strokeWidth={2.2} />}
             </div>
-            {i < steps.length - 1 && (
-              <div style={{ width: '80px', height: '2px', backgroundColor: done ? '#1D4ED8' : '#E5E7EB', marginBottom: '22px', flexShrink: 0 }} />
-            )}
-          </div>
-        );
+            <span style={{
+              fontSize: '11px',
+              color: active ? 'var(--admin-accent-hover)' : done ? 'var(--admin-text-muted)' : 'var(--admin-text-subtle)',
+              fontWeight: active ? 700 : 400,
+              whiteSpace: 'nowrap',
+            }}>
+              {stepItem.label}
+            </span>
+          </div>,
+        ];
+        if (i < steps.length - 1) {
+          items.push(
+            <div key={`conn-${n}`} style={{
+              flex: 1, height: '2px',
+              backgroundColor: done ? 'var(--admin-accent)' : 'var(--admin-border)',
+              marginTop: '20px', minWidth: '40px',
+              transition: 'background-color 0.3s',
+            }} />
+          );
+        }
+        return items;
       })}
     </div>
   );
 }
 
-/* ══════════════════════════════════════════════════════
+/* ======================================================
    MAIN COMPONENT
-══════════════════════════════════════════════════════ */
+====================================================== */
 export default function AgentTestForm() {
   const navigate = useNavigate();
   const [step,      setStep]      = useState(1);
@@ -107,6 +158,7 @@ export default function AgentTestForm() {
   /* Step 2 state */
   const [skills,      setSkills]      = useState<string[]>([]);
   const [skillInput,  setSkillInput]  = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [difficulty,  setDifficulty]  = useState<'easy' | 'medium' | 'hard' | 'mixed'>('mixed');
   const [mcqCount,    setMcqCount]    = useState(10);
   const [codingCount, setCodingCount] = useState(2);
@@ -121,15 +173,28 @@ export default function AgentTestForm() {
     negativeMarking: 0, shuffleQuestions: true, shuffleOptions: true, maxViolations: 3,
   });
 
-  /* ── skill helpers ── */
-  const addSkill = () => {
-    const s = skillInput.trim();
-    if (s && !skills.includes(s)) setSkills(prev => [...prev, s]);
+  /* -- skill helpers -- */
+  const filteredSuggestions = skillInput.trim().length > 0
+    ? SKILL_SUGGESTIONS.filter(s =>
+        s.toLowerCase().includes(skillInput.trim().toLowerCase()) && !skills.includes(s)
+      ).slice(0, 6)
+    : [];
+
+  const addSkill = (override?: string) => {
+    const s = (override ?? skillInput).trim();
+    if (!s) return;
+    if (skills.includes(s)) { setSkillInput(''); setShowSuggestions(false); return; }
+    if (!/^[a-zA-Z][a-zA-Z0-9\s.\+\#\/\-]{1,49}$/.test(s)) {
+      toast.error('Enter a valid skill name (e.g., Python, React, Node.js)');
+      return;
+    }
+    setSkills(prev => [...prev, s]);
     setSkillInput('');
+    setShowSuggestions(false);
   };
   const removeSkill = (s: string) => setSkills(prev => prev.filter(x => x !== s));
 
-  /* ── Step 1 → 2 ── */
+  /* -- Step 1 -> 2 -- */
   const handleAnalyzeJob = async () => {
     if (!jobProfile.title.trim()) { toast.error('Job title is required'); return; }
     setAnalyzing(true);
@@ -141,11 +206,10 @@ export default function AgentTestForm() {
         setDifficulty(d.suggestedDifficulty || 'mixed');
         setMcqCount(d.suggestedMcqCount || 10);
         setCodingCount(d.suggestedCodingCount || 2);
-        setJobProfile(p => ({ ...p, experience: d.experienceLevel || p.experience }));
+        setJobProfile(p => ({ ...p, experience: normalizeExperienceLevel(d.experienceLevel || p.experience) }));
         toast.success('Role analyzed! Review skills and settings below');
       }
     } catch {
-      /* Backend unavailable — extract skills from title/description locally */
       const local = extractSkillsLocally(jobProfile.title, jobProfile.description);
       if (local.length) {
         setSkills(local);
@@ -157,7 +221,7 @@ export default function AgentTestForm() {
     }
   };
 
-  /* ── Step 2 → 3 ── */
+  /* -- Step 2 -> 3 -- */
   const handleGenerateTest = async () => {
     if (!skills.length)             { toast.error('At least one skill is required'); return; }
     if (!mcqCount && !codingCount)  { toast.error('At least one question type must be > 0'); return; }
@@ -192,7 +256,7 @@ export default function AgentTestForm() {
     }
   };
 
-  /* ── Step 4 → create ── */
+  /* -- Step 4 -> create -- */
   const handleCreateTest = async () => {
     if (!selection)                  { toast.error('No test selection available'); return; }
     if (!testSettings.startTime)     { toast.error('Start time is required'); return; }
@@ -219,38 +283,39 @@ export default function AgentTestForm() {
     }
   };
 
-  /* ── shared styles ── */
+  /* -- shared styles -- */
   const card: React.CSSProperties = {
-    backgroundColor: 'white', borderRadius: '12px', padding: '28px',
-    boxShadow: '0 1px 4px rgba(0,0,0,0.08)', maxWidth: '720px',
+    backgroundColor: 'white', borderRadius: '12px', padding: '24px',
+    boxShadow: '0 1px 3px rgba(0,0,0,0.06)', border: '1px solid var(--admin-border)',
+    height: '100%', overflowY: 'auto', boxSizing: 'border-box',
   };
   const lbl: React.CSSProperties = {
-    display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '6px',
+    display: 'block', fontSize: 'var(--admin-control-font-size)', fontWeight: 600, color: 'var(--admin-text-muted)', marginBottom: '6px',
   };
   const inp: React.CSSProperties = {
-    width: '100%', padding: '10px 14px', borderRadius: '8px',
-    border: '1.5px solid #E5E7EB', fontSize: '13px', color: '#111827',
+    width: '100%', padding: 'var(--admin-field-padding-y) var(--admin-field-padding-x)', borderRadius: 'var(--admin-field-radius)',
+    border: '1.5px solid var(--admin-border)', fontSize: 'var(--admin-control-font-size)', color: 'var(--admin-text)',
     outline: 'none', boxSizing: 'border-box', backgroundColor: 'white',
   };
   const btnPrimary: React.CSSProperties = {
-    padding: '10px 24px', borderRadius: '8px', border: 'none',
-    backgroundColor: '#1D4ED8', fontSize: '13px', fontWeight: 600,
+    padding: 'var(--admin-control-padding-y) var(--admin-control-padding-x-primary)', borderRadius: 'var(--admin-control-radius)', border: '1px solid var(--admin-accent)',
+    backgroundColor: 'var(--admin-accent)', fontSize: '14px', lineHeight: '1.25rem', fontWeight: 600,
     color: 'white', cursor: 'pointer',
   };
   const btnSecondary: React.CSSProperties = {
-    padding: '10px 20px', borderRadius: '8px',
-    border: '1.5px solid #E5E7EB', backgroundColor: 'white',
-    fontSize: '13px', fontWeight: 500, color: '#374151', cursor: 'pointer',
+    padding: 'var(--admin-control-padding-y) var(--admin-control-padding-x)', borderRadius: 'var(--admin-control-radius)',
+    border: '1px solid var(--admin-border)', backgroundColor: 'white',
+    fontSize: '14px', lineHeight: '1.25rem', fontWeight: 500, color: 'var(--admin-text)', cursor: 'pointer',
   };
   const btnDisabled: React.CSSProperties = {
-    ...btnPrimary, backgroundColor: '#93C5FD', cursor: 'not-allowed', opacity: 0.8,
+    ...btnPrimary, backgroundColor: 'var(--admin-accent-disabled)', cursor: 'not-allowed', opacity: 0.8,
   };
   const focus = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    e.target.style.borderColor = '#1D4ED8';
+    e.target.style.borderColor = 'var(--admin-border-focus)';
     if (e.target instanceof HTMLInputElement && e.target.type === 'number') e.target.select();
   };
-  const blur  = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
-    (e.target.style.borderColor = '#E5E7EB');
+  const blur = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+    (e.target.style.borderColor = 'var(--admin-border)');
 
   const parseNum = (val: string, fallback: number, min = 0) => {
     const n = val === '' ? fallback : Number(val);
@@ -258,360 +323,386 @@ export default function AgentTestForm() {
   };
 
   return (
-    <div style={{ backgroundColor: '#F9FAFB', minHeight: '100%' }}>
+    <div style={{
+      backgroundColor: '#F9FAFB',
+      height: 'calc(100vh - 100px)',
+      minHeight: '560px',
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
+    }}>
+      <div style={{
+        width: '100%',
+        maxWidth: '1360px',
+        margin: '0 auto',
+        height: '100%',
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+      }}>
 
-      {/* Breadcrumb */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#9CA3AF', marginBottom: '10px' }}>
-        <Link to="/admin/tests" style={{ color: '#6B7280', textDecoration: 'none' }}>Assessments</Link>
-        <span>›</span>
-        <span>AI Generator</span>
-      </div>
-
-      <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#111827', margin: '0 0 4px' }}>AI Test Generator</h1>
-      <p style={{ fontSize: '13px', color: '#6B7280', margin: '0 0 28px' }}>
+      <h1 className="text-2xl font-bold" style={{ color: 'var(--admin-text)', margin: '0 0 4px', lineHeight: 1.2 }}>AI Test Generator</h1>
+      <p className="text-sm" style={{ color: 'var(--admin-text-muted)', margin: '0 0 24px' }}>
         Let AI help you create a test by analyzing job requirements and selecting appropriate questions
       </p>
 
       <StepIndicator current={step} />
 
-      {/* ════════════ STEP 1: Job Profile ════════════ */}
-      {step === 1 && (
-        <div style={card}>
-          <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#111827', margin: '0 0 20px' }}>Step 1: Define Job Profile</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div style={{
+        width: '100%',
+        flex: 1,
+        minHeight: 0,
+      }}>
 
-            <div>
-              <label style={lbl}>Job Title <span style={{ color: '#EF4444' }}>*</span></label>
-              <input type="text"
-                value={jobProfile.title}
-                onChange={e => setJobProfile(p => ({ ...p, title: e.target.value }))}
-                placeholder="e.g., Senior Software Engineer"
-                style={inp} onFocus={focus} onBlur={blur}
-              />
-            </div>
+          {/* ============ STEP 1: Job Profile ============ */}
+          {step === 1 && (
+            <div style={card}>
+              <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 20px' }}>Step 1: Define Job Profile</h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-            <div>
-              <label style={lbl}>Experience Level</label>
-              <select
-                value={jobProfile.experience}
-                onChange={e => setJobProfile(p => ({ ...p, experience: e.target.value }))}
-                style={inp} onFocus={focus} onBlur={blur}
-              >
-                <option value="0-1 years">0-1 years (Entry Level)</option>
-                <option value="1-3 years">1-3 years (Junior)</option>
-                <option value="3-5 years">3-5 years (Mid-Level)</option>
-                <option value="5+ years">5+ years (Senior)</option>
-              </select>
-            </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                  <div>
+                    <label style={lbl}>Job Title <span style={{ color: '#EF4444' }}>*</span></label>
+                    <input type="text"
+                      value={jobProfile.title}
+                      onChange={e => setJobProfile(p => ({ ...p, title: e.target.value }))}
+                      placeholder="e.g., Senior Software Engineer"
+                      style={inp} onFocus={focus} onBlur={blur}
+                    />
+                  </div>
+                  <div>
+                    <label style={lbl}>Experience Level</label>
+                    <CustomSelect
+                      value={jobProfile.experience}
+                      onChange={v => setJobProfile(p => ({ ...p, experience: v }))}
+                      options={EXPERIENCE_OPTIONS}
+                      style={{ width:'100%' }}
+                    />
+                  </div>
+                </div>
 
-            <div>
-              <label style={lbl}>Job Description (Optional)</label>
-              <textarea
-                value={jobProfile.description}
-                onChange={e => setJobProfile(p => ({ ...p, description: e.target.value }))}
-                placeholder="Paste the job description to help AI understand requirements better..."
-                rows={5}
-                style={{ ...inp, lineHeight: '1.6' }}
-                onFocus={focus} onBlur={blur}
-              />
-            </div>
+                <div>
+                  <label style={lbl}>Job Description <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--admin-text-subtle)' }}>(Optional - helps AI pick better questions)</span></label>
+                  <textarea
+                    value={jobProfile.description}
+                    onChange={e => setJobProfile(p => ({ ...p, description: e.target.value }))}
+                    placeholder="Paste the job description to help AI understand requirements better..."
+                    rows={6}
+                    style={{ ...inp, lineHeight: '1.6', resize: 'vertical' }}
+                    onFocus={focus} onBlur={blur}
+                  />
+                </div>
 
-            <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
-              <button
-                onClick={handleAnalyzeJob}
-                disabled={analyzing || !jobProfile.title.trim()}
-                style={analyzing || !jobProfile.title.trim() ? btnDisabled : btnPrimary}
-              >
-                {analyzing ? 'Analyzing...' : 'Analyze & Continue'}
-              </button>
-              <button
-                onClick={() => {
-                  /* Skip — extract skills locally so Step 2 isn't blank */
-                  const local = extractSkillsLocally(jobProfile.title, jobProfile.description);
-                  if (local.length) setSkills(local);
-                  setStep(2);
-                }}
-                style={btnSecondary}
-              >
-                Skip Analysis
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ════════════ STEP 2: Skills & Test Settings ════════════ */}
-      {step === 2 && (
-        <div style={card}>
-          <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#111827', margin: '0 0 20px' }}>Step 2: Skills & Test Settings</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-
-            {/* Skills */}
-            <div>
-              <label style={lbl}>Required Skills <span style={{ color: '#EF4444' }}>*</span></label>
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
-                <input type="text"
-                  value={skillInput}
-                  onChange={e => setSkillInput(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addSkill(); } }}
-                  placeholder="Type a skill and press Enter"
-                  style={{ ...inp, flex: 1 }} onFocus={focus} onBlur={blur}
-                />
-                <button type="button" onClick={addSkill} style={btnPrimary}>Add</button>
+                <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
+                  <button
+                    onClick={handleAnalyzeJob}
+                    disabled={analyzing || !jobProfile.title.trim()}
+                    style={analyzing || !jobProfile.title.trim() ? btnDisabled : btnPrimary}
+                  >
+                    {analyzing ? 'Analyzing...' : 'Analyze & Continue'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      const local = extractSkillsLocally(jobProfile.title, jobProfile.description);
+                      if (local.length) setSkills(local);
+                      setStep(2);
+                    }}
+                    style={btnSecondary}
+                  >
+                    Skip Analysis
+                  </button>
+                </div>
               </div>
-              {skills.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                  {skills.map(skill => (
-                    <span key={skill} style={{
-                      display: 'inline-flex', alignItems: 'center', gap: '4px',
-                      padding: '5px 12px', borderRadius: '999px',
-                      backgroundColor: '#EFF6FF', color: '#1D4ED8',
-                      fontSize: '13px', fontWeight: 500,
-                    }}>
-                      {skill}
-                      <button type="button" onClick={() => removeSkill(skill)}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#1D4ED8', fontSize: '16px', lineHeight: 1, padding: '0 0 0 2px' }}>
-                        ×
-                      </button>
-                    </span>
+            </div>
+          )}
+
+          {/* ============ STEP 2: Skills & Test Settings ============ */}
+          {step === 2 && (
+            <div style={card}>
+              <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 20px' }}>Step 2: Skills & Test Settings</h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+                {/* Skills */}
+                <div>
+                  <label style={lbl}>Required Skills <span style={{ color: '#EF4444' }}>*</span></label>
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                    <div style={{ position: 'relative', flex: 1 }}>
+                      {showSuggestions && <div className="fixed inset-0 z-20" onClick={() => setShowSuggestions(false)} />}
+                      <input type="text"
+                        value={skillInput}
+                        onChange={e => { setSkillInput(e.target.value); setShowSuggestions(true); }}
+                        onFocus={e => { setShowSuggestions(true); focus(e); }}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') { e.preventDefault(); if (filteredSuggestions.length) addSkill(filteredSuggestions[0]); else addSkill(); }
+                          if (e.key === 'Escape') setShowSuggestions(false);
+                        }}
+                        placeholder="Type a skill and press Enter or click Add"
+                        style={{ ...inp, width: '100%', boxSizing: 'border-box' }} onBlur={blur}
+                        autoComplete="off"
+                      />
+                      {showSuggestions && filteredSuggestions.length > 0 && (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, marginTop: '2px', backgroundColor: 'white', border: '1.5px solid var(--admin-accent-disabled)', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.10)', overflow: 'hidden' }}>
+                          {filteredSuggestions.map(s => (
+                            <button key={s} type="button"
+                              onMouseDown={e => { e.preventDefault(); addSkill(s); }}
+                              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', color: 'var(--admin-text)' }}
+                              onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--admin-accent-soft)')}
+                              onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                            >
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <button type="button" onClick={() => addSkill()} style={{ ...btnPrimary, padding: '10px 20px' }}>Add</button>
+                  </div>
+                  {skills.length > 0 ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', padding: '2px 0 0' }}>
+                      {skills.map(skill => (
+                        <span key={skill} style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '4px',
+                          padding: '5px 12px', borderRadius: '999px',
+                          backgroundColor: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)',
+                          fontSize: '13px', fontWeight: 500,
+                          border: '1px solid var(--admin-accent-disabled)',
+                        }}>
+                          {skill}
+                          <button type="button" onClick={() => removeSkill(skill)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--admin-accent-hover)', fontSize: '16px', lineHeight: 1, padding: '0 0 0 2px' }}>
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: 0 }}>No skills added yet. Add at least one skill to continue.</p>
+                  )}
+                </div>
+
+                {/* Difficulty + counts in a grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
+                  <div>
+                    <label style={lbl}>Difficulty Level</label>
+                    <CustomSelect
+                      value={difficulty}
+                      onChange={v => setDifficulty(v as typeof difficulty)}
+                      options={[
+                        { value:'easy',   label:'Easy' },
+                        { value:'medium', label:'Medium' },
+                        { value:'hard',   label:'Hard' },
+                        { value:'mixed',  label:'Mixed (All Levels)' },
+                      ]}
+                      style={{ width:'100%' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={lbl}>MCQ Questions</label>
+                    <input type="number"
+                      value={mcqCount}
+                      onChange={e => setMcqCount(parseNum(e.target.value, 0))}
+                      min={0} max={50}
+                      style={inp} onFocus={focus} onBlur={blur}
+                    />
+                  </div>
+                  <div>
+                    <label style={lbl}>Coding Questions</label>
+                    <input type="number"
+                      value={codingCount}
+                      onChange={e => setCodingCount(parseNum(e.target.value, 0))}
+                      min={0} max={10}
+                      style={inp} onFocus={focus} onBlur={blur}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
+                  <button onClick={() => setStep(1)} style={btnSecondary}>Back</button>
+                  <button
+                    onClick={handleGenerateTest}
+                    disabled={loading || !skills.length}
+                    style={loading || !skills.length ? btnDisabled : btnPrimary}
+                  >
+                    {loading ? 'Generating...' : 'Generate Test'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ============ STEP 3: Review AI Selection ============ */}
+          {step === 3 && selection && (
+            <div style={card}>
+              <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 20px' }}>Step 3: Review AI Selection</h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+                {/* MCQ / Coding counts */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                  <div style={{ borderRadius: '10px', padding: '20px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
+                    <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--admin-accent-hover)', margin: '0 0 8px' }}>MCQ Questions</p>
+                    <p style={{ fontSize: '44px', fontWeight: 700, color: 'var(--admin-accent)', margin: '0 0 2px', lineHeight: 1 }}>{selection.mcqQuestionIds.length}</p>
+                    <p style={{ fontSize: '12px', color: 'var(--admin-text-muted)', margin: 0, fontWeight: 500 }}>selected from library</p>
+                  </div>
+                  <div style={{ borderRadius: '10px', padding: '20px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
+                    <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--admin-accent-hover)', margin: '0 0 8px' }}>Coding Questions</p>
+                    <p style={{ fontSize: '44px', fontWeight: 700, color: 'var(--admin-accent-hover)', margin: '0 0 2px', lineHeight: 1 }}>{selection.codingQuestionIds.length}</p>
+                    <p style={{ fontSize: '12px', color: 'var(--admin-text-muted)', margin: 0, fontWeight: 500 }}>selected from library</p>
+                  </div>
+                </div>
+
+                {/* AI Reasoning */}
+                {selection.reasoning && (
+                  <div style={{ borderRadius: '10px', padding: '16px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
+                    <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--admin-accent-hover)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>AI Reasoning</p>
+                    <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: 0, lineHeight: '1.7' }}>{selection.reasoning}</p>
+                  </div>
+                )}
+
+                {/* Suggested settings summary */}
+                <div style={{ borderRadius: '10px', padding: '16px 18px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)', display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
+                  <div>
+                    <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 4px' }}>Suggested Duration</p>
+                    <p style={{ fontSize: '20px', fontWeight: 700, color: 'var(--admin-accent-hover)', margin: 0 }}>{selection.suggestedDuration} <span style={{ fontSize: '13px', fontWeight: 500 }}>min</span></p>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 4px' }}>Suggested Test Name</p>
+                    <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--admin-accent-hover)', margin: 0 }}>{selection.suggestedTestName}</p>
+                  </div>
+                </div>
+
+                {/* Warnings */}
+                {selection.mcqQuestionIds.length + selection.codingQuestionIds.length === 0 && (
+                  <div style={{ borderRadius: '10px', padding: '14px 16px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
+                    <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: 0, lineHeight: '1.5' }}>
+                      No matching questions found in the library. Please{' '}
+                      <a href="/admin/mcq/new" style={{ color: 'var(--admin-accent-hover)', fontWeight: 600 }}>add MCQ questions</a>
+                      {' or '}
+                      <a href="/admin/coding/new" style={{ color: 'var(--admin-accent-hover)', fontWeight: 600 }}>coding questions</a>
+                      {' '}first, then regenerate.
+                    </p>
+                  </div>
+                )}
+                {(selection.mcqQuestionIds.length < mcqCount || selection.codingQuestionIds.length < codingCount) &&
+                 selection.mcqQuestionIds.length + selection.codingQuestionIds.length > 0 && (
+                  <div style={{ borderRadius: '10px', padding: '14px 16px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
+                    <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: 0 }}>
+                      Note: Fewer questions were selected than requested. Consider adding more questions with relevant tags to your library.
+                    </p>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
+                  <button onClick={() => setStep(2)} style={btnSecondary}>Back</button>
+                  <button onClick={() => setStep(4)} style={btnPrimary}>Continue to Settings</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ============ STEP 4: Finalize Test Settings ============ */}
+          {step === 4 && (
+            <div style={card}>
+              <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 20px' }}>Step 4: Finalize Test Settings</h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={lbl}>Test Name <span style={{ color: '#EF4444' }}>*</span></label>
+                    <input type="text"
+                      value={testSettings.name}
+                      onChange={e => setTestSettings(p => ({ ...p, name: e.target.value }))}
+                      style={inp} onFocus={focus} onBlur={blur}
+                    />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={lbl}>Description</label>
+                    <textarea
+                      value={testSettings.description}
+                      onChange={e => setTestSettings(p => ({ ...p, description: e.target.value }))}
+                      rows={3}
+                      style={{ ...inp, lineHeight: '1.6', resize: 'vertical' }}
+                      onFocus={focus} onBlur={blur}
+                    />
+                  </div>
+                  <div>
+                    <label style={lbl}>Duration (minutes) <span style={{ color: '#EF4444' }}>*</span></label>
+                    <input type="number"
+                      value={testSettings.duration === 0 ? '' : testSettings.duration}
+                      onChange={e => setTestSettings(p => ({ ...p, duration: e.target.value === '' ? 0 : parseNum(e.target.value, 0, 0) }))}
+                      min={0} style={inp} onFocus={focus} onBlur={blur}
+                      placeholder="e.g. 60"
+                    />
+                  </div>
+                  <div>
+                    <label style={lbl}>Passing Marks</label>
+                    <input type="number"
+                      value={testSettings.passingMarks}
+                      onChange={e => setTestSettings(p => ({ ...p, passingMarks: parseNum(e.target.value, 0) }))}
+                      min={0} style={inp} onFocus={focus} onBlur={blur}
+                    />
+                  </div>
+                  <div>
+                    <label style={lbl}>Start Time <span style={{ color: '#EF4444' }}>*</span></label>
+                    <DateTimePicker
+                      value={testSettings.startTime}
+                      onChange={v => setTestSettings(p => ({ ...p, startTime: v }))}
+                      placeholder="Select start date & time"
+                    />
+                  </div>
+                  <div>
+                    <label style={lbl}>End Time <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--admin-text-subtle)' }}>(Optional)</span></label>
+                    <DateTimePicker
+                      value={testSettings.endTime}
+                      onChange={v => setTestSettings(p => ({ ...p, endTime: v }))}
+                      placeholder="Select end date & time"
+                    />
+                  </div>
+                  <div>
+                    <label style={lbl}>Negative Marking (per question)</label>
+                    <input type="number"
+                      value={testSettings.negativeMarking}
+                      onChange={e => setTestSettings(p => ({ ...p, negativeMarking: e.target.value === '' ? 0 : Math.max(0, Number(e.target.value)) }))}
+                      min={0} step={0.25} style={inp} onFocus={focus} onBlur={blur}
+                    />
+                  </div>
+                  <div>
+                    <label style={lbl}>Max Violations</label>
+                    <input type="number"
+                      value={testSettings.maxViolations}
+                      onChange={e => setTestSettings(p => ({ ...p, maxViolations: parseNum(e.target.value, 3, 1) }))}
+                      min={1} style={inp} onFocus={focus} onBlur={blur}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '24px', padding: '14px 16px', borderRadius: '8px', backgroundColor: '#F9FAFB', border: '1px solid var(--admin-border)' }}>
+                  {(['shuffleQuestions', 'shuffleOptions'] as const).map(key => (
+                    <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: 'var(--admin-text-muted)' }}>
+                      <input type="checkbox"
+                        checked={testSettings[key]}
+                        onChange={e => setTestSettings(p => ({ ...p, [key]: e.target.checked }))}
+                        style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--admin-button-primary)' }}
+                      />
+                      {key === 'shuffleQuestions' ? 'Shuffle Questions' : 'Shuffle Options'}
+                    </label>
                   ))}
                 </div>
-              )}
-            </div>
 
-            {/* Difficulty */}
-            <div>
-              <label style={lbl}>Difficulty Level</label>
-              <select
-                value={difficulty}
-                onChange={e => setDifficulty(e.target.value as typeof difficulty)}
-                style={inp} onFocus={focus} onBlur={blur}
-              >
-                <option value="easy">Easy</option>
-                <option value="medium">Medium</option>
-                <option value="hard">Hard</option>
-                <option value="mixed">Mixed (All Levels)</option>
-              </select>
-            </div>
-
-            {/* Question counts */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-              <div>
-                <label style={lbl}>Number of MCQ Questions</label>
-                <input type="number"
-                  value={mcqCount}
-                  onChange={e => setMcqCount(parseNum(e.target.value, 0))}
-                  min={0} max={50}
-                  style={inp} onFocus={focus} onBlur={blur}
-                />
-              </div>
-              <div>
-                <label style={lbl}>Number of Coding Questions</label>
-                <input type="number"
-                  value={codingCount}
-                  onChange={e => setCodingCount(parseNum(e.target.value, 0))}
-                  min={0} max={10}
-                  style={inp} onFocus={focus} onBlur={blur}
-                />
+                <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
+                  <button onClick={() => setStep(3)} style={btnSecondary}>Back</button>
+                  <button
+                    onClick={handleCreateTest}
+                    disabled={loading || !testSettings.startTime || !testSettings.name.trim()}
+                    style={loading || !testSettings.startTime || !testSettings.name.trim() ? btnDisabled : btnPrimary}
+                  >
+                    {loading ? 'Creating...' : 'Create Test'}
+                  </button>
+                </div>
               </div>
             </div>
-
-            <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
-              <button onClick={() => setStep(1)} style={btnSecondary}>Back</button>
-              <button
-                onClick={handleGenerateTest}
-                disabled={loading || !skills.length}
-                style={loading || !skills.length ? btnDisabled : btnPrimary}
-              >
-                {loading ? 'Generating...' : 'Generate Test'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ════════════ STEP 3: Review AI Selection ════════════ */}
-      {step === 3 && selection && (
-        <div style={card}>
-          <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#111827', margin: '0 0 20px' }}>Step 3: Review AI Selection</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-            {/* AI Reasoning */}
-            {selection.reasoning && (
-              <div style={{ borderRadius: '10px', padding: '16px', backgroundColor: '#F9FAFB', border: '1px solid #F3F4F6' }}>
-                <p style={{ fontSize: '13px', fontWeight: 600, color: '#111827', margin: '0 0 8px' }}>AI Reasoning</p>
-                <p style={{ fontSize: '13px', color: '#6B7280', margin: 0, lineHeight: '1.7' }}>{selection.reasoning}</p>
-              </div>
-            )}
-
-            {/* MCQ / Coding counts */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-              <div style={{ borderRadius: '10px', padding: '18px', backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE' }}>
-                <p style={{ fontSize: '13px', fontWeight: 600, color: '#1E40AF', margin: '0 0 6px' }}>MCQ Questions</p>
-                <p style={{ fontSize: '40px', fontWeight: 700, color: '#1D4ED8', margin: '0 0 2px', lineHeight: 1 }}>{selection.mcqQuestionIds.length}</p>
-                <p style={{ fontSize: '12px', color: '#60A5FA', margin: 0 }}>selected</p>
-              </div>
-              <div style={{ borderRadius: '10px', padding: '18px', backgroundColor: '#F0FDF4', border: '1px solid #BBF7D0' }}>
-                <p style={{ fontSize: '13px', fontWeight: 600, color: '#166534', margin: '0 0 6px' }}>Coding Questions</p>
-                <p style={{ fontSize: '40px', fontWeight: 700, color: '#16A34A', margin: '0 0 2px', lineHeight: 1 }}>{selection.codingQuestionIds.length}</p>
-                <p style={{ fontSize: '12px', color: '#4ADE80', margin: 0 }}>selected</p>
-              </div>
-            </div>
-
-            {/* 0-questions warning */}
-            {selection.mcqQuestionIds.length + selection.codingQuestionIds.length === 0 && (
-              <div style={{ borderRadius: '10px', padding: '14px 16px', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
-                <p style={{ fontSize: '13px', color: '#92400E', margin: 0, lineHeight: '1.5' }}>
-                  No matching questions found in the library. Please{' '}
-                  <a href="/admin/mcq/new" style={{ color: '#D97706', fontWeight: 600 }}>add MCQ questions</a>
-                  {' or '}
-                  <a href="/admin/coding/new" style={{ color: '#D97706', fontWeight: 600 }}>coding questions</a>
-                  {' '}first, then regenerate.
-                </p>
-              </div>
-            )}
-
-            {/* Partial selection warning */}
-            {(selection.mcqQuestionIds.length < mcqCount || selection.codingQuestionIds.length < codingCount) &&
-             selection.mcqQuestionIds.length + selection.codingQuestionIds.length > 0 && (
-              <div style={{ borderRadius: '10px', padding: '14px 16px', backgroundColor: '#FFF7ED', border: '1px solid #FED7AA' }}>
-                <p style={{ fontSize: '13px', color: '#9A3412', margin: 0 }}>
-                  Note: Fewer questions were selected than requested because not enough matching questions were found in the library. Consider adding more questions with relevant tags.
-                </p>
-              </div>
-            )}
-
-            {/* Suggested settings summary */}
-            <div style={{ borderRadius: '10px', padding: '16px 18px', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
-              <p style={{ fontSize: '13px', fontWeight: 600, color: '#92400E', margin: '0 0 10px' }}>Suggested Settings</p>
-              <div style={{ display: 'flex', gap: '28px', flexWrap: 'wrap', fontSize: '13px' }}>
-                <span><span style={{ color: '#D97706', fontWeight: 500 }}>Duration:</span>{' '}
-                  <span style={{ color: '#374151' }}>{selection.suggestedDuration} min</span>
-                </span>
-                <span style={{ flex: 1 }}>
-                  <span style={{ color: '#D97706', fontWeight: 500 }}>Test Name:</span>{' '}
-                  <span style={{ color: '#374151' }}>{selection.suggestedTestName}</span>
-                </span>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
-              <button onClick={() => setStep(2)} style={btnSecondary}>Back</button>
-              <button onClick={() => setStep(4)} style={btnPrimary}>Continue to Settings</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ════════════ STEP 4: Finalize Test Settings ════════════ */}
-      {step === 4 && (
-        <div style={card}>
-          <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#111827', margin: '0 0 20px' }}>Step 4: Finalize Test Settings</h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-            <div>
-              <label style={lbl}>Test Name <span style={{ color: '#EF4444' }}>*</span></label>
-              <input type="text"
-                value={testSettings.name}
-                onChange={e => setTestSettings(p => ({ ...p, name: e.target.value }))}
-                style={inp} onFocus={focus} onBlur={blur}
-              />
-            </div>
-
-            <div>
-              <label style={lbl}>Description</label>
-              <textarea
-                value={testSettings.description}
-                onChange={e => setTestSettings(p => ({ ...p, description: e.target.value }))}
-                rows={3}
-                style={{ ...inp, lineHeight: '1.6' }}
-                onFocus={focus} onBlur={blur}
-              />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-              <div>
-                <label style={lbl}>Duration (minutes) <span style={{ color: '#EF4444' }}>*</span></label>
-                <input type="number"
-                  value={testSettings.duration}
-                  onChange={e => setTestSettings(p => ({ ...p, duration: parseNum(e.target.value, 60, 5) }))}
-                  min={5} style={inp} onFocus={focus} onBlur={blur}
-                />
-              </div>
-              <div>
-                <label style={lbl}>Passing Marks</label>
-                <input type="number"
-                  value={testSettings.passingMarks}
-                  onChange={e => setTestSettings(p => ({ ...p, passingMarks: parseNum(e.target.value, 0) }))}
-                  min={0} style={inp} onFocus={focus} onBlur={blur}
-                />
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-              <div>
-                <label style={lbl}>Start Time <span style={{ color: '#EF4444' }}>*</span></label>
-                <DateTimePicker
-                  value={testSettings.startTime}
-                  onChange={v => setTestSettings(p => ({ ...p, startTime: v }))}
-                  placeholder="Select start date & time"
-                />
-              </div>
-              <div>
-                <label style={lbl}>End Time (Optional)</label>
-                <DateTimePicker
-                  value={testSettings.endTime}
-                  onChange={v => setTestSettings(p => ({ ...p, endTime: v }))}
-                  placeholder="Select end date & time"
-                />
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-              <div>
-                <label style={lbl}>Negative Marking (per question)</label>
-                <input type="number"
-                  value={testSettings.negativeMarking}
-                  onChange={e => setTestSettings(p => ({ ...p, negativeMarking: e.target.value === '' ? 0 : Math.max(0, Number(e.target.value)) }))}
-                  min={0} step={0.25} style={inp} onFocus={focus} onBlur={blur}
-                />
-              </div>
-              <div>
-                <label style={lbl}>Max Violations</label>
-                <input type="number"
-                  value={testSettings.maxViolations}
-                  onChange={e => setTestSettings(p => ({ ...p, maxViolations: parseNum(e.target.value, 3, 1) }))}
-                  min={1} style={inp} onFocus={focus} onBlur={blur}
-                />
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '24px' }}>
-              {(['shuffleQuestions', 'shuffleOptions'] as const).map(key => (
-                <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#374151' }}>
-                  <input type="checkbox"
-                    checked={testSettings[key]}
-                    onChange={e => setTestSettings(p => ({ ...p, [key]: e.target.checked }))}
-                    style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#1D4ED8' }}
-                  />
-                  {key === 'shuffleQuestions' ? 'Shuffle Questions' : 'Shuffle Options'}
-                </label>
-              ))}
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
-              <button onClick={() => setStep(3)} style={btnSecondary}>Back</button>
-              <button
-                onClick={handleCreateTest}
-                disabled={loading || !testSettings.startTime || !testSettings.name.trim()}
-                style={loading || !testSettings.startTime || !testSettings.name.trim() ? btnDisabled : btnPrimary}
-              >
-                {loading ? 'Creating...' : 'Create Test'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          )}
+      </div>
+      </div>
     </div>
   );
 }
