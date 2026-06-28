@@ -13,7 +13,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 
-/* ── Types ── */
+/* -- Types -- */
 interface DifficultyAnalysis {
   easy:   { totalCorrect: number; totalQuestions: number; avgAccuracy: number };
   medium: { totalCorrect: number; totalQuestions: number; avgAccuracy: number };
@@ -54,20 +54,20 @@ interface AdminOverview {
 }
 interface TestOption { id: string; name: string }
 
-/* ── Helpers ── */
-const AVATAR_COLORS = ['#6366F1','#8B5CF6','#F59E0B','#10B981','#3B82F6','#EF4444','#EC4899','#F97316'];
+/* -- Helpers -- */
+const AVATAR_COLORS = ['var(--admin-data-blue)','var(--admin-data-blue-soft)','var(--admin-accent)','var(--admin-accent)','var(--admin-accent)','#EF4444','#EC4899','#F97316'];
 function avatarBg(name: string) {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
   return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
 }
 function initials(name: string) {
-  const p = name.trim().split(/\s+/);
-  return p.length >= 2 ? (p[0][0] + p[1][0]).toUpperCase() : name.slice(0, 2).toUpperCase();
+  const p = name.trim().split(/\s+/).map(w => w.replace(/[^a-zA-Z]/g, '')).filter(Boolean);
+  return p.length >= 2 ? (p[0][0] + p[1][0]).toUpperCase() : (p[0]?.[0] ?? name.replace(/[^a-zA-Z]/g,'')[0] ?? '?').toUpperCase();
 }
 function skillColor(pct: number) {
-  if (pct >= 70) return '#10B981';
-  if (pct >= 50) return '#F59E0B';
+  if (pct >= 70) return 'var(--admin-accent)';
+  if (pct >= 50) return 'var(--admin-accent)';
   return '#EF4444';
 }
 function fmtTime(minutes: number): string {
@@ -82,8 +82,8 @@ function fmtChange(val: number | null | undefined): string | undefined {
   return val >= 0 ? `+${val}%` : `${val}%`;
 }
 
-/* ── SVG Donut ── */
-function DonutRing({ pct, size = 88, sw = 9, color = '#10B981' }: {
+/* -- SVG Donut -- */
+function DonutRing({ pct, size = 88, sw = 9, color = 'var(--admin-accent)' }: {
   pct: number; size?: number; sw?: number; color?: string;
 }) {
   const r = (size - sw) / 2;
@@ -104,13 +104,13 @@ function DonutRing({ pct, size = 88, sw = 9, color = '#10B981' }: {
   );
 }
 
-/* ── KPI Card ── */
+/* -- KPI Card -- */
 function KPICard({ icon, iconBg, value, label, change, changeUp }: {
   icon: React.ReactNode; iconBg: string; value: string; label: string;
   change?: string; changeUp?: boolean;
 }) {
   return (
-    <div style={{
+    <div className="stat-card" style={{
       backgroundColor: 'white', borderRadius: '14px', padding: '20px 22px',
       boxShadow: '0 1px 6px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', gap: '10px',
     }}>
@@ -122,20 +122,20 @@ function KPICard({ icon, iconBg, value, label, change, changeUp }: {
         {change !== undefined && (
           <span style={{
             fontSize: '12px', fontWeight: 600, padding: '2px 8px', borderRadius: '20px',
-            backgroundColor: changeUp ? '#ECFDF5' : '#FEF2F2',
-            color: changeUp ? '#059669' : '#DC2626',
+            backgroundColor: changeUp ? 'var(--admin-accent-soft)' : '#FEF2F2',
+            color: changeUp ? 'var(--admin-accent-hover)' : '#DC2626',
           }}>{change}</span>
         )}
       </div>
       <div>
-        <p style={{ fontSize: '28px', fontWeight: 700, color: '#111827', margin: 0, lineHeight: 1.1 }}>{value}</p>
-        <p style={{ fontSize: '13px', color: '#6B7280', margin: '4px 0 0' }}>{label}</p>
+        <p style={{ fontSize: '28px', fontWeight: 700, color: 'var(--admin-text)', margin: 0, lineHeight: 1.1 }}>{value}</p>
+        <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: '4px 0 0' }}>{label}</p>
       </div>
     </div>
   );
 }
 
-/* ── Score trend bar (relative heights) ── */
+/* -- Score trend bar (relative heights) -- */
 function TrendBar({ label, value, sublabel, maxValue }: {
   label: string; value: number; sublabel: string; maxValue: number;
 }) {
@@ -145,12 +145,12 @@ function TrendBar({ label, value, sublabel, maxValue }: {
       <div style={{ display: 'flex', alignItems: 'flex-end', height: '160px', width: '100%', justifyContent: 'center' }}>
         <div style={{
           width: '100%', maxWidth: '52px', height: `${heightPx}px`,
-          backgroundColor: value > 0 ? '#10B981' : '#E5E7EB',
+          backgroundColor: value > 0 ? 'var(--admin-accent)' : 'var(--admin-border)',
           borderRadius: '6px 6px 0 0', transition: 'height 0.4s',
         }} />
       </div>
-      <p style={{ fontSize: '11px', fontWeight: 600, color: '#374151', margin: 0 }}>{label}</p>
-      <p style={{ fontSize: '11px', color: '#9CA3AF', margin: 0 }}>{sublabel}</p>
+      <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--admin-text-muted)', margin: 0 }}>{label}</p>
+      <p style={{ fontSize: '11px', color: 'var(--admin-text-subtle)', margin: 0 }}>{sublabel}</p>
     </div>
   );
 }
@@ -252,7 +252,7 @@ export default function PerformanceAnalytics() {
     else toast.error('No attempt found');
   };
 
-  /* ── Derived display values ── */
+  /* -- Derived display values -- */
   let kpiAttempts = '—', kpiAvgScore = '—', kpiPassRate = '—', kpiFourth = '—';
   let kpiFourthLabel = isTestMode ? 'Avg trust' : 'Avg time';
   let changeAttempts: string|undefined, changeAvgScore: string|undefined, changePassRate: string|undefined;
@@ -322,58 +322,50 @@ export default function PerformanceAnalytics() {
 
   if (loading) return (
     <div style={{ display:'flex', justifyContent:'center', padding:'80px 0' }}>
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor:'#10B981' }} />
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor:'var(--admin-accent)' }} />
     </div>
   );
 
   return (
     <div style={{ padding:'0', backgroundColor:'#F9FAFB', minHeight:'100%' }}>
 
-      {/* Breadcrumb */}
-      <div style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'12px', color:'#9CA3AF', marginBottom:'8px' }}>
-        <span style={{ cursor:'pointer', color:'#6B7280' }} onClick={() => navigate('/admin/dashboard')}>Workspace</span>
-        <span>›</span>
-        <span>Analytics</span>
-      </div>
-
       {/* Header */}
       <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:'24px' }}>
         <div style={{ display:'flex', alignItems:'flex-start', gap:'12px' }}>
           <BackButton />
           <div>
-            <h1 style={{ fontSize:'26px', fontWeight:700, color:'#111827', margin:'0 0 4px' }}>Performance Analytics</h1>
-            <p style={{ fontSize:'13px', color:'#6B7280', margin:0 }}>Cross-test outcomes, skill coverage and candidate comparison.</p>
+            <h1 style={{ fontSize:'32px', fontWeight:700, letterSpacing:'-0.02em', color:'var(--admin-text)', margin:'0 0 4px', lineHeight:1.2 }}>Performance Analytics</h1>
+            <p style={{ fontSize:'13px', color:'var(--admin-text-muted)', margin:0 }}>Cross-test outcomes, skill coverage and candidate comparison.</p>
           </div>
         </div>
 
         <div style={{ display:'flex', alignItems:'center', gap:'10px', flexShrink:0 }}>
           {/* Test selector dropdown */}
-          <div style={{ position:'relative' }}>
+          <div style={{ position:'relative', width:'220px', flexShrink:0 }}>
             <button
               onClick={() => setShowDropdown(p => !p)}
               style={{
-                display:'flex', alignItems:'center', gap:'8px', padding:'8px 14px',
-                border:'1px solid #E5E7EB', borderRadius:'8px', backgroundColor:'white',
-                fontSize:'13px', color:'#374151', cursor:'pointer',
-                maxWidth:'220px',
+                width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px', padding:'8px 14px',
+                border:'1px solid var(--admin-border)', borderRadius:'8px', backgroundColor:'white',
+                fontSize:'13px', color:'var(--admin-text-muted)', cursor:'pointer',
               }}
             >
-              <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{selectedTestName}</span>
-              <ChevronDown size={12} color="#6B7280" style={{ flexShrink:0 }} />
+              <span style={{ minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{selectedTestName}</span>
+              <ChevronDown size={12} color="var(--admin-text-muted)" style={{ flexShrink:0 }} />
             </button>
             {showDropdown && (
               <div style={{
                 position:'absolute', top:'100%', right:0, marginTop:'4px', zIndex:20,
                 backgroundColor:'white', borderRadius:'10px', boxShadow:'0 8px 24px rgba(0,0,0,0.12)',
-                border:'1px solid #E5E7EB', minWidth:'220px', maxHeight:'280px', overflowY:'auto',
+                border:'1px solid var(--admin-border)', minWidth:'220px', maxHeight:'280px', overflowY:'auto',
               }}>
                 <button
                   onClick={() => { setSelectedTestId(''); setShowDropdown(false); }}
                   style={{
                     width:'100%', textAlign:'left', padding:'10px 14px', border:'none',
-                    backgroundColor: !selectedTestId ? '#F0FDF4' : 'white',
-                    color: !selectedTestId ? '#059669' : '#374151',
-                    fontSize:'13px', cursor:'pointer', borderBottom:'1px solid #F3F4F6',
+                    backgroundColor: !selectedTestId ? 'var(--admin-accent-soft)' : 'white',
+                    color: !selectedTestId ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)',
+                    fontSize:'13px', cursor:'pointer', borderBottom:'1px solid var(--admin-border)',
                   }}
                 >All tests</button>
                 {tests.map(t => (
@@ -381,9 +373,9 @@ export default function PerformanceAnalytics() {
                     onClick={() => { setSelectedTestId(t.id); setShowDropdown(false); }}
                     style={{
                       width:'100%', textAlign:'left', padding:'10px 14px', border:'none',
-                      backgroundColor: selectedTestId===t.id ? '#F0FDF4' : 'white',
-                      color: selectedTestId===t.id ? '#059669' : '#374151',
-                      fontSize:'13px', cursor:'pointer', borderBottom:'1px solid #F3F4F6',
+                      backgroundColor: selectedTestId===t.id ? 'var(--admin-accent-soft)' : 'white',
+                      color: selectedTestId===t.id ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)',
+                      fontSize:'13px', cursor:'pointer', borderBottom:'1px solid var(--admin-border)',
                     }}
                   >
                     <p style={{ margin:0, fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t.name}</p>
@@ -398,8 +390,8 @@ export default function PerformanceAnalytics() {
             <button onClick={handleExport}
               style={{
                 display:'flex', alignItems:'center', gap:'6px', padding:'8px 16px',
-                border:'1.5px solid #E5E7EB', borderRadius:'8px', backgroundColor:'white',
-                fontSize:'13px', fontWeight:500, color:'#374151', cursor:'pointer',
+                border:'1.5px solid var(--admin-border)', borderRadius:'8px', backgroundColor:'white',
+                fontSize:'13px', fontWeight:500, color:'var(--admin-text-muted)', cursor:'pointer',
               }}>
               <FileDown size={14} />
               Export
@@ -414,27 +406,27 @@ export default function PerformanceAnalytics() {
           value={kpiAttempts} label="Attempts" change={changeAttempts} changeUp={changeUpAttempts} />
         <KPICard iconBg="#EDE9FE" icon={<PieChart size={18} color="#7C3AED" />}
           value={kpiAvgScore} label="Avg score" change={changeAvgScore} changeUp={changeUpAvgScore} />
-        <KPICard iconBg="#DBEAFE" icon={<ClipboardCheck size={18} color="#2563EB" />}
+        <KPICard iconBg="var(--admin-accent-disabled)" icon={<ClipboardCheck size={18} color="var(--admin-accent-link)" />}
           value={kpiPassRate} label="Pass rate" change={changePassRate} changeUp={changeUpPassRate} />
-        <KPICard iconBg="#FEF3C7"
-          icon={isTestMode ? <ShieldCheck size={18} color="#D97706" /> : <Timer size={18} color="#D97706" />}
+        <KPICard iconBg="var(--admin-accent-disabled)"
+          icon={isTestMode ? <ShieldCheck size={18} color="var(--admin-accent-hover)" /> : <Timer size={18} color="var(--admin-accent-hover)" />}
           value={kpiFourth} label={kpiFourthLabel} />
       </div>
 
       {/* Score Statistics (per-test only) */}
       {isTestMode && testAnalytics && testAnalytics.completedAttempts > 0 && (
         <div style={{ backgroundColor:'white', borderRadius:'14px', padding:'22px 24px', boxShadow:'0 1px 6px rgba(0,0,0,0.06)', marginBottom:'16px' }}>
-          <p style={{ fontSize:'15px', fontWeight:600, color:'#111827', margin:'0 0 20px' }}>Score Statistics</p>
+          <p style={{ fontSize:'16px', fontWeight:600, color:'var(--admin-text)', margin:'0 0 20px' }}>Score Statistics</p>
           <div style={{ display:'flex', justifyContent:'space-around', textAlign:'center' }}>
             {[
-              { label:'Highest', value: testAnalytics.highestScore != null ? `${Math.round((testAnalytics.highestScore/testTotalMarks)*100)}%` : '—', color:'#10B981' },
-              { label:'Median',  value: testAnalytics.medianScore  != null ? `${Math.round((testAnalytics.medianScore/testTotalMarks)*100)}%`  : '—', color:'#111827' },
-              { label:'Average', value: testAnalytics.averageScore != null ? `${Math.round((testAnalytics.averageScore/testTotalMarks)*100)}%` : '—', color:'#3B82F6' },
+              { label:'Highest', value: testAnalytics.highestScore != null ? `${Math.round((testAnalytics.highestScore/testTotalMarks)*100)}%` : '—', color:'var(--admin-accent)' },
+              { label:'Median',  value: testAnalytics.medianScore  != null ? `${Math.round((testAnalytics.medianScore/testTotalMarks)*100)}%`  : '—', color:'var(--admin-text)' },
+              { label:'Average', value: testAnalytics.averageScore != null ? `${Math.round((testAnalytics.averageScore/testTotalMarks)*100)}%` : '—', color:'var(--admin-accent)' },
               { label:'Lowest',  value: testAnalytics.lowestScore  != null ? `${Math.round((testAnalytics.lowestScore/testTotalMarks)*100)}%`  : '—', color:'#EF4444' },
               { label:'Flagged', value: String(testAnalytics.flaggedAttempts ?? 0), color:'#F97316' },
             ].map(stat => (
               <div key={stat.label}>
-                <p style={{ fontSize:'13px', color:'#6B7280', margin:'0 0 6px' }}>{stat.label}</p>
+                <p style={{ fontSize:'13px', color:'var(--admin-text-muted)', margin:'0 0 6px' }}>{stat.label}</p>
                 <p style={{ fontSize:'24px', fontWeight:700, color:stat.color, margin:0 }}>{stat.value}</p>
               </div>
             ))}
@@ -448,15 +440,15 @@ export default function PerformanceAnalytics() {
         {/* Score trend */}
         <div style={{ backgroundColor:'white', borderRadius:'14px', padding:'22px 24px', boxShadow:'0 1px 6px rgba(0,0,0,0.06)' }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'20px' }}>
-            <p style={{ fontSize:'15px', fontWeight:600, color:'#111827', margin:0 }}>Score trend</p>
-            <div style={{ display:'flex', gap:'2px', backgroundColor:'#F3F4F6', borderRadius:'8px', padding:'3px' }}>
+            <p style={{ fontSize:'16px', fontWeight:600, color:'var(--admin-text)', margin:0 }}>Score trend</p>
+            <div style={{ display:'flex', gap:'2px', backgroundColor:'var(--admin-border)', borderRadius:'8px', padding:'3px' }}>
               {(['7d','30d','90d'] as const).map(w => (
                 <button key={w} onClick={() => setTrendWin(w)}
                   style={{
                     padding:'4px 10px', borderRadius:'6px', border:'none', cursor:'pointer',
                     fontSize:'12px', fontWeight:500,
-                    backgroundColor: trendWin === w ? '#111827' : 'transparent',
-                    color: trendWin === w ? 'white' : '#6B7280',
+                    backgroundColor: trendWin === w ? 'var(--admin-text)' : 'transparent',
+                    color: trendWin === w ? 'white' : 'var(--admin-text-muted)',
                   }}>{w}</button>
               ))}
             </div>
@@ -470,9 +462,9 @@ export default function PerformanceAnalytics() {
 
         {/* Skill coverage */}
         <div style={{ backgroundColor:'white', borderRadius:'14px', padding:'22px 24px', boxShadow:'0 1px 6px rgba(0,0,0,0.06)' }}>
-          <p style={{ fontSize:'15px', fontWeight:600, color:'#111827', margin:'0 0 16px' }}>Skill coverage</p>
+          <p style={{ fontSize:'16px', fontWeight:600, color:'var(--admin-text)', margin:'0 0 16px' }}>Skill coverage</p>
           {displaySkills.length === 0 ? (
-            <p style={{ fontSize:'13px', color:'#9CA3AF' }}>No skill data</p>
+            <p style={{ fontSize:'13px', color:'var(--admin-text-subtle)' }}>No skill data</p>
           ) : (
             <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
               {displaySkills.map(s => {
@@ -480,10 +472,10 @@ export default function PerformanceAnalytics() {
                 return (
                   <div key={s.skill}>
                     <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'4px' }}>
-                      <span style={{ fontSize:'12px', color:'#374151' }}>{s.skill}</span>
-                      <span style={{ fontSize:'12px', fontWeight:600, color:'#111827' }}>{s.pct}%</span>
+                      <span style={{ fontSize:'12px', color:'var(--admin-text-muted)' }}>{s.skill}</span>
+                      <span style={{ fontSize:'12px', fontWeight:600, color:'var(--admin-text)' }}>{s.pct}%</span>
                     </div>
-                    <div style={{ height:'5px', backgroundColor:'#F3F4F6', borderRadius:'3px' }}>
+                    <div style={{ height:'5px', backgroundColor:'var(--admin-border)', borderRadius:'3px' }}>
                       <div style={{ height:'5px', width:`${s.pct}%`, backgroundColor:col, borderRadius:'3px' }} />
                     </div>
                   </div>
@@ -499,29 +491,29 @@ export default function PerformanceAnalytics() {
 
         {/* Difficulty breakdown */}
         <div style={{ backgroundColor:'white', borderRadius:'14px', padding:'22px 24px', boxShadow:'0 1px 6px rgba(0,0,0,0.06)' }}>
-          <p style={{ fontSize:'15px', fontWeight:600, color:'#111827', margin:'0 0 4px' }}>Difficulty breakdown</p>
-          <p style={{ fontSize:'12px', color:'#9CA3AF', margin:'0 0 20px' }}>Avg correctness by difficulty</p>
+          <p style={{ fontSize:'16px', fontWeight:600, color:'var(--admin-text)', margin:'0 0 4px' }}>Difficulty breakdown</p>
+          <p style={{ fontSize:'12px', color:'var(--admin-text-subtle)', margin:'0 0 20px' }}>Avg correctness by difficulty</p>
           <div style={{ display:'flex', justifyContent:'space-around', alignItems:'center' }}>
             {displayDiff ? (
               (['easy','medium','hard'] as const).map(lv => {
                 const pct = Math.round(displayDiff[lv].avgAccuracy);
                 const count = displayDiff[lv].count;
-                const col = lv === 'easy' ? '#10B981' : lv === 'medium' ? '#F59E0B' : '#EF4444';
+                const col = lv === 'easy' ? 'var(--admin-accent)' : lv === 'medium' ? 'var(--admin-accent)' : '#EF4444';
                 return (
                   <div key={lv} style={{ textAlign:'center' }}>
                     <div style={{ position:'relative', display:'inline-flex', alignItems:'center', justifyContent:'center' }}>
                       <DonutRing pct={pct} size={88} sw={9} color={col} />
-                      <span style={{ position:'absolute', fontSize:'16px', fontWeight:700, color:'#111827' }}>{pct}%</span>
+                      <span style={{ position:'absolute', fontSize:'16px', fontWeight:700, color:'var(--admin-text)' }}>{pct}%</span>
                     </div>
-                    <p style={{ fontSize:'13px', color:'#374151', fontWeight:500, margin:'8px 0 2px', textTransform:'capitalize' }}>{lv}</p>
+                    <p style={{ fontSize:'13px', color:'var(--admin-text-muted)', fontWeight:500, margin:'8px 0 2px', textTransform:'capitalize' }}>{lv}</p>
                     {count > 0 && (
-                      <p style={{ fontSize:'11px', color:'#9CA3AF', margin:0 }}>{count} question{count !== 1 ? 's' : ''}</p>
+                      <p style={{ fontSize:'11px', color:'var(--admin-text-subtle)', margin:0 }}>{count} question{count !== 1 ? 's' : ''}</p>
                     )}
                   </div>
                 );
               })
             ) : (
-              <p style={{ color:'#9CA3AF', fontSize:'13px' }}>No difficulty data</p>
+              <p style={{ color:'var(--admin-text-subtle)', fontSize:'13px' }}>No difficulty data</p>
             )}
           </div>
         </div>
@@ -529,21 +521,21 @@ export default function PerformanceAnalytics() {
         {/* Top candidates */}
         <div style={{ backgroundColor:'white', borderRadius:'14px', padding:'22px 24px', boxShadow:'0 1px 6px rgba(0,0,0,0.06)' }}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'16px' }}>
-            <p style={{ fontSize:'15px', fontWeight:600, color:'#111827', margin:0 }}>Top candidates</p>
+            <p style={{ fontSize:'16px', fontWeight:600, color:'var(--admin-text)', margin:0 }}>Top candidates</p>
             {isTestMode ? (
-              <span style={{ fontSize:'12px', color:'#10B981', cursor:'pointer', fontWeight:500 }}
+              <span style={{ fontSize:'12px', color:'var(--admin-accent)', cursor:'pointer', fontWeight:500 }}
                 onClick={() => navigate(`/admin/tests/${selectedTestId}?tab=candidates`)}>
                 View leaderboard
               </span>
             ) : (
-              <span style={{ fontSize:'12px', color:'#10B981', cursor:'pointer', fontWeight:500 }}
+              <span style={{ fontSize:'12px', color:'var(--admin-accent)', cursor:'pointer', fontWeight:500 }}
                 onClick={() => navigate('/admin/tests')}>
                 View all tests
               </span>
             )}
           </div>
           {topCandidates.length === 0 ? (
-            <p style={{ color:'#9CA3AF', fontSize:'13px' }}>No candidate data</p>
+            <p style={{ color:'var(--admin-text-subtle)', fontSize:'13px' }}>No candidate data</p>
           ) : (
             <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
               {topCandidates.map((c, i) => (
@@ -553,10 +545,10 @@ export default function PerformanceAnalytics() {
                     display:'flex', alignItems:'center', gap:'10px', cursor:'pointer',
                     padding:'8px 10px', borderRadius:'10px', transition:'background-color 0.15s',
                   }}
-                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#EDF0F7')}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(31, 53, 86, 0.09)')}
                   onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
                 >
-                  <span style={{ fontSize:'13px', color:'#9CA3AF', width:'16px', textAlign:'center', flexShrink:0 }}>{i+1}</span>
+                  <span style={{ fontSize:'13px', color:'var(--admin-text-subtle)', width:'16px', textAlign:'center', flexShrink:0 }}>{i+1}</span>
                   <div style={{
                     width:'34px', height:'34px', borderRadius:'50%', flexShrink:0,
                     backgroundColor: avatarBg(c.name),
@@ -564,19 +556,19 @@ export default function PerformanceAnalytics() {
                     fontSize:'11px', fontWeight:700, color:'white',
                   }}>{initials(c.name)}</div>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <p style={{ fontSize:'13px', fontWeight:500, color:'#111827', margin:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                    <p style={{ fontSize:'13px', fontWeight:500, color:'var(--admin-text)', margin:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                       {c.name}
                     </p>
                   </div>
                   <div style={{ display:'flex', alignItems:'center', gap:'10px', flexShrink:0 }}>
                     {c.trust > 0 && (
-                      <span style={{ fontSize:'11px', color:'#9CA3AF' }}>
-                        Trust <span style={{ color:'#374151', fontWeight:600 }}>{c.trust}</span>
+                      <span style={{ fontSize:'11px', color:'var(--admin-text-subtle)' }}>
+                        Trust <span style={{ color:'var(--admin-text-muted)', fontWeight:600 }}>{c.trust}</span>
                       </span>
                     )}
                     <span style={{
                       fontSize:'13px', fontWeight:700,
-                      color: c.pct >= 70 ? '#10B981' : c.pct >= 40 ? '#F59E0B' : '#EF4444',
+                      color: c.pct >= 70 ? 'var(--admin-accent)' : c.pct >= 40 ? 'var(--admin-accent)' : '#EF4444',
                     }}>{c.pct}%</span>
                   </div>
                 </div>
