@@ -1,11 +1,11 @@
 /**
- * PhoneCapture — public page opened on the candidate's phone via QR code.
+ * PhoneCapture - public page opened on the candidate's phone via QR code.
  *
  * Flow:
- *  1. Validate session → open rear camera
+ *  1. Validate session -> open rear camera
  *  2. Auto-capture when ID is stable in frame (or manual "Capture Now")
- *  3. Preview → confirm → upload
- *  4. Poll for admin decision → show Approved / Rejected screen
+ *  3. Preview -> confirm -> upload
+ *  4. Poll for admin decision -> show Approved / Rejected screen
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
@@ -26,14 +26,12 @@ type PageState =
   | 'rejected'
   | 'error';
 
-// ── Config ────────────────────────────────────────────────────────────────────
-const STABLE_FRAMES_NEEDED = 7;    // ~2.1 s at 300 ms/frame
+const STABLE_FRAMES_NEEDED = 7;
 const SAMPLE_MS            = 300;
-const STABILITY_THRESHOLD  = 4;    // max avg pixel diff = "stable"
-const CONTENT_VARIANCE_MIN = 150;  // frame must have real content
-const POLL_INTERVAL_MS     = 5000; // poll for admin decision every 5 s
+const STABILITY_THRESHOLD  = 4;
+const CONTENT_VARIANCE_MIN = 150;
+const POLL_INTERVAL_MS     = 5000;
 
-// ── Image enhancement ─────────────────────────────────────────────────────────
 function enhanceContrast(ctx: CanvasRenderingContext2D, w: number, h: number) {
   const img = ctx.getImageData(0, 0, w, h);
   const d = img.data;
@@ -47,7 +45,6 @@ function enhanceContrast(ctx: CanvasRenderingContext2D, w: number, h: number) {
   ctx.putImageData(img, 0, 0);
 }
 
-// ── Frame → native pixel mapping ──────────────────────────────────────────────
 function getFrameCrop(video: HTMLVideoElement): { x: number; y: number; w: number; h: number } | null {
   const vW = video.videoWidth;
   const vH = video.videoHeight;
@@ -80,14 +77,13 @@ function getFrameCrop(video: HTMLVideoElement): { x: number; y: number; w: numbe
   };
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
 export default function PhoneCapture() {
   const { sessionId } = useParams<{ sessionId: string }>();
-  const [pageState,     setPageState]     = useState<PageState>('loading');
-  const [errorMsg,      setErrorMsg]      = useState('');
-  const [captured,      setCaptured]      = useState<string | null>(null);
-  const [stability,     setStability]     = useState(0);
-  const [rejectionMsg,  setRejectionMsg]  = useState('');
+  const [pageState,    setPageState]    = useState<PageState>('loading');
+  const [errorMsg,     setErrorMsg]     = useState('');
+  const [captured,     setCaptured]     = useState<string | null>(null);
+  const [stability,    setStability]    = useState(0);
+  const [rejectionMsg, setRejectionMsg] = useState('');
 
   const videoRef    = useRef<HTMLVideoElement>(null);
   const canvasRef   = useRef<HTMLCanvasElement>(null);
@@ -98,14 +94,12 @@ export default function PhoneCapture() {
   const samplerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollRef     = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ── Cleanup ────────────────────────────────────────────────────────────────
   useEffect(() => () => {
     streamRef.current?.getTracks().forEach(t => t.stop());
     if (samplerRef.current) clearInterval(samplerRef.current);
     if (pollRef.current)    clearInterval(pollRef.current);
   }, []);
 
-  // ── Poll for admin decision ────────────────────────────────────────────────
   const startPolling = useCallback(() => {
     if (!sessionId) return;
     pollRef.current = setInterval(async () => {
@@ -128,22 +122,6 @@ export default function PhoneCapture() {
     }, POLL_INTERVAL_MS);
   }, [sessionId]);
 
-  // ── Session validation ─────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!sessionId) { setErrorMsg('Invalid link — no session ID found.'); setPageState('error'); return; }
-
-    fetch(`${API_BASE}/verification/phone-session/${sessionId}`)
-      .then(r => r.json())
-      .then((d: { status?: string }) => {
-        if      (d.status === 'waiting')  startCamera();
-        else if (d.status === 'complete') { setErrorMsg('This link has already been used.'); setPageState('error'); }
-        else                              { setErrorMsg('Link expired or invalid. Please restart on your computer.'); setPageState('error'); }
-      })
-      .catch(() => { setErrorMsg('Could not connect. Check your internet connection.'); setPageState('error'); });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId]);
-
-  // ── Capture ────────────────────────────────────────────────────────────────
   const doCapture = useCallback(() => {
     const video  = videoRef.current;
     const canvas = canvasRef.current;
@@ -170,7 +148,6 @@ export default function PhoneCapture() {
     setPageState('preview');
   }, []);
 
-  // ── Stability sampler ──────────────────────────────────────────────────────
   const startSampler = useCallback(() => {
     const sCanvas = sampleRef.current;
     if (!sCanvas) return;
@@ -220,7 +197,6 @@ export default function PhoneCapture() {
     }, SAMPLE_MS);
   }, [doCapture]);
 
-  // ── Camera start ───────────────────────────────────────────────────────────
   const startCamera = useCallback(async () => {
     try {
       const s = await navigator.mediaDevices.getUserMedia({
@@ -240,11 +216,24 @@ export default function PhoneCapture() {
     }
   }, [startSampler]);
 
+  useEffect(() => {
+    if (!sessionId) { setErrorMsg('Invalid link - no session ID found.'); setPageState('error'); return; }
+
+    fetch(`${API_BASE}/verification/phone-session/${sessionId}`)
+      .then(r => r.json())
+      .then((d: { status?: string }) => {
+        if      (d.status === 'waiting')  startCamera();
+        else if (d.status === 'complete') { setErrorMsg('This link has already been used.'); setPageState('error'); }
+        else                              { setErrorMsg('Link expired or invalid. Please restart on your computer.'); setPageState('error'); }
+      })
+      .catch(() => { setErrorMsg('Could not connect. Check your internet connection.'); setPageState('error'); });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
+
   const retake = useCallback(() => {
     setCaptured(null); setStability(0); startCamera();
   }, [startCamera]);
 
-  // ── Upload ─────────────────────────────────────────────────────────────────
   const confirm = useCallback(async () => {
     if (!captured || !sessionId) return;
     setPageState('uploading');
@@ -266,11 +255,9 @@ export default function PhoneCapture() {
     }
   }, [captured, sessionId, startPolling]);
 
-  // ── Derived UI ─────────────────────────────────────────────────────────────
   const frameColor = stability > 0.7 ? '#22c55e' : stability > 0.3 ? '#f59e0b' : 'rgba(255,255,255,0.65)';
-  const statusText = stability > 0.5 ? 'Hold still…' : 'Place your ID flat inside the frame';
+  const statusText = stability > 0.5 ? 'Hold still...' : 'Place your ID flat inside the frame';
 
-  // ── Screens ────────────────────────────────────────────────────────────────
   if (pageState === 'loading') return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center">
       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white" />
@@ -303,7 +290,7 @@ export default function PhoneCapture() {
         <div className="bg-gray-800/60 border border-gray-700 rounded-xl p-4 space-y-2">
           <div className="flex items-center gap-2 justify-center">
             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-400" />
-            <span className="text-blue-300 text-sm font-medium">Waiting for admin approval…</span>
+            <span className="text-blue-300 text-sm font-medium">Waiting for admin approval...</span>
           </div>
           <p className="text-gray-500 text-xs">Keep this tab open to see the result</p>
         </div>
@@ -351,15 +338,13 @@ export default function PhoneCapture() {
     <div className="min-h-screen bg-gray-950 flex items-center justify-center">
       <div className="text-center space-y-4">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-400 mx-auto" />
-        <p className="text-white font-medium">Sending photo…</p>
+        <p className="text-white font-medium">Sending photo...</p>
       </div>
     </div>
   );
 
-  // camera / preview
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col">
-
       <div className="px-4 pt-4 pb-3">
         <h1 className="text-white font-semibold text-lg">Scan Your ID</h1>
         <p className="text-gray-400 text-sm mt-0.5">
@@ -372,7 +357,6 @@ export default function PhoneCapture() {
           <>
             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
 
-            {/* Frame with stability colour */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div
                 className="rounded-xl relative"
@@ -391,7 +375,6 @@ export default function PhoneCapture() {
               </div>
             </div>
 
-            {/* Corner brackets */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="relative" style={{ width: '88%', aspectRatio: '1.586' }}>
                 {(['top-0 left-0 border-t-4 border-l-4 rounded-tl-xl',
@@ -409,7 +392,7 @@ export default function PhoneCapture() {
               <div className="absolute bottom-28 left-0 right-0 flex justify-center pointer-events-none">
                 <div className="bg-black/60 backdrop-blur-sm rounded-full px-4 py-1.5">
                   <span className="text-white text-sm font-medium tracking-wide">
-                    {stability >= 1 ? '✓ Capturing…' : `Hold still — ${Math.round(stability * 100)}%`}
+                    {stability >= 1 ? '✓ Capturing...' : `Hold still - ${Math.round(stability * 100)}%`}
                   </span>
                 </div>
               </div>
