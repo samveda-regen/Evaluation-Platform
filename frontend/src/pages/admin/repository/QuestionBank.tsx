@@ -3,7 +3,6 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../../services/api';
 import {
-  ArrowLeft,
   CheckSquare,
   Code2,
   Brain,
@@ -14,9 +13,9 @@ import {
   Plus,
   ChevronDown,
   Search,
-  Check,
   Pencil,
 } from 'lucide-react';
+import CustomSelect from '../../../components/CustomSelect';
 import type {
   Pagination,
   RepositoryCategory,
@@ -26,7 +25,7 @@ import type {
   Test,
 } from '../../../types';
 
-/* ── Sidebar item types ── */
+/* -- Sidebar item types -- */
 interface SidebarItem {
   id: string;
   label: string;
@@ -42,46 +41,37 @@ const SIDEBAR_ITEMS: SidebarItem[] = [
 
 type Difficulty = 'easy' | 'medium' | 'hard';
 
-/* ── Type helpers ── */
+/* -- Type helpers -- */
 function isMCQ(q: RepositoryQuestion): q is RepositoryMCQQuestion { return q.repositoryCategory === 'MCQ'; }
 function isCoding(q: RepositoryQuestion): q is RepositoryCodingQuestion { return q.repositoryCategory === 'CODING'; }
 
-/* ── Question title ── */
+/* -- Question title -- */
 function qTitle(q: RepositoryQuestion): string {
   if (isMCQ(q)) return q.questionText;
   return (q as { title: string }).title || '';
 }
 
-/* ── Type icon ── */
+/* -- Type icon -- */
 function TypeIcon({ cat }: { cat: RepositoryCategory }) {
   if (cat === 'MCQ') return (
-    <div style={{ width:'32px', height:'32px', borderRadius:'8px', backgroundColor:'#EFF6FF', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-      <CheckSquare width={14} height={14} stroke="#3B82F6" strokeWidth={2} />
+    <div style={{ width:'32px', height:'32px', borderRadius:'8px', backgroundColor:'var(--admin-accent-soft)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+      <CheckSquare width={14} height={14} stroke="var(--admin-accent-hover)" strokeWidth={2} />
     </div>
   );
   if (cat === 'CODING') return (
-    <div style={{ width:'32px', height:'32px', borderRadius:'8px', backgroundColor:'#F5F3FF', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-      <Code2 width={14} height={14} stroke="#7C3AED" strokeWidth={2} />
+    <div style={{ width:'32px', height:'32px', borderRadius:'8px', backgroundColor:'var(--admin-accent-soft)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+      <Code2 width={14} height={14} stroke="var(--admin-accent-hover)" strokeWidth={2} />
     </div>
   );
   return (
-    <div style={{ width:'32px', height:'32px', borderRadius:'8px', backgroundColor:'#FFFBEB', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-      <Brain width={14} height={14} stroke="#F59E0B" strokeWidth={2} />
+    <div style={{ width:'32px', height:'32px', borderRadius:'8px', backgroundColor:'var(--admin-accent-soft)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+      <Brain width={14} height={14} stroke="var(--admin-accent-hover)" strokeWidth={2} />
     </div>
   );
 }
 
-/* ── Difficulty badge ── */
-const DIFF_CFG: Record<Difficulty, { bg: string; color: string }> = {
-  easy:   { bg:'#ECFDF5', color:'#059669' },
-  medium: { bg:'#FEF3C7', color:'#D97706' },
-  hard:   { bg:'#FEF2F2', color:'#DC2626' },
-};
-const CAT_CFG: Record<RepositoryCategory, { bg: string; color: string }> = {
-  MCQ:        { bg:'#EFF6FF', color:'#1D4ED8' },
-  CODING:     { bg:'#F5F3FF', color:'#7C3AED' },
-  BEHAVIORAL: { bg:'#FEF3C7', color:'#92400E' },
-};
+const META_BADGE_CFG = { bg:'var(--admin-accent-soft)', color:'var(--admin-accent-hover)' };
+
 function Badge({ label, bg, color }: { label: string; bg: string; color: string }) {
   return (
     <span style={{ fontSize:'11px', fontWeight:500, padding:'2px 8px', borderRadius:'20px', backgroundColor:bg, color, whiteSpace:'nowrap' }}>
@@ -90,11 +80,11 @@ function Badge({ label, bg, color }: { label: string; bg: string; color: string 
   );
 }
 
-/* ── Toggle icon ── */
+/* -- Toggle icon -- */
 function ToggleIcon({ enabled }: { enabled: boolean }) {
   return enabled
-    ? <ToggleRight width={22} height={22} stroke="#10B981" strokeWidth={1.5} />
-    : <ToggleLeft  width={22} height={22} stroke="#D1D5DB" strokeWidth={1.5} />;
+    ? <ToggleRight width={22} height={22} stroke="currentColor" strokeWidth={1.5} />
+    : <ToggleLeft  width={22} height={22} stroke="currentColor" strokeWidth={1.5} />;
 }
 
 export default function QuestionBank() {
@@ -105,7 +95,7 @@ export default function QuestionBank() {
   const fromTestId: string | undefined = (location.state as { fromTestId?: string; fromTestName?: string } | null)?.fromTestId;
   const fromTestName: string | undefined = (location.state as { fromTestId?: string; fromTestName?: string } | null)?.fromTestName;
 
-  /* ── State ── */
+  /* -- State -- */
   const [activeItem,   setActiveItem]   = useState<SidebarItem>(SIDEBAR_ITEMS[0]);
   const [questions,    setQuestions]    = useState<RepositoryQuestion[]>([]);
   const [pagination,   setPagination]   = useState<Pagination | null>(null);
@@ -116,6 +106,7 @@ export default function QuestionBank() {
   const [draftSearch,  setDraftSearch]  = useState('');
   const [selectedDiffs,setSelectedDiffs]= useState<Set<Difficulty>>(new Set(['easy','medium','hard']));
   const [showNewDrop,  setShowNewDrop]  = useState(false);
+  const [sortOrder,    setSortOrder]    = useState<'most-used'|'newest'|'marks'>('most-used');
   const dropRef = useRef<HTMLDivElement>(null);
   const [editBeh, setEditBeh] = useState({
     open: false, id: '', title: '', description: '', marks: 5,
@@ -234,6 +225,10 @@ export default function QuestionBank() {
   });
 
   const handleToggle = async (q: RepositoryQuestion) => {
+    const nextEnabled = !q.isEnabled;
+    const applyEnabledState = (items: RepositoryQuestion[]) =>
+      items.map(item => item.id === q.id ? { ...item, isEnabled: nextEnabled } : item);
+
     try {
       if (q.isEnabled) {
         await adminApi.disableQuestionBankQuestion(q.id, activeItem.category === 'all' ? q.repositoryCategory : activeItem.category as RepositoryCategory);
@@ -242,7 +237,8 @@ export default function QuestionBank() {
         await adminApi.enableQuestionBankQuestion(q.id, activeItem.category === 'all' ? q.repositoryCategory : activeItem.category as RepositoryCategory);
         toast.success('Question enabled');
       }
-      void loadQuestions();
+      setQuestions(applyEnabledState);
+      setAllQuestions(applyEnabledState);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
       toast.error(e.response?.data?.error || 'Failed to update');
@@ -293,7 +289,7 @@ export default function QuestionBank() {
     } finally { setAddingTestId(null); }
   };
 
-  // Direct add — used when coming from a specific test's "Add from Library" button
+  // Direct add used when coming from a specific test's "Add from Library" button
   const handleAddDirectToTest = async (q: RepositoryQuestion, targetTestId: string) => {
     setAddingTestId(targetTestId + q.id);
     try {
@@ -379,7 +375,7 @@ export default function QuestionBank() {
   const usageCount = (q: RepositoryQuestion): string => {
     const r = q as unknown as Record<string, number>;
     const n = r.usageCount ?? r.totalUses ?? r.uses ?? null;
-    return n != null ? String(n) : '—';
+    return n != null ? String(n) : '-';
   };
   const correctRate = (q: RepositoryQuestion): string | null => {
     const r = q as unknown as Record<string, number>;
@@ -387,119 +383,85 @@ export default function QuestionBank() {
     return n != null ? `${Math.round(n)}%` : null;
   };
 
-  return (
-    <div style={{ backgroundColor:'#F9FAFB', minHeight:'100%' }}>
+  const sortedQuestions = [...visibleQuestions].sort((a, b) => {
+    if (sortOrder === 'marks') return (b.marks || 0) - (a.marks || 0);
+    if (sortOrder === 'newest') {
+      const getTime = (q: RepositoryQuestion) => {
+        const maybe = q as unknown as { createdAt?: string; updatedAt?: string };
+        return new Date(maybe.createdAt || maybe.updatedAt || 0).getTime() || 0;
+      };
+      return getTime(b) - getTime(a);
+    }
+    const getUses = (q: RepositoryQuestion) => {
+      const r = q as unknown as Record<string, number>;
+      return r.usageCount ?? r.totalUses ?? r.uses ?? 0;
+    };
+    return getUses(b) - getUses(a);
+  });
 
-      {/* ── "Adding to test" banner ── */}
+  return (
+    <div className="admin-page">
+
+      {/* -- "Adding to test" banner -- */}
       {fromTestId && (
         <div style={{
           display:'flex', alignItems:'center', justifyContent:'space-between',
-          padding:'10px 16px', marginBottom:'16px', borderRadius:'10px',
-          backgroundColor:'#EFF6FF', border:'1.5px solid #BFDBFE',
+          padding:'10px 16px', marginBottom:'16px', borderRadius:'var(--admin-card-radius)',
+          backgroundColor:'var(--admin-accent-soft)', border:'1.5px solid var(--admin-accent-disabled)',
         }}>
           <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-            <LibraryBig width={16} height={16} stroke="#3B82F6" strokeWidth={1.5} />
-            <span style={{ fontSize:'13px', color:'#1E40AF', fontWeight:500 }}>
+            <LibraryBig width={16} height={16} stroke="var(--admin-accent-hover)" strokeWidth={1.5} />
+            <span style={{ fontSize:'13px', color:'var(--admin-accent-hover)', fontWeight:500 }}>
               Adding questions to: <strong>{fromTestName ?? 'test'}</strong>
-              <span style={{ color:'#3B82F6', fontWeight:400, marginLeft:'6px' }}>— click Add on any question to add it directly</span>
+              <span style={{ color:'var(--admin-accent)', fontWeight:400, marginLeft:'6px' }}>- click Add on any question to add it directly</span>
             </span>
           </div>
         </div>
       )}
 
-      {/* ── HEADER ── */}
-      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:'20px' }}>
-        <div style={{ display:'flex', alignItems:'flex-start', gap:'12px' }}>
-          {/* Back button */}
-          <button
-            onClick={() => navigate(-1)}
-            title="Go back"
-            className="back-circle-btn"
-            style={{
-              width:'34px', height:'34px', borderRadius:'50%', border:'1.5px solid #E5E7EB',
-              backgroundColor:'white', display:'flex', alignItems:'center', justifyContent:'center',
-              cursor:'pointer', flexShrink:0, marginTop:'4px',
-              transition:'background-color 0.18s, border-color 0.18s, transform 0.18s',
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.backgroundColor = '#F3F4F6';
-              e.currentTarget.style.borderColor = '#9CA3AF';
-              e.currentTarget.style.transform = 'scale(1.1)';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.backgroundColor = 'white';
-              e.currentTarget.style.borderColor = '#E5E7EB';
-              e.currentTarget.style.transform = 'scale(1)';
-            }}
-            onMouseDown={e => { e.currentTarget.style.transform = 'scale(0.93)'; }}
-            onMouseUp={e => { e.currentTarget.style.transform = 'scale(1.1)'; }}
-          >
-            <ArrowLeft width={15} height={15} stroke="#6B7280" strokeWidth={2} />
-          </button>
-
-          <div>
-            {/* Breadcrumb */}
-            <div style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'12px', color:'#9CA3AF', marginBottom:'6px' }}>
-              <span style={{ cursor:'pointer', color:'#6B7280' }} onClick={() => navigate('/admin/dashboard')}>Workspace</span>
-              <span>›</span>
-              <span>Question Library</span>
-            </div>
-            <h1 style={{ fontSize:'26px', fontWeight:700, color:'#111827', margin:'0 0 4px' }}>Question Library</h1>
-            <p style={{ fontSize:'13px', color:'#6B7280', margin:0 }}>Reusable question bank across all tests.</p>
-          </div>
+      {/* -- HEADER -- */}
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold" style={{ color:'var(--admin-text)', margin:0 }}>Question Library</h1>
+          <p className="text-sm mt-0.5" style={{ color:'var(--admin-text-muted)' }}>Reusable question bank across all tests.</p>
         </div>
 
-        <div style={{ display:'flex', gap:'8px', flexShrink:0, alignItems:'center' }}>
+        <div className="admin-header-actions">
           {/* Import CSV */}
           <button
-            onClick={() => toast('CSV import coming soon', { icon:'📂' })}
-            style={{
-              display:'flex', alignItems:'center', gap:'5px', padding:'8px 16px',
-              border:'1.5px solid #E5E7EB', borderRadius:'9px', backgroundColor:'white',
-              fontSize:'13px', fontWeight:500, color:'#374151', cursor:'pointer',
-            }}>
+            onClick={() => toast('CSV import coming soon')}
+            className="admin-btn admin-btn-secondary">
             <FileDown width={14} height={14} strokeWidth={2} />
             Import CSV
           </button>
 
           {/* New question with dropdown */}
           <div ref={dropRef} style={{ position:'relative' }}>
-            <div style={{ display:'flex', borderRadius:'9px', overflow:'hidden' }}>
-              <button
-                onClick={() => navigate('/admin/mcq/new')}
-                style={{
-                  display:'flex', alignItems:'center', gap:'5px', padding:'8px 16px',
-                  border:'none', backgroundColor:'#10B981', fontSize:'13px', fontWeight:600,
-                  color:'white', cursor:'pointer',
-                }}>
-                <Plus width={13} height={13} stroke="white" strokeWidth={2.5} />
-                New question
-              </button>
-              <button
-                onClick={() => setShowNewDrop(p=>!p)}
-                style={{
-                  padding:'8px 10px', border:'none', borderLeft:'1px solid #059669',
-                  backgroundColor:'#10B981', color:'white', cursor:'pointer',
-                }}>
-                <ChevronDown width={12} height={12} stroke="white" strokeWidth={2} />
-              </button>
-            </div>
+            <button
+              onClick={() => setShowNewDrop(p=>!p)}
+              className="admin-btn admin-btn-primary"
+              aria-expanded={showNewDrop}
+              aria-haspopup="menu">
+              <Plus width={13} height={13} stroke="white" strokeWidth={2.5} />
+              Create Question
+              <ChevronDown width={12} height={12} stroke="white" strokeWidth={2} />
+            </button>
             {showNewDrop && (
               <div style={{
                 position:'absolute', top:'100%', right:0, marginTop:'4px', zIndex:30,
-                backgroundColor:'white', borderRadius:'10px', boxShadow:'0 8px 24px rgba(0,0,0,0.12)',
-                border:'1px solid #E5E7EB', minWidth:'160px', overflow:'hidden',
+                backgroundColor:'white', borderRadius:'var(--admin-control-radius)', boxShadow:'0 8px 24px rgba(31, 53, 86, 0.14)',
+                border:'1px solid var(--admin-border)', minWidth:'160px', overflow:'hidden',
               }}>
                 {[
-                  { label:'MCQ question',        icon:'≡',   path:'/admin/mcq/new' },
-                  { label:'Coding question',     icon:'</>',  path:'/admin/coding/new' },
-                  { label:'Behavioral question', icon:'💬',   path:'/admin/behavioral/new' },
+                  { label:'MCQ question',        icon:'MCQ', path:'/admin/mcq/new' },
+                  { label:'Coding question',     icon:'</>', path:'/admin/coding/new' },
+                  { label:'Behavioral question', icon:'BEH', path:'/admin/behavioral/new' },
                 ].map(opt => (
                   <button key={opt.label} onClick={() => { setShowNewDrop(false); navigate(opt.path); }}
-                    style={{ width:'100%', textAlign:'left', padding:'10px 14px', border:'none', backgroundColor:'white', fontSize:'13px', color:'#374151', cursor:'pointer', borderBottom:'1px solid #F3F4F6', display:'flex', alignItems:'center', gap:'8px' }}
-                    onMouseEnter={e=>(e.currentTarget.style.backgroundColor='#EDF0F7')}
+                    style={{ width:'100%', textAlign:'left', padding:'10px 14px', border:'none', backgroundColor:'white', fontSize:'13px', color:'var(--admin-text-muted)', cursor:'pointer', borderBottom:'1px solid var(--admin-border)', display:'flex', alignItems:'center', gap:'8px' }}
+                    onMouseEnter={e=>(e.currentTarget.style.backgroundColor='rgba(31, 53, 86, 0.06)')}
                     onMouseLeave={e=>(e.currentTarget.style.backgroundColor='white')}>
-                    <span style={{ fontSize:'11px', color:'#9CA3AF', width:'22px' }}>{opt.icon}</span>
+                    <span style={{ fontSize:'11px', color:'var(--admin-text-subtle)', width:'22px' }}>{opt.icon}</span>
                     {opt.label}
                   </button>
                 ))}
@@ -509,189 +471,139 @@ export default function QuestionBank() {
         </div>
       </div>
 
-      {/* ── 2-COLUMN LAYOUT ── */}
-      <div style={{ display:'grid', gridTemplateColumns:'180px 1fr', gap:'20px', alignItems:'start' }}>
-
-        {/* ── LEFT SIDEBAR ── */}
-        <div style={{ minWidth:0, position:'sticky', top:0, maxHeight:'calc(100vh - 140px)', overflowY:'auto', paddingRight:'4px' }}>
-          {/* CATEGORIES */}
-          <p style={{ fontSize:'10px', fontWeight:700, color:'#9CA3AF', letterSpacing:'0.08em', margin:'0 0 8px', paddingLeft:'4px' }}>
-            CATEGORIES
-          </p>
-          {SIDEBAR_ITEMS.map(item => {
-            const isActive = activeItem.id === item.id;
-            const cnt = item.id === 'all'
-              ? (counts.MCQ||0)+(counts.CODING||0)+(counts.BEHAVIORAL||0)
-              : counts[item.id];
-            return (
-              <button key={item.id} onClick={() => handleSidebarClick(item)}
-                style={{
-                  width:'100%', textAlign:'left', padding:'8px 10px', border:'none', borderRadius:'8px',
-                  backgroundColor: isActive ? '#111827' : 'transparent',
-                  color: isActive ? 'white' : '#374151',
-                  fontSize:'13px', fontWeight: isActive ? 600 : 400,
-                  cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between',
-                  marginBottom:'2px', transition:'background-color 0.12s',
-                }}
-                onMouseEnter={e=>{ if(!isActive) e.currentTarget.style.backgroundColor='#EDF0F7'; }}
-                onMouseLeave={e=>{ if(!isActive) e.currentTarget.style.backgroundColor='transparent'; }}>
-                <span>{item.label}</span>
-                {cnt !== undefined && (
-                  <span style={{
-                    fontSize:'11px', padding:'1px 7px', borderRadius:'20px', fontWeight:600,
-                    backgroundColor: isActive ? '#374151' : '#F3F4F6',
-                    color: isActive ? 'white' : '#6B7280',
-                  }}>{cnt}</span>
-                )}
-              </button>
-            );
-          })}
-
-          {/* FILTERS section */}
-          <div style={{ height:'1px', backgroundColor:'#E5E7EB', margin:'16px 0 12px' }} />
-          <p style={{ fontSize:'10px', fontWeight:700, color:'#9CA3AF', letterSpacing:'0.08em', margin:'0 0 12px', paddingLeft:'4px' }}>
-            FILTERS
-          </p>
-
-          {/* Skills filter */}
-          <div style={{ marginBottom:'16px' }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'7px' }}>
-              <span style={{ fontSize:'12px', fontWeight:600, color:'#374151' }}>Skills</span>
-              {selectedSkills.size > 0 && (
-                <button onClick={() => setSelectedSkills(new Set())}
-                  style={{ fontSize:'11px', fontWeight:500, color:'#10B981', border:'none', background:'none', cursor:'pointer', padding:0 }}>
-                  Clear
-                </button>
-              )}
-            </div>
-            <div style={{ position:'relative', marginBottom:'6px' }}>
-              <Search style={{ position:'absolute', left:'7px', top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}
-                width={11} height={11} stroke="#9CA3AF" strokeWidth={1.5} />
-              <input
-                value={skillSearch}
-                onChange={e => setSkillSearch(e.target.value)}
-                placeholder="Search skills..."
-                style={{
-                  width:'100%', padding:'5px 8px 5px 23px', borderRadius:'7px',
-                  border:'1px solid #E5E7EB', backgroundColor:'white', fontSize:'11px',
-                  color:'#374151', outline:'none', boxSizing:'border-box',
-                }}
-              />
-            </div>
-            {filteredSkillsList.slice(0, showAllSkills ? undefined : 8).map(skill => (
-              <label key={skill.name} onClick={() => toggleSkill(skill.name)}
-                style={{ display:'flex', alignItems:'center', gap:'7px', padding:'3px 10px', cursor:'pointer', borderRadius:'6px', marginBottom:'1px' }}
-                onMouseEnter={e=>(e.currentTarget.style.backgroundColor='#EDF0F7')}
-                onMouseLeave={e=>(e.currentTarget.style.backgroundColor='transparent')}>
-                <div style={{
-                  width:'14px', height:'14px', borderRadius:'3px', flexShrink:0,
-                  border: selectedSkills.has(skill.name) ? '2px solid #10B981' : '2px solid #D1D5DB',
-                  backgroundColor: selectedSkills.has(skill.name) ? '#10B981' : 'white',
-                  display:'flex', alignItems:'center', justifyContent:'center',
-                }}>
-                  {selectedSkills.has(skill.name) && (
-                    <Check width={8} height={8} stroke="white" strokeWidth={2.5} />
-                  )}
-                </div>
-                <span style={{ fontSize:'12px', color:'#374151', flex:1, userSelect:'none', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{skill.name}</span>
-                <span style={{ fontSize:'11px', color:'#9CA3AF', flexShrink:0 }}>({skill.count})</span>
-              </label>
-            ))}
-            {filteredSkillsList.length === 0 && skillSearch.trim() && (
-              <p style={{ fontSize:'11px', color:'#9CA3AF', padding:'4px 10px', margin:0 }}>No skills found</p>
-            )}
-            {!skillSearch.trim() && filteredSkillsList.length === 0 && (
-              <p style={{ fontSize:'11px', color:'#9CA3AF', padding:'4px 10px', margin:0 }}>No topics yet</p>
-            )}
-            {filteredSkillsList.length > 8 && (
-              <button onClick={() => setShowAllSkills(v=>!v)}
-                style={{ marginTop:'4px', marginLeft:'10px', fontSize:'11px', color:'#10B981', border:'none', background:'none', cursor:'pointer', padding:0, fontWeight:500 }}>
-                {showAllSkills ? '− Show less' : `+ ${filteredSkillsList.length - 8} more`}
-              </button>
-            )}
-          </div>
-
-          {/* Difficulty filter */}
+      {/* -- REPOSITORY LAYOUT -- */}
+      <div style={{ display:'grid', gridTemplateColumns:'220px minmax(0, 1fr)', gap:'18px', alignItems:'start' }}>
+        <aside style={{ display:'flex', flexDirection:'column', gap:'18px', position:'sticky', top:'16px' }}>
           <div>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'7px' }}>
-              <span style={{ fontSize:'12px', fontWeight:600, color:'#374151' }}>Difficulty</span>
-              {selectedDiffs.size < 3 && (
-                <button onClick={() => setSelectedDiffs(new Set(['easy','medium','hard']))}
-                  style={{ fontSize:'11px', fontWeight:500, color:'#10B981', border:'none', background:'none', cursor:'pointer', padding:0 }}>
-                  Clear
-                </button>
-              )}
+            <p style={{ fontSize:'11px', fontWeight:700, color:'var(--admin-text-subtle)', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'0.04em' }}>Question Types</p>
+            <div style={{ display:'flex', flexDirection:'column', gap:'4px' }}>
+              {SIDEBAR_ITEMS.map(item => {
+                const isActive = activeItem.id === item.id;
+                const cnt = item.id === 'all'
+                  ? (counts.MCQ||0)+(counts.CODING||0)+(counts.BEHAVIORAL||0)
+                  : counts[item.id];
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => handleSidebarClick(item)}
+                    style={{
+                      minHeight:'34px', width:'100%', padding:'8px 10px', borderRadius:'var(--admin-control-radius)',
+                      border: isActive ? '1px solid var(--admin-accent)' : '1px solid transparent',
+                      backgroundColor: isActive ? 'var(--admin-accent)' : 'transparent',
+                      color: isActive ? 'white' : 'var(--admin-text-muted)',
+                      fontSize:'13px', fontWeight:600, cursor:'pointer',
+                      display:'flex', alignItems:'center', justifyContent:'space-between', gap:'10px', textAlign:'left',
+                    }}
+                    onMouseEnter={e=>{ if(!isActive) e.currentTarget.style.backgroundColor='var(--admin-hover)'; }}
+                    onMouseLeave={e=>{ if(!isActive) e.currentTarget.style.backgroundColor='transparent'; }}>
+                    <span>{item.label}</span>
+                    {cnt !== undefined && (
+                      <span style={{ fontSize:'11px', lineHeight:1.3, fontWeight:700, color: isActive ? 'rgba(255,255,255,0.86)' : 'var(--admin-text-subtle)' }}>{cnt}</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
-            {(['easy','medium','hard'] as Difficulty[]).map(d => (
-              <label key={d} onClick={() => toggleDiff(d)}
-                style={{ display:'flex', alignItems:'center', gap:'7px', padding:'3px 10px', cursor:'pointer', borderRadius:'6px', marginBottom:'1px' }}
-                onMouseEnter={e=>(e.currentTarget.style.backgroundColor='#EDF0F7')}
-                onMouseLeave={e=>(e.currentTarget.style.backgroundColor='transparent')}>
-                <div style={{
-                  width:'14px', height:'14px', borderRadius:'3px', flexShrink:0,
-                  border: selectedDiffs.has(d) ? '2px solid #10B981' : '2px solid #D1D5DB',
-                  backgroundColor: selectedDiffs.has(d) ? '#10B981' : 'white',
-                  display:'flex', alignItems:'center', justifyContent:'center',
-                }}>
-                  {selectedDiffs.has(d) && (
-                    <Check width={8} height={8} stroke="white" strokeWidth={2.5} />
-                  )}
-                </div>
-                <span style={{ fontSize:'12px', color:'#374151', textTransform:'capitalize', flex:1, userSelect:'none' }}>{d}</span>
-                <span style={{ fontSize:'11px', color:'#9CA3AF', flexShrink:0 }}>({diffCounts[d] || 0})</span>
-              </label>
-            ))}
           </div>
-        </div>
 
-        {/* ── RIGHT MAIN CONTENT ── */}
-        <div>
+          <div>
+            <p style={{ fontSize:'11px', fontWeight:700, color:'var(--admin-text-subtle)', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'0.04em' }}>Difficulty</p>
+            <div style={{ display:'flex', flexDirection:'column', gap:'4px' }}>
+              {(['easy','medium','hard'] as Difficulty[]).map(d => {
+                const selected = selectedDiffs.has(d);
+                return (
+                  <button
+                    key={d}
+                    onClick={() => toggleDiff(d)}
+                    style={{
+                      minHeight:'32px', padding:'7px 10px', borderRadius:'var(--admin-control-radius)',
+                      border: '1px solid transparent',
+                      backgroundColor: selected ? 'var(--admin-accent-soft)' : 'transparent',
+                      color: selected ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)',
+                      cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px',
+                      fontSize:'12px', fontWeight:600,
+                    }}>
+                    <span style={{ display:'inline-flex', alignItems:'center', gap:'8px', minWidth:0 }}>
+                      <input
+                        type="checkbox"
+                        checked={selected}
+                        readOnly
+                        tabIndex={-1}
+                        style={{
+                          width:'14px',
+                          height:'14px',
+                          margin:0,
+                          flexShrink:0,
+                          accentColor:'var(--admin-accent)',
+                          pointerEvents:'none',
+                        }}
+                      />
+                      <span style={{ textTransform:'capitalize' }}>{d}</span>
+                    </span>
+                    <span style={{ color: selected ? 'var(--admin-accent-hover)' : 'var(--admin-text-subtle)' }}>{diffCounts[d] || 0}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </aside>
+
+        {/* -- MAIN CONTENT -- */}
+        <main style={{ minWidth:0 }}>
           {/* Search + count + sort */}
-          <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'14px' }}>
+          <div style={{
+            display:'grid',
+            gridTemplateColumns:'minmax(260px, 1fr) auto auto',
+            alignItems:'center',
+            gap:'10px',
+            marginBottom:'12px',
+          }}>
             {/* Search */}
-            <div style={{ position:'relative', flex:1 }}>
+            <div style={{ position:'relative', minWidth:0 }}>
               <Search style={{ position:'absolute', left:'12px', top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}
-                width={14} height={14} stroke="#9CA3AF" strokeWidth={1.5} />
+                width={14} height={14} stroke="var(--admin-text-subtle)" strokeWidth={1.5} />
               <input
                 value={draftSearch}
                 onChange={e => setDraftSearch(e.target.value)}
                 onKeyDown={e => { if (e.key==='Enter') { setSearch(draftSearch); setPage(1); } }}
                 placeholder="Search questions..."
+                className="admin-filter-input"
                 style={{
                   width:'100%', padding:'9px 12px 9px 36px', borderRadius:'9px',
-                  border:'1px solid #E5E7EB', backgroundColor:'white', fontSize:'13px',
-                  color:'#374151', outline:'none', boxSizing:'border-box',
+                  border:'1px solid var(--admin-border)', fontSize:'13px',
+                  outline:'none', boxSizing:'border-box',
                 }}
               />
             </div>
             {/* Count badge */}
-            <div style={{ padding:'6px 14px', borderRadius:'20px', backgroundColor:'#F3F4F6', fontSize:'12px', fontWeight:500, color:'#374151', whiteSpace:'nowrap', flexShrink:0 }}>
-              {loading ? '…' : totalShown} questions
+            <div style={{ padding:'6px 14px', borderRadius:'20px', backgroundColor:META_BADGE_CFG.bg, fontSize:'12px', fontWeight:500, color:META_BADGE_CFG.color, whiteSpace:'nowrap', flexShrink:0 }}>
+              {loading ? '...' : totalShown} questions
             </div>
             {/* Sort */}
-            <select
-              style={{
-                padding:'8px 12px', borderRadius:'9px', border:'1px solid #E5E7EB',
-                backgroundColor:'white', fontSize:'13px', color:'#374151', cursor:'pointer', flexShrink:0,
-              }}>
-              <option value="most-used">Most used</option>
-              <option value="newest">Newest</option>
-              <option value="marks">By marks</option>
-            </select>
+            <CustomSelect
+              value={sortOrder}
+              onChange={value => setSortOrder(value as typeof sortOrder)}
+              options={[
+                { value: 'most-used', label: 'Most used' },
+                { value: 'newest', label: 'Newest' },
+                { value: 'marks', label: 'By marks' },
+              ]}
+              style={{ width: '140px', minWidth: '140px', flexShrink: 0 }}
+            />
           </div>
 
           {/* Question list */}
           {loading ? (
             <div style={{ display:'flex', justifyContent:'center', padding:'60px 0' }}>
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor:'#10B981' }} />
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor:'var(--admin-accent)' }} />
             </div>
           ) : visibleQuestions.length === 0 ? (
-            <div style={{ textAlign:'center', padding:'60px 0', color:'#9CA3AF', fontSize:'14px' }}>
+            <div style={{ textAlign:'center', padding:'60px 0', color:'var(--admin-text-subtle)', fontSize:'14px' }}>
               No questions found
             </div>
           ) : (
-            <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
-              {visibleQuestions.map(q => {
+            <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+              {sortedQuestions.map(q => {
                 const cat  = q.repositoryCategory;
                 const diff = q.difficulty as Difficulty;
                 const uses = usageCount(q);
@@ -700,58 +612,54 @@ export default function QuestionBank() {
                 return (
                   <div key={q.id} style={{
                     display:'flex', alignItems:'center', gap:'14px',
-                    backgroundColor: q.isEnabled ? 'white' : '#FFF5F5',
-                    borderRadius:'12px', padding:'14px 18px',
-                    boxShadow:'0 1px 3px rgba(0,0,0,0.05)',
-                    border: q.isEnabled ? '1px solid transparent' : '1px solid #FECACA',
+                    backgroundColor: q.isEnabled ? 'white' : 'var(--admin-accent-soft)',
+                    borderRadius:'var(--admin-card-radius)', padding:'11px 14px',
+                    boxShadow:'var(--admin-card-shadow)',
+                    border: q.isEnabled ? '1px solid transparent' : '1px solid var(--admin-accent-disabled)',
                     transition:'box-shadow 0.15s',
                   }}
-                    onMouseEnter={e=>(e.currentTarget.style.boxShadow='0 2px 8px rgba(0,0,0,0.09)')}
-                    onMouseLeave={e=>(e.currentTarget.style.boxShadow='0 1px 3px rgba(0,0,0,0.05)')}>
+                    onMouseEnter={e=>(e.currentTarget.style.boxShadow='0 2px 8px rgba(31, 53, 86, 0.12)')}
+                    onMouseLeave={e=>(e.currentTarget.style.boxShadow='var(--admin-card-shadow)')}>
 
                     {/* Type icon */}
                     <TypeIcon cat={cat} />
 
                     {/* Question content */}
                     <div style={{ flex:1, minWidth:0 }}>
-                      <p style={{ fontSize:'14px', fontWeight:600, color:'#111827', margin:'0 0 6px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      <p style={{ fontSize:'14px', fontWeight:600, color:'var(--admin-text)', margin:'0 0 6px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                         {qTitle(q)}
                       </p>
                       <div style={{ display:'flex', flexWrap:'wrap', gap:'5px', alignItems:'center' }}>
-                        <Badge label={catLabel} {...CAT_CFG[cat]} />
-                        <Badge label={diff.charAt(0).toUpperCase()+diff.slice(1)} {...DIFF_CFG[diff]} />
+                        <Badge label={catLabel} {...META_BADGE_CFG} />
+                        <Badge label={diff.charAt(0).toUpperCase()+diff.slice(1)} {...META_BADGE_CFG} />
                         {q.topic && (
-                          <span style={{ fontSize:'11px', color:'#6B7280', padding:'2px 8px', borderRadius:'20px', backgroundColor:'#F3F4F6' }}>
-                            {q.topic}
-                          </span>
+                          <Badge label={q.topic} {...META_BADGE_CFG} />
                         )}
                         {q.tags.slice(0,2).map(tag => (
-                          <span key={tag} style={{ fontSize:'11px', color:'#6B7280', padding:'2px 8px', borderRadius:'20px', backgroundColor:'#F3F4F6' }}>
-                            {tag}
-                          </span>
+                          <Badge key={tag} label={tag} {...META_BADGE_CFG} />
                         ))}
                       </div>
                     </div>
 
                     {/* Stats */}
-                    <div style={{ display:'flex', alignItems:'center', gap:'16px', flexShrink:0 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:'12px', flexShrink:0 }}>
                       {/* Uses */}
                       <div style={{ textAlign:'right' }}>
-                        <p style={{ fontSize:'15px', fontWeight:700, color:'#111827', margin:0, lineHeight:1 }}>{uses}</p>
-                        <p style={{ fontSize:'10px', color:'#9CA3AF', margin:'2px 0 0' }}>uses</p>
+                        <p style={{ fontSize:'15px', fontWeight:700, color:'var(--admin-text)', margin:0, lineHeight:1 }}>{uses}</p>
+                        <p style={{ fontSize:'10px', color:'var(--admin-text-subtle)', margin:'2px 0 0' }}>uses</p>
                       </div>
                       {/* Correct % */}
                       {rate && (
                         <div style={{ textAlign:'right' }}>
-                          <p style={{ fontSize:'15px', fontWeight:700, color:'#10B981', margin:0, lineHeight:1 }}>{rate}</p>
-                          <p style={{ fontSize:'10px', color:'#9CA3AF', margin:'2px 0 0' }}>correct</p>
+                          <p style={{ fontSize:'15px', fontWeight:700, color:'var(--admin-accent)', margin:0, lineHeight:1 }}>{rate}</p>
+                          <p style={{ fontSize:'10px', color:'var(--admin-text-subtle)', margin:'2px 0 0' }}>correct</p>
                         </div>
                       )}
                       {/* Marks (when no rate) */}
                       {!rate && (
                         <div style={{ textAlign:'right' }}>
-                          <p style={{ fontSize:'15px', fontWeight:700, color:'#6B7280', margin:0, lineHeight:1 }}>{q.marks}</p>
-                          <p style={{ fontSize:'10px', color:'#9CA3AF', margin:'2px 0 0' }}>marks</p>
+                          <p style={{ fontSize:'15px', fontWeight:700, color:'var(--admin-text-muted)', margin:0, lineHeight:1 }}>{q.marks}</p>
+                          <p style={{ fontSize:'10px', color:'var(--admin-text-subtle)', margin:'2px 0 0' }}>marks</p>
                         </div>
                       )}
                       {/* Add to test */}
@@ -761,30 +669,37 @@ export default function QuestionBank() {
                           : false;
                         return (
                           <button
+                            type="button"
                             onClick={() => fromTestId ? void handleAddDirectToTest(q, fromTestId) : openAddToTest(q)}
                             disabled={isAddingThis}
                             title={fromTestId ? `Add to ${fromTestName ?? 'test'}` : 'Add to test'}
-                            style={{ padding:'6px 10px', borderRadius:'7px', border:'1.5px solid #D1FAE5', backgroundColor:'#ECFDF5', cursor: isAddingThis ? 'not-allowed' : 'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'4px', fontSize:'12px', fontWeight:600, color:'#059669', opacity: isAddingThis ? 0.6 : 1 }}>
+                            className="admin-btn admin-btn-secondary"
+                            style={{ minHeight:'32px', padding:'6px 10px', fontSize:'12px' }}>
                             {isAddingThis ? (
-                              <div className="animate-spin rounded-full h-3 w-3 border-b-2" style={{ borderColor:'#059669' }} />
+                              <div className="animate-spin rounded-full h-3 w-3 border-b-2" style={{ borderColor:'var(--admin-accent-hover)' }} />
                             ) : (
-                              <Plus width={13} height={13} stroke="#059669" strokeWidth={2.5} />
+                              <Plus width={13} height={13} stroke="var(--admin-accent-hover)" strokeWidth={2.5} />
                             )}
                             Add
                           </button>
                         );
                       })()}
                       {/* Toggle enable/disable */}
-                      <button onClick={() => handleToggle(q)}
+                      <button
+                        type="button"
+                        onClick={() => handleToggle(q)}
                         title={q.isEnabled ? 'Disable question' : 'Enable question'}
-                        style={{ padding:'4px 6px', borderRadius:'7px', border:'none', backgroundColor:'transparent', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                        className="admin-icon-toggle"
+                        data-state={q.isEnabled ? 'on' : 'off'}>
                         <ToggleIcon enabled={q.isEnabled} />
                       </button>
                       {/* Edit */}
-                      <button onClick={() => handleEdit(q)}
+                      <button
+                        type="button"
+                        onClick={() => handleEdit(q)}
                         title="Edit question"
-                        style={{ padding:'6px 10px', borderRadius:'7px', border:'1.5px solid #E5E7EB', backgroundColor:'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'4px', fontSize:'12px', fontWeight:500, color:'#374151' }}>
-                        <Pencil width={13} height={13} stroke="#6B7280" strokeWidth={1.5} />
+                        style={{ padding:'6px 10px', borderRadius:'var(--admin-control-radius)', border:'1.5px solid var(--admin-border)', backgroundColor:'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'4px', fontSize:'12px', fontWeight:500, color:'var(--admin-text-muted)' }}>
+                        <Pencil width={13} height={13} stroke="var(--admin-text-muted)" strokeWidth={1.5} />
                         Edit
                       </button>
                     </div>
@@ -798,48 +713,49 @@ export default function QuestionBank() {
           {pagination && pagination.totalPages > 1 && (
             <div style={{ display:'flex', justifyContent:'center', alignItems:'center', gap:'8px', marginTop:'20px' }}>
               <button onClick={() => setPage(p=>Math.max(1,p-1))} disabled={page===1}
-                style={{ padding:'7px 16px', borderRadius:'8px', border:'1.5px solid #E5E7EB', backgroundColor:'white', fontSize:'13px', color: page===1?'#9CA3AF':'#374151', cursor: page===1?'not-allowed':'pointer' }}>
+                className="admin-btn admin-btn-secondary">
                 Previous
               </button>
-              <span style={{ fontSize:'13px', color:'#6B7280' }}>Page {page} of {pagination.totalPages}</span>
+              <span style={{ fontSize:'13px', color:'var(--admin-text-muted)' }}>Page {page} of {pagination.totalPages}</span>
               <button onClick={() => setPage(p=>Math.min(pagination.totalPages,p+1))} disabled={page===pagination.totalPages}
-                style={{ padding:'7px 16px', borderRadius:'8px', border:'1.5px solid #E5E7EB', backgroundColor:'white', fontSize:'13px', color: page===pagination.totalPages?'#9CA3AF':'#374151', cursor: page===pagination.totalPages?'not-allowed':'pointer' }}>
+                className="admin-btn admin-btn-secondary">
                 Next
               </button>
             </div>
           )}
-        </div>
+        </main>
       </div>
 
-      {/* ── Add to Test Modal ── */}
+      {/* -- Add to Test Modal -- */}
       {addModal && (
-        <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}
+        <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(15, 23, 42, 0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}
           onClick={() => setAddModal(null)}>
-          <div style={{ backgroundColor:'white', borderRadius:'16px', padding:'28px', width:'480px', maxWidth:'90vw', maxHeight:'80vh', display:'flex', flexDirection:'column', boxShadow:'0 20px 60px rgba(0,0,0,0.2)' }}
+          <div style={{ backgroundColor:'white', borderRadius:'var(--admin-card-radius)', padding:'28px', width:'480px', maxWidth:'90vw', maxHeight:'80vh', display:'flex', flexDirection:'column', boxShadow:'0 20px 60px rgba(31, 53, 86, 0.18)' }}
             onClick={e => e.stopPropagation()}>
 
             {/* Header */}
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'6px' }}>
-              <h2 style={{ fontSize:'18px', fontWeight:700, color:'#111827', margin:0 }}>Add to Test</h2>
+              <h2 style={{ fontSize:'18px', fontWeight:700, color:'var(--admin-text)', margin:0 }}>Add to Test</h2>
               <button onClick={() => setAddModal(null)}
-                style={{ border:'none', background:'none', fontSize:'22px', color:'#9CA3AF', cursor:'pointer', lineHeight:1 }}>×</button>
+                style={{ border:'none', background:'none', fontSize:'22px', color:'var(--admin-text-subtle)', cursor:'pointer', lineHeight:1 }}>x</button>
             </div>
-            <p style={{ fontSize:'13px', color:'#6B7280', margin:'0 0 16px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+            <p style={{ fontSize:'13px', color:'var(--admin-text-muted)', margin:'0 0 16px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
               {qTitle(addModal.q)}
             </p>
 
             {/* Search tests */}
             <div style={{ position:'relative', marginBottom:'12px' }}>
               <Search style={{ position:'absolute', left:'10px', top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}
-                width={13} height={13} stroke="#9CA3AF" strokeWidth={1.5} />
+                width={13} height={13} stroke="var(--admin-text-subtle)" strokeWidth={1.5} />
               <input
                 value={testSearch}
                 onChange={e => setTestSearch(e.target.value)}
                 placeholder="Search tests..."
+                className="admin-filter-input"
                 style={{
-                  width:'100%', padding:'8px 12px 8px 32px', borderRadius:'9px',
-                  border:'1.5px solid #E5E7EB', backgroundColor:'#F9FAFB',
-                  fontSize:'13px', color:'#374151', outline:'none', boxSizing:'border-box',
+                  width:'100%', padding:'8px 12px 8px 32px', borderRadius:'var(--admin-field-radius)',
+                  border:'1.5px solid var(--admin-border)',
+                  fontSize:'13px', outline:'none', boxSizing:'border-box',
                 }}
               />
             </div>
@@ -848,10 +764,10 @@ export default function QuestionBank() {
             <div style={{ overflowY:'auto', flex:1 }}>
               {testsLoading ? (
                 <div style={{ display:'flex', justifyContent:'center', padding:'32px 0' }}>
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2" style={{ borderColor:'#10B981' }} />
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2" style={{ borderColor:'var(--admin-accent)' }} />
                 </div>
               ) : testsList.length === 0 ? (
-                <p style={{ textAlign:'center', color:'#9CA3AF', fontSize:'13px', padding:'32px 0' }}>No tests found</p>
+                <p style={{ textAlign:'center', color:'var(--admin-text-subtle)', fontSize:'13px', padding:'32px 0' }}>No tests found</p>
               ) : (
                 testsList
                   .filter(t => !testSearch.trim() || t.name.toLowerCase().includes(testSearch.toLowerCase()))
@@ -862,25 +778,25 @@ export default function QuestionBank() {
                         onClick={() => { if (!addingTestId) void handleAddToTest(t.id); }}
                         style={{
                           display:'flex', alignItems:'center', justifyContent:'space-between',
-                          padding:'12px 14px', borderRadius:'10px', marginBottom:'6px',
-                          border:'1.5px solid #E5E7EB', backgroundColor:'white',
+                          padding:'12px 14px', borderRadius:'var(--admin-card-radius)', marginBottom:'6px',
+                          border:'1.5px solid var(--admin-border)', backgroundColor:'white',
                           cursor: addingTestId ? 'not-allowed' : 'pointer',
                           transition:'border-color 0.15s, background-color 0.15s',
                         }}
-                        onMouseEnter={e => { if (!addingTestId) { e.currentTarget.style.borderColor='#10B981'; e.currentTarget.style.backgroundColor='#F0FDF4'; } }}
-                        onMouseLeave={e => { e.currentTarget.style.borderColor='#E5E7EB'; e.currentTarget.style.backgroundColor='white'; }}>
+                        onMouseEnter={e => { if (!addingTestId) { e.currentTarget.style.borderColor='var(--admin-accent)'; e.currentTarget.style.backgroundColor='var(--admin-accent-soft)'; } }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor='var(--admin-border)'; e.currentTarget.style.backgroundColor='white'; }}>
                         <div style={{ minWidth:0 }}>
-                          <p style={{ fontSize:'14px', fontWeight:600, color:'#111827', margin:'0 0 2px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                          <p style={{ fontSize:'14px', fontWeight:600, color:'var(--admin-text)', margin:'0 0 2px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                             {t.name}
                           </p>
-                          <p style={{ fontSize:'11px', color:'#9CA3AF', margin:0 }}>
-                            {t.testCode} · {t.duration} min
+                          <p style={{ fontSize:'11px', color:'var(--admin-text-subtle)', margin:0 }}>
+                            {t.testCode} / {t.duration} min
                           </p>
                         </div>
                         {isAdding ? (
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2" style={{ borderColor:'#10B981', flexShrink:0 }} />
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2" style={{ borderColor:'var(--admin-accent)', flexShrink:0 }} />
                         ) : (
-                          <Plus width={16} height={16} stroke="#10B981" strokeWidth={2.5} style={{ flexShrink:0 }} />
+                          <Plus width={16} height={16} stroke="var(--admin-accent)" strokeWidth={2.5} style={{ flexShrink:0 }} />
                         )}
                       </div>
                     );
@@ -891,81 +807,80 @@ export default function QuestionBank() {
         </div>
       )}
 
-      {/* ── Behavioral Edit Modal ── */}
+      {/* -- Behavioral Edit Modal -- */}
       {editBeh.open && (
-        <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}
+        <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(15, 23, 42, 0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50 }}
           onClick={() => setEditBeh(p => ({ ...p, open: false }))}>
-          <div style={{ backgroundColor:'white', borderRadius:'16px', padding:'28px', width:'540px', maxWidth:'90vw', boxShadow:'0 20px 60px rgba(0,0,0,0.2)' }}
+          <div style={{ backgroundColor:'white', borderRadius:'var(--admin-card-radius)', padding:'28px', width:'540px', maxWidth:'90vw', boxShadow:'0 20px 60px rgba(31, 53, 86, 0.18)' }}
             onClick={e => e.stopPropagation()}>
 
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'20px' }}>
-              <h2 style={{ fontSize:'18px', fontWeight:700, color:'#111827', margin:0 }}>Edit Behavioral Question</h2>
+              <h2 style={{ fontSize:'18px', fontWeight:700, color:'var(--admin-text)', margin:0 }}>Edit Behavioral Question</h2>
               <button onClick={() => setEditBeh(p => ({ ...p, open: false }))}
-                style={{ border:'none', background:'none', fontSize:'22px', color:'#9CA3AF', cursor:'pointer', lineHeight:1 }}>×</button>
+                style={{ border:'none', background:'none', fontSize:'22px', color:'var(--admin-text-subtle)', cursor:'pointer', lineHeight:1 }}>x</button>
             </div>
 
             <div style={{ marginBottom:'14px' }}>
-              <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'#6B7280', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>
+              <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'var(--admin-text-muted)', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>
                 Title <span style={{ color:'#EF4444' }}>*</span>
               </label>
               <input value={editBeh.title}
                 onChange={e => setEditBeh(p => ({ ...p, title: e.target.value }))}
-                style={{ width:'100%', padding:'10px 12px', borderRadius:'10px', border:'1.5px solid #E5E7EB', fontSize:'14px', color:'#111827', outline:'none', boxSizing:'border-box' }}
+                style={{ width:'100%', padding:'10px 12px', borderRadius:'var(--admin-field-radius)', border:'1.5px solid var(--admin-border)', fontSize:'14px', color:'var(--admin-text)', outline:'none', boxSizing:'border-box' }}
                 placeholder="Question title" />
             </div>
 
             <div style={{ marginBottom:'14px' }}>
-              <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'#6B7280', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Description</label>
+              <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'var(--admin-text-muted)', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Description</label>
               <textarea value={editBeh.description}
                 onChange={e => setEditBeh(p => ({ ...p, description: e.target.value }))}
                 rows={3}
-                style={{ width:'100%', padding:'10px 12px', borderRadius:'10px', border:'1.5px solid #E5E7EB', fontSize:'14px', color:'#111827', outline:'none', resize:'none', boxSizing:'border-box' }}
+                style={{ width:'100%', padding:'10px 12px', borderRadius:'var(--admin-field-radius)', border:'1.5px solid var(--admin-border)', fontSize:'14px', color:'var(--admin-text)', outline:'none', resize:'none', boxSizing:'border-box' }}
                 placeholder="Optional description" />
             </div>
 
             <div style={{ marginBottom:'14px' }}>
-              <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'#6B7280', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Expected Answer</label>
+              <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'var(--admin-text-muted)', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Expected Answer</label>
               <textarea value={editBeh.expectedAnswer}
                 onChange={e => setEditBeh(p => ({ ...p, expectedAnswer: e.target.value }))}
                 rows={3}
-                style={{ width:'100%', padding:'10px 12px', borderRadius:'10px', border:'1.5px solid #E5E7EB', fontSize:'14px', color:'#111827', outline:'none', resize:'none', boxSizing:'border-box' }}
+                style={{ width:'100%', padding:'10px 12px', borderRadius:'var(--admin-field-radius)', border:'1.5px solid var(--admin-border)', fontSize:'14px', color:'var(--admin-text)', outline:'none', resize:'none', boxSizing:'border-box' }}
                 placeholder="What a good answer looks like" />
             </div>
 
             <div style={{ display:'grid', gridTemplateColumns:'1fr 80px 1fr', gap:'12px', marginBottom:'22px' }}>
               <div>
-                <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'#6B7280', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Difficulty</label>
-                <select value={editBeh.difficulty}
-                  onChange={e => setEditBeh(p => ({ ...p, difficulty: e.target.value as Difficulty }))}
-                  style={{ width:'100%', padding:'9px 12px', borderRadius:'10px', border:'1.5px solid #E5E7EB', fontSize:'13px', color:'#374151', backgroundColor:'white', outline:'none' }}>
-                  <option value="easy">Easy</option>
-                  <option value="medium">Medium</option>
-                  <option value="hard">Hard</option>
-                </select>
+                <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'var(--admin-text-muted)', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Difficulty</label>
+                <CustomSelect
+                  value={editBeh.difficulty}
+                  onChange={v => setEditBeh(p => ({ ...p, difficulty: v as Difficulty }))}
+                  options={[{ value:'easy', label:'Easy' }, { value:'medium', label:'Medium' }, { value:'hard', label:'Hard' }]}
+                  style={{ width:'100%' }}
+                />
               </div>
               <div>
-                <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'#6B7280', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Marks</label>
+                <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'var(--admin-text-muted)', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Marks</label>
                 <input type="number" min={1} value={editBeh.marks}
                   onChange={e => setEditBeh(p => ({ ...p, marks: Number(e.target.value) }))}
-                  style={{ width:'100%', padding:'9px 10px', borderRadius:'10px', border:'1.5px solid #E5E7EB', fontSize:'13px', color:'#374151', outline:'none', boxSizing:'border-box' }} />
+                  style={{ width:'100%', padding:'9px 10px', borderRadius:'var(--admin-field-radius)', border:'1.5px solid var(--admin-border)', fontSize:'13px', color:'var(--admin-text-muted)', outline:'none', boxSizing:'border-box' }} />
               </div>
               <div>
-                <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'#6B7280', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Topic</label>
+                <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'var(--admin-text-muted)', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Topic</label>
                 <input value={editBeh.topic}
                   onChange={e => setEditBeh(p => ({ ...p, topic: e.target.value }))}
-                  style={{ width:'100%', padding:'9px 12px', borderRadius:'10px', border:'1.5px solid #E5E7EB', fontSize:'13px', color:'#374151', outline:'none', boxSizing:'border-box' }}
+                  style={{ width:'100%', padding:'9px 12px', borderRadius:'var(--admin-field-radius)', border:'1.5px solid var(--admin-border)', fontSize:'13px', color:'var(--admin-text-muted)', outline:'none', boxSizing:'border-box' }}
                   placeholder="e.g. Leadership" />
               </div>
             </div>
 
             <div style={{ display:'flex', justifyContent:'flex-end', gap:'10px' }}>
               <button onClick={() => setEditBeh(p => ({ ...p, open: false }))}
-                style={{ padding:'10px 20px', borderRadius:'10px', border:'1.5px solid #E5E7EB', backgroundColor:'white', fontSize:'14px', fontWeight:500, color:'#374151', cursor:'pointer' }}>
+                style={{ padding:'10px 20px', borderRadius:'var(--admin-control-radius)', border:'1.5px solid var(--admin-border)', backgroundColor:'white', fontSize:'14px', fontWeight:500, color:'var(--admin-text-muted)', cursor:'pointer' }}>
                 Cancel
               </button>
               <button onClick={handleSaveBehavioral} disabled={savingBeh}
-                style={{ padding:'10px 20px', borderRadius:'10px', border:'none', backgroundColor: savingBeh ? '#6EE7B7' : '#10B981', fontSize:'14px', fontWeight:600, color:'white', cursor: savingBeh ? 'not-allowed' : 'pointer' }}>
-                {savingBeh ? 'Saving…' : 'Save changes'}
+                style={{ padding:'10px 20px', borderRadius:'var(--admin-control-radius)', border:'none', backgroundColor: savingBeh ? 'var(--admin-accent-disabled)' : 'var(--admin-accent)', fontSize:'14px', fontWeight:600, color:'white', cursor: savingBeh ? 'not-allowed' : 'pointer' }}>
+                {savingBeh ? 'Saving...' : 'Save changes'}
               </button>
             </div>
           </div>
