@@ -169,6 +169,17 @@ export default function CustomQuestions() {
   };
 
   const handleToggleQuestion = async (question: RepositoryQuestion) => {
+    const nextEnabled = !question.isEnabled;
+    const applyEnabledState = (items: RepositoryQuestion[]) => {
+      const updated = items.map((item) =>
+        item.id === question.id ? { ...item, isEnabled: nextEnabled } : item
+      );
+
+      if (enabledFilter === 'enabled') return updated.filter((item) => item.isEnabled);
+      if (enabledFilter === 'disabled') return updated.filter((item) => !item.isEnabled);
+      return updated;
+    };
+
     try {
       if (question.isEnabled) {
         await adminApi.disableCustomRepositoryQuestion(question.id, question.repositoryCategory);
@@ -177,7 +188,7 @@ export default function CustomQuestions() {
         await adminApi.enableCustomRepositoryQuestion(question.id, question.repositoryCategory);
         toast.success('Question enabled');
       }
-      await loadQuestions();
+      setQuestions(applyEnabledState);
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } } };
       toast.error(err.response?.data?.error || 'Failed to update question status');
@@ -587,14 +598,14 @@ export default function CustomQuestions() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
                     <div className="flex flex-wrap items-center gap-2 mb-2">
-                      <span className="badge badge-info">{question.repositoryCategory}</span>
+                      <span className="badge badge-meta">{question.repositoryCategory}</span>
                       <span className={`badge ${question.isEnabled ? 'badge-success' : 'badge-danger'}`}>
                         {question.isEnabled ? 'Enabled' : 'Disabled'}
                       </span>
-                      <span className="text-sm text-gray-500">{question.marks} marks</span>
-                      <span className="text-sm text-gray-500 capitalize">{question.difficulty}</span>
+                      <span className="badge badge-meta">{question.marks} marks</span>
+                      <span className="badge badge-meta capitalize">{question.difficulty}</span>
                       {question.topic && (
-                        <span className="text-sm text-gray-500">Topic: {question.topic}</span>
+                        <span className="badge badge-meta">{question.topic}</span>
                       )}
                     </div>
 
@@ -607,7 +618,7 @@ export default function CustomQuestions() {
                               key={`${question.id}-${index}`}
                               className={`text-xs px-2 py-1 rounded ${
                                 question.correctAnswers.includes(index)
-                                  ? 'bg-green-100 text-green-800'
+                                  ? 'bg-amber-100 text-amber-800'
                                   : 'bg-gray-100 text-gray-700'
                               }`}
                             >
@@ -645,7 +656,7 @@ export default function CustomQuestions() {
                         {question.tags.map((item) => (
                           <span
                             key={`${question.id}-${item}`}
-                            className="text-xs bg-gray-100 px-2 py-1 rounded"
+                            className="badge badge-meta"
                           >
                             {item}
                           </span>
@@ -903,8 +914,8 @@ export default function CustomQuestions() {
                         onClick={() => toggleMCQCorrectAnswer(index)}
                         className={`w-8 h-8 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0 ${
                           mcqForm.correctAnswers.includes(index)
-                            ? 'bg-green-500 border-green-500 text-white'
-                            : 'border-gray-300 hover:border-green-500'
+                            ? 'bg-amber-500 border-amber-500 text-white'
+                            : 'border-gray-300 hover:border-amber-500'
                         }`}
                       >
                         {mcqForm.correctAnswers.includes(index) ? '✓' : index + 1}
