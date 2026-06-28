@@ -30,21 +30,13 @@ function TimeCol({ label, items, selected, onSelect }: {
   const listRef = useRef<HTMLDivElement>(null);
 
   return (
-    <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', minWidth:0 }}>
-      {/* selected chip */}
-      <div style={{
-        width:'52px', padding:'6px 0', borderRadius:'6px', textAlign:'center',
-        backgroundColor:'#2563EB', color:'white', fontSize:'14px', fontWeight:700,
-        marginBottom:'4px', flexShrink:0,
-      }}>{selected}</div>
-      <p style={{ fontSize:'9px', fontWeight:600, color:'#9CA3AF', margin:'0 0 4px', textTransform:'uppercase', letterSpacing:'0.05em' }}>{label}</p>
-      {/* scrollable rest */}
-      <div ref={listRef} style={{ overflowY:'auto', maxHeight:'130px', width:'52px' }}>
+    <div className="time-column">
+      <div className="time-chip">{selected}</div>
+      <p className="time-label">{label}</p>
+      <div ref={listRef} className="time-list">
         {items.filter(v => v !== selected).map(v => (
           <div key={v} onClick={() => onSelect(v)}
-            style={{ padding:'4px 0', textAlign:'center', fontSize:'12px', color:'#374151', cursor:'pointer', borderRadius:'4px' }}
-            onMouseEnter={e => (e.currentTarget.style.backgroundColor='#F3F4F6')}
-            onMouseLeave={e => (e.currentTarget.style.backgroundColor='transparent')}>
+            className="time-option">
             {v}
           </div>
         ))}
@@ -57,6 +49,8 @@ export default function DateTimePicker({ value, onChange, placeholder, style }: 
   const [open, setOpen]           = useState(false);
   const [viewYear, setViewYear]   = useState(new Date().getFullYear());
   const [viewMonth, setViewMonth] = useState(new Date().getMonth());
+  const [editYear, setEditYear]   = useState(false);
+  const [yearInput, setYearInput] = useState('');
   const containerRef              = useRef<HTMLDivElement>(null);
 
   const selDate = parseValue(value);
@@ -137,44 +131,54 @@ export default function DateTimePicker({ value, onChange, placeholder, style }: 
   const minutes = Array.from({length:60}, (_,i) => pad(i));
 
   return (
-    <div ref={containerRef} style={{ position:'relative', ...style }}>
+    <div ref={containerRef} className="date-time-picker" style={style}>
       {/* trigger */}
-      <div onClick={() => setOpen(p=>!p)} style={{
-        width:'100%', padding:'10px 14px', borderRadius:'8px',
-        border:'1.5px solid #E5E7EB', fontSize:'13px',
-        color: displayText ? '#111827' : '#9CA3AF',
-        backgroundColor:'white', cursor:'pointer', userSelect:'none',
-        display:'flex', alignItems:'center', justifyContent:'space-between',
-        boxSizing:'border-box',
-      }}>
+      <div
+        onClick={() => setOpen(p=>!p)}
+        className="ui-field date-time-trigger"
+        data-open={open ? 'true' : undefined}
+        data-placeholder={!displayText ? 'true' : undefined}
+      >
         <span>{displayText || (placeholder ?? 'Select date & time')}</span>
-        <Calendar width={14} height={14} stroke="#9CA3AF" strokeWidth={1.5} style={{ flexShrink:0, marginLeft:'8px' }} />
+        <Calendar width={14} height={14} stroke="currentColor" strokeWidth={1.5} style={{ flexShrink:0, marginLeft:'8px', color:'var(--admin-text-subtle)' }} />
       </div>
 
       {/* picker dropdown */}
       {open && (
-        <div style={{
-          position:'absolute', top:'calc(100% + 4px)', left:0, zIndex:200,
-          backgroundColor:'white', borderRadius:'10px',
-          border:'1.5px solid #E5E7EB',
-          boxShadow:'0 8px 24px rgba(0,0,0,0.12)',
-          display:'flex', overflow:'hidden',
-        }}>
+        <div className="date-time-popover">
           {/* ── CALENDAR ── */}
-          <div style={{ padding:'12px 10px', width:'220px', flexShrink:0 }}>
+          <div className="date-time-calendar">
             {/* month/year header */}
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'8px' }}>
-              <span style={{ fontWeight:700, fontSize:'12px', color:'#111827' }}>
-                {MONTHS[viewMonth]}, {viewYear} ▾
+            <div className="date-time-calendar-head">
+              <span className="date-time-month-label">
+                {MONTHS[viewMonth]},{' '}
+                {editYear ? (
+                  <input
+                    type="number"
+                    value={yearInput}
+                    autoFocus
+                    onChange={e => setYearInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') { const y = parseInt(yearInput); if (!isNaN(y) && y > 1900 && y < 2200) setViewYear(y); setEditYear(false); }
+                      if (e.key === 'Escape') setEditYear(false);
+                    }}
+                    onBlur={() => { const y = parseInt(yearInput); if (!isNaN(y) && y > 1900 && y < 2200) setViewYear(y); setEditYear(false); }}
+                    className="date-time-year-input"
+                  />
+                ) : (
+                  <span
+                    onClick={() => { setYearInput(String(viewYear)); setEditYear(true); }}
+                    title="Click to change year"
+                    className="date-time-year"
+                  >
+                    {viewYear}
+                  </span>
+                )}
+                {' '}▾
               </span>
-              <div style={{ display:'flex', gap:'2px' }}>
+              <div className="date-time-nav">
                 {[{ label:'↑', fn: prevMonth }, { label:'↓', fn: nextMonth }].map(btn => (
-                  <button key={btn.label} onClick={btn.fn} style={{
-                    background:'none', border:'none', cursor:'pointer',
-                    fontSize:'13px', color:'#374151', padding:'1px 4px', borderRadius:'3px',
-                  }}
-                    onMouseEnter={e=>(e.currentTarget.style.backgroundColor='#F3F4F6')}
-                    onMouseLeave={e=>(e.currentTarget.style.backgroundColor='transparent')}>
+                  <button key={btn.label} onClick={btn.fn}>
                     {btn.label}
                   </button>
                 ))}
@@ -182,14 +186,14 @@ export default function DateTimePicker({ value, onChange, placeholder, style }: 
             </div>
 
             {/* weekday row */}
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', marginBottom:'3px' }}>
+            <div className="weekday-grid">
               {WEEKDAYS.map(d => (
-                <div key={d} style={{ textAlign:'center', fontSize:'10px', fontWeight:700, color:'#374151', padding:'2px 0' }}>{d}</div>
+                <div key={d} className="weekday-cell">{d}</div>
               ))}
             </div>
 
             {/* date cells */}
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:'1px' }}>
+            <div className="date-grid">
               {cells.map((cell, i) => {
                 const isSelected = cell.type==='curr' && selDate &&
                   selDate.getDate()===cell.day && selDate.getMonth()===viewMonth && selDate.getFullYear()===viewYear;
@@ -198,18 +202,10 @@ export default function DateTimePicker({ value, onChange, placeholder, style }: 
                 return (
                   <button key={i}
                     onClick={() => cell.type==='curr' && selectDay(cell.day)}
-                    style={{
-                      textAlign:'center', fontSize:'11px', padding:'4px 0', border:'none',
-                      borderRadius:'4px', cursor: cell.type==='curr' ? 'pointer' : 'default',
-                      backgroundColor: isSelected ? '#2563EB' : 'transparent',
-                      color: isSelected ? 'white'
-                           : cell.type!=='curr' ? '#D1D5DB'
-                           : isToday ? '#2563EB'
-                           : '#111827',
-                      fontWeight: isSelected ? 700 : 400,
-                    }}
-                    onMouseEnter={e=>{ if (cell.type==='curr' && !isSelected) e.currentTarget.style.backgroundColor='#F3F4F6'; }}
-                    onMouseLeave={e=>{ if (!isSelected) e.currentTarget.style.backgroundColor='transparent'; }}>
+                    className="date-cell"
+                    data-muted={cell.type !== 'curr' ? 'true' : undefined}
+                    data-today={isToday ? 'true' : undefined}
+                    data-selected={isSelected ? 'true' : undefined}>
                     {cell.day}
                   </button>
                 );
@@ -217,23 +213,28 @@ export default function DateTimePicker({ value, onChange, placeholder, style }: 
             </div>
 
             {/* clear / today */}
-            <div style={{ display:'flex', justifyContent:'space-between', marginTop:'8px', paddingTop:'6px', borderTop:'1px solid #F3F4F6' }}>
+            <div className="date-time-footer">
               <button onClick={() => { onChange(''); setOpen(false); }}
-                style={{ background:'none', border:'none', fontSize:'11px', color:'#2563EB', cursor:'pointer', fontWeight:500 }}>
+                className="date-time-link">
                 Clear
               </button>
-              <button onClick={() => { setViewMonth(today.getMonth()); setViewYear(today.getFullYear()); }}
-                style={{ background:'none', border:'none', fontSize:'11px', color:'#2563EB', cursor:'pointer', fontWeight:500 }}>
+              <button onClick={() => {
+                const now = new Date();
+                setViewMonth(now.getMonth());
+                setViewYear(now.getFullYear());
+                applyDate(now);
+              }}
+                className="date-time-link">
                 Today
               </button>
             </div>
           </div>
 
           {/* divider */}
-          <div style={{ width:'1px', backgroundColor:'#E5E7EB', flexShrink:0 }} />
+          <div className="date-time-divider" />
 
           {/* ── TIME ── */}
-          <div style={{ padding:'12px 8px', display:'flex', gap:'4px', alignItems:'flex-start' }}>
+          <div className="time-pane">
             <TimeCol label="Hours"   items={hours}            selected={pad(hour12)} onSelect={selectHour}   />
             <TimeCol label="Minutes" items={minutes}          selected={pad(minute)} onSelect={selectMinute} />
             <TimeCol label="AM/PM"   items={['AM','PM']}      selected={period}      onSelect={selectPeriod} />
