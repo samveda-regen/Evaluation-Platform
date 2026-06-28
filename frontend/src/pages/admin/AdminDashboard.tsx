@@ -3,8 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { format } from 'date-fns';
-import { Sparkles, ClipboardCheck, Activity, Users, Database, ShieldCheck, ChevronRight } from 'lucide-react';
-import BackButton from '../../components/BackButton';
+import { Sparkles, ClipboardCheck, Activity, Users, Database, ChevronRight } from 'lucide-react';
+import Icon from '../../components/Icon';
 
 interface DashboardStats {
   totalTests: number;
@@ -23,8 +23,8 @@ interface RecentAttempt {
 }
 
 const AVATAR_COLORS = [
-  '#8B5CF6', '#7C3AED', '#EF4444', '#3B82F6', '#F97316',
-  '#10B981', '#EC4899', '#0EA5E9', '#84CC16', '#F59E0B',
+  '#8B5CF6', '#7C3AED', '#EF4444', 'var(--admin-accent)', '#F97316',
+  'var(--admin-accent)', '#EC4899', 'var(--admin-data-blue)', '#84CC16', 'var(--admin-accent)',
 ];
 
 function getAvatarColor(name: string) {
@@ -58,7 +58,7 @@ function WeeklyBarChart({ data }: { data: { label: string; value: number }[] }) 
                 bottom: `calc(${barPct}% + 34px)`,
                 left: '50%',
                 transform: 'translateX(-50%)',
-                backgroundColor: '#111827',
+                backgroundColor: 'var(--admin-text)',
                 color: 'white',
                 borderRadius: '6px',
                 padding: '5px 10px',
@@ -70,12 +70,12 @@ function WeeklyBarChart({ data }: { data: { label: string; value: number }[] }) 
                 lineHeight: 1.5,
               }}>
                 <div style={{ textAlign: 'center' }}>{day.label}</div>
-                <div style={{ textAlign: 'center', color: '#6EE7B7' }}>{day.value} attempt{day.value !== 1 ? 's' : ''}</div>
+                <div style={{ textAlign: 'center', color: 'var(--admin-accent-disabled)' }}>{day.value} attempt{day.value !== 1 ? 's' : ''}</div>
                 <div style={{
                   position: 'absolute', bottom: '-5px', left: '50%',
                   transform: 'translateX(-50%)', width: 0, height: 0,
                   borderLeft: '5px solid transparent', borderRight: '5px solid transparent',
-                  borderTop: '5px solid #111827',
+                  borderTop: '5px solid var(--admin-text)',
                 }} />
               </div>
             )}
@@ -83,13 +83,13 @@ function WeeklyBarChart({ data }: { data: { label: string; value: number }[] }) 
               className="w-full rounded-t-md"
               style={{
                 height: `${barPct}%`,
-                backgroundColor: hovered === i ? '#059669' : '#10B981',
+                backgroundColor: hovered === i ? 'var(--admin-accent-hover)' : 'var(--admin-accent)',
                 minHeight: '4px',
                 transition: 'background-color 0.1s',
                 cursor: 'default',
               }}
             />
-            <span className="text-xs" style={{ color: '#9CA3AF' }}>{day.label}</span>
+            <span className="text-xs" style={{ color: 'var(--admin-text-subtle)' }}>{day.label}</span>
             <span className="text-[10px]" style={{ color: '#D1D5DB' }}>{day.value}</span>
           </div>
         );
@@ -103,6 +103,8 @@ function IntegrityDonut({ percentage, clean, flagged }: { percentage: number; cl
   const r = 40;
   const circumference = 2 * Math.PI * r;
   const dash = (Math.min(percentage, 100) / 100) * circumference;
+  const strokeColor = percentage >= 80 ? 'var(--admin-accent)' : percentage >= 50 ? '#F97316' : '#EF4444';
+  const trackColor  = percentage >= 80 ? 'var(--admin-accent-disabled)' : percentage >= 50 ? '#FFF7ED' : '#FEF2F2';
   const total = clean + flagged;
   const cleanPct = total > 0 ? Math.round((clean / total) * 100) : 0;
   const flaggedPct = total > 0 ? Math.round((flagged / total) * 100) : 0;
@@ -119,7 +121,7 @@ function IntegrityDonut({ percentage, clean, flagged }: { percentage: number; cl
           bottom: '110px',
           left: '50%',
           transform: 'translateX(-50%)',
-          backgroundColor: '#111827',
+          backgroundColor: 'var(--admin-text)',
           color: 'white',
           borderRadius: '8px',
           padding: '10px 14px',
@@ -131,35 +133,35 @@ function IntegrityDonut({ percentage, clean, flagged }: { percentage: number; cl
           lineHeight: '1.7',
           boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
         }}>
-          <div style={{ fontWeight: 700, marginBottom: '4px', color: '#F3F4F6' }}>Integrity Breakdown</div>
-          <div><span style={{ color: '#34D399' }}>●</span> Clean: {clean.toLocaleString()} ({cleanPct}%)</div>
-          <div><span style={{ color: '#F87171' }}>●</span> Flagged: {flagged.toLocaleString()} ({flaggedPct}%)</div>
-          <div style={{ borderTop: '1px solid #374151', marginTop: '5px', paddingTop: '5px' }}>
-            Avg Trust Score: <span style={{ color: '#6EE7B7', fontWeight: 700 }}>{percentage}%</span>
+          <div style={{ fontWeight: 700, marginBottom: '4px', color: 'var(--admin-border)' }}>Integrity Breakdown</div>
+          <div><span style={{ color: 'var(--admin-accent)' }}>?</span> Clean: {clean.toLocaleString()} ({cleanPct}%)</div>
+          <div><span style={{ color: '#F87171' }}>?</span> Flagged: {flagged.toLocaleString()} ({flaggedPct}%)</div>
+          <div style={{ borderTop: '1px solid var(--admin-text-muted)', marginTop: '5px', paddingTop: '5px' }}>
+            Avg Trust Score: <span style={{ color: 'var(--admin-accent-disabled)', fontWeight: 700 }}>{percentage}%</span>
           </div>
           <div style={{
             position: 'absolute', bottom: '-5px', left: '50%',
             transform: 'translateX(-50%)', width: 0, height: 0,
             borderLeft: '5px solid transparent', borderRight: '5px solid transparent',
-            borderTop: '5px solid #111827',
+            borderTop: '5px solid var(--admin-text)',
           }} />
         </div>
       )}
       <svg width="100" height="100" viewBox="0 0 100 100">
-        <circle cx="50" cy="50" r={r} fill="none" stroke="#FEE2E2" strokeWidth="9"/>
+        <circle cx="50" cy="50" r={r} fill="none" stroke={trackColor} strokeWidth="9" strokeLinecap="butt"/>
         <circle
           cx="50" cy="50" r={r}
           fill="none"
-          stroke="#10B981"
+          stroke={strokeColor}
           strokeWidth="9"
           strokeDasharray={`${dash} ${circumference - dash}`}
-          strokeLinecap="round"
+          strokeLinecap="butt"
           transform="rotate(-90 50 50)"
         />
       </svg>
       <div className="absolute text-center">
-        <div className="text-xl font-bold" style={{ color: '#111827' }}>{percentage}%</div>
-        <div className="text-[9px] font-medium" style={{ color: '#9CA3AF' }}>AVG TRUST</div>
+        <div className="text-xl font-bold" style={{ color: 'var(--admin-text)' }}>{percentage}%</div>
+        <div className="text-[9px] font-medium" style={{ color: 'var(--admin-text-subtle)' }}>AVG TRUST</div>
       </div>
     </div>
   );
@@ -167,9 +169,9 @@ function IntegrityDonut({ percentage, clean, flagged }: { percentage: number; cl
 
 function StatusBadge({ status }: { status: string }) {
   const config: Record<string, { bg: string; color: string; dot: string; label: string; pulse?: boolean }> = {
-    submitted:      { bg: '#F0FDF4', color: '#16A34A', dot: '#22C55E', label: 'Submitted' },
+    submitted:      { bg: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)', dot: 'var(--admin-accent)', label: 'Submitted' },
     auto_submitted: { bg: '#FFF7ED', color: '#C2410C', dot: '#F97316', label: 'Auto-submitted' },
-    in_progress:    { bg: '#EFF6FF', color: '#1D4ED8', dot: '#3B82F6', label: 'In progress', pulse: true },
+    in_progress:    { bg: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)', dot: 'var(--admin-accent)', label: 'In progress', pulse: true },
     flagged:        { bg: '#FFF1F2', color: '#DC2626', dot: '#EF4444', label: 'Flagged', pulse: true },
   };
   const c = config[status] ?? config.submitted;
@@ -241,30 +243,27 @@ export default function AdminDashboard() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500" />
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: 'var(--admin-accent)' }} />
       </div>
     );
   }
 
   return (
-    <div style={{ backgroundColor: '#f4f6fb', margin: '-24px', padding: '24px', minHeight: 'calc(100vh - 52px)' }}>
+    <div style={{ backgroundColor: 'var(--admin-bg)', margin: '-24px', padding: '24px', minHeight: 'calc(100vh - 52px)' }}>
 
       {/* Page Header */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-        <div className="flex items-start gap-3">
-          <BackButton />
-          <div>
-            <h1 className="text-2xl font-bold" style={{ color: '#111827' }}>Dashboard</h1>
-            <p className="text-sm mt-0.5" style={{ color: '#6B7280' }}>
-              {dateLabel} · Here's what's happening across your assessments.
-            </p>
-          </div>
+        <div>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--admin-text)', margin: 0 }}>Dashboard</h1>
+          <p className="text-sm mt-0.5" style={{ color: 'var(--admin-text-muted)' }}>
+            {dateLabel} - Here's what's happening across your assessments.
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => navigate('/admin/tests/agent')}
             className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors"
-            style={{ borderColor: '#D1D5DB', backgroundColor: 'white', color: '#374151' }}
+            style={{ borderColor: 'var(--admin-border)', backgroundColor: 'white', color: 'var(--admin-accent-hover)' }}
           >
             <Sparkles size={13} />
             AI Generate
@@ -272,7 +271,7 @@ export default function AdminDashboard() {
           <Link
             to="/admin/tests/new"
             className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white"
-            style={{ backgroundColor: '#10B981' }}
+            style={{ backgroundColor: 'var(--admin-accent)' }}
           >
             + Create Test
           </Link>
@@ -285,52 +284,52 @@ export default function AdminDashboard() {
         {/* Total Tests */}
         <Link to="/admin/tests" className="stat-card block rounded-xl p-5" style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', textDecoration: 'none' }}>
           <div className="flex items-start justify-between">
-            <div className="icon-wrap h-9 w-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#EFF6FF' }}>
-              <ClipboardCheck size={18} color="#3B82F6" />
+            <div className="h-9 w-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--admin-accent-soft)' }}>
+              <ClipboardCheck size={18} color="var(--admin-accent-hover)" />
             </div>
           </div>
           <div className="mt-4">
-            <p className="text-3xl font-bold" style={{ color: '#111827' }}>{stats?.totalTests ?? 0}</p>
-            <p className="text-sm mt-1" style={{ color: '#6B7280' }}>Total assessments</p>
+            <p className="text-3xl font-bold" style={{ color: 'var(--admin-text)' }}>{stats?.totalTests ?? 0}</p>
+            <p className="text-sm mt-1" style={{ color: 'var(--admin-text-muted)' }}>Total assessments</p>
           </div>
         </Link>
 
         {/* Active Tests */}
         <Link to="/admin/tests" className="stat-card block rounded-xl p-5" style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', textDecoration: 'none' }}>
           <div className="flex items-start justify-between">
-            <div className="icon-wrap h-9 w-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#F0FDF4' }}>
-              <Activity size={18} color="#10B981" />
+            <div className="h-9 w-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--admin-accent-soft)' }}>
+              <Activity size={18} color="var(--admin-accent-hover)" />
             </div>
           </div>
           <div className="mt-4">
-            <p className="text-3xl font-bold" style={{ color: '#111827' }}>{stats?.activeTests ?? 0}</p>
-            <p className="text-sm mt-1" style={{ color: '#6B7280' }}>Active assessments</p>
+            <p className="text-3xl font-bold" style={{ color: 'var(--admin-text)' }}>{stats?.activeTests ?? 0}</p>
+            <p className="text-sm mt-1" style={{ color: 'var(--admin-text-muted)' }}>Active assessments</p>
           </div>
         </Link>
 
         {/* Total Attempts */}
         <Link to="/admin/analytics" className="stat-card block rounded-xl p-5" style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', textDecoration: 'none' }}>
           <div className="flex items-start justify-between">
-            <div className="icon-wrap h-9 w-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#EEF2FF' }}>
-              <Users size={18} color="#6366F1" />
+            <div className="h-9 w-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--admin-accent-soft)' }}>
+              <Users size={18} color="var(--admin-accent-hover)" />
             </div>
           </div>
           <div className="mt-4">
-            <p className="text-3xl font-bold" style={{ color: '#111827' }}>{(stats?.totalAttempts ?? 0).toLocaleString()}</p>
-            <p className="text-sm mt-1" style={{ color: '#6B7280' }}>Total attempts</p>
+            <p className="text-3xl font-bold" style={{ color: 'var(--admin-text)' }}>{(stats?.totalAttempts ?? 0).toLocaleString()}</p>
+            <p className="text-sm mt-1" style={{ color: 'var(--admin-text-muted)' }}>Total attempts</p>
           </div>
         </Link>
 
         {/* Question Library */}
         <Link to="/admin/repository/question-bank" className="stat-card block rounded-xl p-5" style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', textDecoration: 'none' }}>
           <div className="flex items-start justify-between">
-            <div className="icon-wrap h-9 w-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#FFF7ED' }}>
-              <Database size={18} color="#F97316" />
+            <div className="h-9 w-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--admin-accent-soft)' }}>
+              <Database size={18} color="var(--admin-accent-hover)" />
             </div>
           </div>
           <div className="mt-4">
-            <p className="text-3xl font-bold" style={{ color: '#111827' }}>{stats?.totalQuestions ?? 0}</p>
-            <p className="text-sm mt-1" style={{ color: '#6B7280' }}>Question library</p>
+            <p className="text-3xl font-bold" style={{ color: 'var(--admin-text)' }}>{stats?.totalQuestions ?? 0}</p>
+            <p className="text-sm mt-1" style={{ color: 'var(--admin-text-muted)' }}>Question library</p>
           </div>
         </Link>
       </div>
@@ -345,14 +344,14 @@ export default function AdminDashboard() {
         >
           <div className="flex items-start justify-between">
             <div>
-              <p className="font-semibold" style={{ color: '#111827' }}>Attempts this week</p>
-              <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>Daily completed attempts</p>
+              <p style={{ fontSize: '16px', fontWeight: 600, color: 'var(--admin-text)', margin: 0 }}>Attempts this week</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--admin-text-subtle)' }}>Daily completed attempts</p>
             </div>
             <span
               className="inline-flex items-center gap-1.5 text-xs font-medium rounded-full px-2.5 py-1"
-              style={{ backgroundColor: '#D1FAE5', color: '#059669' }}
+              style={{ backgroundColor: 'var(--admin-accent-disabled)', color: 'var(--admin-accent-hover)' }}
             >
-              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: '#10B981' }} />
+              <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: 'var(--admin-accent)' }} />
               Live
             </span>
           </div>
@@ -365,29 +364,29 @@ export default function AdminDashboard() {
           style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}
         >
           <div className="flex items-center justify-between mb-3">
-            <p className="font-semibold" style={{ color: '#111827' }}>Integrity health</p>
-            <ShieldCheck size={20} color={integrity.avgTrustScore >= 70 ? '#10B981' : integrity.avgTrustScore >= 45 ? '#F59E0B' : '#EF4444'} />
+            <p style={{ fontSize: '16px', fontWeight: 600, color: 'var(--admin-text)', margin: 0 }}>Integrity health</p>
+            <Icon name="integrity-health" size={20} />
           </div>
           <div className="flex justify-center my-2">
             <IntegrityDonut percentage={integrity.avgTrustScore} clean={integrity.clean} flagged={integrity.flagged} />
           </div>
           <div className="grid grid-cols-2 gap-3 mt-3">
-            <div className="rounded-xl p-3 text-center" style={{ backgroundColor: '#F0FDF4' }}>
-              <p className="font-bold text-lg" style={{ color: '#059669' }}>{integrity.clean.toLocaleString()}</p>
-              <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>Clean</p>
+            <div className="rounded-xl p-3 text-center" style={{ backgroundColor: 'var(--admin-accent-soft)' }}>
+              <p className="font-bold text-lg" style={{ color: 'var(--admin-accent-hover)' }}>{integrity.clean.toLocaleString()}</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--admin-text-muted)' }}>Clean</p>
             </div>
-            <div className="rounded-xl p-3 text-center" style={{ backgroundColor: '#FFF1F2' }}>
+            <div className="rounded-xl p-3 text-center" style={{ backgroundColor: '#FFF7ED' }}>
               <p className="font-bold text-lg" style={{ color: '#EF4444' }}>{integrity.flagged}</p>
-              <p className="text-xs mt-0.5" style={{ color: '#6B7280' }}>Flagged</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--admin-text-muted)' }}>Flagged</p>
             </div>
           </div>
-          {/* View trust reports → /admin/trust-reports */}
+          {/* View trust reports ? /admin/trust-reports */}
           <Link
             to="/admin/trust-reports"
             className="inline-flex items-center gap-1 text-sm font-medium mt-4"
-            style={{ color: '#10B981' }}
+            style={{ color: 'var(--admin-accent)' }}
           >
-            View trust reports →
+            View trust reports <ChevronRight size={14} />
           </Link>
         </div>
       </div>
@@ -399,26 +398,26 @@ export default function AdminDashboard() {
       >
         <div className="flex items-start justify-between mb-4">
           <div>
-            <p className="font-semibold" style={{ color: '#111827' }}>Recent attempts</p>
-            <p className="text-xs mt-0.5" style={{ color: '#9CA3AF' }}>Latest candidate submissions across all tests</p>
+            <p style={{ fontSize: '16px', fontWeight: 600, color: 'var(--admin-text)', margin: 0 }}>Recent attempts</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--admin-text-subtle)' }}>Latest candidate submissions across all tests</p>
           </div>
-          <Link to="/admin/all-attempts" className="text-sm font-medium" style={{ color: '#10B981' }}>
-            View all →
+          <Link to="/admin/all-attempts" className="text-sm font-medium" style={{ color: 'var(--admin-accent)' }}>
+            <span className="inline-flex items-center gap-1">View all <ChevronRight size={14} /></span>
           </Link>
         </div>
 
         {recentAttempts.length === 0 ? (
-          <p className="text-sm py-4" style={{ color: '#6B7280' }}>No attempts yet</p>
+          <p className="text-sm py-4" style={{ color: 'var(--admin-text-muted)' }}>No attempts yet</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr style={{ borderBottom: '1px solid #F3F4F6' }}>
+                <tr style={{ borderBottom: '1px solid var(--admin-border)' }}>
                   {['CANDIDATE', 'TEST', 'WHEN', 'STATUS', 'SCORE', ''].map((h, i) => (
                     <th
                       key={i}
                       className="pb-3 text-left text-xs font-semibold tracking-wider"
-                      style={{ color: '#9CA3AF' }}
+                      style={{ color: 'var(--admin-text-subtle)' }}
                     >
                       {h}
                     </th>
@@ -436,16 +435,16 @@ export default function AdminDashboard() {
                         >
                           {getInitials(attempt.candidate.name)}
                         </div>
-                        <p className="text-sm font-medium whitespace-nowrap" style={{ color: '#111827' }}>
+                        <p className="text-sm font-medium whitespace-nowrap" style={{ color: 'var(--admin-text)' }}>
                           {attempt.candidate.name}
                         </p>
                       </div>
                     </td>
                     <td className="py-3 pr-4">
-                      <p className="text-sm whitespace-nowrap" style={{ color: '#374151' }}>{attempt.test.name}</p>
+                      <p className="text-sm whitespace-nowrap" style={{ color: 'var(--admin-text-muted)' }}>{attempt.test.name}</p>
                     </td>
                     <td className="py-3 pr-4">
-                      <p className="text-sm whitespace-nowrap" style={{ color: '#6B7280' }}>
+                      <p className="text-sm whitespace-nowrap" style={{ color: 'var(--admin-text-muted)' }}>
                         {format(new Date(attempt.startTime), 'MMM d, h:mm a')}
                       </p>
                     </td>
@@ -453,18 +452,18 @@ export default function AdminDashboard() {
                       <StatusBadge status={attempt.status} />
                     </td>
                     <td className="py-3 pr-4">
-                      <p className="text-sm font-medium" style={{ color: '#111827' }}>
-                        {attempt.score != null ? `${attempt.score}%` : '—'}
+                      <p className="text-sm font-medium" style={{ color: 'var(--admin-text)' }}>
+                        {attempt.score != null ? `${attempt.score}%` : '-'}
                       </p>
                     </td>
-                    {/* Individual attempt → /admin/attempts/:id */}
+                    {/* Individual attempt ? /admin/attempts/:id */}
                     <td className="py-3">
                       <Link
                         to={`/admin/attempts/${attempt.id}`}
                         className="flex items-center justify-center h-7 w-7 rounded-full transition-colors"
                         style={{ backgroundColor: '#F9FAFB' }}
                       >
-                        <ChevronRight size={13} color="#9CA3AF" />
+                        <ChevronRight size={13} color="var(--admin-text-subtle)" />
                       </Link>
                     </td>
                   </tr>
