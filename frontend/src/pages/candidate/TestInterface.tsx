@@ -14,6 +14,7 @@ import {
   normalizeAIViolationType,
   normalizeCustomAIViolationSelection,
 } from '../../constants/customAIViolations';
+import talentstaQLogoLight from '../../assets/assessment-icons/icons/TalentstaQ logo-light.svg';
 
 const HIGH_PRIORITY_VIOLATIONS = new Set([
   'multiple_faces', 'phone_detected', 'looking_away', 'tab_switch',
@@ -90,8 +91,15 @@ export default function TestInterface() {
   const [markedForReview, setMarkedForReview] = useState<Set<number>>(new Set());
   const [autoSaved, setAutoSaved] = useState(false);
   const [codeSubmitted, setCodeSubmitted] = useState(false);
+  const [showCameraPreview, setShowCameraPreview] = useState(false);
+  const [pingMs, setPingMs] = useState<number | null>(null);
+  const [networkQuality, setNetworkQuality] = useState<'excellent' | 'good' | 'fair' | 'poor'>('good');
+  const [showNetworkInfo, setShowNetworkInfo] = useState(false);
+  const [networkPopupPos, setNetworkPopupPos] = useState<{ top: number; right: number } | null>(null);
 
   const autoSaveRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cameraPreviewRef = useRef<HTMLVideoElement | null>(null);
+  const networkBtnRef = useRef<HTMLButtonElement | null>(null);
   const isFullscreenRef = useRef(false);
   const lastViolationAtRef = useRef<Record<string, number>>({});
   const proctorInitHandledRef = useRef(false);
@@ -179,6 +187,7 @@ export default function TestInterface() {
   const {
     status: proctorStatus, endSession: endProctoringSession,
     error: proctorError, capturePreviewFrame, captureEvidenceFrame,
+    cameraStream,
   } = useProctoring(attemptId || '', {
     enabled: proctorEnabled,
     enableCamera: requireCamera,
@@ -391,6 +400,54 @@ export default function TestInterface() {
   }, [currentQuestion?.questionId]);
 
   useEffect(() => { setCodeOutput(''); setCodeSubmitted(false); }, [currentQuestionIndex]);
+
+  useEffect(() => {
+    if (showCameraPreview && cameraPreviewRef.current && cameraStream) {
+      cameraPreviewRef.current.srcObject = cameraStream;
+      cameraPreviewRef.current.play().catch(() => {});
+    }
+    if (!showCameraPreview && cameraPreviewRef.current) {
+      cameraPreviewRef.current.srcObject = null;
+    }
+  }, [showCameraPreview, cameraStream]);
+
+  useEffect(() => {
+    if (!showCameraPreview) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('[data-camera-preview]')) setShowCameraPreview(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showCameraPreview]);
+
+  // Ping measurement — fires every 6s, pings the same origin
+  useEffect(() => {
+    const measure = async () => {
+      try {
+        const t0 = performance.now();
+        await fetch(window.location.origin + '/favicon.ico', { method: 'HEAD', cache: 'no-store' });
+        const ms = Math.round(performance.now() - t0);
+        setPingMs(ms);
+        setNetworkQuality(ms < 80 ? 'excellent' : ms < 180 ? 'good' : ms < 350 ? 'fair' : 'poor');
+      } catch {
+        setPingMs(null);
+        setNetworkQuality('poor');
+      }
+    };
+    measure();
+    const id = setInterval(measure, 6000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (!showNetworkInfo) return;
+    const handler = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('[data-network-info]')) setShowNetworkInfo(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showNetworkInfo]);
 
   const handleViolation = useCallback(async (eventType: string, message: string) => {
     const normalizedEventType = normalizeAIViolationType(eventType);
@@ -605,10 +662,10 @@ export default function TestInterface() {
   };
 
   const difficultyColor: Record<string, string> = {
-    easy: '#10B981', medium: '#F59E0B', hard: '#EF4444',
+    easy: 'var(--admin-accent-hover)', medium: 'var(--admin-accent-hover)', hard: 'var(--admin-accent-hover)',
   };
   const typeColor: Record<string, string> = {
-    mcq: '#6366F1', coding: '#8B5CF6', behavioral: '#F97316',
+    mcq: 'var(--admin-accent-hover)', coding: 'var(--admin-accent-hover)', behavioral: 'var(--admin-accent-hover)',
   };
   const typeLabel: Record<string, string> = {
     mcq: 'Multiple choice', coding: 'Coding', behavioral: 'Behavioral',
@@ -620,9 +677,9 @@ export default function TestInterface() {
   const behavioralText = currentQuestion.type === 'behavioral' ? (behavioralAnswers[currentQuestion.questionId] || '') : '';
   const wordCount = getWordCount(behavioralText);
 
-  // ── Question Palette ──────────────────────────────────────────────────
+  // -- Question Palette --------------------------------------------------
   const Palette = () => (
-    <aside className="w-52 border-l bg-white flex flex-col overflow-hidden" style={{ borderColor: '#E5E7EB' }}>
+    <aside className="w-52 border-l bg-white flex flex-col overflow-hidden" style={{ borderColor: 'var(--admin-border)' }}>
       <div className="px-4 pt-5 pb-3">
         <div className="flex items-center justify-between mb-3">
           <span className="text-sm font-semibold text-gray-700">Question palette</span>
@@ -632,7 +689,7 @@ export default function TestInterface() {
         <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
           <div
             className="h-full rounded-full transition-all"
-            style={{ width: `${(getAnsweredCount() / questions.length) * 100}%`, background: '#10B981' }}
+            style={{ width: `${(getAnsweredCount() / questions.length) * 100}%`, background: 'var(--admin-accent)' }}
           />
         </div>
       </div>
@@ -646,12 +703,12 @@ export default function TestInterface() {
             const marked = markedForReview.has(idx);
 
             let bg = '#FFFFFF';
-            let border = '#D1D5DB';
-            let textColor = '#6B7280';
+            let border = '#E0E0E0';
+            let textColor = '#9CA3AF';
 
-            if (isCurrent) { bg = '#111827'; border = '#111827'; textColor = '#FFFFFF'; }
-            else if (marked) { bg = '#FEF3C7'; border = '#F59E0B'; textColor = '#92400E'; }
-            else if (answered) { bg = '#D1FAE5'; border = '#6EE7B7'; textColor = '#065F46'; }
+            if (isCurrent) { bg = '#C62828'; border = '#C62828'; textColor = '#FFFFFF'; }
+            else if (marked) { bg = '#6A1B9A'; border = '#6A1B9A'; textColor = '#FFFFFF'; }
+            else if (answered) { bg = '#2E7D32'; border = '#2E7D32'; textColor = '#FFFFFF'; }
 
             return (
               <button
@@ -661,8 +718,8 @@ export default function TestInterface() {
                   saveCurrentAnswer();
                   setCurrentQuestion(idx);
                 }}
-                className="aspect-square rounded-lg text-xs font-semibold transition-colors flex items-center justify-center"
-                style={{ background: bg, border: `1.5px solid ${border}`, color: textColor }}
+                className="aspect-square rounded-lg text-xs font-semibold transition-colors flex items-center justify-center outline-none focus:outline-none focus-visible:outline-none"
+                style={{ background: bg, border: `1.5px solid ${border}`, color: textColor, outline: 'none', boxShadow: 'none' }}
               >
                 {idx + 1}
               </button>
@@ -672,12 +729,12 @@ export default function TestInterface() {
       </div>
 
       {/* Legend */}
-      <div className="border-t px-4 py-4 space-y-2" style={{ borderColor: '#E5E7EB' }}>
+      <div className="border-t px-4 py-4 space-y-2" style={{ borderColor: 'var(--admin-border)' }}>
         {[
-          { color: '#D1FAE5', border: '#6EE7B7', label: 'Answered' },
-          { color: '#FEF3C7', border: '#F59E0B', label: 'Marked for review' },
-          { color: '#111827', border: '#111827', label: 'Current' },
-          { color: '#FFFFFF', border: '#D1D5DB', label: 'Not visited' },
+          { color: '#2E7D32', border: '#2E7D32', label: 'Answered' },
+          { color: '#6A1B9A', border: '#6A1B9A', label: 'Marked for review' },
+          { color: '#C62828', border: '#C62828', label: 'Current' },
+          { color: '#FFFFFF', border: '#E0E0E0', label: 'Not visited' },
         ].map(({ color, border, label }) => (
           <div key={label} className="flex items-center gap-2">
             <span className="w-4 h-4 rounded flex-shrink-0" style={{ background: color, border: `1.5px solid ${border}` }} />
@@ -688,9 +745,9 @@ export default function TestInterface() {
     </aside>
   );
 
-  // ── Bottom nav bar ───────────────────────────────────────────────────
+  // -- Bottom nav bar ---------------------------------------------------
   const BottomNav = () => (
-    <footer className="bg-white border-t flex items-center justify-between px-6 py-3" style={{ borderColor: '#E5E7EB' }}>
+    <footer className="bg-white border-t flex items-center justify-between px-6 py-3" style={{ borderColor: 'var(--admin-border)' }}>
       <button
         onClick={() => {
           if (isTestFrozen || currentQuestionIndex === 0) return;
@@ -709,7 +766,7 @@ export default function TestInterface() {
       <button
         onClick={toggleMarkForReview}
         className="flex items-center gap-2 text-sm font-medium transition-colors"
-        style={{ color: markedForReview.has(currentQuestionIndex) ? '#D97706' : '#9CA3AF' }}
+        style={{ color: markedForReview.has(currentQuestionIndex) ? 'var(--admin-accent-hover)' : '#9CA3AF' }}
       >
         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill={markedForReview.has(currentQuestionIndex) ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 21l1.9-5.7a8.5 8.5 0 113.8 3.8z" />
@@ -721,7 +778,7 @@ export default function TestInterface() {
         onClick={handleSaveAndNext}
         disabled={isTestFrozen}
         className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity disabled:opacity-50"
-        style={{ background: '#10B981' }}
+        style={{ background: currentQuestionIndex === questions.length - 1 ? '#DC2626' : 'var(--admin-accent)' }}
       >
         {currentQuestionIndex === questions.length - 1 ? 'Submit Test' : 'Save & Next'}
         {currentQuestionIndex < questions.length - 1 && (
@@ -767,7 +824,7 @@ export default function TestInterface() {
             </div>
             <h2 className="text-lg font-bold text-gray-900 mb-2">Fullscreen Required</h2>
             <p className="text-sm text-gray-500 mb-6">You exited fullscreen. Click below to continue your test.</p>
-            <button onClick={handleReenterFullscreen} className="w-full py-3 rounded-xl font-semibold text-white text-sm" style={{ background: '#10B981' }}>
+            <button onClick={handleReenterFullscreen} className="w-full py-3 rounded-xl font-semibold text-white text-sm" style={{ background: 'var(--admin-accent)' }}>
               Continue in Fullscreen
             </button>
           </div>
@@ -799,7 +856,7 @@ export default function TestInterface() {
         </div>
       )}
 
-      {/* ── Header ── */}
+      {/* -- Header -- */}
       <header className="flex items-center justify-between px-5 py-3 flex-shrink-0 relative z-10" style={{ background: '#0F172A' }}>
         {/* Left: back + logo + test name + proctoring */}
         <div className="flex items-center gap-3">
@@ -815,54 +872,81 @@ export default function TestInterface() {
             </svg>
             Back
           </button>
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: '#10B981' }}>
-            <span className="text-white font-bold text-sm">t</span>
-          </div>
+          <img src={talentstaQLogoLight} alt="TalentstaQ" style={{ height: '28px', width: 'auto', flexShrink: 0 }} />
           <span className="text-white font-semibold text-sm">{testName}</span>
           {proctorEnabled && (
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full" style={{ background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)' }}>
-              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#10B981' }} />
-              <span className="text-xs font-medium" style={{ color: '#10B981' }}>Proctoring active</span>
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full" style={{ background: 'rgba(245,158,11,0.18)', border: '1px solid rgba(245,158,11,0.55)' }}>
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#22C55E' }} />
+              <span className="text-xs font-medium" style={{ color: '#F59E0B' }}>Proctoring active</span>
             </div>
           )}
         </div>
 
         {/* Right: icons + timer */}
         <div className="flex items-center gap-3">
+          {/* Network strength icon */}
+          {(() => {
+            const qColor = { excellent: '#22C55E', good: '#F59E0B', fair: '#F97316', poor: '#EF4444' }[networkQuality];
+            const bars = { excellent: 3, good: 2, fair: 1, poor: 0 }[networkQuality];
+            const dimColor = '#334155';
+            return (
+              <button
+                ref={networkBtnRef}
+                data-network-info
+                onClick={() => {
+                  if (networkBtnRef.current) {
+                    const r = networkBtnRef.current.getBoundingClientRect();
+                    setNetworkPopupPos({ top: r.bottom + 8, right: window.innerWidth - r.right });
+                  }
+                  setShowNetworkInfo(v => !v);
+                }}
+                className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
+                style={{ background: showNetworkInfo ? `${qColor}18` : 'transparent' }}
+                title={`Network: ${networkQuality}${pingMs !== null ? ` · ${pingMs}ms` : ''}`}
+              >
+                <svg width="16" height="14" viewBox="0 0 24 21" fill="none">
+                  {/* Dot */}
+                  <circle cx="12" cy="19.5" r="2" fill={qColor} />
+                  {/* Arc 1 — smallest */}
+                  <path d="M8.8 15.2 Q12 12.4 15.2 15.2" stroke={bars >= 1 ? qColor : dimColor} strokeWidth="2.2" strokeLinecap="round" fill="none" />
+                  {/* Arc 2 — medium */}
+                  <path d="M5.2 11.6 Q12 6.2 18.8 11.6" stroke={bars >= 2 ? qColor : dimColor} strokeWidth="2.2" strokeLinecap="round" fill="none" />
+                  {/* Arc 3 — largest */}
+                  <path d="M1.6 8.0 Q12 0.0 22.4 8.0" stroke={bars >= 3 ? qColor : dimColor} strokeWidth="2.2" strokeLinecap="round" fill="none" />
+                </svg>
+              </button>
+            );
+          })()}
+
           {requireCamera && (
-            <button className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-white transition-colors">
+            <button
+              data-camera-preview
+              onClick={() => setShowCameraPreview(v => !v)}
+              className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors"
+              style={{ color: showCameraPreview ? '#22C55E' : '#CBD5E1', background: showCameraPreview ? 'rgba(34,197,94,0.12)' : 'transparent' }}
+              title="Camera preview"
+            >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.723v6.554a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
               </svg>
             </button>
           )}
           {requireMicrophone && (
-            <button className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-400 hover:text-white transition-colors">
+            <button className="w-8 h-8 flex items-center justify-center rounded-lg transition-colors" style={{ color: '#CBD5E1' }}>
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4M12 3a4 4 0 014 4v4a4 4 0 01-8 0V7a4 4 0 014-4z" />
               </svg>
             </button>
           )}
-          <button
-            onClick={() => setShowConfirmSubmit(true)}
-            disabled={submitting || isTestFrozen}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white transition-opacity disabled:opacity-50"
-            style={{ background: '#EF4444' }}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-            Submit Test
-          </button>
           {/* Timer */}
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: '#1E293B' }}>
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke={timeRemaining < 300000 ? '#EF4444' : '#94A3B8'} strokeWidth={1.8}>
+          <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: timeRemaining < 300000 ? 'rgba(239,68,68,0.18)' : 'rgba(245,158,11,0.18)', border: `1px solid ${timeRemaining < 300000 ? 'rgba(239,68,68,0.55)' : 'rgba(245,158,11,0.55)'}` }}>
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke={timeRemaining < 300000 ? '#EF4444' : '#F59E0B'} strokeWidth={1.8}>
               <circle cx="12" cy="12" r="9" />
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />
             </svg>
             <span
               className="text-sm font-bold font-mono tabular-nums"
-              style={{ color: timeRemaining < 300000 ? '#EF4444' : '#F1F5F9' }}
+              style={{ color: timeRemaining < 300000 ? '#EF4444' : '#F59E0B' }}
             >
               {formatTime(timeRemaining)}
             </span>
@@ -870,14 +954,14 @@ export default function TestInterface() {
         </div>
       </header>
 
-      {/* ── Content ── */}
+      {/* -- Content -- */}
       <div className="flex flex-1 overflow-hidden relative z-10">
         {isCoding ? (
-          // ── Coding: three-column layout ──
+          // -- Coding: three-column layout --
           <>
             <div className="flex flex-1 overflow-hidden">
               {/* Description panel */}
-              <div className="w-[42%] bg-white overflow-y-auto border-r flex-shrink-0" style={{ borderColor: '#E5E7EB' }}>
+              <div className="w-[42%] bg-white overflow-y-auto border-r flex-shrink-0" style={{ borderColor: 'var(--admin-border)' }}>
                 <div className="p-6">
                   {/* Breadcrumb */}
                   <div className="flex items-center gap-2 flex-wrap mb-4">
@@ -906,17 +990,17 @@ export default function TestInterface() {
 
                   {/* Examples */}
                   {(currentQuestion.sampleInput || currentQuestion.sampleOutput) && (
-                    <div className="rounded-xl p-4 mb-4" style={{ background: '#F8FAFC', border: '1px solid #E5E7EB' }}>
+                    <div className="rounded-xl p-4 mb-4" style={{ background: '#F8FAFC', border: '1px solid var(--admin-border)' }}>
                       <p className="text-xs font-semibold text-gray-600 mb-2">Examples</p>
                       {currentQuestion.sampleInput && (
                         <pre className="text-xs font-mono text-gray-600 mb-1">
-                          {'→ '}
+                          {'? '}
                           {currentQuestion.sampleInput}
                         </pre>
                       )}
                       {currentQuestion.sampleOutput && (
                         <pre className="text-xs font-mono text-gray-600">
-                          {'← '}
+                          {'? '}
                           {currentQuestion.sampleOutput}
                         </pre>
                       )}
@@ -954,7 +1038,7 @@ export default function TestInterface() {
                   {currentQuestion.mediaAssets && currentQuestion.mediaAssets.length > 0 && (
                     <div className="mt-4 space-y-3">
                       {currentQuestion.mediaAssets.map((asset) => (
-                        <div key={asset.id} className="rounded-lg overflow-hidden border" style={{ borderColor: '#E5E7EB' }}>
+                        <div key={asset.id} className="rounded-lg overflow-hidden border" style={{ borderColor: 'var(--admin-border)' }}>
                           {asset.mediaType === 'image' && <img src={asset.storageUrl} alt={asset.originalName} className="w-full h-auto object-contain max-h-64" />}
                           {asset.mediaType === 'video' && <video src={asset.storageUrl} controls className="w-full" preload="metadata" />}
                         </div>
@@ -1012,8 +1096,8 @@ export default function TestInterface() {
                 <div className="border-t px-4 py-2.5 flex items-center justify-between" style={{ background: '#252526', borderColor: '#3E3E42' }}>
                   <div>
                     {codeOutput && !runningCode && (
-                      <span className="text-xs font-medium" style={{ color: codeOutput.startsWith('Error') ? '#EF4444' : '#10B981' }}>
-                        {codeOutput.startsWith('Error') ? '✗ ' : '✓ '}
+                      <span className="text-xs font-medium" style={{ color: codeOutput.startsWith('Error') ? '#EF4444' : 'var(--admin-accent)' }}>
+                        {codeOutput.startsWith('Error') ? '? ' : '? '}
                         {codeOutput.startsWith('Error') ? 'Error in code' : 'Code ran successfully'}
                       </span>
                     )}
@@ -1039,9 +1123,9 @@ export default function TestInterface() {
                       onClick={handleSubmitCode}
                       disabled={isTestFrozen || codeSubmitted}
                       className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-60 transition-colors"
-                      style={{ background: codeSubmitted ? '#059669' : '#10B981' }}
+                      style={{ background: codeSubmitted ? 'var(--admin-accent-hover)' : 'var(--admin-accent)' }}
                     >
-                      {codeSubmitted ? '✓ Saved' : 'Submit code'}
+                      {codeSubmitted ? '? Saved' : 'Submit code'}
                     </button>
                   </div>
                 </div>
@@ -1059,7 +1143,7 @@ export default function TestInterface() {
             <Palette />
           </>
         ) : (
-          // ── MCQ / Behavioral: two-column layout ──
+          // -- MCQ / Behavioral: two-column layout --
           <>
             <main className="flex-1 overflow-y-auto px-10 py-8">
               <div className="max-w-2xl mx-auto">
@@ -1084,7 +1168,7 @@ export default function TestInterface() {
                 </div>
 
                 {currentQuestion.type === 'mcq' ? (
-                  // ── MCQ ──
+                  // -- MCQ --
                   <>
                     <h2 className="text-xl font-bold text-gray-900 mb-6 leading-snug">
                       {currentQuestion.questionText}
@@ -1094,7 +1178,7 @@ export default function TestInterface() {
                     {currentQuestion.mediaAssets && currentQuestion.mediaAssets.length > 0 && (
                       <div className="mb-6 space-y-3">
                         {currentQuestion.mediaAssets.map((asset) => (
-                          <div key={asset.id} className="rounded-xl overflow-hidden border" style={{ borderColor: '#E5E7EB' }}>
+                          <div key={asset.id} className="rounded-xl overflow-hidden border" style={{ borderColor: 'var(--admin-border)' }}>
                             {asset.mediaType === 'image' && <img src={asset.storageUrl} alt={asset.originalName} className="w-full h-auto object-contain max-h-80" />}
                             {asset.mediaType === 'video' && <video src={asset.storageUrl} controls className="w-full" preload="metadata" />}
                             {asset.mediaType === 'audio' && (
@@ -1118,14 +1202,14 @@ export default function TestInterface() {
                             onClick={() => handleMCQSelect(option.originalIndex)}
                             className="w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all"
                             style={{
-                              borderColor: isSelected ? '#10B981' : '#E5E7EB',
-                              background: isSelected ? '#F0FDF4' : '#FFFFFF',
+                              borderColor: isSelected ? 'var(--admin-accent)' : 'var(--admin-border)',
+                              background: isSelected ? 'var(--admin-accent-soft)' : '#FFFFFF',
                             }}
                           >
                             <span
                               className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0 transition-colors"
                               style={{
-                                background: isSelected ? '#10B981' : '#F3F4F6',
+                                background: isSelected ? 'var(--admin-accent)' : 'var(--admin-border)',
                                 color: isSelected ? '#FFFFFF' : '#6B7280',
                               }}
                             >
@@ -1133,7 +1217,7 @@ export default function TestInterface() {
                             </span>
                             <span className="flex-1 text-sm text-gray-700">{option.text}</span>
                             {isSelected && (
-                              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 flex-shrink-0" viewBox="0 0 20 20" fill="#10B981">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 flex-shrink-0" viewBox="0 0 20 20" fill="var(--admin-accent)">
                                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                               </svg>
                             )}
@@ -1155,13 +1239,13 @@ export default function TestInterface() {
                     </div>
                   </>
                 ) : (
-                  // ── Behavioral ──
+                  // -- Behavioral --
                   <>
                     <h2 className="text-xl font-bold text-gray-900 mb-2 leading-snug">
                       {currentQuestion.title || currentQuestion.questionText}
                     </h2>
                     {currentQuestion.description && (
-                      <p className="text-sm mb-5" style={{ color: '#10B981' }}>
+                      <p className="text-sm mb-5" style={{ color: 'var(--admin-accent)' }}>
                         {currentQuestion.description}
                       </p>
                     )}
@@ -1174,9 +1258,9 @@ export default function TestInterface() {
                         rows={12}
                         placeholder="Write your response here..."
                         className="w-full rounded-xl border px-4 py-4 text-sm text-gray-700 resize-none outline-none transition-colors"
-                        style={{ borderColor: '#E5E7EB', background: '#FFFFFF', lineHeight: '1.6' }}
-                        onFocus={(e) => (e.target.style.borderColor = '#10B981')}
-                        onBlur={(e) => (e.target.style.borderColor = '#E5E7EB')}
+                        style={{ borderColor: 'var(--admin-border)', background: '#FFFFFF', lineHeight: '1.6' }}
+                        onFocus={(e) => (e.target.style.borderColor = 'var(--admin-accent)')}
+                        onBlur={(e) => (e.target.style.borderColor = 'var(--admin-border)')}
                       />
                       {/* Word count + auto-saved */}
                       <div className="flex items-center justify-between mt-2 px-1">
@@ -1184,7 +1268,7 @@ export default function TestInterface() {
                           {wordCount} {wordCount === 1 ? 'word' : 'words'} · {behavioralText.length} characters
                         </span>
                         {autoSaved && (
-                          <span className="flex items-center gap-1 text-xs" style={{ color: '#10B981' }}>
+                          <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--admin-accent)' }}>
                             <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
                               <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                             </svg>
@@ -1202,10 +1286,10 @@ export default function TestInterface() {
         )}
       </div>
 
-      {/* ── Bottom nav ── */}
+      {/* -- Bottom nav -- */}
       <BottomNav />
 
-      {/* ── Submit confirmation modal ── */}
+      {/* -- Submit confirmation modal -- */}
       {showConfirmSubmit && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
@@ -1226,7 +1310,7 @@ export default function TestInterface() {
               <button
                 onClick={() => setShowConfirmSubmit(false)}
                 className="flex-1 py-3 rounded-xl font-semibold text-sm border text-gray-700 hover:bg-gray-50 transition-colors"
-                style={{ borderColor: '#E5E7EB' }}
+                style={{ borderColor: 'var(--admin-border)' }}
               >
                 Cancel
               </button>
@@ -1243,12 +1327,163 @@ export default function TestInterface() {
         </div>
       )}
 
-      {/* ── Exit / Go back confirmation modal ── */}
+      {/* -- Network info popup (fixed, above all layers) -- */}
+      {showNetworkInfo && networkPopupPos && (
+        <div
+          data-network-info
+          className="rounded-2xl overflow-hidden shadow-2xl"
+          style={{
+            position: 'fixed',
+            top: `${networkPopupPos.top}px`,
+            right: `${Math.max(8, networkPopupPos.right)}px`,
+            width: '220px',
+            zIndex: 9999,
+            background: '#0F172A',
+            border: '1px solid rgba(255,255,255,0.12)',
+          }}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-3 py-2" style={{ background: '#1E293B', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-semibold tracking-wider" style={{ color: '#94A3B8' }}>NETWORK STATUS</span>
+            </div>
+            <button
+              onClick={() => setShowNetworkInfo(false)}
+              className="w-5 h-5 flex items-center justify-center rounded"
+              style={{ color: '#64748B' }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#F1F5F9')}
+              onMouseLeave={e => (e.currentTarget.style.color = '#64748B')}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Stats */}
+          <div className="px-4 py-3 space-y-3">
+            {/* Quality row */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs" style={{ color: '#64748B' }}>Connection</span>
+              <span
+                className="text-xs font-bold capitalize px-2 py-0.5 rounded-full"
+                style={{
+                  color: { excellent: '#22C55E', good: '#F59E0B', fair: '#F97316', poor: '#EF4444' }[networkQuality],
+                  background: { excellent: 'rgba(34,197,94,0.12)', good: 'rgba(245,158,11,0.12)', fair: 'rgba(249,115,22,0.12)', poor: 'rgba(239,68,68,0.12)' }[networkQuality],
+                }}
+              >
+                {networkQuality}
+              </span>
+            </div>
+
+            {/* Ping row */}
+            <div className="flex items-center justify-between">
+              <span className="text-xs" style={{ color: '#64748B' }}>Ping</span>
+              <span className="text-xs font-bold font-mono" style={{ color: pingMs === null ? '#EF4444' : pingMs < 80 ? '#22C55E' : pingMs < 180 ? '#F59E0B' : '#EF4444' }}>
+                {pingMs !== null ? `${pingMs} ms` : '— ms'}
+              </span>
+            </div>
+
+            {/* Signal bars visual */}
+            <div className="flex items-end gap-1 justify-center pt-1">
+              {[1, 2, 3].map(level => {
+                const active = { excellent: 3, good: 2, fair: 1, poor: 0 }[networkQuality] >= level;
+                const barColor = { excellent: '#22C55E', good: '#F59E0B', fair: '#F97316', poor: '#EF4444' }[networkQuality];
+                return (
+                  <div
+                    key={level}
+                    className="rounded-sm"
+                    style={{
+                      width: '20px',
+                      height: `${level * 10}px`,
+                      background: active ? barColor : '#1E293B',
+                      border: `1px solid ${active ? barColor : '#334155'}`,
+                      transition: 'background 0.3s',
+                    }}
+                  />
+                );
+              })}
+            </div>
+
+            <p className="text-center" style={{ color: '#475569', fontSize: '10px' }}>
+              Updates every 6 seconds
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* -- Camera preview popup (fixed, above all layers) -- */}
+      {showCameraPreview && requireCamera && (
+        <div
+          data-camera-preview
+          className="rounded-2xl overflow-hidden shadow-2xl"
+          style={{
+            position: 'fixed',
+            top: '56px',
+            right: '16px',
+            width: '268px',
+            zIndex: 9999,
+            background: '#0F172A',
+            border: '1px solid rgba(255,255,255,0.12)',
+          }}
+        >
+          {/* Header bar */}
+          <div className="flex items-center justify-between px-3 py-2" style={{ background: '#1E293B', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: '#22C55E' }} />
+              <span className="text-xs font-semibold tracking-wider" style={{ color: '#94A3B8' }}>LIVE</span>
+            </div>
+            <button
+              onClick={() => setShowCameraPreview(false)}
+              className="w-5 h-5 flex items-center justify-center rounded"
+              style={{ color: '#64748B' }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#F1F5F9')}
+              onMouseLeave={e => (e.currentTarget.style.color = '#64748B')}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Video feed */}
+          <div className="relative" style={{ background: '#000', minHeight: '160px' }}>
+            <video
+              ref={cameraPreviewRef}
+              autoPlay
+              muted
+              playsInline
+              className="w-full"
+              style={{ display: 'block', transform: 'scaleX(-1)', maxHeight: '180px', objectFit: 'cover' }}
+            />
+            {!cameraStream && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-xs" style={{ color: '#64748B' }}>Camera unavailable</span>
+              </div>
+            )}
+          </div>
+
+          {/* Observation warning */}
+          <div className="px-3 py-3 text-center" style={{ background: '#1E293B', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="flex items-center justify-center gap-1.5 mb-1">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="#F59E0B" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              </svg>
+              <span className="text-xs font-bold tracking-widest" style={{ color: '#F59E0B' }}>YOU ARE UNDER OBSERVATION</span>
+            </div>
+            <p className="text-xs leading-snug" style={{ color: '#64748B' }}>
+              This session is being recorded and monitored by a AI Proctor.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* -- Exit / Go back confirmation modal -- */}
       {showExitConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
-            <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: '#FEF3C7' }}>
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="#D97706" strokeWidth={2}>
+            <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: 'var(--admin-accent-disabled)' }}>
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="var(--admin-accent-hover)" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
               </svg>
             </div>
@@ -1260,14 +1495,14 @@ export default function TestInterface() {
               <button
                 onClick={() => setShowExitConfirm(false)}
                 className="flex-1 py-3 rounded-xl font-semibold text-sm border text-gray-700 hover:bg-gray-50 transition-colors"
-                style={{ borderColor: '#E5E7EB' }}
+                style={{ borderColor: 'var(--admin-border)' }}
               >
                 Stay
               </button>
               <button
                 onClick={() => { setShowExitConfirm(false); navigate(-1); }}
                 className="flex-1 py-3 rounded-xl font-semibold text-sm text-white transition-colors"
-                style={{ background: '#F59E0B' }}
+                style={{ background: 'var(--admin-accent)' }}
               >
                 Exit Test
               </button>
