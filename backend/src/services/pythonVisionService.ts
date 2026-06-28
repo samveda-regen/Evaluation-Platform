@@ -1,4 +1,4 @@
-﻿export interface PythonVisionViolation {
+export interface PythonVisionViolation {
   eventType: string;
   severity: 'low' | 'medium' | 'high' | 'critical';
   confidence: number;
@@ -41,7 +41,7 @@ export interface PythonVisionResult {
   };
 }
 
-type VisionPayload = { frame: string; sessionId?: string };
+type VisionPayload = { frame: string; sessionId?: string; capturedAt?: number };
 
 function normalizeConfidence(confidence: unknown): number {
   const raw = Number(confidence ?? 0);
@@ -208,11 +208,12 @@ export async function analyzeFrameWithPython(frameBase64: string): Promise<Pytho
 
 export async function analyzeFrameWithPythonForSession(
   frameBase64: string,
-  sessionId: string
+  sessionId: string,
+  capturedAt?: number
 ): Promise<PythonVisionResult | null> {
   const baseUrl = getVisionServiceUrl();
   if (!baseUrl) return null;
-  return callPythonAnalyze(baseUrl, { frame: frameBase64, sessionId });
+  return callPythonAnalyze(baseUrl, { frame: frameBase64, sessionId, capturedAt });
 }
 
 export default {

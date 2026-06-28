@@ -623,7 +623,7 @@ export const submitAnalysis = async (req: Request, res: Response): Promise<void>
 
     // Optional Python CV service violations (OpenCV/YOLO) when configured
     if (analysisData.frameData) {
-      pythonResult = await analyzeFrameWithPythonForSession(analysisData.frameData, sessionId);
+      pythonResult = await analyzeFrameWithPythonForSession(analysisData.frameData, sessionId, analysisData.timestamp);
       proctorTrace('python_cv_result', {
         sessionId,
         hasResult: !!pythonResult,

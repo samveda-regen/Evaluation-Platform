@@ -25,6 +25,7 @@ import BehavioralForm from './pages/admin/BehavioralForm';
 import AllAttempts from './pages/admin/AllAttempts';
 
 // Public pages
+// Phone camera capture (public — no auth required)
 import PhoneCapture from './pages/PhoneCapture';
 
 // Candidate pages
@@ -149,7 +150,7 @@ export default function App() {
         }
       />
 
-      {/* Public: phone camera capture for ID verification */}
+      {/* Phone camera capture — public, no auth */}
       <Route path="/phone-capture/:sessionId" element={<PhoneCapture />} />
 
       {/* 404 */}

@@ -602,6 +602,23 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
       return;
     }
 
+    // Gate: if this test requires ID verification, the candidate must be verified by an admin
+    const testConfig = await prisma.test.findUnique({
+      where:  { id: testId },
+      select: { requireIdVerification: true },
+    });
+    if (testConfig?.requireIdVerification) {
+      const candidateId = req.candidate!.id;
+      const identity = await prisma.candidateIdentity.findUnique({
+        where:  { candidateId },
+        select: { verificationStatus: true },
+      });
+      if (!identity || identity.verificationStatus !== 'verified') {
+        res.status(403).json({ error: 'Identity verification must be approved by an admin before you can start this test.' });
+        return;
+      }
+    }
+
     if (invitationId) {
       try {
         await consumeInvitation(invitationId, testId);
