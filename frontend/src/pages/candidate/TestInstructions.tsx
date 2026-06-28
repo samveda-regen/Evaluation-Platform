@@ -8,6 +8,7 @@ import { useAuthStore } from '../../context/authStore';
 import IDVerification from '../../components/IDVerification';
 import { clearCachedStreams, getCachedStreams, setCachedStreams } from '../../services/devicePermissionService';
 import { DEFAULT_CUSTOM_AI_VIOLATIONS, normalizeCustomAIViolationSelection } from '../../constants/customAIViolations';
+import talentstaQLogo from '../../assets/assessment-icons/icons/Talentstaq logo dark.svg';
 
 interface TestDetails {
   test: {
@@ -276,8 +277,8 @@ export default function TestInstructions() {
 
   if (loading || checkingVerification) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#F3F4F6' }}>
-        <div className="animate-spin rounded-full h-10 w-10 border-2 border-emerald-500 border-t-transparent" />
+      <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--admin-border)' }}>
+        <div className="animate-spin rounded-full h-10 w-10 border-2 border-amber-500 border-t-transparent" />
       </div>
     );
   }
@@ -300,8 +301,8 @@ export default function TestInstructions() {
     (!test.proctorEnabled || deviceReady);
 
   return (
-    <div className="min-h-screen" style={{ background: '#F3F4F6' }}>
-      {/* ── Header ── */}
+    <div className="min-h-screen" style={{ background: 'var(--admin-border)' }}>
+      {/* -- Header -- */}
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -319,14 +320,14 @@ export default function TestInstructions() {
             </button>
             <div className="h-5 w-px bg-gray-200" />
             <div className="flex items-center gap-3">
-              <span className="font-semibold text-gray-800 text-lg">TalentstaQ</span>
+              <img src={talentstaQLogo} alt="TalentstaQ" style={{ height: '34px', width: 'auto' }} />
             </div>
           </div>
           {identityVerified && (
-            <div className="flex items-center gap-2 text-sm font-medium" style={{ color: '#10B981' }}>
+            <div className="flex items-center gap-2 text-sm font-medium" style={{ color: 'var(--admin-accent)' }}>
               <span
                 className="w-2 h-2 rounded-full"
-                style={{ background: '#10B981' }}
+                style={{ background: 'var(--admin-accent)' }}
               />
               Identity verified
             </div>
@@ -334,7 +335,7 @@ export default function TestInstructions() {
         </div>
       </header>
 
-      {/* ── Body ── */}
+      {/* -- Body -- */}
       <main className="max-w-5xl mx-auto px-6 py-8">
         {/* ID verification gate (shown inline if still pending) */}
         {verificationRequired && !verificationComplete && (
@@ -356,9 +357,9 @@ export default function TestInstructions() {
           </div>
         )}
 
-        {/* ── Two-column grid ── */}
+        {/* -- Two-column grid -- */}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-6">
-          {/* ── Left: Instructions ── */}
+          {/* -- Left: Instructions -- */}
           <div className="bg-white rounded-2xl p-8 shadow-sm">
             <h1 className="text-2xl font-bold text-gray-900">Before you begin</h1>
             <p className="text-sm text-gray-500 mt-1">
@@ -372,11 +373,11 @@ export default function TestInstructions() {
               <div className="flex items-start gap-4">
                 <div
                   className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: '#111827' }}
+                  style={{ background: '#FFF6EE' }}
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="w-5 h-5 text-white"
+                    className="w-5 h-5 text-amber-600"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -398,11 +399,11 @@ export default function TestInstructions() {
               <div className="flex items-start gap-4">
                 <div
                   className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: '#111827' }}
+                  style={{ background: '#FFF6EE' }}
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="w-5 h-5 text-white"
+                    className="w-5 h-5 text-amber-600"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -432,11 +433,11 @@ export default function TestInstructions() {
               <div className="flex items-start gap-4">
                 <div
                   className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: '#111827' }}
+                  style={{ background: '#FFF6EE' }}
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="w-5 h-5 text-white"
+                    className="w-5 h-5 text-amber-600"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -461,11 +462,11 @@ export default function TestInstructions() {
               <div className="flex items-start gap-4">
                 <div
                   className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
-                  style={{ background: '#111827' }}
+                  style={{ background: '#FFF6EE' }}
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
-                    className="w-5 h-5 text-white"
+                    className="w-5 h-5 text-amber-600"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -500,18 +501,18 @@ export default function TestInstructions() {
             )}
           </div>
 
-          {/* ── Right: System check ── */}
+          {/* -- Right: System check -- */}
           <div className="bg-white rounded-2xl shadow-sm overflow-hidden flex flex-col">
             {/* Camera area */}
             <div
               className="relative flex items-center justify-center"
-              style={{ background: '#111827', minHeight: 200 }}
+              style={{ background: '#18181B', minHeight: 200 }}
             >
               {/* CAMERA OK badge */}
               {deviceStatus.camera && (
                 <span
                   className="absolute top-3 left-3 text-white text-xs font-semibold px-2 py-0.5 rounded"
-                  style={{ background: '#10B981', letterSpacing: '0.05em' }}
+                  style={{ background: 'var(--admin-accent)', letterSpacing: '0.05em' }}
                 >
                   CAMERA OK
                 </span>
@@ -530,7 +531,7 @@ export default function TestInstructions() {
                   {/* Oval face guide */}
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div
-                      className="border-2 border-emerald-400 rounded-full opacity-60"
+                      className="border-2 border-amber-400 rounded-full opacity-60"
                       style={{ width: '45%', height: '70%' }}
                     />
                   </div>
@@ -538,7 +539,7 @@ export default function TestInstructions() {
               ) : (
                 <div
                   className="w-16 h-16 rounded-full flex items-center justify-center"
-                  style={{ background: '#374151' }}
+                  style={{ background: '#3F3F46' }}
                 >
                   <span className="text-white font-semibold text-xl">{initials}</span>
                 </div>
@@ -553,7 +554,7 @@ export default function TestInstructions() {
                 {/* Webcam */}
                 <SystemCheckRow
                   icon={
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.723v6.554a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
                     </svg>
                   }
@@ -574,7 +575,7 @@ export default function TestInstructions() {
                 {/* Microphone */}
                 <SystemCheckRow
                   icon={
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4M12 3a4 4 0 014 4v4a4 4 0 01-8 0V7a4 4 0 014-4z" />
                     </svg>
                   }
@@ -595,7 +596,7 @@ export default function TestInstructions() {
                 {/* Screen share */}
                 <SystemCheckRow
                   icon={
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                     </svg>
                   }
@@ -616,7 +617,7 @@ export default function TestInstructions() {
                 {/* Connection */}
                 <SystemCheckRow
                   icon={
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" />
                     </svg>
                   }
@@ -651,7 +652,7 @@ export default function TestInstructions() {
                   type="checkbox"
                   checked={accepted}
                   onChange={(e) => setAccepted(e.target.checked)}
-                  className="w-4 h-4 mt-0.5 rounded accent-emerald-500 flex-shrink-0"
+                  className="w-4 h-4 mt-0.5 rounded accent-amber-500 flex-shrink-0"
                 />
                 <span className="text-xs text-gray-600 leading-relaxed">
                   I have read the instructions and I'm ready to start in full-screen mode.
@@ -664,7 +665,7 @@ export default function TestInstructions() {
                 disabled={!canStart}
                 className="mt-4 w-full flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-sm transition-opacity"
                 style={{
-                  background: canStart ? '#10B981' : '#9CA3AF',
+                  background: canStart ? 'var(--admin-accent)' : '#9CA3AF',
                   color: 'white',
                   cursor: canStart ? 'pointer' : 'not-allowed',
                 }}
@@ -691,7 +692,7 @@ export default function TestInstructions() {
           </div>
         </div>
 
-        {/* ── Sections card ── */}
+        {/* -- Sections card -- */}
         <div className="bg-white rounded-2xl p-6 mt-6 shadow-sm">
           <p className="font-semibold text-gray-800 mb-5">Sections</p>
           <div className="flex flex-wrap gap-8">
@@ -701,8 +702,8 @@ export default function TestInstructions() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
                 </svg>
               }
-              color="#3B82F6"
-              bg="#EFF6FF"
+              color="var(--admin-accent-hover)"
+              bg="#FFF6EE"
               label="Multiple choice"
               count={test.questionCounts?.mcq}
             />
@@ -712,8 +713,8 @@ export default function TestInstructions() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                 </svg>
               }
-              color="#8B5CF6"
-              bg="#F5F3FF"
+              color="#C2410C"
+              bg="#FFF6EE"
               label="Coding"
               count={test.questionCounts?.coding}
             />
@@ -723,8 +724,8 @@ export default function TestInstructions() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
               }
-              color="#F59E0B"
-              bg="#FFFBEB"
+              color="var(--admin-accent-hover)"
+              bg="#FFF6EE"
               label="Behavioral"
               count={test.questionCounts?.behavioral}
             />
@@ -735,7 +736,7 @@ export default function TestInstructions() {
   );
 }
 
-/* ── Helper components ── */
+/* -- Helper components -- */
 
 type CheckStatus = 'ok' | 'pending' | 'checking' | 'not-required';
 
@@ -770,7 +771,7 @@ function SystemCheckRow({
         ) : (
           <span
             className="text-xs font-medium"
-            style={{ color: isOk ? '#10B981' : '#9CA3AF' }}
+            style={{ color: isOk ? 'var(--admin-accent)' : '#9CA3AF' }}
           >
             {isOk ? okLabel : pendingLabel}
           </span>
@@ -778,13 +779,13 @@ function SystemCheckRow({
         {(isOk || isNotRequired) && (
           <span
             className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-            style={{ background: isOk ? '#D1FAE5' : '#F3F4F6' }}
+            style={{ background: isOk ? 'var(--admin-accent-disabled)' : 'var(--admin-border)' }}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="w-3 h-3"
               viewBox="0 0 20 20"
-              fill={isOk ? '#10B981' : '#9CA3AF'}
+              fill={isOk ? 'var(--admin-accent)' : '#9CA3AF'}
             >
               <path
                 fillRule="evenodd"
@@ -797,7 +798,7 @@ function SystemCheckRow({
         {!isOk && !isNotRequired && !isChecking && (
           <span
             className="w-5 h-5 rounded-full border-2 flex-shrink-0"
-            style={{ borderColor: '#E5E7EB' }}
+            style={{ borderColor: 'var(--admin-border)' }}
           />
         )}
       </div>
