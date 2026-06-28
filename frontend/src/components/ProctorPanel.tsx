@@ -49,7 +49,7 @@ export default function ProctorPanel({
     if (!status.cameraEnabled) return 'bg-gray-400';
     if (!status.faceDetected) return 'bg-red-500';
     if (!status.lookingAtScreen) return 'bg-yellow-500';
-    return 'bg-green-500';
+    return 'bg-amber-500';
   };
 
   const getFaceStatusText = () => {
@@ -62,11 +62,11 @@ export default function ProctorPanel({
   const getAudioLevelColor = () => {
     if (status.audioLevel > 100) return 'bg-red-500';
     if (status.audioLevel > 50) return 'bg-yellow-500';
-    return 'bg-green-500';
+    return 'bg-amber-500';
   };
 
   const getTrustScoreColor = () => {
-    if (status.trustScore >= 80) return 'text-green-600';
+    if (status.trustScore >= 80) return 'text-amber-600';
     if (status.trustScore >= 50) return 'text-yellow-600';
     return 'text-red-600';
   };
@@ -85,7 +85,7 @@ export default function ProctorPanel({
         <div className={`w-3 h-3 rounded-full ${getFaceStatusColor()}`} title={getFaceStatusText()} />
 
         {/* Mic status */}
-        <div className={`w-3 h-3 rounded-full ${status.microphoneEnabled ? 'bg-green-500' : 'bg-gray-400'}`} />
+        <div className={`w-3 h-3 rounded-full ${status.microphoneEnabled ? 'bg-amber-500' : 'bg-gray-400'}`} />
 
         {/* Violation count */}
         <span className={`text-xs font-medium ${violations > 0 ? 'text-red-600' : 'text-gray-600'}`}>
@@ -103,7 +103,7 @@ export default function ProctorPanel({
       {/* Header */}
       <div className="bg-gray-800 text-white px-3 py-2 flex justify-between items-center">
         <span className="text-sm font-medium flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${status.isInitialized ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+          <span className={`w-2 h-2 rounded-full ${status.isInitialized ? 'bg-amber-500 animate-pulse' : 'bg-red-500'}`} />
           Proctoring {aiProctorReady ? '(AI)' : ''} Active
         </span>
         <button
@@ -149,14 +149,14 @@ export default function ProctorPanel({
         {/* Devices Status */}
         <div className="flex justify-between text-xs">
           <div className="flex items-center gap-1">
-            <Camera className={`w-4 h-4 ${status.cameraEnabled ? 'text-green-500' : 'text-red-500'}`} />
-            <span className={status.cameraEnabled ? 'text-green-600' : 'text-red-600'}>
+            <Camera className={`w-4 h-4 ${status.cameraEnabled ? 'text-amber-500' : 'text-red-500'}`} />
+            <span className={status.cameraEnabled ? 'text-amber-600' : 'text-red-600'}>
               {status.cameraEnabled ? 'On' : 'Off'}
             </span>
           </div>
           <div className="flex items-center gap-1">
-            <Mic className={`w-4 h-4 ${status.microphoneEnabled ? 'text-green-500' : 'text-red-500'}`} />
-            <span className={status.microphoneEnabled ? 'text-green-600' : 'text-red-600'}>
+            <Mic className={`w-4 h-4 ${status.microphoneEnabled ? 'text-amber-500' : 'text-red-500'}`} />
+            <span className={status.microphoneEnabled ? 'text-amber-600' : 'text-red-600'}>
               {status.microphoneEnabled ? 'On' : 'Off'}
             </span>
           </div>
@@ -181,7 +181,7 @@ export default function ProctorPanel({
         {/* AI Detection Status */}
         <div className="flex justify-between text-xs">
           <span className="text-gray-500">AI Detection</span>
-          <span className={aiProctorReady ? 'text-green-600 font-medium' : 'text-yellow-600'}>
+          <span className={aiProctorReady ? 'text-amber-600 font-medium' : 'text-yellow-600'}>
             {aiProctorReady ? 'YOLO Active' : 'Basic'}
           </span>
         </div>
@@ -197,7 +197,7 @@ export default function ProctorPanel({
         {/* Violations */}
         <div className="flex justify-between text-xs">
           <span className="text-gray-500">Violations</span>
-          <span className={violations > 0 ? 'text-red-600 font-medium' : 'text-green-600'}>
+          <span className={violations > 0 ? 'text-red-600 font-medium' : 'text-amber-600'}>
             {violations} / {maxViolations}
           </span>
         </div>
