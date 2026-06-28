@@ -846,15 +846,12 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
       {step !== 'intro' && step !== 'result' && (
         <div className="flex items-center justify-center mb-6">
           {[1, 2, 3].map((dot, i) => (
-            <>
-              <div
-                key={dot}
-                className={`w-3 h-3 rounded-full ${current >= dot ? 'bg-primary-600' : 'bg-gray-300'}`}
-              />
+            <div key={dot} className="contents">
+              <div className={`w-3 h-3 rounded-full ${current >= dot ? 'bg-primary-600' : 'bg-gray-300'}`} />
               {i < 2 && (
                 <div className={`w-16 h-1 ${current > dot ? 'bg-primary-600' : 'bg-gray-300'}`} />
               )}
-            </>
+            </div>
           ))}
         </div>
       )}
