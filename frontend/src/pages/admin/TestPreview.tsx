@@ -133,7 +133,7 @@ export default function TestPreview() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#f0f2f7' }}>
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2" style={{ borderColor: '#10B981' }} />
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2" style={{ borderColor: 'var(--admin-accent)' }} />
       </div>
     );
   }
@@ -141,7 +141,7 @@ export default function TestPreview() {
   if (!test) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#f0f2f7' }}>
-        <p style={{ color: '#6B7280' }}>Test not found.</p>
+        <p style={{ color: 'var(--admin-text-muted)' }}>Test not found.</p>
       </div>
     );
   }
@@ -186,21 +186,14 @@ export default function TestPreview() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#f0f2f7' }}>
 
-      {/* ── Preview banner ── */}
-      <div className="flex items-center justify-between px-6 py-2 text-xs font-semibold text-white" style={{ backgroundColor: '#F59E0B' }}>
+      {/* -- Preview banner -- */}
+      <div className="flex items-center justify-between px-6 py-2 text-xs font-semibold text-white" style={{ backgroundColor: 'var(--admin-accent)' }}>
         <Link
           to={`/admin/tests/${testId}`}
-          style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: '28px', height: '28px', borderRadius: '50%',
-            background: 'rgba(255,255,255,0.2)', border: '1.5px solid rgba(255,255,255,0.5)',
-            textDecoration: 'none', flexShrink: 0,
-            transition: 'background 0.15s',
-          }}
-          onMouseEnter={e => ((e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.35)')}
-          onMouseLeave={e => ((e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.2)')}
+          className="back-circle-btn back-circle-btn--inverse"
+          style={{ width: '28px', height: '28px', textDecoration: 'none' }}
         >
-          <ArrowLeft width={13} height={13} stroke="white" strokeWidth={2.5} />
+          <ArrowLeft width={13} height={13} stroke="currentColor" strokeWidth={2.5} />
         </Link>
         <div className="flex items-center gap-2">
           <Eye width={12} height={12} stroke="white" strokeWidth={2} />
@@ -209,25 +202,25 @@ export default function TestPreview() {
         <div style={{ width: '90px' }} />
       </div>
 
-      {/* ── Nav bar ── */}
+      {/* -- Nav bar -- */}
       <nav className="flex items-center justify-between px-8 py-4" style={{ backgroundColor: 'white' }}>
         <div className="flex items-center gap-3">
-          <p className="font-bold text-sm" style={{ color: '#111827' }}>TalentstaQ</p>
+          <p className="font-bold text-sm" style={{ color: 'var(--admin-text)' }}>TalentstaQ</p>
         </div>
-        <div className="flex items-center gap-1.5 text-sm font-medium" style={{ color: '#10B981' }}>
-          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: '#10B981' }} />
+        <div className="flex items-center gap-1.5 text-sm font-medium" style={{ color: 'var(--admin-accent)' }}>
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: 'var(--admin-accent)' }} />
           Identity verified
         </div>
       </nav>
 
-      {/* ── No-questions warning ── */}
+      {/* -- No-questions warning -- */}
       {noQuestions && (
-        <div className="max-w-5xl mx-auto px-6 pt-4">
-          <div className="flex items-start gap-3 rounded-xl px-4 py-3" style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}>
-            <AlertTriangle width={16} height={16} stroke="#D97706" strokeWidth={1.5} style={{ flexShrink: 0, marginTop: 2 }} />
+        <div className="max-w-5xl mx-auto" style={{ padding: '16px 0 0' }}>
+          <div className="flex items-start gap-3 rounded-xl px-4 py-3" style={{ backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
+            <AlertTriangle width={16} height={16} stroke="var(--admin-accent-hover)" strokeWidth={1.5} style={{ flexShrink: 0, marginTop: 2 }} />
             <div>
               <p className="text-sm font-semibold" style={{ color: '#92400E' }}>No questions added yet</p>
-              <p className="text-xs mt-0.5" style={{ color: '#B45309' }}>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--admin-accent-hover)' }}>
                 Add questions to the test before previewing. The start button is disabled until questions are present.
               </p>
             </div>
@@ -235,30 +228,30 @@ export default function TestPreview() {
         </div>
       )}
 
-      {/* ── Main content ── */}
-      <div className="max-w-5xl mx-auto px-6 py-8 grid lg:grid-cols-[1fr_320px] gap-6 items-start">
+      {/* -- Main content -- */}
+      <div className="max-w-5xl mx-auto grid lg:grid-cols-[1fr_320px] gap-6 items-start" style={{ padding: 'var(--admin-page-padding) 0 0' }}>
 
         {/* Left — Instructions */}
         <div className="space-y-4">
           {/* Before you begin */}
           <div className="rounded-2xl p-8" style={{ backgroundColor: 'white', boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
-            <h1 className="text-2xl font-bold mb-1" style={{ color: '#111827' }}>Before you begin</h1>
-            <p className="text-sm mb-6" style={{ color: '#10B981' }}>
+            <h1 style={{ fontSize: "32px", fontWeight: 700, letterSpacing: "-0.02em", color: "var(--admin-text)", margin: "0 0 4px", lineHeight: 1.2 }}>Before you begin</h1>
+            <p className="text-sm mb-6" style={{ color: 'var(--admin-accent)' }}>
               {test.name} · {test.duration} minutes · {totalQ} question{totalQ !== 1 ? 's' : ''}
             </p>
 
             <div className="space-y-3">
               {rules.map((rule, i) => (
-                <div key={i} className="flex items-start gap-4 rounded-xl px-4 py-4" style={{ border: '1px solid #F3F4F6' }}>
-                  <div className="h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#111827' }}>
+                <div key={i} className="flex items-start gap-4 rounded-xl px-4 py-4" style={{ border: '1px solid var(--admin-border)' }}>
+                  <div className="h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'var(--admin-text)' }}>
                     {rule.icon}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold mb-0.5" style={{ color: '#111827' }}>{rule.title}</p>
-                    <p className="text-sm leading-relaxed" style={{ color: '#6B7280' }}>
+                    <p className="text-sm font-semibold mb-0.5" style={{ color: 'var(--admin-text)' }}>{rule.title}</p>
+                    <p className="text-sm leading-relaxed" style={{ color: 'var(--admin-text-muted)' }}>
                       {rule.desc.split(/(full-screen|auto-submits|AI|flagged|violation)/gi).map((part, j) =>
                         /(full-screen|auto-submits|AI|flagged|violation)/i.test(part)
-                          ? <span key={j} style={{ color: '#10B981' }}>{part}</span>
+                          ? <span key={j} style={{ color: 'var(--admin-accent)' }}>{part}</span>
                           : part
                       )}
                     </p>
@@ -271,19 +264,19 @@ export default function TestPreview() {
           {/* Sections */}
           {(mcqCount > 0 || codingCount > 0 || behavioralCount > 0) && (
             <div className="rounded-2xl p-6" style={{ backgroundColor: 'white', boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
-              <h2 className="text-base font-semibold mb-4" style={{ color: '#111827' }}>Sections</h2>
+              <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--admin-text)' }}>Sections</h2>
               <div className="grid grid-cols-3 gap-4">
                 {[
-                  { label: 'Multiple choice', count: mcqCount,        color: '#6366F1', icon: <CheckSquare  width={20} height={20} stroke="#6366F1" strokeWidth={1.5} /> },
-                  { label: 'Coding',          count: codingCount,     color: '#10B981', icon: <Code2        width={20} height={20} stroke="#10B981" strokeWidth={1.5} /> },
-                  { label: 'Behavioral',      count: behavioralCount, color: '#F59E0B', icon: <MessageSquare width={20} height={20} stroke="#F59E0B" strokeWidth={1.5} /> },
+                  { label: 'Multiple choice', count: mcqCount,        color: 'var(--admin-data-blue)', icon: <CheckSquare  width={20} height={20} stroke="var(--admin-data-blue)" strokeWidth={1.5} /> },
+                  { label: 'Coding',          count: codingCount,     color: 'var(--admin-accent)', icon: <Code2        width={20} height={20} stroke="var(--admin-accent)" strokeWidth={1.5} /> },
+                  { label: 'Behavioral',      count: behavioralCount, color: 'var(--admin-accent)', icon: <MessageSquare width={20} height={20} stroke="var(--admin-accent)" strokeWidth={1.5} /> },
                 ].map(s => (
-                  <div key={s.label} className="rounded-xl p-4 flex flex-col items-center gap-2 text-center" style={{ border: '1px solid #F3F4F6' }}>
+                  <div key={s.label} className="rounded-xl p-4 flex flex-col items-center gap-2 text-center" style={{ border: '1px solid var(--admin-border)' }}>
                     <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: '#F9FAFB' }}>
                       {s.icon}
                     </div>
-                    <p className="text-sm font-semibold" style={{ color: '#374151' }}>{s.label}</p>
-                    <p className="text-2xl font-bold" style={{ color: '#111827' }}>{s.count}</p>
+                    <p className="text-sm font-semibold" style={{ color: 'var(--admin-text-muted)' }}>{s.label}</p>
+                    <p className="text-2xl font-bold" style={{ color: 'var(--admin-text)' }}>{s.count}</p>
                   </div>
                 ))}
               </div>
@@ -295,27 +288,27 @@ export default function TestPreview() {
         <div className="rounded-2xl overflow-hidden" style={{ backgroundColor: 'white', boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
           {/* Camera preview */}
           <div className="relative flex items-center justify-center" style={{ backgroundColor: '#0d1117', height: '180px' }}>
-            <span className="absolute top-3 left-3 text-xs font-bold px-2.5 py-1 rounded-full" style={{ backgroundColor: '#10B981', color: 'white' }}>
+            <span className="absolute top-3 left-3 text-xs font-bold px-2.5 py-1 rounded-full" style={{ backgroundColor: 'var(--admin-accent)', color: 'white' }}>
               CAMERA OK
             </span>
-            <div className="h-16 w-16 rounded-full flex items-center justify-center text-xl font-bold text-white" style={{ backgroundColor: '#374151' }}>
+            <div className="h-16 w-16 rounded-full flex items-center justify-center text-xl font-bold text-white" style={{ backgroundColor: 'var(--admin-text-muted)' }}>
               AS
             </div>
           </div>
 
           {/* System check */}
           <div className="p-5">
-            <p className="text-sm font-semibold mb-4" style={{ color: '#111827' }}>System check</p>
+            <p className="text-sm font-semibold mb-4" style={{ color: 'var(--admin-text)' }}>System check</p>
             <div className="space-y-3">
               {systemChecks.map(check => (
                 <div key={check.label} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2" style={{ color: '#6B7280' }}>
+                  <div className="flex items-center gap-2" style={{ color: 'var(--admin-text-muted)' }}>
                     {check.icon}
                     <span className="text-sm">{check.label}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium" style={{ color: '#10B981' }}>{check.status}</span>
-                    <div className="h-4 w-4 rounded-full flex items-center justify-center" style={{ backgroundColor: '#10B981' }}>
+                    <span className="text-xs font-medium" style={{ color: 'var(--admin-accent)' }}>{check.status}</span>
+                    <div className="h-4 w-4 rounded-full flex items-center justify-center" style={{ backgroundColor: 'var(--admin-accent)' }}>
                       <Check width={8} height={8} stroke="white" strokeWidth={3} />
                     </div>
                   </div>
@@ -326,18 +319,18 @@ export default function TestPreview() {
 
           {/* Accept + Start */}
           <div className="px-5 pb-5 space-y-4">
-            <div className="h-px" style={{ backgroundColor: '#F3F4F6' }} />
+            <div className="h-px" style={{ backgroundColor: 'var(--admin-border)' }} />
             <label className="flex items-start gap-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={accepted}
                 onChange={e => setAccepted(e.target.checked)}
                 className="mt-0.5 h-4 w-4 rounded"
-                style={{ accentColor: '#10B981' }}
+                style={{ accentColor: 'var(--admin-button-primary)' }}
               />
-              <span className="text-sm leading-relaxed" style={{ color: '#374151' }}>
+              <span className="text-sm leading-relaxed" style={{ color: 'var(--admin-text-muted)' }}>
                 I have read the instructions and I'm ready to start in{' '}
-                <span style={{ color: '#10B981' }}>full-screen mode</span>.
+                <span style={{ color: 'var(--admin-accent)' }}>full-screen mode</span>.
               </span>
             </label>
 
@@ -346,7 +339,7 @@ export default function TestPreview() {
               disabled={!accepted || starting || noQuestions}
               className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-white transition-all"
               style={{
-                backgroundColor: (!accepted || noQuestions) ? '#D1FAE5' : '#10B981',
+                backgroundColor: (!accepted || noQuestions) ? 'var(--admin-accent-disabled)' : 'var(--admin-accent)',
                 cursor: (!accepted || noQuestions) ? 'not-allowed' : 'pointer',
                 opacity: starting ? 0.8 : 1,
               }}
@@ -364,7 +357,7 @@ export default function TestPreview() {
               )}
             </button>
 
-            <p className="text-center text-xs" style={{ color: '#9CA3AF' }}>
+            <p className="text-center text-xs" style={{ color: 'var(--admin-text-subtle)' }}>
               {noQuestions
                 ? 'Add questions to the test first'
                 : 'Runs the full candidate experience — timer starts immediately'}
