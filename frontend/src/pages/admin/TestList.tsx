@@ -362,16 +362,16 @@ export default function TestList() {
           <div className="relative">
             <button
               onClick={() => setSortMenuOpen(p => !p)}
-              className="flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm"
-              style={{ borderColor: 'var(--admin-accent-disabled)', color: 'var(--admin-accent-hover)', backgroundColor: 'white' }}
+              className="btn btn-secondary justify-between"
+              style={{ width: '180px', flexShrink: 0 }}
             >
-              <span>{sortLabels[sortBy]}</span>
-              <ChevronDown size={12} color="var(--admin-accent)" />
+              <span className="truncate">{sortLabels[sortBy]}</span>
+              <ChevronDown size={12} />
             </button>
             {sortMenuOpen && (
               <div
-                className="absolute right-0 top-9 z-30 rounded-xl py-1"
-                style={{ backgroundColor: 'white', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', border: '1px solid var(--admin-accent-disabled)', minWidth: '168px' }}
+                className="absolute right-0 top-11 z-30 rounded-md py-1"
+                style={{ backgroundColor: 'white', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', border: '1px solid var(--admin-border)', width: '180px' }}
               >
                 {(['recent', 'name', 'attempts'] as SortBy[]).map(opt => (
                   <button
@@ -380,11 +380,9 @@ export default function TestList() {
                     className="flex w-full items-center text-sm text-left"
                     style={{
                       padding: '8px 14px',
-                      backgroundColor: sortBy === opt ? 'var(--admin-accent-disabled)' : 'transparent',
-                      color: sortBy === opt ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)',
-                      borderRadius: sortBy === opt ? '8px' : '0',
-                      margin: sortBy === opt ? '2px 4px' : '0',
-                      width: sortBy === opt ? 'calc(100% - 8px)' : '100%',
+                      backgroundColor: sortBy === opt ? 'var(--admin-accent-soft)' : 'transparent',
+                      color: sortBy === opt ? 'var(--admin-text)' : 'var(--admin-text-muted)',
+                      borderRadius: 0,
                       fontWeight: sortBy === opt ? 600 : 400,
                       transition: 'background-color 0.13s',
                     }}
