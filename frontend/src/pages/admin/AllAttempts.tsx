@@ -137,10 +137,14 @@ export default function AllAttempts() {
         backgroundColor: 'white', borderRadius: '14px',
         boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
         padding: '14px 18px', marginBottom: '16px',
-        display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1fr) minmax(140px, 180px) 140px auto',
+        alignItems: 'center',
+        gap: '10px',
+        overflow: 'visible',
       }}>
         {/* Search */}
-        <div style={{ position: 'relative', flex: '1 1 200px', minWidth: '180px' }}>
+        <div style={{ position: 'relative', minWidth: 0 }}>
           <Search size={13} color="var(--admin-text-subtle)" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} />
           <input
             value={searchInput}
@@ -161,7 +165,7 @@ export default function AllAttempts() {
           value={testId}
           onChange={setTestId}
           options={[{ value: '', label: 'All tests' }, ...tests.map(t => ({ value: t.id, label: t.name }))]}
-          style={{ flex: '1 1 180px', minWidth: '150px' }}
+          style={{ width: '100%', minWidth: 0 }}
         />
 
         {/* Status dropdown */}
@@ -169,6 +173,7 @@ export default function AllAttempts() {
           value={status}
           onChange={setStatus}
           options={STATUS_OPTIONS}
+          style={{ width: '140px', minWidth: '140px' }}
         />
 
         {/* Search btn */}

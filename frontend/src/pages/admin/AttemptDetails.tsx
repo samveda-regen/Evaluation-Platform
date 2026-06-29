@@ -266,14 +266,15 @@ export default function AttemptDetails() {
     <div style={{ backgroundColor:'#F9FAFB', minHeight:'100%' }}>
 
       {/* -- HEADER (candidate name + subtitle + actions) -- */}
-      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:'24px' }}>
-        <div style={{ display:'flex', alignItems:'flex-start', gap:'12px' }}>
+      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:'16px', marginBottom:'24px' }}>
+        <div style={{ display:'flex', alignItems:'flex-start', gap:'12px', minWidth:0 }}>
           <BackButton />
-          <div>
+          <div style={{ minWidth:0 }}>
             <h1 style={{ fontSize:"32px", fontWeight:700, letterSpacing:"-0.02em", color:"var(--admin-text)", margin:"0 0 4px", lineHeight:1.2 }}>{candidate.name}</h1>
-            <p style={{ fontSize:'13px', color:'var(--admin-text-subtle)', margin:0 }}>
-              {test.name} | {submittedStr}
-            </p>
+            <div style={{ display:'flex', flexDirection:'column', gap:'2px', fontSize:'13px', color:'var(--admin-text-subtle)', lineHeight:1.4 }}>
+              <span style={{ overflowWrap:'anywhere' }}>{test.name}</span>
+              <span>{submittedStr}</span>
+            </div>
           </div>
         </div>
         <div style={{ display:'flex', gap:'8px', flexShrink:0 }}>

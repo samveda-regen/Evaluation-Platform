@@ -5,7 +5,6 @@ import { format } from 'date-fns';
 import { AxiosError } from 'axios';
 import { adminApi } from '../../services/api';
 import {
-  ChevronDown,
   FileDown,
   Search,
   ExternalLink,
@@ -183,7 +182,6 @@ export default function TrustReports() {
   const [selectedRow,        setSelectedRow]        = useState<TrustReportRow | null>(null);
   const [markTrustedLoading, setMarkTrustedLoading] = useState(false);
   const [disqualifyLoading,  setDisqualifyLoading]  = useState(false);
-  const [showTestDropdown,   setShowTestDropdown]   = useState(false);
   const [reEvalLoading,      setReEvalLoading]      = useState<string | null>(null);
   const [bulkReEvalLoading,  setBulkReEvalLoading]  = useState(false);
   const [selectedIds,        setSelectedIds]        = useState<Set<string>>(new Set());
@@ -237,7 +235,6 @@ export default function TrustReports() {
     const next = new URLSearchParams(searchParams);
     if (tid) next.set('testId', tid); else next.delete('testId');
     setSearchParams(next);
-    setShowTestDropdown(false);
   };
 
   const handleReEvaluate = async (attemptId: string) => {
@@ -331,11 +328,6 @@ export default function TrustReports() {
   /* -- Sorted list -- */
   const sortedReports = useMemo(() => [...reports].sort((a,b) => a.trustScore - b.trustScore), [reports]);
 
-const selectedTestLabel = useMemo(() => {
-    if (!testIdParam) return 'All tests';
-    return testTree.find(t => t.id === testIdParam)?.name || 'All tests';
-  }, [testIdParam, testTree]);
-
   /* -- RENDER -- */
   return (
     <div style={{ padding:'0', backgroundColor:'#F9FAFB', minHeight:'100%' }}>
@@ -348,45 +340,15 @@ const selectedTestLabel = useMemo(() => {
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:'10px', flexShrink:0 }}>
           {/* Test filter dropdown */}
-          {showTestDropdown && <div className="fixed inset-0 z-10" onClick={() => setShowTestDropdown(false)} />}
-          <div style={{ position:'relative', zIndex:20, width:'200px', flexShrink:0 }}>
-            <button onClick={() => setShowTestDropdown(p=>!p)}
-              style={{
-                width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'6px', padding:'7px 14px',
-                border:'1px solid var(--admin-border)', borderRadius:'8px', backgroundColor:'white',
-                fontSize:'13px', color:'var(--admin-text-muted)', cursor:'pointer',
-              }}>
-              <span style={{ minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{selectedTestLabel}</span>
-              <ChevronDown size={12} color="var(--admin-text-muted)" />
-            </button>
-            {showTestDropdown && (
-              <div style={{
-                position:'absolute', top:'100%', right:0, marginTop:'4px', zIndex:20,
-                backgroundColor:'white', borderRadius:'10px', boxShadow:'0 8px 24px rgba(0,0,0,0.12)',
-                border:'1px solid var(--admin-border)', minWidth:'200px', maxHeight:'280px', overflowY:'auto',
-              }}>
-                <button onClick={() => handleTestSelect('')}
-                  style={{
-                    width:'100%', textAlign:'left', padding:'10px 14px', border:'none',
-                    backgroundColor: !testIdParam ? 'var(--admin-accent-soft)' : 'white',
-                    color: !testIdParam ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)',
-                    fontSize:'13px', cursor:'pointer', borderBottom:'1px solid var(--admin-border)',
-                  }}>All tests</button>
-                {testTree.map(t => (
-                  <button key={t.id} onClick={() => handleTestSelect(t.id)}
-                    style={{
-                      width:'100%', textAlign:'left', padding:'10px 14px', border:'none',
-                      backgroundColor: testIdParam===t.id ? 'var(--admin-accent-soft)' : 'white',
-                      color: testIdParam===t.id ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)',
-                      fontSize:'13px', cursor:'pointer', borderBottom:'1px solid var(--admin-border)',
-                    }}>
-                    <p style={{ margin:'0 0 2px', fontWeight:500 }}>{t.name}</p>
-                    <p style={{ margin:0, fontSize:'11px', color:'var(--admin-text-subtle)' }}>{t.testCode} · {t.attempts} attempts</p>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <CustomSelect
+            value={testIdParam}
+            onChange={handleTestSelect}
+            options={[
+              { value:'', label:'All tests' },
+              ...testTree.map(t => ({ value:t.id, label:t.name })),
+            ]}
+            style={{ width:'200px', minWidth:'200px' }}
+          />
           {/* Export */}
           <button onClick={exportCSV}
             style={{
@@ -464,8 +426,8 @@ const selectedTestLabel = useMemo(() => {
                 </div>
               </div>
               {/* Search bar */}
-              <div style={{ display:'flex', gap:'8px', marginBottom:'16px' }}>
-                <div style={{ position:'relative', flex:1 }}>
+              <div style={{ display:'flex', gap:'8px', marginBottom:'16px', alignItems:'center', overflow:'visible' }}>
+                <div style={{ position:'relative', flex:'1 1 auto', minWidth:0 }}>
                   <Search size={14} color="var(--admin-text-subtle)" style={{ position:'absolute', left:'10px', top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }} />
                   <input value={search} onChange={e=>setSearch(e.target.value)}
                     onKeyDown={e => e.key==='Enter' && void applySearch()}
@@ -484,10 +446,11 @@ const selectedTestLabel = useMemo(() => {
                     { value:'high',     label:'High' },
                     { value:'critical', label:'Critical' },
                   ]}
+                  style={{ width:'130px', minWidth:'130px', flexShrink:0 }}
                 />
                 <button onClick={()=>void applySearch()}
                   className="btn btn-primary"
-                  style={{ fontSize:'12px' }}>
+                  style={{ fontSize:'12px', flexShrink:0 }}>
                   Search
                 </button>
               </div>

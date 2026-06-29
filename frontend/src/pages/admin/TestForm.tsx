@@ -17,6 +17,7 @@ import {
 import { adminApi } from '../../services/api';
 import DateTimePicker from '../../components/DateTimePicker';
 import BackButton from '../../components/BackButton';
+import CustomSelect from '../../components/CustomSelect';
 
 function calculateDurationMinutes(startTime: string, endTime: string): number | null {
   if (!startTime || !endTime) return null;
@@ -171,6 +172,7 @@ export default function TestForm() {
 
   const [formData, setFormData] = useState({
     name: '',
+    category: 'back-end',
     description: '',
     instructions: '',
     duration: 60,
@@ -190,6 +192,28 @@ export default function TestForm() {
     requireIdVerification: false,
   });
 
+  const handleStartTimeChange = (startTime: string) => {
+    setFormData(prev => {
+      const endTimeStillValid = !prev.endTime || Boolean(calculateDurationMinutes(startTime, prev.endTime));
+      if (!endTimeStillValid) {
+        toast.error('End time was cleared because it is before the start time');
+      }
+      return {
+        ...prev,
+        startTime,
+        endTime: endTimeStillValid ? prev.endTime : '',
+      };
+    });
+  };
+
+  const handleEndTimeChange = (endTime: string) => {
+    if (formData.startTime && !calculateDurationMinutes(formData.startTime, endTime)) {
+      toast.error('End time must be after start time');
+      return;
+    }
+    setFormData(prev => ({ ...prev, endTime }));
+  };
+
   useEffect(() => {
     if (isEditing) void loadTest();
   }, [testId]);
@@ -204,6 +228,7 @@ export default function TestForm() {
       const test = data.test;
       setFormData({
         name: test.name,
+        category: test.category || 'back-end',
         description: test.description || '',
         instructions: test.instructions || '',
         duration: test.duration,
@@ -346,14 +371,19 @@ export default function TestForm() {
                   </div>
                   <div>
                     <label style={labelStyle}>Role / category</label>
-                    <select name="category" onChange={handleChange} style={{ ...inputStyle, cursor: 'pointer' }}>
-                      <option value="back-end">Back-End Developer</option>
-                      <option value="front-end">Front-End Developer</option>
-                      <option value="full-stack">Full Stack Developer</option>
-                      <option value="devops">DevOps Engineer</option>
-                      <option value="data">Data Scientist</option>
-                      <option value="other">Other</option>
-                    </select>
+                    <CustomSelect
+                      value={formData.category}
+                      onChange={category => setFormData(prev => ({ ...prev, category }))}
+                      options={[
+                        { value: 'back-end', label: 'Back-End Developer' },
+                        { value: 'front-end', label: 'Front-End Developer' },
+                        { value: 'full-stack', label: 'Full Stack Developer' },
+                        { value: 'devops', label: 'DevOps Engineer' },
+                        { value: 'data', label: 'Data Scientist' },
+                        { value: 'other', label: 'Other' },
+                      ]}
+                      style={{ width: '100%', minWidth: 0 }}
+                    />
                   </div>
                   <div>
                     <label style={labelStyle}>Test code</label>
@@ -429,10 +459,10 @@ export default function TestForm() {
           )}
 
           {step === 1 && (
-            <div className="space-y-7">
+            <div className="space-y-9">
               <section>
                 <SectionTitle>Format & Difficulty</SectionTitle>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div>
                     <label style={labelStyle}>Duration (minutes) <span style={{ color: '#EF4444' }}>*</span></label>
                     <input type="number" name="duration" value={formData.duration} onChange={handleChange} min={1} required style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
@@ -450,7 +480,7 @@ export default function TestForm() {
                     <input type="number" name="negativeMarking" value={formData.negativeMarking} onChange={handleChange} min={0} step={0.25} style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
                   </div>
                 </div>
-                <div className="mt-4">
+                <div className="mt-6">
                   <label style={labelStyle}>Difficulty</label>
                   <div className="flex flex-wrap gap-2">
                     {(['easy', 'medium', 'hard', 'mixed'] as const).map(d => {
@@ -473,16 +503,16 @@ export default function TestForm() {
 
               <hr className="border-gray-100" />
 
-              <section>
+              <section style={{ paddingTop: '4px' }}>
                 <SectionTitle>Schedule</SectionTitle>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div>
                     <label style={labelStyle}>Start time <span style={{ color: '#EF4444' }}>*</span></label>
-                    <DateTimePicker value={formData.startTime} onChange={v => setFormData(p => ({ ...p, startTime: v }))} placeholder="Select start date & time" style={{ width: '100%' }} />
+                    <DateTimePicker value={formData.startTime} onChange={handleStartTimeChange} placeholder="Select start date & time" style={{ width: '100%' }} />
                   </div>
                   <div>
                     <label style={labelStyle}>End time <span style={{ color: 'var(--admin-text-subtle)', fontWeight: 400 }}>(optional)</span></label>
-                    <DateTimePicker value={formData.endTime} onChange={v => setFormData(p => ({ ...p, endTime: v }))} placeholder="Select end date & time" style={{ width: '100%' }} />
+                    <DateTimePicker value={formData.endTime} onChange={handleEndTimeChange} minDateTime={formData.startTime} placeholder="Select end date & time" style={{ width: '100%' }} />
                   </div>
                 </div>
               </section>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../../services/api';
@@ -26,10 +26,12 @@ import type {
 } from '../../../types';
 
 /* -- Sidebar item types -- */
+type SidebarCategory = RepositoryCategory | 'all' | 'CUSTOM';
+
 interface SidebarItem {
   id: string;
   label: string;
-  category: RepositoryCategory | 'all';
+  category: SidebarCategory;
   topic?: string;
 }
 const SIDEBAR_ITEMS: SidebarItem[] = [
@@ -37,9 +39,12 @@ const SIDEBAR_ITEMS: SidebarItem[] = [
   { id:'MCQ',       label:'MCQ',           category:'MCQ' },
   { id:'CODING',    label:'Coding',        category:'CODING' },
   { id:'BEHAVIORAL',label:'Behavioral',    category:'BEHAVIORAL' },
+  { id:'CUSTOM',    label:'Custom Questions', category:'CUSTOM' },
 ];
 
 type Difficulty = 'easy' | 'medium' | 'hard';
+const CUSTOM_CATEGORIES: RepositoryCategory[] = ['MCQ', 'CODING', 'BEHAVIORAL'];
+const CUSTOM_FETCH_LIMIT = 100;
 
 /* -- Type helpers -- */
 function isMCQ(q: RepositoryQuestion): q is RepositoryMCQQuestion { return q.repositoryCategory === 'MCQ'; }
@@ -52,20 +57,39 @@ function qTitle(q: RepositoryQuestion): string {
 }
 
 /* -- Type icon -- */
-function TypeIcon({ cat }: { cat: RepositoryCategory }) {
+function TypeIcon({
+  cat,
+  size = 32,
+  iconSize = 14,
+}: {
+  cat: RepositoryCategory;
+  size?: number;
+  iconSize?: number;
+}) {
+  const boxStyle = {
+    width: `${size}px`,
+    height: `${size}px`,
+    borderRadius: size <= 28 ? '6px' : '8px',
+    backgroundColor: 'var(--admin-accent-soft)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  };
+
   if (cat === 'MCQ') return (
-    <div style={{ width:'32px', height:'32px', borderRadius:'8px', backgroundColor:'var(--admin-accent-soft)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-      <CheckSquare width={14} height={14} stroke="var(--admin-accent-hover)" strokeWidth={2} />
+    <div style={boxStyle}>
+      <CheckSquare width={iconSize} height={iconSize} stroke="var(--admin-accent-hover)" strokeWidth={2} />
     </div>
   );
   if (cat === 'CODING') return (
-    <div style={{ width:'32px', height:'32px', borderRadius:'8px', backgroundColor:'var(--admin-accent-soft)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-      <Code2 width={14} height={14} stroke="var(--admin-accent-hover)" strokeWidth={2} />
+    <div style={boxStyle}>
+      <Code2 width={iconSize} height={iconSize} stroke="var(--admin-accent-hover)" strokeWidth={2} />
     </div>
   );
   return (
-    <div style={{ width:'32px', height:'32px', borderRadius:'8px', backgroundColor:'var(--admin-accent-soft)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-      <Brain width={14} height={14} stroke="var(--admin-accent-hover)" strokeWidth={2} />
+    <div style={boxStyle}>
+      <Brain width={iconSize} height={iconSize} stroke="var(--admin-accent-hover)" strokeWidth={2} />
     </div>
   );
 }
@@ -92,11 +116,13 @@ export default function QuestionBank() {
   const location = useLocation();
 
   // If navigated from a test's "Add from Library" button, these will be set
-  const fromTestId: string | undefined = (location.state as { fromTestId?: string; fromTestName?: string } | null)?.fromTestId;
-  const fromTestName: string | undefined = (location.state as { fromTestId?: string; fromTestName?: string } | null)?.fromTestName;
+  const routeState = location.state as { fromTestId?: string; fromTestName?: string; activeSection?: SidebarCategory } | null;
+  const fromTestId: string | undefined = routeState?.fromTestId;
+  const fromTestName: string | undefined = routeState?.fromTestName;
+  const initialSidebarItem = SIDEBAR_ITEMS.find(item => item.category === routeState?.activeSection) ?? SIDEBAR_ITEMS[0];
 
   /* -- State -- */
-  const [activeItem,   setActiveItem]   = useState<SidebarItem>(SIDEBAR_ITEMS[0]);
+  const [activeItem,   setActiveItem]   = useState<SidebarItem>(initialSidebarItem);
   const [questions,    setQuestions]    = useState<RepositoryQuestion[]>([]);
   const [pagination,   setPagination]   = useState<Pagination | null>(null);
   const [counts,       setCounts]       = useState<Record<string, number>>({});
@@ -104,7 +130,7 @@ export default function QuestionBank() {
   const [page,         setPage]         = useState(1);
   const [search,       setSearch]       = useState('');
   const [draftSearch,  setDraftSearch]  = useState('');
-  const [selectedDiffs,setSelectedDiffs]= useState<Set<Difficulty>>(new Set(['easy','medium','hard']));
+  const [selectedDiffs, setSelectedDiffs] = useState<Set<Difficulty>>(new Set(['easy', 'medium', 'hard']));
   const [showNewDrop,  setShowNewDrop]  = useState(false);
   const [sortOrder,    setSortOrder]    = useState<'most-used'|'newest'|'marks'>('most-used');
   const dropRef = useRef<HTMLDivElement>(null);
@@ -113,10 +139,6 @@ export default function QuestionBank() {
     difficulty: 'medium' as Difficulty, topic: '', expectedAnswer: '',
   });
   const [savingBeh, setSavingBeh] = useState(false);
-  const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set());
-  const [skillSearch,    setSkillSearch]    = useState('');
-  const [showAllSkills,  setShowAllSkills]  = useState(false);
-  const [allQuestions,   setAllQuestions]   = useState<RepositoryQuestion[]>([]);
 
   /* add-to-test modal */
   const [addModal,       setAddModal]       = useState<{ q: RepositoryQuestion } | null>(null);
@@ -134,25 +156,19 @@ export default function QuestionBank() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  /* load initial counts + all-questions snapshot for filter building */
+  /* load initial counts */
   useEffect(() => {
     void loadCounts();
-    void (async () => {
-      try {
-        const [r1, r2, r3] = await Promise.all([
-          adminApi.getQuestionBankQuestions({ category:'MCQ',       page:1, limit:100 }),
-          adminApi.getQuestionBankQuestions({ category:'CODING',    page:1, limit:100 }),
-          adminApi.getQuestionBankQuestions({ category:'BEHAVIORAL',page:1, limit:100 }),
-        ]);
-        setAllQuestions([...r1.data.questions, ...r2.data.questions, ...r3.data.questions]);
-      } catch { /* silent */ }
-    })();
   }, []);
 
   /* reload questions on filter change */
   useEffect(() => {
     setPage(1);
-  }, [activeItem, search, selectedDiffs, selectedSkills]);
+  }, [activeItem, search]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [selectedDiffs]);
 
   useEffect(() => {
     void loadQuestions();
@@ -160,17 +176,60 @@ export default function QuestionBank() {
 
   const loadCounts = async () => {
     try {
-      const [mcq, coding, beh] = await Promise.all([
+      const [mcq, coding, beh, custom] = await Promise.all([
         adminApi.getQuestionBankQuestions({ category:'MCQ',       page:1, limit:1 }),
         adminApi.getQuestionBankQuestions({ category:'CODING',    page:1, limit:1 }),
         adminApi.getQuestionBankQuestions({ category:'BEHAVIORAL',page:1, limit:1 }),
+        fetchCustomQuestions({ limit: 1 }),
       ]);
       const m = mcq.data.pagination.total;
       const c = coding.data.pagination.total;
       const b = beh.data.pagination.total;
-      setCounts({ all: m+c+b, MCQ: m, CODING: c, BEHAVIORAL: b });
+      setCounts({ all: m+c+b, MCQ: m, CODING: c, BEHAVIORAL: b, CUSTOM: custom.total });
     } catch { /* silent */ }
   };
+
+  async function fetchCustomQuestions(options: {
+    limit?: number;
+    search?: string;
+  } = {}) {
+    const limit = options.limit ?? CUSTOM_FETCH_LIMIT;
+    const categoryResults = await Promise.all(
+      CUSTOM_CATEGORIES.map(async category => {
+        const firstResponse = await adminApi.getCustomRepositoryQuestions({
+          category,
+          page: 1,
+          limit,
+          search: options.search || undefined,
+        });
+        const { totalPages } = firstResponse.data.pagination;
+        if (totalPages <= 1) return firstResponse.data;
+
+        const restResponses = await Promise.all(
+          Array.from({ length: totalPages - 1 }, (_, index) =>
+            adminApi.getCustomRepositoryQuestions({
+              category,
+              page: index + 2,
+              limit,
+              search: options.search || undefined,
+            })
+          )
+        );
+
+        return {
+          questions: [
+            ...firstResponse.data.questions,
+            ...restResponses.flatMap(response => response.data.questions),
+          ],
+          pagination: firstResponse.data.pagination,
+        };
+      })
+    );
+    return {
+      questions: categoryResults.flatMap(result => result.questions),
+      total: categoryResults.reduce((sum, result) => sum + result.pagination.total, 0),
+    };
+  }
 
   const loadQuestions = async () => {
     setLoading(true);
@@ -185,6 +244,12 @@ export default function QuestionBank() {
         const total    = r1.data.pagination.total + r2.data.pagination.total + r3.data.pagination.total;
         setQuestions(combined);
         setPagination({ page, limit:20, total, totalPages: Math.ceil(total/20) });
+      } else if (activeItem.category === 'CUSTOM') {
+        const { questions: custom, total } = await fetchCustomQuestions({ search: search || undefined });
+        const start = (page - 1) * 20;
+        setQuestions(custom.slice(start, start + 20));
+        setPagination({ page, limit: 20, total, totalPages: Math.max(1, Math.ceil(total / 20)) });
+        setCounts(prev => ({ ...prev, CUSTOM: total }));
       } else {
         const { data } = await adminApi.getQuestionBankQuestions({
           category: activeItem.category as RepositoryCategory,
@@ -205,24 +270,7 @@ export default function QuestionBank() {
     finally { setLoading(false); }
   };
 
-  /* When any filter is active use the full allQuestions snapshot so pagination
-     doesn't hide matching questions that aren't on the current page.        */
-  const anyFilterActive = selectedSkills.size > 0 || selectedDiffs.size < 3;
-  const filterBase: RepositoryQuestion[] = anyFilterActive
-    ? (activeItem.category === 'all'
-        ? allQuestions
-        : allQuestions.filter(q => q.repositoryCategory === activeItem.category))
-    : questions;
-
-  const visibleQuestions = filterBase.filter(q => {
-    if (!selectedDiffs.has(q.difficulty as Difficulty)) return false;
-    if (selectedSkills.size === 0) return true;
-    const qTopics = new Set<string>([
-      ...(q.topic ? [q.topic] : []),
-      ...q.tags,
-    ]);
-    return [...selectedSkills].some(s => qTopics.has(s));
-  });
+  const visibleQuestions = questions.filter(q => selectedDiffs.has(q.difficulty as Difficulty));
 
   const handleToggle = async (q: RepositoryQuestion) => {
     const nextEnabled = !q.isEnabled;
@@ -238,7 +286,6 @@ export default function QuestionBank() {
         toast.success('Question enabled');
       }
       setQuestions(applyEnabledState);
-      setAllQuestions(applyEnabledState);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
       toast.error(e.response?.data?.error || 'Failed to update');
@@ -250,6 +297,14 @@ export default function QuestionBank() {
     setDraftSearch('');
     setSearch('');
     setPage(1);
+  };
+
+  const toggleDifficulty = (difficulty: Difficulty) => {
+    setSelectedDiffs(prev => {
+      const next = new Set(prev);
+      next.has(difficulty) ? next.delete(difficulty) : next.add(difficulty);
+      return next;
+    });
   };
 
   const handleEdit = (q: RepositoryQuestion) => {
@@ -325,51 +380,13 @@ export default function QuestionBank() {
     }
   };
 
-  const toggleDiff = (d: Difficulty) => {
-    setSelectedDiffs(prev => {
-      const next = new Set(prev);
-      next.has(d) ? next.delete(d) : next.add(d);
-      return next;
-    });
-  };
-
-  const toggleSkill = (s: string) => {
-    setSelectedSkills(prev => {
-      const next = new Set(prev);
-      next.has(s) ? next.delete(s) : next.add(s);
-      return next;
-    });
-  };
-
-  const skillsList = useMemo(() => {
-    const src = activeItem.category === 'all'
-      ? allQuestions
-      : allQuestions.filter(q => q.repositoryCategory === activeItem.category);
-    const cnt: Record<string, number> = {};
-    src.forEach(q => {
-      if (q.topic) cnt[q.topic] = (cnt[q.topic] || 0) + 1;
-      q.tags.forEach(t => { cnt[t] = (cnt[t] || 0) + 1; });
-    });
-    return Object.entries(cnt).sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ name, count }));
-  }, [allQuestions, activeItem]);
-
-  const filteredSkillsList = useMemo(() =>
-    skillSearch.trim()
-      ? skillsList.filter(s => s.name.toLowerCase().includes(skillSearch.toLowerCase()))
-      : skillsList,
-  [skillsList, skillSearch]);
-
-  const diffCounts = useMemo(() => {
-    const src = activeItem.category === 'all'
-      ? allQuestions
-      : allQuestions.filter(q => q.repositoryCategory === activeItem.category);
-    return (['easy','medium','hard'] as Difficulty[]).reduce((acc, d) => {
-      acc[d] = src.filter(q => q.difficulty === d).length;
-      return acc;
-    }, {} as Record<Difficulty, number>);
-  }, [allQuestions, activeItem]);
-
-  const totalShown = pagination?.total ?? visibleQuestions.length;
+  const isDifficultyFiltered = selectedDiffs.size < 3;
+  const totalShown = isDifficultyFiltered ? visibleQuestions.length : pagination?.total ?? visibleQuestions.length;
+  const difficultyCounts = questions.reduce<Record<Difficulty, number>>((acc, question) => {
+    const difficulty = question.difficulty as Difficulty;
+    if (difficulty in acc) acc[difficulty] += 1;
+    return acc;
+  }, { easy: 0, medium: 0, hard: 0 });
 
   /* extra stats from API if available */
   const usageCount = (q: RepositoryQuestion): string => {
@@ -453,15 +470,15 @@ export default function QuestionBank() {
                 border:'1px solid var(--admin-border)', minWidth:'160px', overflow:'hidden',
               }}>
                 {[
-                  { label:'MCQ question',        icon:'MCQ', path:'/admin/mcq/new' },
-                  { label:'Coding question',     icon:'</>', path:'/admin/coding/new' },
-                  { label:'Behavioral question', icon:'BEH', path:'/admin/behavioral/new' },
+                  { label:'MCQ question',        category:'MCQ' as RepositoryCategory, path:'/admin/mcq/new' },
+                  { label:'Coding question',     category:'CODING' as RepositoryCategory, path:'/admin/coding/new' },
+                  { label:'Behavioral question', category:'BEHAVIORAL' as RepositoryCategory, path:'/admin/behavioral/new' },
                 ].map(opt => (
                   <button key={opt.label} onClick={() => { setShowNewDrop(false); navigate(opt.path); }}
-                    style={{ width:'100%', textAlign:'left', padding:'10px 14px', border:'none', backgroundColor:'white', fontSize:'13px', color:'var(--admin-text-muted)', cursor:'pointer', borderBottom:'1px solid var(--admin-border)', display:'flex', alignItems:'center', gap:'8px' }}
+                    style={{ width:'100%', textAlign:'left', padding:'10px 14px', border:'none', backgroundColor:'white', fontSize:'13px', color:'var(--admin-text-muted)', cursor:'pointer', borderBottom:'1px solid var(--admin-border)', display:'flex', alignItems:'center', gap:'10px' }}
                     onMouseEnter={e=>(e.currentTarget.style.backgroundColor='rgba(31, 53, 86, 0.06)')}
                     onMouseLeave={e=>(e.currentTarget.style.backgroundColor='white')}>
-                    <span style={{ fontSize:'11px', color:'var(--admin-text-subtle)', width:'22px' }}>{opt.icon}</span>
+                    <TypeIcon cat={opt.category} size={26} iconSize={13} />
                     {opt.label}
                   </button>
                 ))}
@@ -472,88 +489,44 @@ export default function QuestionBank() {
       </div>
 
       {/* -- REPOSITORY LAYOUT -- */}
-      <div style={{ display:'grid', gridTemplateColumns:'220px minmax(0, 1fr)', gap:'18px', alignItems:'start' }}>
-        <aside style={{ display:'flex', flexDirection:'column', gap:'18px', position:'sticky', top:'16px' }}>
-          <div>
-            <p style={{ fontSize:'11px', fontWeight:700, color:'var(--admin-text-subtle)', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'0.04em' }}>Question Types</p>
-            <div style={{ display:'flex', flexDirection:'column', gap:'4px' }}>
-              {SIDEBAR_ITEMS.map(item => {
-                const isActive = activeItem.id === item.id;
-                const cnt = item.id === 'all'
-                  ? (counts.MCQ||0)+(counts.CODING||0)+(counts.BEHAVIORAL||0)
-                  : counts[item.id];
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => handleSidebarClick(item)}
-                    style={{
-                      minHeight:'34px', width:'100%', padding:'8px 10px', borderRadius:'var(--admin-control-radius)',
-                      border: isActive ? '1px solid var(--admin-accent)' : '1px solid transparent',
-                      backgroundColor: isActive ? 'var(--admin-accent)' : 'transparent',
-                      color: isActive ? 'white' : 'var(--admin-text-muted)',
-                      fontSize:'13px', fontWeight:600, cursor:'pointer',
-                      display:'flex', alignItems:'center', justifyContent:'space-between', gap:'10px', textAlign:'left',
-                    }}
-                    onMouseEnter={e=>{ if(!isActive) e.currentTarget.style.backgroundColor='var(--admin-hover)'; }}
-                    onMouseLeave={e=>{ if(!isActive) e.currentTarget.style.backgroundColor='transparent'; }}>
-                    <span>{item.label}</span>
-                    {cnt !== undefined && (
-                      <span style={{ fontSize:'11px', lineHeight:1.3, fontWeight:700, color: isActive ? 'rgba(255,255,255,0.86)' : 'var(--admin-text-subtle)' }}>{cnt}</span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div>
-            <p style={{ fontSize:'11px', fontWeight:700, color:'var(--admin-text-subtle)', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'0.04em' }}>Difficulty</p>
-            <div style={{ display:'flex', flexDirection:'column', gap:'4px' }}>
-              {(['easy','medium','hard'] as Difficulty[]).map(d => {
-                const selected = selectedDiffs.has(d);
-                return (
-                  <button
-                    key={d}
-                    onClick={() => toggleDiff(d)}
-                    style={{
-                      minHeight:'32px', padding:'7px 10px', borderRadius:'var(--admin-control-radius)',
-                      border: '1px solid transparent',
-                      backgroundColor: selected ? 'var(--admin-accent-soft)' : 'transparent',
-                      color: selected ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)',
-                      cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px',
-                      fontSize:'12px', fontWeight:600,
-                    }}>
-                    <span style={{ display:'inline-flex', alignItems:'center', gap:'8px', minWidth:0 }}>
-                      <input
-                        type="checkbox"
-                        checked={selected}
-                        readOnly
-                        tabIndex={-1}
-                        style={{
-                          width:'14px',
-                          height:'14px',
-                          margin:0,
-                          flexShrink:0,
-                          accentColor:'var(--admin-accent)',
-                          pointerEvents:'none',
-                        }}
-                      />
-                      <span style={{ textTransform:'capitalize' }}>{d}</span>
-                    </span>
-                    <span style={{ color: selected ? 'var(--admin-accent-hover)' : 'var(--admin-text-subtle)' }}>{diffCounts[d] || 0}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </aside>
-
+      <div>
         {/* -- MAIN CONTENT -- */}
         <main style={{ minWidth:0 }}>
+          <div
+            className="flex items-center gap-9 overflow-x-auto"
+            style={{
+              borderBottom:'1px solid var(--admin-border-soft)',
+              marginBottom:'14px',
+            }}
+          >
+            {SIDEBAR_ITEMS.map(item => {
+              const isActive = activeItem.id === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => handleSidebarClick(item)}
+                  className="flex items-center py-3 text-sm font-semibold transition-colors"
+                  style={{
+                    color: isActive ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)',
+                    border:0,
+                    borderBottom: isActive ? '2px solid var(--admin-accent)' : '2px solid transparent',
+                    background:'transparent',
+                    marginBottom:'-1px',
+                    whiteSpace:'nowrap',
+                    cursor:'pointer',
+                  }}
+                >
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
           {/* Search + count + sort */}
           <div style={{
             display:'grid',
-            gridTemplateColumns:'minmax(260px, 1fr) auto auto',
+            gridTemplateColumns:'minmax(260px, 1fr) auto auto auto',
             alignItems:'center',
             gap:'10px',
             marginBottom:'12px',
@@ -578,6 +551,60 @@ export default function QuestionBank() {
             {/* Count badge */}
             <div style={{ padding:'6px 14px', borderRadius:'20px', backgroundColor:META_BADGE_CFG.bg, fontSize:'12px', fontWeight:500, color:META_BADGE_CFG.color, whiteSpace:'nowrap', flexShrink:0 }}>
               {loading ? '...' : totalShown} questions
+            </div>
+            <div style={{
+              display:'flex',
+              alignItems:'center',
+              gap:'6px',
+              whiteSpace:'nowrap',
+            }}>
+              {(['easy', 'medium', 'hard'] as Difficulty[]).map(difficulty => {
+                const checked = selectedDiffs.has(difficulty);
+                return (
+                  <button
+                    key={difficulty}
+                    type="button"
+                    onClick={() => toggleDifficulty(difficulty)}
+                    className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-all"
+                    style={{
+                      backgroundColor: checked ? 'var(--admin-accent)' : 'white',
+                      color: checked ? 'white' : 'var(--admin-text-muted)',
+                      border: checked ? '1px solid var(--admin-accent)' : '1px solid var(--admin-border)',
+                      minWidth:0,
+                      whiteSpace:'nowrap',
+                      cursor:'pointer',
+                    }}
+                    onMouseEnter={e => {
+                      if (!checked) {
+                        e.currentTarget.style.backgroundColor = 'rgba(31, 53, 86, 0.08)';
+                        e.currentTarget.style.color = 'var(--admin-accent-hover)';
+                        e.currentTarget.style.borderColor = 'var(--admin-accent-disabled)';
+                      }
+                    }}
+                    onMouseLeave={e => {
+                      if (!checked) {
+                        e.currentTarget.style.backgroundColor = 'white';
+                        e.currentTarget.style.color = 'var(--admin-text-muted)';
+                        e.currentTarget.style.borderColor = 'var(--admin-border)';
+                      }
+                    }}
+                  >
+                    <span style={{ overflow:'hidden', textOverflow:'ellipsis' }}>
+                      {difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}
+                    </span>
+                    {difficultyCounts[difficulty] > 0 && (
+                      <span
+                        className="text-[11px] font-semibold"
+                        style={{
+                          color: checked ? 'rgba(255,255,255,0.86)' : 'var(--admin-text-subtle)',
+                        }}
+                      >
+                        {difficultyCounts[difficulty]}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
             {/* Sort */}
             <CustomSelect
@@ -606,20 +633,31 @@ export default function QuestionBank() {
               {sortedQuestions.map(q => {
                 const cat  = q.repositoryCategory;
                 const diff = q.difficulty as Difficulty;
-                const uses = usageCount(q);
                 const rate = correctRate(q);
                 const catLabel = cat === 'MCQ' ? 'MCQ' : cat === 'CODING' ? 'Coding' : 'Behavioral';
+                const isCustomQuestion = q.source === 'CUSTOM';
                 return (
                   <div key={q.id} style={{
+                    position:'relative',
                     display:'flex', alignItems:'center', gap:'14px',
                     backgroundColor: q.isEnabled ? 'white' : 'var(--admin-accent-soft)',
-                    borderRadius:'var(--admin-card-radius)', padding:'11px 14px',
+                    borderRadius:'8px', padding:'13px 14px 13px 18px',
                     boxShadow:'var(--admin-card-shadow)',
-                    border: q.isEnabled ? '1px solid transparent' : '1px solid var(--admin-accent-disabled)',
-                    transition:'box-shadow 0.15s',
+                    border: q.isEnabled ? '1px solid var(--admin-border-soft)' : '1px solid var(--admin-accent-disabled)',
+                    transition:'box-shadow 0.15s, border-color 0.15s, background-color 0.15s',
                   }}
-                    onMouseEnter={e=>(e.currentTarget.style.boxShadow='0 2px 8px rgba(31, 53, 86, 0.12)')}
+                    onMouseEnter={e=>(e.currentTarget.style.boxShadow='0 3px 12px rgba(31, 53, 86, 0.12)')}
                     onMouseLeave={e=>(e.currentTarget.style.boxShadow='var(--admin-card-shadow)')}>
+                    <div style={{
+                      position:'absolute',
+                      left:0,
+                      top:'10px',
+                      bottom:'10px',
+                      width:'3px',
+                      borderRadius:'0 4px 4px 0',
+                      backgroundColor: cat === 'MCQ' ? 'var(--admin-accent)' : cat === 'CODING' ? 'var(--admin-accent-hover)' : 'var(--admin-text-subtle)',
+                      opacity:0.45,
+                    }} />
 
                     {/* Type icon */}
                     <TypeIcon cat={cat} />
@@ -631,6 +669,9 @@ export default function QuestionBank() {
                       </p>
                       <div style={{ display:'flex', flexWrap:'wrap', gap:'5px', alignItems:'center' }}>
                         <Badge label={catLabel} {...META_BADGE_CFG} />
+                        {isCustomQuestion && (
+                          <Badge label="Custom" bg="rgba(234, 112, 48, 0.12)" color="var(--admin-accent)" />
+                        )}
                         <Badge label={diff.charAt(0).toUpperCase()+diff.slice(1)} {...META_BADGE_CFG} />
                         {q.topic && (
                           <Badge label={q.topic} {...META_BADGE_CFG} />
@@ -642,66 +683,65 @@ export default function QuestionBank() {
                     </div>
 
                     {/* Stats */}
-                    <div style={{ display:'flex', alignItems:'center', gap:'12px', flexShrink:0 }}>
-                      {/* Uses */}
-                      <div style={{ textAlign:'right' }}>
-                        <p style={{ fontSize:'15px', fontWeight:700, color:'var(--admin-text)', margin:0, lineHeight:1 }}>{uses}</p>
-                        <p style={{ fontSize:'10px', color:'var(--admin-text-subtle)', margin:'2px 0 0' }}>uses</p>
-                      </div>
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'12px', flexShrink:0 }}>
                       {/* Correct % */}
                       {rate && (
-                        <div style={{ textAlign:'right' }}>
+                        <div style={{ width:'54px', textAlign:'center' }}>
                           <p style={{ fontSize:'15px', fontWeight:700, color:'var(--admin-accent)', margin:0, lineHeight:1 }}>{rate}</p>
                           <p style={{ fontSize:'10px', color:'var(--admin-text-subtle)', margin:'2px 0 0' }}>correct</p>
                         </div>
                       )}
                       {/* Marks (when no rate) */}
                       {!rate && (
-                        <div style={{ textAlign:'right' }}>
+                        <div style={{ width:'54px', textAlign:'center' }}>
                           <p style={{ fontSize:'15px', fontWeight:700, color:'var(--admin-text-muted)', margin:0, lineHeight:1 }}>{q.marks}</p>
                           <p style={{ fontSize:'10px', color:'var(--admin-text-subtle)', margin:'2px 0 0' }}>marks</p>
                         </div>
                       )}
-                      {/* Add to test */}
-                      {(() => {
-                        const isAddingThis = fromTestId
-                          ? addingTestId === fromTestId + q.id
-                          : false;
-                        return (
+                      {!isCustomQuestion && (
+                        <>
+                          {/* Add to test */}
+                          {(() => {
+                            const isAddingThis = fromTestId
+                              ? addingTestId === fromTestId + q.id
+                              : false;
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => fromTestId ? void handleAddDirectToTest(q, fromTestId) : openAddToTest(q)}
+                                disabled={isAddingThis}
+                                title={fromTestId ? `Add to ${fromTestName ?? 'test'}` : 'Add to test'}
+                                className="admin-btn admin-btn-secondary"
+                                style={{ minHeight:'32px', padding:'6px 10px', fontSize:'12px' }}>
+                                {isAddingThis ? (
+                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2" style={{ borderColor:'var(--admin-accent-hover)' }} />
+                                ) : (
+                                  <Plus width={13} height={13} stroke="var(--admin-accent-hover)" strokeWidth={2.5} />
+                                )}
+                                Add
+                              </button>
+                            );
+                          })()}
+                          {/* Toggle enable/disable */}
                           <button
                             type="button"
-                            onClick={() => fromTestId ? void handleAddDirectToTest(q, fromTestId) : openAddToTest(q)}
-                            disabled={isAddingThis}
-                            title={fromTestId ? `Add to ${fromTestName ?? 'test'}` : 'Add to test'}
-                            className="admin-btn admin-btn-secondary"
-                            style={{ minHeight:'32px', padding:'6px 10px', fontSize:'12px' }}>
-                            {isAddingThis ? (
-                              <div className="animate-spin rounded-full h-3 w-3 border-b-2" style={{ borderColor:'var(--admin-accent-hover)' }} />
-                            ) : (
-                              <Plus width={13} height={13} stroke="var(--admin-accent-hover)" strokeWidth={2.5} />
-                            )}
-                            Add
+                            onClick={() => handleToggle(q)}
+                            title={q.isEnabled ? 'Disable question' : 'Enable question'}
+                            className="admin-icon-toggle"
+                            data-state={q.isEnabled ? 'on' : 'off'}>
+                            <ToggleIcon enabled={q.isEnabled} />
                           </button>
-                        );
-                      })()}
-                      {/* Toggle enable/disable */}
-                      <button
-                        type="button"
-                        onClick={() => handleToggle(q)}
-                        title={q.isEnabled ? 'Disable question' : 'Enable question'}
-                        className="admin-icon-toggle"
-                        data-state={q.isEnabled ? 'on' : 'off'}>
-                        <ToggleIcon enabled={q.isEnabled} />
-                      </button>
-                      {/* Edit */}
-                      <button
-                        type="button"
-                        onClick={() => handleEdit(q)}
-                        title="Edit question"
-                        style={{ padding:'6px 10px', borderRadius:'var(--admin-control-radius)', border:'1.5px solid var(--admin-border)', backgroundColor:'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'4px', fontSize:'12px', fontWeight:500, color:'var(--admin-text-muted)' }}>
-                        <Pencil width={13} height={13} stroke="var(--admin-text-muted)" strokeWidth={1.5} />
-                        Edit
-                      </button>
+                          {/* Edit */}
+                          <button
+                            type="button"
+                            onClick={() => handleEdit(q)}
+                            title="Edit question"
+                            style={{ padding:'6px 10px', borderRadius:'var(--admin-control-radius)', border:'1.5px solid var(--admin-border)', backgroundColor:'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'4px', fontSize:'12px', fontWeight:500, color:'var(--admin-text-muted)' }}>
+                            <Pencil width={13} height={13} stroke="var(--admin-text-muted)" strokeWidth={1.5} />
+                            Edit
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 );

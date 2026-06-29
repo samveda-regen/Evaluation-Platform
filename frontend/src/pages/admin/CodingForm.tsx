@@ -108,7 +108,7 @@ export default function CodingForm() {
       } else {
         await adminApi.createCoding(formData);
         toast.success('Question created');
-        navigate('/admin/repository/custom');
+        navigate('/admin/repository/question-bank', { state: { activeSection: 'CUSTOM' } });
       }
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } } };

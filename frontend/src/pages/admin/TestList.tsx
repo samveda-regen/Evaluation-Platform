@@ -5,8 +5,9 @@ import { adminApi } from '../../services/api';
 import { Test, Pagination } from '../../types';
 import { format } from 'date-fns';
 import { useAuthStore } from '../../context/authStore';
+import CustomSelect from '../../components/CustomSelect';
 import {
-  ChevronRight, ChevronLeft, ChevronDown, Download, Sparkles, Search,
+  ChevronRight, ChevronLeft, Download, Sparkles, Search,
   LayoutGrid, List, ClipboardCheck, MoreVertical, Eye, Mail, Archive, ArchiveRestore, Trash2,
   Clock, AlignLeft, Users,
 } from 'lucide-react';
@@ -67,7 +68,6 @@ export default function TestList() {
   const [invitationSummary, setInvitationSummary] = useState<InvitationSummary | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortBy>('recent');
-  const [sortMenuOpen, setSortMenuOpen] = useState(false);
 
   const latestRequestIdRef = useRef(0);
   const hasLoadedTestsRef = useRef(false);
@@ -186,18 +186,17 @@ export default function TestList() {
   };
 
   const handleExport = async () => {
+    if (!selectedTestIds.size) {
+      toast.error('Select at least one assessment to export');
+      return;
+    }
+
     setExporting(true);
     try {
-      const { data } = await adminApi.getTests(1, 100, appliedSearch);
-      let all: Test[] = data.tests || [];
-      const totalPages = data.pagination?.totalPages || 1;
-      for (let p = 2; p <= totalPages; p++) {
-        const r = await adminApi.getTests(p, 100, appliedSearch);
-        all = [...all, ...(r.data.tests||[])];
-      }
-      if (!all.length) { toast.error('No tests to export'); return; }
-      downloadCsv(all);
-      toast.success('Tests exported');
+      const selectedRows = tests.filter(test => selectedTestIds.has(test.id));
+      if (!selectedRows.length) { toast.error('Selected assessments are no longer available'); return; }
+      downloadCsv(selectedRows);
+      toast.success(`Exported ${selectedRows.length} assessment${selectedRows.length > 1 ? 's' : ''}`);
     } catch { toast.error('Failed to export'); } finally { setExporting(false); }
   };
 
@@ -248,6 +247,18 @@ export default function TestList() {
     : sortBy === 'attempts'
     ? [...filteredTests].sort((a, b) => (b._count?.attempts || 0) - (a._count?.attempts || 0))
     : filteredTests;
+  const visibleTestIds = sortedTests.map(test => test.id);
+  const allVisibleSelected = visibleTestIds.length > 0 && visibleTestIds.every(id => selectedTestIds.has(id));
+  const toggleSelectVisibleTests = () => {
+    setSelectedTestIds(prev => {
+      if (allVisibleSelected) {
+        const next = new Set(prev);
+        visibleTestIds.forEach(id => next.delete(id));
+        return next;
+      }
+      return new Set([...prev, ...visibleTestIds]);
+    });
+  };
 
   return (
     <div style={{ backgroundColor: '#F9FAFB', minHeight: '100%' }}>
@@ -274,7 +285,7 @@ export default function TestList() {
             className="btn btn-secondary"
           >
             <Download size={16} />
-            {exporting ? 'Exporting...' : 'Export'}
+            {exporting ? 'Exporting...' : selectedTestIds.size ? `Export (${selectedTestIds.size})` : 'Export'}
           </button>
           <Link
             to="/admin/tests/agent"
@@ -294,13 +305,55 @@ export default function TestList() {
 
       {/* Filter Bar */}
       <div
-        className="flex flex-wrap items-center gap-4 p-3 rounded-xl mb-5"
-        style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}
+        className="p-3 rounded-xl mb-5"
+        style={{
+          backgroundColor: 'white',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
+          display: 'grid',
+          gridTemplateColumns: 'auto minmax(0, 1fr) minmax(0, auto) auto',
+          alignItems: 'center',
+          gap: '10px',
+          overflow: 'visible',
+        }}
       >
+        <label
+          title={allVisibleSelected ? 'Clear selected assessments' : 'Select visible assessments'}
+          style={{
+            height: '36px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '7px',
+            padding: '0 2px',
+            border: 'none',
+            backgroundColor: 'transparent',
+            color: 'var(--admin-text-muted)',
+            fontSize: '12px',
+            fontWeight: 600,
+            cursor: sortedTests.length ? 'pointer' : 'not-allowed',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={allVisibleSelected}
+            disabled={!sortedTests.length}
+            onChange={toggleSelectVisibleTests}
+            className="h-3.5 w-3.5 rounded"
+            style={{ accentColor: 'var(--admin-button-primary)', margin: 0 }}
+          />
+          Select all
+        </label>
+
         {/* Search */}
         <div
           className="flex items-center gap-2 rounded-lg px-3"
-          style={{ backgroundColor: 'var(--admin-surface-soft)', border: '1px solid var(--admin-border)', height: '36px', minWidth: '320px', flex: '1 1 420px', maxWidth: '560px' }}
+          style={{
+            backgroundColor: 'var(--admin-surface-soft)',
+            border: '1px solid var(--admin-border)',
+            height: '36px',
+            minWidth: 0,
+          }}
         >
           <Search size={16} color="var(--admin-text-subtle)" style={{ flexShrink: 0 }} />
           <input
@@ -313,18 +366,20 @@ export default function TestList() {
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        <div className="flex items-center gap-1.5" style={{ minWidth: 0 }}>
           {tabs.map(tab => {
             const isActive = activeTab === tab.key;
             return (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-all"
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-all"
               style={{
                 backgroundColor: isActive ? 'var(--admin-accent)' : 'white',
                 color: isActive ? 'white' : 'var(--admin-text-muted)',
                 border: isActive ? '1px solid var(--admin-accent)' : '1px solid var(--admin-border)',
+                minWidth: 0,
+                whiteSpace: 'nowrap',
               }}
               onMouseEnter={e => {
                 if (!isActive) {
@@ -341,7 +396,7 @@ export default function TestList() {
                 }
               }}
             >
-              {tab.label}
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
               {tabCounts[tab.key] > 0 && (
                 <span
                   className="text-[11px] font-semibold"
@@ -357,42 +412,18 @@ export default function TestList() {
         </div>
 
         {/* Right: sort + view */}
-        <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
+        <div className="flex items-center gap-2" style={{ minWidth: 0, justifyContent: 'flex-end' }}>
           {refreshing && <span className="text-xs" style={{ color: 'var(--admin-accent)' }}>Updating...</span>}
-          <div className="relative">
-            <button
-              onClick={() => setSortMenuOpen(p => !p)}
-              className="btn btn-secondary justify-between"
-              style={{ width: '180px', flexShrink: 0 }}
-            >
-              <span className="truncate">{sortLabels[sortBy]}</span>
-              <ChevronDown size={12} />
-            </button>
-            {sortMenuOpen && (
-              <div
-                className="absolute right-0 top-11 z-30 rounded-md py-1"
-                style={{ backgroundColor: 'white', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', border: '1px solid var(--admin-border)', width: '180px' }}
-              >
-                {(['recent', 'name', 'attempts'] as SortBy[]).map(opt => (
-                  <button
-                    key={opt}
-                    onClick={() => { setSortBy(opt); setSortMenuOpen(false); }}
-                    className="flex w-full items-center text-sm text-left"
-                    style={{
-                      padding: '8px 14px',
-                      backgroundColor: sortBy === opt ? 'var(--admin-accent-soft)' : 'transparent',
-                      color: sortBy === opt ? 'var(--admin-text)' : 'var(--admin-text-muted)',
-                      borderRadius: 0,
-                      fontWeight: sortBy === opt ? 600 : 400,
-                      transition: 'background-color 0.13s',
-                    }}
-                  >
-                    {sortLabels[opt]}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <CustomSelect
+            value={sortBy}
+            onChange={value => setSortBy(value as SortBy)}
+            options={[
+              { value: 'recent', label: sortLabels.recent },
+              { value: 'name', label: sortLabels.name },
+              { value: 'attempts', label: sortLabels.attempts },
+            ]}
+            style={{ width: '170px', minWidth: '170px' }}
+          />
           <div
             className="flex items-center rounded-lg border"
             style={{ borderColor: 'var(--admin-accent-disabled)', overflow: 'hidden' }}
@@ -585,11 +616,9 @@ export default function TestList() {
               type="checkbox"
               className="h-4 w-4 rounded"
               style={{ accentColor: 'var(--admin-button-primary)' }}
-              checked={tests.length > 0 && tests.every(t => selectedTestIds.has(t.id))}
-              onChange={() => {
-                if (tests.every(t => selectedTestIds.has(t.id))) setSelectedTestIds(new Set());
-                else setSelectedTestIds(new Set(tests.map(t => t.id)));
-              }}
+              checked={allVisibleSelected}
+              disabled={!sortedTests.length}
+              onChange={toggleSelectVisibleTests}
             />
             <span>TEST</span>
             <span>STATUS</span>
@@ -664,9 +693,6 @@ export default function TestList() {
       )}
 
       {/* Click-away overlays */}
-      {sortMenuOpen && (
-        <div className="fixed inset-0 z-20" onClick={() => setSortMenuOpen(false)} />
-      )}
       {openMenuId && (
         <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
       )}

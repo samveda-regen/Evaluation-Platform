@@ -157,7 +157,7 @@ export default function MCQForm() {
         const id: string | undefined = res?.data?.question?.id;
         if (id && mediaAssets.length) await adminApi.assignMediaToQuestion(id, mediaAssets.map(a=>a.id));
         toast.success('Question created');
-        navigate('/admin/repository/custom');
+        navigate('/admin/repository/question-bank', { state: { activeSection: 'CUSTOM' } });
       }
     } catch (err: unknown) {
       toast.error((err as {response?:{data?:{error?:string}}})?.response?.data?.error || 'Save failed');

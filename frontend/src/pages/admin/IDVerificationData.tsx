@@ -330,6 +330,12 @@ export default function IDVerificationData() {
   const hasConf   = selected?.confidence !== undefined && selected.confidence !== null;
   const confColor = conf >= 80 ? '#10B981' : conf >= 60 ? 'var(--admin-accent)' : '#EF4444';
   const selStatus = selected ? STATUS_CFG[selected.status] : null;
+  const queueFilterTabs: Array<{ key: typeof queueFilter; label: string; count?: number }> = [
+    { key: 'pending', label: 'Pending', count: stats?.pending },
+    { key: 'all', label: 'All', count: stats ? stats.pending + stats.verified + stats.mismatch : undefined },
+    { key: 'verified', label: 'Verified', count: stats?.verified },
+    { key: 'rejected', label: 'Rejected', count: stats?.mismatch },
+  ];
 
   return (
     <div style={{ backgroundColor: '#F9FAFB', minHeight: '100%' }}>
@@ -369,20 +375,46 @@ export default function IDVerificationData() {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
             <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#111827', margin: 0 }}>Verification queue</h2>
             {/* Filter tabs */}
-            <div style={{ display: 'flex', gap: '4px', backgroundColor: 'var(--admin-border)', borderRadius: '8px', padding: '3px' }}>
-              {(['pending', 'all', 'verified', 'rejected'] as const).map(f => (
-                <button key={f} onClick={() => setQueueFilter(f)}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0 }}>
+              {queueFilterTabs.map(tab => {
+                const isActive = queueFilter === tab.key;
+                return (
+                <button key={tab.key} onClick={() => setQueueFilter(tab.key)}
+                  className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium transition-all"
                   style={{
-                    padding: '4px 10px', borderRadius: '6px', border: 'none', fontSize: '11px', fontWeight: 600, cursor: 'pointer',
-                    backgroundColor: queueFilter === f ? 'white' : 'transparent',
-                    color: queueFilter === f ? '#111827' : '#6B7280',
-                    boxShadow: queueFilter === f ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                    textTransform: 'capitalize',
+                    backgroundColor: isActive ? 'var(--admin-accent)' : 'white',
+                    color: isActive ? 'white' : 'var(--admin-text-muted)',
+                    border: isActive ? '1px solid var(--admin-accent)' : '1px solid var(--admin-border)',
+                    minWidth: 0,
+                    whiteSpace: 'nowrap',
+                    cursor: 'pointer',
+                  }}
+                  onMouseEnter={e => {
+                    if (!isActive) {
+                      e.currentTarget.style.backgroundColor = 'rgba(31, 53, 86, 0.08)';
+                      e.currentTarget.style.color = 'var(--admin-accent-hover)';
+                      e.currentTarget.style.borderColor = 'var(--admin-accent-disabled)';
+                    }
+                  }}
+                  onMouseLeave={e => {
+                    if (!isActive) {
+                      e.currentTarget.style.backgroundColor = 'white';
+                      e.currentTarget.style.color = 'var(--admin-text-muted)';
+                      e.currentTarget.style.borderColor = 'var(--admin-border)';
+                    }
                   }}
                 >
-                  {f}
+                  <span>{tab.label}</span>
+                  {tab.count !== undefined && tab.count > 0 && (
+                    <span
+                      className="text-[11px] font-semibold"
+                      style={{ color: isActive ? 'rgba(255,255,255,0.86)' : 'var(--admin-text-subtle)' }}
+                    >
+                      {tab.count}
+                    </span>
+                  )}
                 </button>
-              ))}
+              );})}
             </div>
           </div>
 

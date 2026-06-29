@@ -64,7 +64,7 @@ export default function BehavioralForm() {
       } else {
         await adminApi.createCustomBehavioral(formData);
         toast.success('Question created');
-        navigate('/admin/repository/custom');
+        navigate('/admin/repository/question-bank', { state: { activeSection: 'CUSTOM' } });
       }
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };

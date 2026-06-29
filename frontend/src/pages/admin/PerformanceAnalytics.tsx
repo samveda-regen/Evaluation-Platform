@@ -3,8 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import api, { adminApi } from '../../services/api';
 import BackButton from '../../components/BackButton';
+import CustomSelect from '../../components/CustomSelect';
 import {
-  ChevronDown,
   FileDown,
   Users,
   PieChart,
@@ -162,7 +162,6 @@ export default function PerformanceAnalytics() {
   /* If arrived via /admin/tests/:testId/analytics, start with that test selected */
   const [selectedTestId, setSelectedTestId] = useState(routeTestId || '');
   const [tests,          setTests]          = useState<TestOption[]>([]);
-  const [showDropdown,   setShowDropdown]   = useState(false);
   const [loading,        setLoading]        = useState(true);
   const [trendWin,       setTrendWin]       = useState<'7d'|'30d'|'90d'>('30d');
 
@@ -318,8 +317,6 @@ export default function PerformanceAnalytics() {
         .map(c=>({ id:c.candidateId, name:c.candidateName||c.candidateEmail, pct:Math.round(c.percentage), trust:Math.round(c.trustScore) }))
     : (overview?.topCandidates||[]).map(c=>({ id:c.candidateId, name:c.candidateName, pct:c.score, trust:c.trustScore, attemptId:c.attemptId }));
 
-  const selectedTestName = selectedTestId ? (tests.find(t=>t.id===selectedTestId)?.name || 'Test') : 'All tests';
-
   if (loading) return (
     <div style={{ display:'flex', justifyContent:'center', padding:'80px 0' }}>
       <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor:'var(--admin-accent)' }} />
@@ -341,49 +338,15 @@ export default function PerformanceAnalytics() {
 
         <div style={{ display:'flex', alignItems:'center', gap:'10px', flexShrink:0 }}>
           {/* Test selector dropdown */}
-          <div style={{ position:'relative', width:'220px', flexShrink:0 }}>
-            <button
-              onClick={() => setShowDropdown(p => !p)}
-              style={{
-                width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between', gap:'8px', padding:'8px 14px',
-                border:'1px solid var(--admin-border)', borderRadius:'8px', backgroundColor:'white',
-                fontSize:'13px', color:'var(--admin-text-muted)', cursor:'pointer',
-              }}
-            >
-              <span style={{ minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{selectedTestName}</span>
-              <ChevronDown size={12} color="var(--admin-text-muted)" style={{ flexShrink:0 }} />
-            </button>
-            {showDropdown && (
-              <div style={{
-                position:'absolute', top:'100%', right:0, marginTop:'4px', zIndex:20,
-                backgroundColor:'white', borderRadius:'10px', boxShadow:'0 8px 24px rgba(0,0,0,0.12)',
-                border:'1px solid var(--admin-border)', minWidth:'220px', maxHeight:'280px', overflowY:'auto',
-              }}>
-                <button
-                  onClick={() => { setSelectedTestId(''); setShowDropdown(false); }}
-                  style={{
-                    width:'100%', textAlign:'left', padding:'10px 14px', border:'none',
-                    backgroundColor: !selectedTestId ? 'var(--admin-accent-soft)' : 'white',
-                    color: !selectedTestId ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)',
-                    fontSize:'13px', cursor:'pointer', borderBottom:'1px solid var(--admin-border)',
-                  }}
-                >All tests</button>
-                {tests.map(t => (
-                  <button key={t.id}
-                    onClick={() => { setSelectedTestId(t.id); setShowDropdown(false); }}
-                    style={{
-                      width:'100%', textAlign:'left', padding:'10px 14px', border:'none',
-                      backgroundColor: selectedTestId===t.id ? 'var(--admin-accent-soft)' : 'white',
-                      color: selectedTestId===t.id ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)',
-                      fontSize:'13px', cursor:'pointer', borderBottom:'1px solid var(--admin-border)',
-                    }}
-                  >
-                    <p style={{ margin:0, fontWeight:500, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t.name}</p>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <CustomSelect
+            value={selectedTestId}
+            onChange={setSelectedTestId}
+            options={[
+              { value:'', label:'All tests' },
+              ...tests.map(t => ({ value:t.id, label:t.name })),
+            ]}
+            style={{ width:'220px', minWidth:'220px' }}
+          />
 
           {/* Export (only when a test is selected) */}
           {isTestMode && (

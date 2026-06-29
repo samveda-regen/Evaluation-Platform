@@ -1,314 +1,343 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { toast } from 'react-hot-toast';
-import { adminApi } from '../../services/api';
-import { getRealtimeSocket } from '../../services/realtimeService';
-import BackButton from '../../components/BackButton';
+import {
+  AlertTriangle,
+  ChevronDown,
+  Eye,
+  Mic,
+  Monitor,
+  Radio,
+  Search,
+  ShieldCheck,
+} from 'lucide-react';
 
-interface LiveCandidate {
-  sessionId: string;
-  attemptId: string;
-  candidate: {
-    id: string;
-    name: string;
-    email: string;
-  };
-  status: {
-    online: boolean;
-    cameraEnabled: boolean;
-    microphoneEnabled: boolean;
-    screenShareEnabled: boolean;
-    cameraBlocked?: boolean;
-    testFrozen?: boolean;
-    monitorCount: number;
-    externalMonitorDetected: boolean;
-    faceVerified: boolean;
-  };
-  violations: number;
-  isFlagged: boolean;
-  trustScore: number;
-  livePreviewUrl?: string | null;
-  lastViolation: {
-    type: string;
-    severity: string;
-    description: string;
-    timestamp: string;
-  } | null;
+interface DemoCandidate {
+  initials: string;
+  name: string;
+  role: string;
+  trust: number;
+  question: string;
+  warning?: string;
+  highlighted?: boolean;
 }
 
-interface ViolationFeedItem {
-  id: string;
-  attemptId: string;
-  severity: string;
-  description: string;
-  type: string;
-  timestamp: string;
+const demoCandidates: DemoCandidate[] = [
+  { initials: 'DC', name: 'Daniel Cruz', role: 'Data Analyst - SQL', trust: 88, question: 'Q12 / 20' },
+  { initials: 'PP', name: 'Priya Patel', role: 'Full-Stack Engineer', trust: 72, question: 'Q8 / 23' },
+  { initials: 'ML', name: 'Marcus Lee', role: 'Back-End Developer', trust: 54, question: 'Q5 / 23', warning: 'Phone detected', highlighted: true },
+  { initials: 'NK', name: 'Nina Kovac', role: 'Front-End Developer', trust: 91, question: 'Q15 / 19' },
+  { initials: 'SA', name: 'Sara Ahmed', role: 'Data Analyst - SQL', trust: 80, question: 'Q3 / 20' },
+  { initials: 'TB', name: 'Tom Becker', role: 'Back-End Developer', trust: 66, question: 'Q19 / 23' },
+];
+
+function trustColor(score: number) {
+  if (score >= 80) return '#059669';
+  if (score >= 65) return '#D97706';
+  return '#E11D48';
+}
+
+function LiveTile({ candidate }: { candidate: DemoCandidate }) {
+  return (
+    <div
+      style={{
+        backgroundColor: 'white',
+        border: candidate.highlighted ? '2px solid #FDA4AF' : '1px solid var(--admin-border-soft)',
+        borderRadius: '14px',
+        boxShadow: candidate.highlighted
+          ? '0 14px 32px rgba(225, 29, 72, 0.12)'
+          : '0 12px 28px rgba(17, 22, 42, 0.08)',
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          position: 'relative',
+          height: '200px',
+          background: 'linear-gradient(145deg, #101827 0%, #17243A 100%)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            top: '12px',
+            left: '12px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '4px 9px',
+            borderRadius: '7px',
+            backgroundColor: '#E11D48',
+            color: 'white',
+            fontSize: '10px',
+            fontWeight: 800,
+            letterSpacing: '0.02em',
+          }}
+        >
+          <span style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'white' }} />
+          LIVE
+        </div>
+
+        <div style={{ position: 'absolute', top: '10px', right: '10px', display: 'flex', gap: '6px' }}>
+          {[Mic, Monitor].map((IconCmp, index) => (
+            <button
+              key={index}
+              type="button"
+              title={index === 0 ? 'Microphone active' : 'Screen visible'}
+              aria-label={index === 0 ? 'Microphone active' : 'Screen visible'}
+              style={{
+                width: '26px',
+                height: '26px',
+                borderRadius: '6px',
+                border: '1px solid rgba(255,255,255,0.08)',
+                backgroundColor: 'rgba(0,0,0,0.36)',
+                color: 'white',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <IconCmp size={13} />
+            </button>
+          ))}
+        </div>
+
+        <div
+          style={{
+            width: '66px',
+            height: '66px',
+            borderRadius: '50%',
+            backgroundColor: 'rgba(255,255,255,0.10)',
+            border: '1px solid rgba(255,255,255,0.05)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'white',
+            fontSize: '13px',
+            fontWeight: 800,
+          }}
+        >
+          {candidate.initials}
+        </div>
+
+        {candidate.warning && (
+          <div
+            style={{
+              position: 'absolute',
+              left: '12px',
+              bottom: '12px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 10px',
+              borderRadius: '7px',
+              backgroundColor: '#E11D48',
+              color: 'white',
+              fontSize: '11px',
+              fontWeight: 700,
+            }}
+          >
+            <AlertTriangle size={12} />
+            {candidate.warning}
+          </div>
+        )}
+
+        <span
+          style={{
+            position: 'absolute',
+            right: '10px',
+            bottom: '12px',
+            padding: '3px 8px',
+            borderRadius: '6px',
+            backgroundColor: 'rgba(0,0,0,0.62)',
+            color: 'white',
+            fontSize: '11px',
+            fontWeight: 800,
+          }}
+        >
+          {candidate.question}
+        </span>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '15px 14px 16px' }}>
+        <div
+          style={{
+            width: '38px',
+            height: '38px',
+            borderRadius: '50%',
+            backgroundColor: 'var(--admin-accent)',
+            color: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '12px',
+            fontWeight: 800,
+            flexShrink: 0,
+          }}
+        >
+          {candidate.initials}
+        </div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <p style={{ margin: 0, color: 'var(--admin-text)', fontSize: '14px', fontWeight: 800, lineHeight: 1.25 }}>
+            {candidate.name}
+          </p>
+          <p style={{ margin: '2px 0 0', color: 'var(--admin-text-subtle)', fontSize: '12px', lineHeight: 1.25 }}>
+            {candidate.role}
+          </p>
+        </div>
+        <div style={{ textAlign: 'center', flexShrink: 0, width: '42px' }}>
+          <p style={{ margin: 0, color: trustColor(candidate.trust), fontSize: '17px', fontWeight: 900, lineHeight: 1 }}>
+            {candidate.trust}
+          </p>
+          <p style={{ margin: '3px 0 0', color: 'var(--admin-text-subtle)', fontSize: '10px', lineHeight: 1 }}>
+            trust
+          </p>
+        </div>
+        <button
+          type="button"
+          title="Preview session"
+          aria-label="Preview session"
+          style={{
+            width: '34px',
+            height: '34px',
+            borderRadius: '9px',
+            border: '1px solid var(--admin-border-soft)',
+            backgroundColor: 'white',
+            color: 'var(--admin-accent)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <Eye size={15} />
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export default function LiveProctoring() {
-  const { testId } = useParams<{ testId: string }>();
-  const navigate = useNavigate();
-  const [loading, setLoading] = useState(true);
-  const [candidates, setCandidates] = useState<LiveCandidate[]>([]);
-  const [violations, setViolations] = useState<ViolationFeedItem[]>([]);
-  const candidateIdsRef = useRef<Set<string>>(new Set());
-  const refreshStateRef = useRef<{ inFlight: boolean; lastAt: number }>({ inFlight: false, lastAt: 0 });
-
-  const loadLiveData = useCallback(async (withLoading = true) => {
-    if (!testId) return;
-    try {
-      if (withLoading) setLoading(true);
-      const { data } = await adminApi.getLiveProctoringCandidates(testId);
-      setCandidates(data.candidates || []);
-    } catch (error) {
-      toast.error('Failed to load live proctoring data');
-    } finally {
-      if (withLoading) setLoading(false);
-    }
-  }, [testId]);
-
-  const reloadLiveDataThrottled = useCallback(async () => {
-    const now = Date.now();
-    const guard = refreshStateRef.current;
-    if (guard.inFlight) return;
-    if (now - guard.lastAt < 1500) return;
-    guard.inFlight = true;
-    guard.lastAt = now;
-    try {
-      await loadLiveData(false);
-    } finally {
-      guard.inFlight = false;
-    }
-  }, [loadLiveData]);
-
-  useEffect(() => {
-    if (!testId) return;
-    void loadLiveData(true);
-    const refreshInterval = setInterval(() => {
-      void loadLiveData(false);
-    }, 15000);
-    return () => clearInterval(refreshInterval);
-  }, [testId, loadLiveData]);
-
-  useEffect(() => {
-    candidateIdsRef.current = new Set(candidates.map(candidate => candidate.attemptId));
-  }, [candidates]);
-
-  useEffect(() => {
-    if (!testId) return;
-    const socket = getRealtimeSocket();
-    socket.emit('admin-proctor-join', testId);
-
-    const upsertCandidateStatus = (attemptId: string, patch: Partial<LiveCandidate['status']>) => {
-      setCandidates(prev => prev.map(candidate => {
-        if (candidate.attemptId !== attemptId) return candidate;
-        return {
-          ...candidate,
-          status: {
-            ...candidate.status,
-            ...patch,
-          },
-        };
-      }));
-    };
-
-    const handleCandidateOnline = (payload: { attemptId: string }) => {
-      if (!candidateIdsRef.current.has(payload.attemptId)) {
-        void reloadLiveDataThrottled();
-        return;
-      }
-      upsertCandidateStatus(payload.attemptId, { online: true });
-    };
-
-    const handleCandidateOffline = (payload: { attemptId: string }) => {
-      if (!candidateIdsRef.current.has(payload.attemptId)) {
-        void reloadLiveDataThrottled();
-        return;
-      }
-      upsertCandidateStatus(payload.attemptId, { online: false });
-    };
-
-    const handleStatus = (payload: {
-      attemptId: string;
-      status: {
-        cameraOn?: boolean;
-        cameraEnabled?: boolean;
-        micOn?: boolean;
-        microphoneEnabled?: boolean;
-        screenSharing?: boolean;
-        screenShareEnabled?: boolean;
-        faceDetected?: boolean;
-        lookingAtScreen?: boolean;
-        cameraBlocked?: boolean;
-        testFrozen?: boolean;
-        monitorCount?: number;
-        externalMonitorDetected?: boolean;
-        online?: boolean;
-      };
-    }) => {
-      if (!candidateIdsRef.current.has(payload.attemptId)) {
-        void reloadLiveDataThrottled();
-        return;
-      }
-      upsertCandidateStatus(payload.attemptId, {
-        cameraEnabled: payload.status.cameraOn ?? payload.status.cameraEnabled ?? false,
-        microphoneEnabled: payload.status.micOn ?? payload.status.microphoneEnabled ?? false,
-        screenShareEnabled: payload.status.screenSharing ?? payload.status.screenShareEnabled ?? false,
-        cameraBlocked: payload.status.cameraBlocked ?? false,
-        testFrozen: payload.status.testFrozen ?? false,
-        monitorCount: payload.status.monitorCount ?? 1,
-        externalMonitorDetected: payload.status.externalMonitorDetected ?? false,
-        online: payload.status.online ?? true,
-      });
-    };
-
-    const handleViolation = (payload: {
-      attemptId: string;
-      violation: { type: string; severity: string; description: string; timestamp: string };
-    }) => {
-      if (!candidateIdsRef.current.has(payload.attemptId)) {
-        void reloadLiveDataThrottled();
-      }
-      setCandidates(prev => prev.map(candidate => {
-        if (candidate.attemptId !== payload.attemptId) return candidate;
-        return {
-          ...candidate,
-          violations: candidate.violations + 1,
-          lastViolation: payload.violation,
-        };
-      }));
-      setViolations(prev => [{
-        id: `${payload.attemptId}-${payload.violation.timestamp}-${payload.violation.type}`,
-        attemptId: payload.attemptId,
-        severity: payload.violation.severity,
-        description: payload.violation.description,
-        type: payload.violation.type,
-        timestamp: payload.violation.timestamp,
-      }, ...prev].slice(0, 100));
-    };
-
-    const handleLiveFrame = (payload: { attemptId: string; frame: string }) => {
-      if (!candidateIdsRef.current.has(payload.attemptId)) {
-        void reloadLiveDataThrottled();
-        return;
-      }
-      setCandidates(prev => prev.map(candidate => {
-        if (candidate.attemptId !== payload.attemptId) return candidate;
-        return {
-          ...candidate,
-          livePreviewUrl: `data:image/jpeg;base64,${payload.frame}`,
-        };
-      }));
-    };
-
-    socket.on('candidate-online', handleCandidateOnline);
-    socket.on('candidate-offline', handleCandidateOffline);
-    socket.on('status-update', handleStatus);
-    socket.on('candidate-status', handleStatus as any);
-    socket.on('violation-detected', handleViolation);
-    socket.on('live-frame', handleLiveFrame);
-
-    return () => {
-      socket.off('candidate-online', handleCandidateOnline);
-      socket.off('candidate-offline', handleCandidateOffline);
-      socket.off('status-update', handleStatus);
-      socket.off('candidate-status', handleStatus as any);
-      socket.off('violation-detected', handleViolation);
-      socket.off('live-frame', handleLiveFrame);
-    };
-  }, [testId, reloadLiveDataThrottled]);
-
-  const stats = useMemo(() => {
-    const online = candidates.filter(c => c.status.online).length;
-    const flagged = candidates.filter(c => c.isFlagged).length;
-    const highRisk = candidates.filter(c => (c.trustScore || 100) < 60).length;
-    return { online, flagged, highRisk, total: candidates.length };
-  }, [candidates]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600" />
-      </div>
-    );
-  }
-
   return (
-    <div>
-      <div className="flex items-start gap-3 mb-6">
-        <BackButton mt="0" />
-        <h1 style={{ fontSize: "32px", fontWeight: 700, letterSpacing: "-0.02em", color: "var(--admin-text)", margin: 0, lineHeight: 1.2 }}>Live Proctoring</h1>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <div className="card"><p className="text-sm text-gray-500">Candidates</p><p className="text-2xl font-bold">{stats.total}</p></div>
-        <div className="card"><p className="text-sm text-gray-500">Online</p><p className="text-2xl font-bold text-amber-600">{stats.online}</p></div>
-        <div className="card"><p className="text-sm text-gray-500">Flagged</p><p className="text-2xl font-bold text-red-600">{stats.flagged}</p></div>
-        <div className="card"><p className="text-sm text-gray-500">High Risk</p><p className="text-2xl font-bold text-orange-600">{stats.highRisk}</p></div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 card">
-          <h2 className="text-lg font-semibold mb-4">Candidate Status</h2>
-          {candidates.length === 0 ? (
-            <p className="text-gray-500">No active proctoring sessions.</p>
-          ) : (
-            <div className="space-y-3">
-              {candidates.map(candidate => (
-                <div key={candidate.attemptId} className="border rounded-lg p-4">
-                  <div className="flex justify-between">
-                    <div>
-                      <p className="font-semibold">{candidate.candidate.name}</p>
-                      <p className="text-sm text-gray-500">{candidate.candidate.email}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className={candidate.status.online ? 'text-amber-600 font-medium' : 'text-gray-500'}>{candidate.status.online ? 'Online' : 'Offline'}</p>
-                      <p className="text-sm text-gray-500">Trust: {Math.round(candidate.trustScore || 100)}%</p>
-                    </div>
-                  </div>
-                  {candidate.livePreviewUrl && (
-                    <img
-                      src={candidate.livePreviewUrl}
-                      alt="Live candidate snapshot"
-                      className="mt-3 w-full max-h-48 object-contain rounded border"
-                    />
-                  )}
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                    <span className={`badge ${candidate.status.cameraEnabled ? 'badge-success' : 'badge-error'}`}>Cam</span>
-                    <span className={`badge ${candidate.status.microphoneEnabled ? 'badge-success' : 'badge-error'}`}>Mic</span>
-                    <span className={`badge ${candidate.status.screenShareEnabled ? 'badge-success' : 'badge-error'}`}>Screen</span>
-                    <span className={`badge ${candidate.status.monitorCount > 1 ? 'badge-error' : 'badge-info'}`}>Monitors {candidate.status.monitorCount}</span>
-                    {candidate.status.testFrozen && <span className="badge badge-error">Frozen</span>}
-                    <span className={`badge ${candidate.violations > 0 ? 'badge-warning' : 'badge-success'}`}>Violations {candidate.violations}</span>
-                    {candidate.isFlagged && <span className="badge badge-error">Flagged</span>}
-                  </div>
-                  {candidate.lastViolation && (
-                    <p className="text-sm text-red-700 mt-2">
-                      Last: {candidate.lastViolation.type.replace(/_/g, ' ')} - {candidate.lastViolation.description}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+    <div style={{ backgroundColor: '#F9FAFB', minHeight: '100%' }}>
+      <div className="admin-page-header" style={{ marginBottom: '24px' }}>
+        <div className="admin-page-heading">
+          <div>
+            <h1 className="admin-page-title" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <span>Live Proctoring</span>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  height: '24px',
+                  padding: '0 10px',
+                  borderRadius: '999px',
+                  backgroundColor: '#FFF7ED',
+                  border: '1px solid #FED7AA',
+                  color: '#C45F20',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  letterSpacing: '0.04em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                Coming Soon
+              </span>
+            </h1>
+            <p className="admin-page-subtitle">
+              A visual demo of real-time candidate monitoring, trust signals, and live session alerts.
+            </p>
+          </div>
         </div>
 
-        <div className="card">
-          <h2 className="text-lg font-semibold mb-4">Live Violation Feed</h2>
-          {violations.length === 0 ? (
-            <p className="text-gray-500">No live violations yet.</p>
-          ) : (
-            <div className="space-y-2 max-h-[560px] overflow-auto">
-              {violations.map(v => (
-                <div key={v.id} className="border rounded p-2">
-                  <p className="text-sm font-medium">{v.type.replace(/_/g, ' ')}</p>
-                  <p className="text-xs text-gray-600">{v.description}</p>
-                  <p className="text-xs text-gray-500">Attempt: {v.attemptId.slice(0, 8)} | {v.severity}</p>
-                </div>
-              ))}
-            </div>
-          )}
+        <div className="admin-header-actions">
+          <button
+            type="button"
+            className="admin-btn admin-btn-secondary"
+            style={{ color: '#047857', borderColor: '#A7F3D0', backgroundColor: '#ECFDF5' }}
+          >
+            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#34D399' }} />
+            6 live
+          </button>
+          <button
+            type="button"
+            className="admin-btn admin-btn-secondary"
+          >
+            Back-End Developer - No
+            <ChevronDown size={15} color="var(--admin-text-subtle)" />
+          </button>
         </div>
+      </div>
+
+      <div
+        style={{
+          marginBottom: '24px',
+          padding: '14px 16px',
+          borderRadius: '12px',
+          border: '1px solid #BFDBFE',
+          background: 'linear-gradient(90deg, #EFF6FF 0%, #F8FAFC 100%)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '12px',
+          flexWrap: 'wrap',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+          <div
+            style={{
+              width: '34px',
+              height: '34px',
+              borderRadius: '9px',
+              backgroundColor: 'var(--admin-accent)',
+              color: 'white',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <ShieldCheck size={17} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ margin: 0, color: 'var(--admin-text)', fontSize: '13px', fontWeight: 800 }}>
+              Feature preview
+            </p>
+            <p style={{ margin: '1px 0 0', color: 'var(--admin-text-muted)', fontSize: '12px' }}>
+              This preview shows how live proctoring will look once the feature is enabled.
+            </p>
+          </div>
+        </div>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            width: 'min(100%, 320px)',
+            height: '36px',
+            borderRadius: 'var(--admin-field-radius)',
+            border: '1px solid var(--admin-border)',
+            backgroundColor: 'white',
+            padding: '0 11px',
+            color: 'var(--admin-text-subtle)',
+            fontSize: '13px',
+          }}
+        >
+          <Search size={15} />
+          <span>Search live sessions...</span>
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+          gap: '16px',
+        }}
+      >
+        {demoCandidates.map(candidate => (
+          <LiveTile key={candidate.name} candidate={candidate} />
+        ))}
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import Icon from './Icon';
 import talentstaQLogo from '../assets/assessment-icons/icons/Talentstaq logo dark.svg';
+import regenQLogo from '../assets/assessment-icons/icons/regen-q-logo.svg';
 
 type SearchResultType = 'test' | 'mcq' | 'coding' | 'page';
 
@@ -24,9 +25,9 @@ const STATIC_PAGES = [
   { id: 'assessments',       name: 'Assessments',            path: '/admin/tests' },
   { id: 'analytics',         name: 'Performance Analytics',  path: '/admin/analytics' },
   { id: 'question-library',  name: 'Question Library',       path: '/admin/repository/question-bank' },
-  { id: 'live-proctoring',   name: 'Live Proctoring',        path: '/admin/tests' },
   { id: 'trust-integrity',   name: 'Trust & Integrity',      path: '/admin/trust-reports' },
   { id: 'id-verification',   name: 'ID Verification',        path: '/admin/id-verification-data' },
+  { id: 'live-proctoring',   name: 'Live Proctoring',        path: '/admin/live-proctoring' },
   { id: 'create-test',       name: 'Create Test',            path: '/admin/tests/new' },
   { id: 'ai-generator',      name: 'AI Test Generator',      path: '/admin/tests/agent' },
 ];
@@ -61,6 +62,12 @@ const navItems = [
     label: 'ID Verification',
     matchPrefix: '/admin/id-verification-data',
     icon: <Icon name="id" size={20} />,
+  },
+  {
+    path: '/admin/live-proctoring',
+    label: 'Live Proctoring',
+    matchPrefix: '/admin/live-proctoring',
+    icon: <Icon name="live" size={20} />,
   },
 ];
 
@@ -464,6 +471,7 @@ export default function AdminLayout() {
             borderBottom: '1px solid #E2E6EE',
             justifyContent: sidebarCollapsed ? 'center' : 'space-between',
             padding: sidebarCollapsed ? '0 10px' : '0 12px 0 14px',
+            position: 'relative',
           }}
         >
           {!sidebarCollapsed && (
@@ -486,9 +494,15 @@ export default function AdminLayout() {
               alignItems: 'center',
               justifyContent: 'center',
               flexShrink: 0,
+              position: sidebarCollapsed ? 'static' : 'absolute',
+              right: sidebarCollapsed ? undefined : '12px',
             }}
           >
-            {sidebarCollapsed ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}
+            {sidebarCollapsed ? (
+              <img src={regenQLogo} alt="TalentstaQ" style={{ height: '34px', width: '34px' }} />
+            ) : (
+              <ChevronLeft size={15} />
+            )}
           </button>
         </div>
 
@@ -656,7 +670,7 @@ export default function AdminLayout() {
 
         {/* Top Bar — hidden on profile page */}
         <header
-          className="flex items-center justify-end gap-3 px-6 flex-shrink-0"
+          className="flex items-center justify-between gap-3 px-6 flex-shrink-0"
           style={{ display: location.pathname === '/admin/profile' ? 'none' : undefined,
             position: 'sticky',
             top: 0,
@@ -666,6 +680,20 @@ export default function AdminLayout() {
             height: '52px',
           }}
         >
+          <span
+            style={{
+              flexShrink: 0,
+              color: 'var(--admin-text)',
+              fontSize: '18px',
+              fontWeight: 700,
+              lineHeight: 1,
+              letterSpacing: '0',
+            }}
+          >
+            <span style={{ color: '#F27A32' }}>ReGen&apos;s</span>{' '}
+            <span style={{ color: 'var(--admin-text)' }}>Workspace</span>
+          </span>
+
           {/* Search */}
           <div ref={searchContainerRef} style={{ position: 'relative', flex: '0 1 360px', maxWidth: '360px', marginLeft: 'auto' }}>
             <div
@@ -800,18 +828,29 @@ export default function AdminLayout() {
                 }}>
                   <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--admin-border)' }}>
                     <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--admin-text)' }}>Notifications</span>
-                    {notificationHistory.length > 0 && (
-                      <button
-                        onClick={() => {
-                          setNotificationHistory([]);
-                          setNotifUnread(0);
-                          adminApi.clearAllNotifications().catch(() => {});
-                        }}
-                        style={{ fontSize: '11px', color: 'var(--admin-text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}
-                      >
-                        Clear all
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      disabled={notificationHistory.length === 0}
+                      onClick={() => {
+                        if (notificationHistory.length === 0) return;
+                        setNotificationHistory([]);
+                        setNotifUnread(0);
+                        adminApi.clearAllNotifications().catch(() => {});
+                      }}
+                      style={{
+                        height: '28px',
+                        padding: '0 10px',
+                        borderRadius: 'var(--admin-control-radius)',
+                        border: '1px solid var(--admin-border)',
+                        backgroundColor: notificationHistory.length === 0 ? 'var(--admin-surface-soft)' : 'white',
+                        color: notificationHistory.length === 0 ? 'var(--admin-text-subtle)' : 'var(--admin-text-muted)',
+                        cursor: notificationHistory.length === 0 ? 'not-allowed' : 'pointer',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                      }}
+                    >
+                      Clear all
+                    </button>
                   </div>
                   <div style={{ maxHeight: '380px', overflowY: 'auto' }}>
                     {notificationHistory.length === 0 ? (

@@ -155,8 +155,6 @@ export default function TestSettings() {
   const [original,          setOriginal]           = useState<FormState | null>(null);
   const [form,              setForm]               = useState<FormState | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm]  = useState(false);
-  const [showCategoryDrop,  setShowCategoryDrop]   = useState(false);
-  const [showLanguageDrop,  setShowLanguageDrop]   = useState(false);
 
   // Email template state
   const [emailTab,          setEmailTab]           = useState<EmailTab>('invite');
@@ -355,56 +353,22 @@ export default function TestSettings() {
                   {/* Category custom dropdown */}
                   <div>
                     <label style={labelSx}>Category</label>
-                    {showCategoryDrop && <div className="fixed inset-0 z-10" onClick={() => setShowCategoryDrop(false)} />}
-                    <div style={{ position:'relative', zIndex: 20 }}>
-                      <button type="button" onClick={() => setShowCategoryDrop(v => !v)}
-                        style={{ ...inputSx, display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer', borderColor: showCategoryDrop ? 'var(--admin-accent)' : 'var(--admin-border)' }}>
-                        <span>{form.category}</span>
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                          <path d="M2 4L6 8L10 4" stroke="var(--admin-text-subtle)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      </button>
-                      {showCategoryDrop && (
-                        <div style={{ position:'absolute', top:'calc(100% + 4px)', left:0, right:0, backgroundColor:'white', borderRadius:'10px', border:'1px solid var(--admin-accent)', boxShadow:'0 4px 16px rgba(0,0,0,0.10)', overflow:'hidden', zIndex:30, maxHeight:'220px', overflowY:'auto' }}>
-                          {CATEGORIES.map(c => (
-                            <button key={c} type="button"
-                              onClick={() => { patch({ category: c }); setShowCategoryDrop(false); }}
-                              style={{ width:'100%', textAlign:'left', padding:'9px 14px', fontSize:'14px', backgroundColor: c === form.category ? 'var(--admin-accent-soft)' : 'white', color:'var(--admin-text)', border:'none', cursor:'pointer' }}
-                              onMouseEnter={e => { if (c !== form.category) (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--admin-accent-soft)'; }}
-                              onMouseLeave={e => { if (c !== form.category) (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'white'; }}>
-                              {c}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <CustomSelect
+                      value={form.category}
+                      onChange={category => patch({ category })}
+                      options={CATEGORIES.map(category => ({ value: category, label: category }))}
+                      style={{ width:'100%', minWidth:0 }}
+                    />
                   </div>
                   {/* Language custom dropdown */}
                   <div>
                     <label style={labelSx}>Language</label>
-                    {showLanguageDrop && <div className="fixed inset-0 z-10" onClick={() => setShowLanguageDrop(false)} />}
-                    <div style={{ position:'relative', zIndex: 20 }}>
-                      <button type="button" onClick={() => setShowLanguageDrop(v => !v)}
-                        style={{ ...inputSx, display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer', borderColor: showLanguageDrop ? 'var(--admin-accent)' : 'var(--admin-border)' }}>
-                        <span>{form.language}</span>
-                        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                          <path d="M2 4L6 8L10 4" stroke="var(--admin-text-subtle)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      </button>
-                      {showLanguageDrop && (
-                        <div style={{ position:'absolute', top:'calc(100% + 4px)', left:0, right:0, backgroundColor:'white', borderRadius:'10px', border:'1px solid var(--admin-accent)', boxShadow:'0 4px 16px rgba(0,0,0,0.10)', overflow:'hidden', zIndex:30 }}>
-                          {LANGUAGES.map(l => (
-                            <button key={l} type="button"
-                              onClick={() => { patch({ language: l }); setShowLanguageDrop(false); }}
-                              style={{ width:'100%', textAlign:'left', padding:'9px 14px', fontSize:'14px', backgroundColor: l === form.language ? 'var(--admin-accent-soft)' : 'white', color:'var(--admin-text)', border:'none', cursor:'pointer' }}
-                              onMouseEnter={e => { if (l !== form.language) (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--admin-accent-soft)'; }}
-                              onMouseLeave={e => { if (l !== form.language) (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'white'; }}>
-                              {l}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                    <CustomSelect
+                      value={form.language}
+                      onChange={language => patch({ language })}
+                      options={LANGUAGES.map(language => ({ value: language, label: language }))}
+                      style={{ width:'100%', minWidth:0 }}
+                    />
                   </div>
                 </div>
               </div>

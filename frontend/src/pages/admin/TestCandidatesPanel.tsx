@@ -5,6 +5,7 @@ import { adminApi } from '../../services/api';
 import { TestAttempt } from '../../types';
 import { FileDown, Mail, ChevronRight, XCircle, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react';
 import Icon from '../../components/Icon';
+import CustomSelect from '../../components/CustomSelect';
 
 /* --- Interfaces --- */
 interface InvitationRow {
@@ -69,7 +70,6 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [showStatusDrop, setShowStatusDrop] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const [invData, setInvData] = useState<InvitationDashboardResponse | null>(null);
@@ -196,9 +196,9 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
       </div>
 
       {/* -- Toolbar -- */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+      <div className="flex items-center gap-3 mb-4" style={{ overflow: 'visible' }}>
         {/* Search */}
-        <div className="relative flex-1 min-w-[220px] max-w-xs">
+        <div className="relative flex-1 min-w-0">
           <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center justify-center rounded-md"
             style={{ width:22, height:22, backgroundColor:'var(--admin-accent-soft)' }}>
             <Icon name="search" size={13} />
@@ -210,53 +210,20 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
           />
         </div>
         {/* Status filter */}
-        {showStatusDrop && <div className="fixed inset-0 z-10" onClick={() => setShowStatusDrop(false)} />}
-        <div className="relative z-20 flex-shrink-0" style={{ width: '150px' }}>
-          {(() => {
-            const STATUS_OPTIONS = [
-              { value:'all',         label:'All status' },
-              { value:'submitted',   label:'Submitted' },
-              { value:'in_progress', label:'In progress' },
-              { value:'invited',     label:'Invited' },
-              { value:'expired',     label:'Expired' },
-            ];
-            const selected = STATUS_OPTIONS.find(o => o.value === statusFilter) ?? STATUS_OPTIONS[0];
-            return (
-              <>
-                <button
-                  onClick={() => setShowStatusDrop(v => !v)}
-                  className="btn btn-secondary"
-                  style={{ width:'100%' }}>
-                  <span className="flex-1 text-left truncate">{selected.label}</span>
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                    <path d="M2 4L6 8L10 4" stroke="var(--admin-accent-hover)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </button>
-                {showStatusDrop && (
-                  <div className="absolute left-0 mt-1 rounded-xl overflow-hidden"
-                    style={{ minWidth:'140px', backgroundColor:'white', boxShadow:'0 4px 16px rgba(0,0,0,0.10)', border:'1px solid var(--admin-accent-disabled)' }}>
-                    {STATUS_OPTIONS.map(opt => (
-                      <button key={opt.value}
-                        onClick={() => { setStatusFilter(opt.value); setShowStatusDrop(false); }}
-                        className="w-full text-left px-4 py-2 text-sm"
-                        style={{
-                          backgroundColor: opt.value === statusFilter ? 'var(--admin-accent-disabled)' : 'white',
-                          color: 'var(--admin-accent-hover)',
-                        }}
-                        onMouseEnter={e => { if (opt.value !== statusFilter) (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--admin-accent-soft)'; }}
-                        onMouseLeave={e => { if (opt.value !== statusFilter) (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'white'; }}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </>
-            );
-          })()}
-        </div>
+        <CustomSelect
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={[
+            { value:'all',         label:'All status' },
+            { value:'submitted',   label:'Submitted' },
+            { value:'in_progress', label:'In progress' },
+            { value:'invited',     label:'Invited' },
+            { value:'expired',     label:'Expired' },
+          ]}
+          style={{ width:'150px', minWidth:'150px' }}
+        />
 
-        <div className="flex-1" />
+        <div className="flex-1 min-w-0" />
 
         {/* Export CSV */}
         <button onClick={handleExport} disabled={exporting}

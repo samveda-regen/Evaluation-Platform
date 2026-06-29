@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../../services/api';
+import CustomSelect from '../../../components/CustomSelect';
 import type {
   Pagination,
   RepositoryBehavioralQuestion,
@@ -546,16 +547,17 @@ export default function CustomQuestions() {
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
           />
-          <select
+          <CustomSelect
             value={difficulty}
-            onChange={(e) => { setDifficulty(e.target.value); setPage(1); }}
-            className="input"
-          >
-            <option value="">All difficulties</option>
-            <option value="easy">Easy</option>
-            <option value="medium">Medium</option>
-            <option value="hard">Hard</option>
-          </select>
+            onChange={(value) => { setDifficulty(value); setPage(1); }}
+            options={[
+              { value: '', label: 'All difficulties' },
+              { value: 'easy', label: 'Easy' },
+              { value: 'medium', label: 'Medium' },
+              { value: 'hard', label: 'Hard' },
+            ]}
+            style={{ width: '100%', minWidth: 0 }}
+          />
           <input
             type="text"
             placeholder="Topic"
@@ -570,15 +572,16 @@ export default function CustomQuestions() {
             value={tag}
             onChange={(e) => { setTag(e.target.value); setPage(1); }}
           />
-          <select
+          <CustomSelect
             value={enabledFilter}
-            onChange={(e) => { setEnabledFilter(e.target.value as EnabledFilter); setPage(1); }}
-            className="input"
-          >
-            <option value="all">All statuses</option>
-            <option value="enabled">Enabled</option>
-            <option value="disabled">Disabled</option>
-          </select>
+            onChange={(value) => { setEnabledFilter(value as EnabledFilter); setPage(1); }}
+            options={[
+              { value: 'all', label: 'All statuses' },
+              { value: 'enabled', label: 'Enabled' },
+              { value: 'disabled', label: 'Disabled' },
+            ]}
+            style={{ width: '100%', minWidth: 0 }}
+          />
         </div>
       </div>
 

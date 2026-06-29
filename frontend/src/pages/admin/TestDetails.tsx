@@ -229,8 +229,7 @@ export default function TestDetails() {
   const [qSearch, setQSearch] = useState('');
   const [qTypeFilter, setQTypeFilter] = useState('all');
   const [qDiffFilter, setQDiffFilter] = useState('all');
-  const [showTypeDrop, setShowTypeDrop] = useState(false);
-  const [showDiffDrop, setShowDiffDrop] = useState(false);
+  const [qTagFilter, setQTagFilter] = useState('all');
   const [qPage, setQPage] = useState(1);
   const [selectedQIds, setSelectedQIds] = useState<Set<string>>(new Set());
   const [showNewQMenu, setShowNewQMenu] = useState(false);
@@ -475,13 +474,18 @@ export default function TestDetails() {
       : q.behavioralQuestion?.title) || '';
   const qDiffOf = (q: TestQuestion): string =>
     (((q.mcqQuestion as any)?.difficulty || (q.codingQuestion as any)?.difficulty || (q.behavioralQuestion as any)?.difficulty) || 'medium').toLowerCase();
+  const qTagsOf = (q: TestQuestion): string[] =>
+    (((q.mcqQuestion as any)?.tags || (q.codingQuestion as any)?.tags || (q.behavioralQuestion as any)?.tags || []) as string[])
+      .filter(Boolean);
   const qMarksOf = (q: TestQuestion): number =>
     q.mcqQuestion?.marks || q.codingQuestion?.marks || q.behavioralQuestion?.marks || 0;
+  const qTagOptions = Array.from(new Set(allFlatQuestions.flatMap(qTagsOf))).sort((a, b) => a.localeCompare(b));
   const filteredQs = allFlatQuestions.filter(q => {
     const matchSearch = !qSearch || qTextOf(q).toLowerCase().includes(qSearch.toLowerCase());
     const matchType = qTypeFilter === 'all' || q.questionType === qTypeFilter;
     const matchDiff = qDiffFilter === 'all' || qDiffOf(q) === qDiffFilter;
-    return matchSearch && matchType && matchDiff;
+    const matchTag = qTagFilter === 'all' || qTagsOf(q).includes(qTagFilter);
+    return matchSearch && matchType && matchDiff && matchTag;
   });
   const totalQPages = Math.ceil(filteredQs.length / Q_PAGE_SIZE);
   const pagedQs = filteredQs.slice((qPage - 1) * Q_PAGE_SIZE, qPage * Q_PAGE_SIZE);
@@ -730,62 +734,52 @@ export default function TestDetails() {
         <div className="overflow-hidden" style={{ backgroundColor: 'white', borderRadius: 'var(--admin-card-radius)', boxShadow: 'var(--admin-card-shadow)' }}>
 
           {/* Toolbar */}
-          <div className="flex flex-wrap items-center gap-3 px-5 py-4" style={{ borderBottom: '1px solid var(--admin-border)' }}>
+          <div
+            className="flex items-center gap-3 px-5 py-4"
+            style={{ borderBottom: '1px solid var(--admin-border)', overflow: 'visible' }}
+          >
             {/* Search */}
-            <div className="relative">
+            <div className="relative" style={{ flex: '1 1 auto', minWidth: 0 }}>
               <Search className="absolute left-3 top-1/2 -translate-y-1/2" size={16} style={{ color: 'var(--admin-text-subtle)' }} />
               <input
                 value={qSearch}
                 onChange={e => { setQSearch(e.target.value); setQPage(1); }}
                 placeholder="Search questions..."
                 className="admin-filter-input pl-9 pr-4 py-2 rounded-xl border text-sm outline-none"
-                style={{ width: '220px' }}
+                style={{ width: '100%', minWidth: 0 }}
               />
             </div>
             {/* Type filter */}
-            <div style={{ position: 'relative', width: '150px', flexShrink: 0 }}>
-              {showTypeDrop && <div className="fixed inset-0 z-20" onClick={() => setShowTypeDrop(false)} />}
-              <button onClick={() => { setShowTypeDrop(v => !v); setShowDiffDrop(false); }}
-                className="flex items-center justify-between gap-1.5 px-3 py-2 rounded-xl border text-sm"
-                style={{ width: '100%', borderColor: 'var(--admin-border)', color: 'var(--admin-text-muted)', backgroundColor: 'white', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                <span className="truncate">{qTypeFilter === 'all' ? 'All types' : qTypeFilter === 'mcq' ? 'MCQ' : qTypeFilter === 'coding' ? 'Coding' : 'Behavioral'}</span>
-                <ChevronDown size={13} color="var(--admin-text-subtle)" />
-              </button>
-              {showTypeDrop && (
-                <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 30, backgroundColor: 'white', borderRadius: '10px', padding: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', border: '1px solid var(--admin-border)', minWidth: '140px' }}>
-                  {([['all','All types'],['mcq','MCQ'],['coding','Coding'],['behavioral','Behavioral']] as const).map(([val, label]) => (
-                    <button key={val}
-                      onClick={() => { setQTypeFilter(val); setQPage(1); setShowTypeDrop(false); }}
-                      style={{ width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', borderRadius: '7px', fontSize: '13px', cursor: 'pointer', backgroundColor: qTypeFilter === val ? 'var(--admin-accent)' : 'transparent', color: qTypeFilter === val ? 'white' : 'var(--admin-text-muted)', fontWeight: qTypeFilter === val ? 600 : 400 }}
-                      onMouseEnter={e => { if (qTypeFilter !== val) e.currentTarget.style.backgroundColor = 'rgba(31, 53, 86, 0.08)'; }}
-                      onMouseLeave={e => { if (qTypeFilter !== val) e.currentTarget.style.backgroundColor = 'transparent'; }}
-                    >{label}</button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <CustomSelect
+              value={qTypeFilter}
+              onChange={value => { setQTypeFilter(value); setQPage(1); }}
+              options={[
+                { value: 'all', label: 'All types' },
+                { value: 'mcq', label: 'MCQ' },
+                { value: 'coding', label: 'Coding' },
+                { value: 'behavioral', label: 'Behavioral' },
+              ]}
+              style={{ width: '150px', minWidth: '150px' }}
+            />
             {/* Difficulty filter */}
-            <div style={{ position: 'relative', width: '160px', flexShrink: 0 }}>
-              {showDiffDrop && <div className="fixed inset-0 z-20" onClick={() => setShowDiffDrop(false)} />}
-              <button onClick={() => { setShowDiffDrop(v => !v); setShowTypeDrop(false); }}
-                className="flex items-center justify-between gap-1.5 px-3 py-2 rounded-xl border text-sm"
-                style={{ width: '100%', borderColor: 'var(--admin-border)', color: 'var(--admin-text-muted)', backgroundColor: 'white', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                <span className="truncate">{qDiffFilter === 'all' ? 'All difficulty' : qDiffFilter === 'easy' ? 'Easy' : qDiffFilter === 'medium' ? 'Medium' : 'Hard'}</span>
-                <ChevronDown size={13} color="var(--admin-text-subtle)" />
-              </button>
-              {showDiffDrop && (
-                <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 30, backgroundColor: 'white', borderRadius: '10px', padding: '4px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', border: '1px solid var(--admin-border)', minWidth: '140px' }}>
-                  {([['all','All difficulty'],['easy','Easy'],['medium','Medium'],['hard','Hard']] as const).map(([val, label]) => (
-                    <button key={val}
-                      onClick={() => { setQDiffFilter(val); setQPage(1); setShowDiffDrop(false); }}
-                      style={{ width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', borderRadius: '7px', fontSize: '13px', cursor: 'pointer', backgroundColor: qDiffFilter === val ? 'var(--admin-accent)' : 'transparent', color: qDiffFilter === val ? 'white' : 'var(--admin-text-muted)', fontWeight: qDiffFilter === val ? 600 : 400 }}
-                      onMouseEnter={e => { if (qDiffFilter !== val) e.currentTarget.style.backgroundColor = 'rgba(31, 53, 86, 0.08)'; }}
-                      onMouseLeave={e => { if (qDiffFilter !== val) e.currentTarget.style.backgroundColor = 'transparent'; }}
-                    >{label}</button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <CustomSelect
+              value={qDiffFilter}
+              onChange={value => { setQDiffFilter(value); setQPage(1); }}
+              options={[
+                { value: 'all', label: 'All difficulty' },
+                { value: 'easy', label: 'Easy' },
+                { value: 'medium', label: 'Medium' },
+                { value: 'hard', label: 'Hard' },
+              ]}
+              style={{ width: '160px', minWidth: '160px' }}
+            />
+            {/* Tag filter */}
+            <CustomSelect
+              value={qTagFilter}
+              onChange={value => { setQTagFilter(value); setQPage(1); }}
+              options={[{ value: 'all', label: 'All tags' }, ...qTagOptions.map(tag => ({ value: tag, label: tag }))]}
+              style={{ width: '150px', minWidth: '150px' }}
+            />
             <div className="flex-1" />
             {/* Section manager */}
             <button onClick={() => setShowSectionModal(true)}

@@ -100,6 +100,7 @@ export default function App() {
         <Route path="tests/:testId/results" element={<TestResultsRedirect />} />
         <Route path="tests/:testId/analytics" element={<PerformanceAnalytics />} />
         <Route path="analytics" element={<PerformanceAnalytics />} />
+        <Route path="live-proctoring" element={<LiveProctoring />} />
         <Route path="live-proctoring/:testId" element={<LiveProctoring />} />
         <Route path="attempts/:attemptId" element={<AttemptDetails />} />
         <Route path="attempts/:attemptId/proctoring" element={<ProctorDashboard />} />
