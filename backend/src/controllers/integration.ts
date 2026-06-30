@@ -644,8 +644,9 @@ export async function createTestWithAIAndInvite(req: AuthenticatedRequest, res: 
     // Validate question counts
     const mcqCount = Math.max(0, Number.parseInt(String(req.body.mcqCount ?? '0'), 10) || 0);
     const codingCount = Math.max(0, Number.parseInt(String(req.body.codingCount ?? '0'), 10) || 0);
-    if (mcqCount === 0 && codingCount === 0) {
-      res.status(400).json({ error: 'At least one of mcqCount or codingCount must be greater than 0' });
+    const behavioralCount = Math.max(0, Number.parseInt(String(req.body.behavioralCount ?? '0'), 10) || 0);
+    if (mcqCount === 0 && codingCount === 0 && behavioralCount === 0) {
+      res.status(400).json({ error: 'At least one of mcqCount, codingCount, or behavioralCount must be greater than 0' });
       return;
     }
 
@@ -688,7 +689,7 @@ export async function createTestWithAIAndInvite(req: AuthenticatedRequest, res: 
 
     // Step 1: AI selects questions
     const selection = await generateTestFromJobProfile(
-      { jobProfile, skills, difficulty, mcqCount, codingCount },
+      { jobProfile, skills, difficulty, mcqCount, codingCount, behavioralCount },
       adminId
     );
 

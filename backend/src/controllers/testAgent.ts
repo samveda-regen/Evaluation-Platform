@@ -4,20 +4,35 @@ import {
   generateTestFromJobProfile,
   createTestFromSelection,
   analyzeJobRequirements,
-  suggestQuestionTags
+  suggestQuestionTags,
+  getLibrarySkillTags
 } from '../services/testAgentService.js';
 import prisma from '../utils/db.js';
+
+// GET /admin/agent/library-skills
+export const getLibrarySkills = async (_req: AuthenticatedRequest, res: Response) => {
+  try {
+    const skills = await getLibrarySkillTags();
+    res.json({ success: true, data: { skills } });
+  } catch (error) {
+    console.error('Error fetching library skills:', error);
+    res.status(500).json({
+      error: 'Failed to fetch library skills',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
 
 // POST /admin/agent/analyze-job
 export const analyzeJob = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { jobTitle, jobDescription } = req.body;
+    const { jobTitle, jobDescription, experience } = req.body;
 
     if (!jobTitle) {
       return res.status(400).json({ error: 'Job title is required' });
     }
 
-    const analysis = await analyzeJobRequirements(jobTitle, jobDescription);
+    const analysis = await analyzeJobRequirements(jobTitle, jobDescription, experience);
 
     res.json({
       success: true,
@@ -46,8 +61,11 @@ export const generateTest = async (req: AuthenticatedRequest, res: Response) => 
       difficulty,
       mcqCount,
       codingCount,
+      behavioralCount,
       duration
     } = req.body;
+
+    const resolvedBehavioralCount = typeof behavioralCount === 'number' ? behavioralCount : 0;
 
     // Validation
     if (!jobProfile?.title) {
@@ -65,7 +83,10 @@ export const generateTest = async (req: AuthenticatedRequest, res: Response) => 
     if (typeof codingCount !== 'number' || codingCount < 0) {
       return res.status(400).json({ error: 'Valid coding question count is required' });
     }
-    if (mcqCount === 0 && codingCount === 0) {
+    if (resolvedBehavioralCount < 0) {
+      return res.status(400).json({ error: 'Valid behavioral question count is required' });
+    }
+    if (mcqCount === 0 && codingCount === 0 && resolvedBehavioralCount === 0) {
       return res.status(400).json({ error: 'At least one question is required' });
     }
 
@@ -76,6 +97,7 @@ export const generateTest = async (req: AuthenticatedRequest, res: Response) => 
         difficulty,
         mcqCount,
         codingCount,
+        behavioralCount: resolvedBehavioralCount,
         duration
       },
       adminId
@@ -111,7 +133,7 @@ export const createTestFromAgent = async (req: AuthenticatedRequest, res: Respon
     if (!selection) {
       return res.status(400).json({ error: 'Question selection is required' });
     }
-    if (!selection.mcqQuestionIds && !selection.codingQuestionIds) {
+    if (!selection.mcqQuestionIds && !selection.codingQuestionIds && !selection.behavioralQuestionIds) {
       return res.status(400).json({ error: 'At least one question must be selected' });
     }
     if (!testSettings?.startTime) {
@@ -128,6 +150,7 @@ export const createTestFromAgent = async (req: AuthenticatedRequest, res: Respon
       {
         mcqQuestionIds: selection.mcqQuestionIds || [],
         codingQuestionIds: selection.codingQuestionIds || [],
+        behavioralQuestionIds: selection.behavioralQuestionIds || [],
         reasoning: selection.reasoning || '',
         suggestedDuration: selection.suggestedDuration || 60,
         suggestedTestName: selection.suggestedTestName || 'AI Generated Test',

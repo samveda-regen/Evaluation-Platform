@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { BriefcaseBusiness, Check, ClipboardCheck, ListChecks, Settings2 } from 'lucide-react';
@@ -15,12 +15,14 @@ interface JobProfile {
 interface QuestionSelection {
   mcqQuestionIds: string[];
   codingQuestionIds: string[];
+  behavioralQuestionIds: string[];
   reasoning: string;
   suggestedDuration: number;
   suggestedTestName: string;
   suggestedDescription: string;
   mcqPreviews?: Array<{ id: string; text: string; difficulty: string; topic?: string | null }>;
   codingPreviews?: Array<{ id: string; text: string; difficulty: string; topic?: string | null }>;
+  behavioralPreviews?: Array<{ id: string; text: string; difficulty: string; topic?: string | null }>;
 }
 interface TestSettings {
   name: string;
@@ -35,7 +37,7 @@ interface TestSettings {
   maxViolations: number;
 }
 
-/* -- Recognized skill list for autocomplete -- */
+/* -- Baseline skill list for autocomplete (used as a seed before/if the library list loads) -- */
 const SKILL_SUGGESTIONS = [
   'JavaScript','TypeScript','Python','Java','C++','C#','Go','Rust','Ruby','PHP','Swift','Kotlin','Scala',
   'React','Vue.js','Angular','Next.js','Nuxt.js','Svelte',
@@ -85,7 +87,7 @@ function extractSkillsLocally(title: string, description?: string): string[] {
   if ((skills.includes('Node.js') || skills.includes('React')) && !skills.includes('JavaScript')) {
     skills.unshift('JavaScript');
   }
-  if (skills.length === 0) skills.push('Problem Solving', 'Algorithms', 'Data Structures');
+  // No keyword match: don't invent generic CS skills for an unrecognized/non-technical title.
   return skills.slice(0, 8);
 }
 
@@ -163,6 +165,8 @@ export default function AgentTestForm() {
   const [difficulty,  setDifficulty]  = useState<'easy' | 'medium' | 'hard' | 'mixed'>('mixed');
   const [mcqCount,    setMcqCount]    = useState(10);
   const [codingCount, setCodingCount] = useState(2);
+  const [behavioralCount, setBehavioralCount] = useState(2);
+  const [librarySkills, setLibrarySkills] = useState<string[]>([]);
 
   /* Step 3 state */
   const [selection, setSelection] = useState<QuestionSelection | null>(null);
@@ -174,9 +178,17 @@ export default function AgentTestForm() {
     negativeMarking: 0, shuffleQuestions: true, shuffleOptions: true, maxViolations: 3,
   });
 
+  /* -- pull live skill/topic tags from the question library so autocomplete isn't a fixed list -- */
+  useEffect(() => {
+    adminApi.getLibrarySkills()
+      .then(({ data }) => { if (data.success && Array.isArray(data.data?.skills)) setLibrarySkills(data.data.skills); })
+      .catch(() => { /* fall back to the static seed list below */ });
+  }, []);
+
   /* -- skill helpers -- */
+  const allSuggestions = Array.from(new Set([...librarySkills, ...SKILL_SUGGESTIONS]));
   const filteredSuggestions = skillInput.trim().length > 0
-    ? SKILL_SUGGESTIONS.filter(s =>
+    ? allSuggestions.filter(s =>
         s.toLowerCase().includes(skillInput.trim().toLowerCase()) && !skills.includes(s)
       ).slice(0, 6)
     : [];
@@ -220,21 +232,34 @@ export default function AgentTestForm() {
     if (!jobProfile.title.trim()) { toast.error('Job title is required'); return; }
     setAnalyzing(true);
     try {
-      const { data } = await adminApi.analyzeJob(jobProfile.title, jobProfile.description);
+      const { data } = await adminApi.analyzeJob(jobProfile.title, jobProfile.description, jobProfile.experience);
       if (data.success && data.data) {
         const d = data.data;
         setSkills(d.suggestedSkills || []);
         setDifficulty(d.suggestedDifficulty || 'mixed');
         setMcqCount(d.suggestedMcqCount || 10);
         setCodingCount(d.suggestedCodingCount || 2);
+        setBehavioralCount(typeof d.suggestedBehavioralCount === 'number' ? d.suggestedBehavioralCount : 2);
         setJobProfile(p => ({ ...p, experience: normalizeExperienceLevel(d.experienceLevel || p.experience) }));
-        toast.success('Role analyzed! Review skills and settings below');
+        if (d.suggestedSkills?.length) {
+          toast.success(
+            d.roleClassification === 'semi-technical'
+              ? 'Role analyzed! This role has partial technical overlap — review the suggested skills below'
+              : 'Role analyzed! Review skills and settings below'
+          );
+        } else if (d.roleClassification === 'non-technical') {
+          toast.error('This looks like a non-technical role — this generator only covers software/technical questions. Add skills manually if you want to continue anyway.');
+        } else {
+          toast.error('No relevant technical skills found for this title. Add skills manually to continue.');
+        }
       }
     } catch {
       const local = extractSkillsLocally(jobProfile.title, jobProfile.description);
+      setSkills(local);
       if (local.length) {
-        setSkills(local);
         toast.success('Skills extracted from job title');
+      } else {
+        toast.error('No relevant technical skills found for this title. Add skills manually to continue.');
       }
     } finally {
       setAnalyzing(false);
@@ -244,11 +269,11 @@ export default function AgentTestForm() {
 
   /* -- Step 2 -> 3 -- */
   const handleGenerateTest = async () => {
-    if (!skills.length)             { toast.error('At least one skill is required'); return; }
-    if (!mcqCount && !codingCount)  { toast.error('At least one question type must be > 0'); return; }
+    if (!skills.length)                              { toast.error('At least one skill is required'); return; }
+    if (!mcqCount && !codingCount && !behavioralCount) { toast.error('At least one question type must be > 0'); return; }
     setLoading(true);
     try {
-      const { data } = await adminApi.generateTest({ jobProfile, skills, difficulty, mcqCount, codingCount });
+      const { data } = await adminApi.generateTest({ jobProfile, skills, difficulty, mcqCount, codingCount, behavioralCount });
       if (data.success && data.data) {
         const sel: QuestionSelection = data.data;
         setSelection(sel);
@@ -259,7 +284,7 @@ export default function AgentTestForm() {
           duration:    sel.suggestedDuration    || 60,
           startTime:   p.startTime || new Date(Date.now() + 60_000).toISOString().slice(0, 16),
         }));
-        const total = sel.mcqQuestionIds.length + sel.codingQuestionIds.length;
+        const total = sel.mcqQuestionIds.length + sel.codingQuestionIds.length + sel.behavioralQuestionIds.length;
         if (total === 0) {
           toast.error('No matching questions found in the library. Add questions first.');
         } else {
@@ -498,7 +523,7 @@ export default function AgentTestForm() {
                 </div>
 
                 {/* Difficulty + counts in a grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '14px' }}>
                   <div>
                     <label style={lbl}>Difficulty Level</label>
                     <CustomSelect
@@ -529,6 +554,15 @@ export default function AgentTestForm() {
                       style={inp} onFocus={focus} onBlur={blur}
                     />
                   </div>
+                  <div>
+                    <label style={lbl}>Behavioral Questions</label>
+                    <input type="number"
+                      value={behavioralCount}
+                      onChange={e => setBehavioralCount(parseNum(e.target.value, 0))}
+                      min={0} max={10}
+                      style={inp} onFocus={focus} onBlur={blur}
+                    />
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
@@ -551,8 +585,8 @@ export default function AgentTestForm() {
               <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 20px' }}>Step 3: Review AI Selection</h2>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-                {/* MCQ / Coding counts */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                {/* MCQ / Coding / Behavioral counts */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
                   <div style={{ borderRadius: '10px', padding: '20px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
                     <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--admin-accent-hover)', margin: '0 0 8px' }}>MCQ Questions</p>
                     <p style={{ fontSize: '44px', fontWeight: 700, color: 'var(--admin-accent)', margin: '0 0 2px', lineHeight: 1 }}>{selection.mcqQuestionIds.length}</p>
@@ -561,6 +595,11 @@ export default function AgentTestForm() {
                   <div style={{ borderRadius: '10px', padding: '20px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
                     <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--admin-accent-hover)', margin: '0 0 8px' }}>Coding Questions</p>
                     <p style={{ fontSize: '44px', fontWeight: 700, color: 'var(--admin-accent-hover)', margin: '0 0 2px', lineHeight: 1 }}>{selection.codingQuestionIds.length}</p>
+                    <p style={{ fontSize: '12px', color: 'var(--admin-text-muted)', margin: 0, fontWeight: 500 }}>selected from library</p>
+                  </div>
+                  <div style={{ borderRadius: '10px', padding: '20px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
+                    <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--admin-accent-hover)', margin: '0 0 8px' }}>Behavioral Questions</p>
+                    <p style={{ fontSize: '44px', fontWeight: 700, color: 'var(--admin-accent-hover)', margin: '0 0 2px', lineHeight: 1 }}>{selection.behavioralQuestionIds.length}</p>
                     <p style={{ fontSize: '12px', color: 'var(--admin-text-muted)', margin: 0, fontWeight: 500 }}>selected from library</p>
                   </div>
                 </div>
@@ -586,19 +625,24 @@ export default function AgentTestForm() {
                 </div>
 
                 {/* Warnings */}
-                {selection.mcqQuestionIds.length + selection.codingQuestionIds.length === 0 && (
-                  <div style={{ borderRadius: '10px', padding: '14px 16px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
-                    <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: 0, lineHeight: '1.5' }}>
-                      No matching questions found in the library. Please{' '}
-                      <a href="/admin/mcq/new" style={{ color: 'var(--admin-accent-hover)', fontWeight: 600 }}>add MCQ questions</a>
-                      {' or '}
-                      <a href="/admin/coding/new" style={{ color: 'var(--admin-accent-hover)', fontWeight: 600 }}>coding questions</a>
-                      {' '}first, then regenerate.
+                {selection.mcqQuestionIds.length + selection.codingQuestionIds.length + selection.behavioralQuestionIds.length === 0 && (
+                  <div style={{ borderRadius: '10px', padding: '14px 16px', backgroundColor: '#FEF2F2', border: '1px solid #FCA5A5' }}>
+                    <p style={{ fontSize: '13px', color: '#991B1B', margin: 0, lineHeight: '1.5', fontWeight: 600 }}>
+                      No questions selected.
+                    </p>
+                    <p style={{ fontSize: '13px', color: '#991B1B', margin: '4px 0 0', lineHeight: '1.5' }}>
+                      No matching questions were found in the library for these skills. Please{' '}
+                      <a href="/admin/mcq/new" style={{ color: '#991B1B', fontWeight: 600 }}>add MCQ questions</a>
+                      {', '}
+                      <a href="/admin/coding/new" style={{ color: '#991B1B', fontWeight: 600 }}>coding questions</a>
+                      {', or '}
+                      <a href="/admin/behavioral/new" style={{ color: '#991B1B', fontWeight: 600 }}>behavioral questions</a>
+                      {' '}with relevant tags first, or go back and adjust the required skills, then regenerate.
                     </p>
                   </div>
                 )}
-                {(selection.mcqQuestionIds.length < mcqCount || selection.codingQuestionIds.length < codingCount) &&
-                 selection.mcqQuestionIds.length + selection.codingQuestionIds.length > 0 && (
+                {(selection.mcqQuestionIds.length < mcqCount || selection.codingQuestionIds.length < codingCount || selection.behavioralQuestionIds.length < behavioralCount) &&
+                 selection.mcqQuestionIds.length + selection.codingQuestionIds.length + selection.behavioralQuestionIds.length > 0 && (
                   <div style={{ borderRadius: '10px', padding: '14px 16px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
                     <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: 0 }}>
                       Note: Fewer questions were selected than requested. Consider adding more questions with relevant tags to your library.
@@ -608,7 +652,18 @@ export default function AgentTestForm() {
 
                 <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
                   <button onClick={() => setStep(2)} style={btnSecondary}>Back</button>
-                  <button onClick={() => setStep(4)} style={btnPrimary}>Continue to Settings</button>
+                  {(() => {
+                    const noQuestions = selection.mcqQuestionIds.length + selection.codingQuestionIds.length + selection.behavioralQuestionIds.length === 0;
+                    return (
+                      <button
+                        onClick={() => setStep(4)}
+                        disabled={noQuestions}
+                        style={noQuestions ? btnDisabled : btnPrimary}
+                      >
+                        Continue to Settings
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
             </div>

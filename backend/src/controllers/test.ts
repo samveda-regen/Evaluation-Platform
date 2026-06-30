@@ -126,6 +126,41 @@ function mapTestWithCustomAI<T extends { customAIViolations?: string | null }>(t
   };
 }
 
+// MCQ/coding/behavioral questions store `tags` as a JSON-encoded string column.
+// Every other controller (mcqQuestion.ts, codingQuestion.ts) parses it before
+// sending to the frontend, which expects `tags: string[]` — do the same here for
+// questions embedded inside a test, otherwise the frontend crashes calling
+// array methods on a raw string.
+function parseTagsField(tags: unknown): string[] {
+  if (Array.isArray(tags)) return tags;
+  if (typeof tags === 'string' && tags.trim()) {
+    try {
+      const parsed = JSON.parse(tags);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+interface QuestionWithTags { tags?: unknown; [key: string]: unknown }
+interface TestQuestionLike {
+  mcqQuestion?: QuestionWithTags | null;
+  codingQuestion?: QuestionWithTags | null;
+  behavioralQuestion?: QuestionWithTags | null;
+  [key: string]: unknown;
+}
+
+function withParsedQuestionTags<T extends TestQuestionLike>(testQuestion: T): T {
+  return {
+    ...testQuestion,
+    mcqQuestion: testQuestion.mcqQuestion ? { ...testQuestion.mcqQuestion, tags: parseTagsField(testQuestion.mcqQuestion.tags) } : testQuestion.mcqQuestion,
+    codingQuestion: testQuestion.codingQuestion ? { ...testQuestion.codingQuestion, tags: parseTagsField(testQuestion.codingQuestion.tags) } : testQuestion.codingQuestion,
+    behavioralQuestion: testQuestion.behavioralQuestion ? { ...testQuestion.behavioralQuestion, tags: parseTagsField(testQuestion.behavioralQuestion.tags) } : testQuestion.behavioralQuestion,
+  };
+}
+
 export async function createTest(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const {
@@ -354,6 +389,11 @@ export async function getTestById(req: AuthenticatedRequest, res: Response): Pro
     res.json({
       test: {
         ...mapTestWithCustomAI(test),
+        questions: test.questions.map(withParsedQuestionTags),
+        sections: test.sections.map(section => ({
+          ...section,
+          questions: section.questions.map(withParsedQuestionTags),
+        })),
         proctoringSettings: proctoringSettingsRaw ? JSON.parse(proctoringSettingsRaw) : undefined,
         violationPopupSettings: violationPopupSettingsRaw ? JSON.parse(violationPopupSettingsRaw) : undefined,
       },

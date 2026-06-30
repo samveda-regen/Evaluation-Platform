@@ -56,7 +56,8 @@ import {
   analyzeJob,
   generateTest,
   createTestFromAgent,
-  suggestTags
+  suggestTags,
+  getLibrarySkills
 } from '../controllers/testAgent.js';
 import {
   sendTestInvitations,
@@ -150,6 +151,7 @@ router.get('/trust-reports', adminAuth, getTrustReports);
 router.post('/attempts/:attemptId/trust-report/reevaluate', adminAuth, reEvaluateTrustReport);
 
 // Agent routes - AI-powered test generation
+router.get('/agent/library-skills', adminAuth, getLibrarySkills);
 router.post('/agent/analyze-job', adminAuth, analyzeJob);
 router.post('/agent/generate-test', adminAuth, generateTest);
 router.post('/agent/create-test', adminAuth, createTestFromAgent);

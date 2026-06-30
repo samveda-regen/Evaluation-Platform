@@ -336,8 +336,11 @@ export const adminApi = {
     api.delete(`/admin/attempts/${attemptId}`),
 
   // Agent API - AI-powered test generation
-  analyzeJob: (jobTitle: string, jobDescription?: string) =>
-    api.post('/admin/agent/analyze-job', { jobTitle, jobDescription }),
+  analyzeJob: (jobTitle: string, jobDescription?: string, experience?: string) =>
+    api.post('/admin/agent/analyze-job', { jobTitle, jobDescription, experience }),
+
+  getLibrarySkills: () =>
+    api.get('/admin/agent/library-skills'),
 
   generateTest: (data: {
     jobProfile: { title: string; experience: string; description?: string };
@@ -345,6 +348,7 @@ export const adminApi = {
     difficulty: 'easy' | 'medium' | 'hard' | 'mixed';
     mcqCount: number;
     codingCount: number;
+    behavioralCount: number;
     duration?: number;
   }) => api.post('/admin/agent/generate-test', data),
 
@@ -352,6 +356,7 @@ export const adminApi = {
     selection: {
       mcqQuestionIds: string[];
       codingQuestionIds: string[];
+      behavioralQuestionIds: string[];
       reasoning?: string;
       suggestedDuration?: number;
       suggestedTestName?: string;
