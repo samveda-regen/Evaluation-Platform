@@ -40,6 +40,13 @@ interface InvitationSummary {
   failed: number;
 }
 
+interface ManualCandidate {
+  name: string;
+  email: string;
+}
+
+const MAX_MANUAL_CANDIDATES = 10;
+
 interface BehavioralQuestion {
   id: string;
   title: string;
@@ -190,6 +197,10 @@ export default function TestDetails() {
   const [customMessage, setCustomMessage] = useState('');
   const [sendingInvitations, setSendingInvitations] = useState(false);
   const [invitationSummary, setInvitationSummary] = useState<InvitationSummary | null>(null);
+  const [manualCandidates, setManualCandidates] = useState<ManualCandidate[]>([]);
+  const [manualName, setManualName] = useState('');
+  const [manualEmail, setManualEmail] = useState('');
+  const [pasteText, setPasteText] = useState('');
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [questionType, setQuestionType] = useState<'mcq' | 'coding' | 'behavioral'>('mcq');
@@ -271,17 +282,85 @@ export default function TestDetails() {
   const openInviteModal = () => {
     setShowInviteModal(true); setInvitationFile(null);
     setCustomMessage(''); setInvitationSummary(null);
+    setManualCandidates([]); setManualName(''); setManualEmail(''); setPasteText('');
   };
   const closeInviteModal = () => {
     if (sendingInvitations) return;
     setShowInviteModal(false); setInvitationFile(null);
     setCustomMessage(''); setInvitationSummary(null);
+    setManualCandidates([]); setManualName(''); setManualEmail(''); setPasteText('');
+  };
+
+  const EMAIL_REGEX = /[^\s,;|\t]+@[^\s,;|\t]+\.[^\s,;|\t]+/;
+
+  // Parses pasted text where each line is one candidate, e.g. copied straight out of a
+  // spreadsheet ("Name<TAB>Email" per row) or typed as "Name, email@example.com".
+  const parsePastedCandidates = (text: string): ManualCandidate[] => {
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const parsed: ManualCandidate[] = [];
+    for (const line of lines) {
+      const parts = line.split(/\t|,|;|\|/).map(p => p.trim()).filter(Boolean);
+      let name = '';
+      let email = '';
+      if (parts.length >= 2) {
+        const emailPart = parts.find(p => EMAIL_REGEX.test(p));
+        const match = emailPart?.match(EMAIL_REGEX);
+        email = match ? match[0] : '';
+        name = parts.find(p => p !== emailPart) || '';
+      } else {
+        const match = line.match(EMAIL_REGEX);
+        if (match) { email = match[0]; name = line.replace(match[0], '').trim().replace(/[,;|-]+$/, '').trim(); }
+      }
+      if (email) parsed.push({ name, email });
+    }
+    return parsed;
+  };
+
+  const addManualCandidates = (candidates: ManualCandidate[]) => {
+    if (candidates.length === 0) return;
+    setManualCandidates(prev => {
+      const existingEmails = new Set(prev.map(c => c.email.toLowerCase()));
+      const deduped = candidates.filter(c => !existingEmails.has(c.email.toLowerCase()));
+      const merged = [...prev, ...deduped];
+      if (merged.length > MAX_MANUAL_CANDIDATES) {
+        toast.error(`Only the first ${MAX_MANUAL_CANDIDATES} candidates were kept (max ${MAX_MANUAL_CANDIDATES} per batch).`);
+        return merged.slice(0, MAX_MANUAL_CANDIDATES);
+      }
+      return merged;
+    });
+  };
+
+  const handleAddManualCandidate = () => {
+    const email = manualEmail.trim();
+    if (!EMAIL_REGEX.test(email)) { toast.error('Enter a valid email address'); return; }
+    if (manualCandidates.length >= MAX_MANUAL_CANDIDATES) { toast.error(`Maximum ${MAX_MANUAL_CANDIDATES} candidates per batch`); return; }
+    addManualCandidates([{ name: manualName.trim(), email }]);
+    setManualName(''); setManualEmail('');
+  };
+
+  const handleParsePaste = () => {
+    const parsed = parsePastedCandidates(pasteText);
+    if (parsed.length === 0) { toast.error('No valid name/email rows found in the pasted text'); return; }
+    addManualCandidates(parsed);
+    setPasteText('');
+  };
+
+  const removeManualCandidate = (index: number) => {
+    setManualCandidates(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const escapeCsvField = (value: string) => /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+
+  const buildManualCandidatesFile = (candidates: ManualCandidate[]): File => {
+    const csvContent = ['name,email', ...candidates.map(c => `${escapeCsvField(c.name)},${escapeCsvField(c.email)}`)].join('\n');
+    return new File([csvContent], 'manual-candidates.csv', { type: 'text/csv' });
   };
 
   const handleSendInvitations = async () => {
-    if (!testId || !invitationFile) { toast.error('Please upload a CSV or XLSX file'); return; }
+    const fileToSend = invitationFile || (manualCandidates.length > 0 ? buildManualCandidatesFile(manualCandidates) : null);
+    if (!testId || !fileToSend) { toast.error('Upload a file or add at least one candidate'); return; }
     const formData = new FormData();
-    formData.append('file', invitationFile);
+    formData.append('file', fileToSend);
     if (customMessage.trim()) formData.append('customMessage', customMessage.trim());
     setSendingInvitations(true); setInvitationSummary(null);
     try {
@@ -1275,7 +1354,7 @@ export default function TestDetails() {
             {/* Body */}
             <div className="px-6 py-5 space-y-4">
               {/* File upload */}
-              <div>
+              <div style={{ opacity: manualCandidates.length > 0 ? 0.5 : 1, pointerEvents: manualCandidates.length > 0 ? 'none' : 'auto' }}>
                 <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--admin-text-muted)' }}>Candidate File</label>
                 <label
                   className="flex flex-col items-center justify-center w-full rounded-xl border-2 border-dashed cursor-pointer transition-colors hover:border-amber-400"
@@ -1285,7 +1364,7 @@ export default function TestDetails() {
                     accept=".csv,.xlsx"
                     className="hidden"
                     onChange={e => setInvitationFile(e.target.files?.[0] || null)}
-                    disabled={sendingInvitations}
+                    disabled={sendingInvitations || manualCandidates.length > 0}
                   />
                   {invitationFile ? (
                     <div className="flex items-center gap-2">
@@ -1299,6 +1378,91 @@ export default function TestDetails() {
                     </>
                   )}
                 </label>
+              </div>
+
+              {/* Divider */}
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px" style={{ backgroundColor: 'var(--admin-border)' }} />
+                <span className="text-xs font-medium" style={{ color: 'var(--admin-text-subtle)' }}>OR ADD INDIVIDUALLY</span>
+                <div className="flex-1 h-px" style={{ backgroundColor: 'var(--admin-border)' }} />
+              </div>
+
+              {/* Manual add */}
+              <div style={{ opacity: invitationFile ? 0.5 : 1, pointerEvents: invitationFile ? 'none' : 'auto' }}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-sm font-medium" style={{ color: 'var(--admin-text-muted)' }}>Name &amp; Email</label>
+                  <span className="text-xs" style={{ color: 'var(--admin-text-subtle)' }}>{manualCandidates.length}/{MAX_MANUAL_CANDIDATES} added</span>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Name"
+                    value={manualName}
+                    onChange={e => setManualName(e.target.value)}
+                    disabled={sendingInvitations || manualCandidates.length >= MAX_MANUAL_CANDIDATES}
+                    className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none"
+                    style={{ borderColor: 'var(--admin-border)', color: 'var(--admin-text)', backgroundColor: 'white' }}
+                  />
+                  <input
+                    type="email"
+                    placeholder="Email"
+                    value={manualEmail}
+                    onChange={e => setManualEmail(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddManualCandidate(); } }}
+                    disabled={sendingInvitations || manualCandidates.length >= MAX_MANUAL_CANDIDATES}
+                    className="flex-1 min-w-0 rounded-xl border px-3 py-2 text-sm outline-none"
+                    style={{ borderColor: 'var(--admin-border)', color: 'var(--admin-text)', backgroundColor: 'white' }}
+                  />
+                  <button
+                    onClick={handleAddManualCandidate}
+                    disabled={sendingInvitations || manualCandidates.length >= MAX_MANUAL_CANDIDATES}
+                    className="px-3 rounded-xl text-sm font-semibold text-white transition-colors"
+                    style={{ backgroundColor: 'var(--admin-accent)', flexShrink: 0 }}>
+                    <Plus size={16} />
+                  </button>
+                </div>
+
+                <textarea
+                  value={pasteText}
+                  onChange={e => setPasteText(e.target.value)}
+                  rows={2}
+                  placeholder={'Or paste rows copied from a spreadsheet, one candidate per line:\nJohn Doe, john@example.com'}
+                  disabled={sendingInvitations || manualCandidates.length >= MAX_MANUAL_CANDIDATES}
+                  className="w-full mt-2 rounded-xl border px-3 py-2 text-sm outline-none resize-none"
+                  style={{ borderColor: 'var(--admin-border)', color: 'var(--admin-text)', backgroundColor: 'white', fontFamily: 'inherit' }}
+                />
+                {pasteText.trim() && (
+                  <div className="flex justify-end mt-2">
+                    <button
+                      onClick={handleParsePaste}
+                      disabled={sendingInvitations}
+                      className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white transition-colors"
+                      style={{ backgroundColor: sendingInvitations ? 'var(--admin-accent-disabled)' : 'var(--admin-accent)', cursor: sendingInvitations ? 'not-allowed' : 'pointer' }}>
+                      Parse &amp; Add
+                    </button>
+                  </div>
+                )}
+
+                {manualCandidates.length > 0 && (
+                  <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
+                    {manualCandidates.map((c, i) => (
+                      <div key={`${c.email}-${i}`} className="flex items-center justify-between gap-2 text-xs rounded-lg px-2.5 py-1.5 border" style={{ backgroundColor: '#F0FDF4', borderColor: '#BBF7D0' }}>
+                        <span className="flex items-center gap-1.5 truncate">
+                          <CheckCircle2 size={13} color="#16A34A" style={{ flexShrink: 0 }} />
+                          <span className="truncate" style={{ color: '#15803D' }}>
+                            <span className="font-semibold">{c.name || '(no name)'}</span> — {c.email}
+                          </span>
+                        </span>
+                        <button
+                          onClick={() => removeManualCandidate(i)}
+                          disabled={sendingInvitations}
+                          style={{ color: '#16A34A', flexShrink: 0 }}>
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Custom message */}
@@ -1333,9 +1497,9 @@ export default function TestDetails() {
             <div className="flex items-center gap-3 px-6 py-4" style={{ borderTop: '1px solid var(--admin-border)' }}>
               <button
                 onClick={handleSendInvitations}
-                disabled={sendingInvitations || !invitationFile}
+                disabled={sendingInvitations || (!invitationFile && manualCandidates.length === 0)}
                 className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-colors"
-                style={{ backgroundColor: sendingInvitations || !invitationFile ? 'var(--admin-accent-disabled)' : 'var(--admin-accent)', cursor: sendingInvitations || !invitationFile ? 'not-allowed' : 'pointer' }}>
+                style={{ backgroundColor: sendingInvitations || (!invitationFile && manualCandidates.length === 0) ? 'var(--admin-accent-disabled)' : 'var(--admin-accent)', cursor: sendingInvitations || (!invitationFile && manualCandidates.length === 0) ? 'not-allowed' : 'pointer' }}>
                 {sendingInvitations ? 'Sending...' : 'Send Invitations'}
               </button>
               <button
