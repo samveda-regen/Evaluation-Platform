@@ -395,7 +395,7 @@ export default function MCQForm() {
               <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color:'var(--admin-text-muted)' }}>
                 Points
               </label>
-              <input type="number" min={1} value={formData.marks}
+              <input type="number" value={formData.marks}
                 onChange={e => setFormData({...formData, marks:Number(e.target.value)})}
                 className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
                 style={inputSx}
@@ -407,7 +407,7 @@ export default function MCQForm() {
               <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color:'var(--admin-text-muted)' }}>
                 Time estimate (sec)
               </label>
-              <input type="number" min={5} defaultValue={45}
+              <input type="number" defaultValue={45}
                 className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
                 style={inputSx}
               />

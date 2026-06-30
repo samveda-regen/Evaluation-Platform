@@ -132,6 +132,7 @@ export default function QuestionBank() {
   const [draftSearch,  setDraftSearch]  = useState('');
   const [selectedDiffs, setSelectedDiffs] = useState<Set<Difficulty>>(new Set(['easy', 'medium', 'hard']));
   const [showNewDrop,  setShowNewDrop]  = useState(false);
+  const [newDropIndex, setNewDropIndex] = useState(0);
   const [sortOrder,    setSortOrder]    = useState<'most-used'|'newest'|'marks'>('most-used');
   const dropRef = useRef<HTMLDivElement>(null);
   const [editBeh, setEditBeh] = useState({
@@ -415,6 +416,40 @@ export default function QuestionBank() {
     };
     return getUses(b) - getUses(a);
   });
+  const newQuestionOptions = [
+    { label:'MCQ question',        category:'MCQ' as RepositoryCategory, path:'/admin/mcq/new' },
+    { label:'Coding question',     category:'CODING' as RepositoryCategory, path:'/admin/coding/new' },
+    { label:'Behavioral question', category:'BEHAVIORAL' as RepositoryCategory, path:'/admin/behavioral/new' },
+  ];
+  const activateNewQuestionOption = (index: number) => {
+    const option = newQuestionOptions[index];
+    if (!option) return;
+    setShowNewDrop(false);
+    navigate(option.path);
+  };
+  const handleNewDropKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!showNewDrop) {
+        setShowNewDrop(true);
+        setNewDropIndex(0);
+        return;
+      }
+      const direction = e.key === 'ArrowDown' ? 1 : -1;
+      setNewDropIndex(i => (i + direction + newQuestionOptions.length) % newQuestionOptions.length);
+      return;
+    }
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (showNewDrop) activateNewQuestionOption(newDropIndex);
+      else setShowNewDrop(true);
+      return;
+    }
+    if (e.key === 'Escape' && showNewDrop) {
+      e.preventDefault();
+      setShowNewDrop(false);
+    }
+  };
 
   return (
     <div className="admin-page">
@@ -455,7 +490,8 @@ export default function QuestionBank() {
           {/* New question with dropdown */}
           <div ref={dropRef} style={{ position:'relative' }}>
             <button
-              onClick={() => setShowNewDrop(p=>!p)}
+              onClick={() => { setShowNewDrop(p=>!p); setNewDropIndex(0); }}
+              onKeyDown={handleNewDropKeyDown}
               className="admin-btn admin-btn-primary"
               aria-expanded={showNewDrop}
               aria-haspopup="menu">
@@ -469,15 +505,10 @@ export default function QuestionBank() {
                 backgroundColor:'white', borderRadius:'var(--admin-control-radius)', boxShadow:'0 8px 24px rgba(31, 53, 86, 0.14)',
                 border:'1px solid var(--admin-border)', minWidth:'160px', overflow:'hidden',
               }}>
-                {[
-                  { label:'MCQ question',        category:'MCQ' as RepositoryCategory, path:'/admin/mcq/new' },
-                  { label:'Coding question',     category:'CODING' as RepositoryCategory, path:'/admin/coding/new' },
-                  { label:'Behavioral question', category:'BEHAVIORAL' as RepositoryCategory, path:'/admin/behavioral/new' },
-                ].map(opt => (
-                  <button key={opt.label} onClick={() => { setShowNewDrop(false); navigate(opt.path); }}
-                    style={{ width:'100%', textAlign:'left', padding:'10px 14px', border:'none', backgroundColor:'white', fontSize:'13px', color:'var(--admin-text-muted)', cursor:'pointer', borderBottom:'1px solid var(--admin-border)', display:'flex', alignItems:'center', gap:'10px' }}
-                    onMouseEnter={e=>(e.currentTarget.style.backgroundColor='rgba(31, 53, 86, 0.06)')}
-                    onMouseLeave={e=>(e.currentTarget.style.backgroundColor='white')}>
+                {newQuestionOptions.map((opt, index) => (
+                  <button key={opt.label} onClick={() => activateNewQuestionOption(index)}
+                    style={{ width:'100%', textAlign:'left', padding:'10px 14px', border:'none', backgroundColor: index === newDropIndex ? 'var(--admin-accent-soft)' : 'white', fontSize:'13px', color: index === newDropIndex ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)', cursor:'pointer', borderBottom:'1px solid var(--admin-border)', display:'flex', alignItems:'center', gap:'10px', fontWeight: index === newDropIndex ? 600 : 400 }}
+                    onMouseEnter={() => setNewDropIndex(index)}>
                     <TypeIcon cat={opt.category} size={26} iconSize={13} />
                     {opt.label}
                   </button>
@@ -900,7 +931,7 @@ export default function QuestionBank() {
               </div>
               <div>
                 <label style={{ display:'block', fontSize:'11px', fontWeight:700, color:'var(--admin-text-muted)', marginBottom:'6px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Marks</label>
-                <input type="number" min={1} value={editBeh.marks}
+                <input type="number" value={editBeh.marks}
                   onChange={e => setEditBeh(p => ({ ...p, marks: Number(e.target.value) }))}
                   style={{ width:'100%', padding:'9px 10px', borderRadius:'var(--admin-field-radius)', border:'1.5px solid var(--admin-border)', fontSize:'13px', color:'var(--admin-text-muted)', outline:'none', boxSizing:'border-box' }} />
               </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { format } from 'date-fns';
@@ -193,13 +193,17 @@ const DEFAULT_WEEK: { label: string; value: number }[] = [
   'Sun','Mon','Tue','Wed','Thu','Fri','Sat'
 ].map(label => ({ label, value: 0 }));
 
+const headerActionStyle: React.CSSProperties = {
+  width: '132px',
+  justifyContent: 'center',
+};
+
 export default function AdminDashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentAttempts, setRecentAttempts] = useState<RecentAttempt[]>([]);
   const [weeklyData, setWeeklyData] = useState<{ label: string; value: number }[]>(DEFAULT_WEEK);
   const [integrity, setIntegrity] = useState({ flagged: 0, clean: 0, avgTrustScore: 0 });
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
 
   useEffect(() => { loadDashboard(); }, []);
 
@@ -260,18 +264,18 @@ export default function AdminDashboard() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => navigate('/admin/tests/agent')}
-            className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors"
-            style={{ borderColor: 'var(--admin-border)', backgroundColor: 'white', color: 'var(--admin-accent-hover)' }}
+          <Link
+            to="/admin/tests/agent"
+            className="btn btn-secondary"
+            style={headerActionStyle}
           >
             <Sparkles size={13} />
             AI Generate
-          </button>
+          </Link>
           <Link
             to="/admin/tests/new"
-            className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white"
-            style={{ backgroundColor: 'var(--admin-accent)' }}
+            className="btn btn-primary"
+            style={headerActionStyle}
           >
             + Create Test
           </Link>

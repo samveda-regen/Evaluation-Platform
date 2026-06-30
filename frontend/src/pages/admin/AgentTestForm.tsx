@@ -159,6 +159,7 @@ export default function AgentTestForm() {
   const [skills,      setSkills]      = useState<string[]>([]);
   const [skillInput,  setSkillInput]  = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
   const [difficulty,  setDifficulty]  = useState<'easy' | 'medium' | 'hard' | 'mixed'>('mixed');
   const [mcqCount,    setMcqCount]    = useState(10);
   const [codingCount, setCodingCount] = useState(2);
@@ -193,6 +194,26 @@ export default function AgentTestForm() {
     setShowSuggestions(false);
   };
   const removeSkill = (s: string) => setSkills(prev => prev.filter(x => x !== s));
+
+  const handleSkillInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && filteredSuggestions.length) {
+      e.preventDefault();
+      setShowSuggestions(true);
+      const direction = e.key === 'ArrowDown' ? 1 : -1;
+      setActiveSuggestionIndex(i => (i + direction + filteredSuggestions.length) % filteredSuggestions.length);
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (showSuggestions && filteredSuggestions.length) addSkill(filteredSuggestions[activeSuggestionIndex] ?? filteredSuggestions[0]);
+      else addSkill();
+      return;
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      setShowSuggestions(false);
+    }
+  };
 
   /* -- Step 1 -> 2 -- */
   const handleAnalyzeJob = async () => {
@@ -273,7 +294,7 @@ export default function AgentTestForm() {
       });
       if (data.success && data.data) {
         toast.success(`Test created! Code: ${data.data.testCode}`);
-        navigate(`/admin/tests/${data.data.testId}`);
+        navigate('/admin/tests');
       }
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string; message?: string } } };
@@ -317,9 +338,9 @@ export default function AgentTestForm() {
   const blur = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     (e.target.style.borderColor = 'var(--admin-border)');
 
-  const parseNum = (val: string, fallback: number, min = 0) => {
+  const parseNum = (val: string, fallback: number) => {
     const n = val === '' ? fallback : Number(val);
-    return isNaN(n) ? fallback : Math.max(min, Math.floor(n));
+    return isNaN(n) ? fallback : Math.floor(n);
   };
 
   return (
@@ -430,24 +451,20 @@ export default function AgentTestForm() {
                       {showSuggestions && <div className="fixed inset-0 z-20" onClick={() => setShowSuggestions(false)} />}
                       <input type="text"
                         value={skillInput}
-                        onChange={e => { setSkillInput(e.target.value); setShowSuggestions(true); }}
-                        onFocus={e => { setShowSuggestions(true); focus(e); }}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter') { e.preventDefault(); if (filteredSuggestions.length) addSkill(filteredSuggestions[0]); else addSkill(); }
-                          if (e.key === 'Escape') setShowSuggestions(false);
-                        }}
+                        onChange={e => { setSkillInput(e.target.value); setShowSuggestions(true); setActiveSuggestionIndex(0); }}
+                        onFocus={e => { setShowSuggestions(true); setActiveSuggestionIndex(0); focus(e); }}
+                        onKeyDown={handleSkillInputKeyDown}
                         placeholder="Type a skill and press Enter or click Add"
                         style={{ ...inp, width: '100%', boxSizing: 'border-box' }} onBlur={blur}
                         autoComplete="off"
                       />
                       {showSuggestions && filteredSuggestions.length > 0 && (
                         <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 30, marginTop: '2px', backgroundColor: 'white', border: '1.5px solid var(--admin-accent-disabled)', borderRadius: '8px', boxShadow: '0 4px 16px rgba(0,0,0,0.10)', overflow: 'hidden' }}>
-                          {filteredSuggestions.map(s => (
+                          {filteredSuggestions.map((s, index) => (
                             <button key={s} type="button"
                               onMouseDown={e => { e.preventDefault(); addSkill(s); }}
-                              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', color: 'var(--admin-text)' }}
-                              onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--admin-accent-soft)')}
-                              onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', background: index === activeSuggestionIndex ? 'var(--admin-accent-soft)' : 'none', border: 'none', cursor: 'pointer', fontSize: '13px', color: index === activeSuggestionIndex ? 'var(--admin-accent-hover)' : 'var(--admin-text)', fontWeight: index === activeSuggestionIndex ? 600 : 400 }}
+                              onMouseEnter={() => setActiveSuggestionIndex(index)}
                             >
                               {s}
                             </button>
@@ -501,7 +518,6 @@ export default function AgentTestForm() {
                     <input type="number"
                       value={mcqCount}
                       onChange={e => setMcqCount(parseNum(e.target.value, 0))}
-                      min={0} max={50}
                       style={inp} onFocus={focus} onBlur={blur}
                     />
                   </div>
@@ -510,7 +526,6 @@ export default function AgentTestForm() {
                     <input type="number"
                       value={codingCount}
                       onChange={e => setCodingCount(parseNum(e.target.value, 0))}
-                      min={0} max={10}
                       style={inp} onFocus={focus} onBlur={blur}
                     />
                   </div>
@@ -628,8 +643,8 @@ export default function AgentTestForm() {
                     <label style={lbl}>Duration (minutes) <span style={{ color: '#EF4444' }}>*</span></label>
                     <input type="number"
                       value={testSettings.duration === 0 ? '' : testSettings.duration}
-                      onChange={e => setTestSettings(p => ({ ...p, duration: e.target.value === '' ? 0 : parseNum(e.target.value, 0, 0) }))}
-                      min={0} style={inp} onFocus={focus} onBlur={blur}
+                      onChange={e => setTestSettings(p => ({ ...p, duration: e.target.value === '' ? 0 : parseNum(e.target.value, 0) }))}
+                      style={inp} onFocus={focus} onBlur={blur}
                       placeholder="e.g. 60"
                     />
                   </div>
@@ -638,7 +653,7 @@ export default function AgentTestForm() {
                     <input type="number"
                       value={testSettings.passingMarks}
                       onChange={e => setTestSettings(p => ({ ...p, passingMarks: parseNum(e.target.value, 0) }))}
-                      min={0} style={inp} onFocus={focus} onBlur={blur}
+                      style={inp} onFocus={focus} onBlur={blur}
                     />
                   </div>
                   <div>
@@ -654,6 +669,7 @@ export default function AgentTestForm() {
                     <DateTimePicker
                       value={testSettings.endTime}
                       onChange={v => setTestSettings(p => ({ ...p, endTime: v }))}
+                      minDateTime={testSettings.startTime}
                       placeholder="Select end date & time"
                     />
                   </div>
@@ -661,16 +677,16 @@ export default function AgentTestForm() {
                     <label style={lbl}>Negative Marking (per question)</label>
                     <input type="number"
                       value={testSettings.negativeMarking}
-                      onChange={e => setTestSettings(p => ({ ...p, negativeMarking: e.target.value === '' ? 0 : Math.max(0, Number(e.target.value)) }))}
-                      min={0} step={0.25} style={inp} onFocus={focus} onBlur={blur}
+                      onChange={e => setTestSettings(p => ({ ...p, negativeMarking: e.target.value === '' ? 0 : Number(e.target.value) }))}
+                      style={inp} onFocus={focus} onBlur={blur}
                     />
                   </div>
                   <div>
                     <label style={lbl}>Max Violations</label>
                     <input type="number"
                       value={testSettings.maxViolations}
-                      onChange={e => setTestSettings(p => ({ ...p, maxViolations: parseNum(e.target.value, 3, 1) }))}
-                      min={1} style={inp} onFocus={focus} onBlur={blur}
+                      onChange={e => setTestSettings(p => ({ ...p, maxViolations: parseNum(e.target.value, 3) }))}
+                      style={inp} onFocus={focus} onBlur={blur}
                     />
                   </div>
                 </div>

@@ -1,6 +1,6 @@
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, ToastBar, toast } from 'react-hot-toast';
 import App from './App';
 import './index.css';
 
@@ -88,6 +88,42 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           },
         },
       }}
-    />
+    >
+      {(t) => (
+        <ToastBar toast={t}>
+          {({ icon, message }) => (
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', width: '100%' }}>
+              <span style={{ flexShrink: 0 }}>{icon}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>{message}</div>
+              {t.type !== 'loading' && (
+                <button
+                  type="button"
+                  aria-label="Dismiss notification"
+                  onClick={() => toast.dismiss(t.id)}
+                  style={{
+                    flexShrink: 0,
+                    width: '22px',
+                    height: '22px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    border: 'none',
+                    borderRadius: '6px',
+                    background: 'transparent',
+                    color: 'currentColor',
+                    cursor: 'pointer',
+                    fontSize: '18px',
+                    lineHeight: 1,
+                    opacity: 0.72,
+                  }}
+                >
+                  &times;
+                </button>
+              )}
+            </div>
+          )}
+        </ToastBar>
+      )}
+    </Toaster>
   </BrowserRouter>
 );

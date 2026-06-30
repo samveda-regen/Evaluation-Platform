@@ -148,7 +148,7 @@ export default function AdminLayout() {
     const timeoutId = setTimeout(() => {
       completionPopupTimeoutsRef.current.delete(notification.id);
       setCompletionPopups((prev) => prev.filter((item) => item.id !== notification.id));
-    }, 8000);
+    }, 5000);
     completionPopupTimeoutsRef.current.set(notification.id, timeoutId);
 
     setNotificationHistory(prev => {
@@ -951,8 +951,10 @@ export default function AdminLayout() {
                   </p>
                 </div>
                 <button
+                  type="button"
+                  aria-label="Dismiss notification"
                   onClick={() => dismissCompletionPopup(notification.id)}
-                  className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded"
+                  className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded transition-colors hover:bg-gray-100"
                   style={{ color: 'var(--admin-text-subtle)', fontSize: '18px', lineHeight: 1 }}
                 >
                   &times;

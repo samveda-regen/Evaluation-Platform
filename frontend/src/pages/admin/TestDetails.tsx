@@ -233,6 +233,7 @@ export default function TestDetails() {
   const [qPage, setQPage] = useState(1);
   const [selectedQIds, setSelectedQIds] = useState<Set<string>>(new Set());
   const [showNewQMenu, setShowNewQMenu] = useState(false);
+  const [newQMenuIndex, setNewQMenuIndex] = useState(0);
   const Q_PAGE_SIZE = 10;
 
   useEffect(() => { loadTest(); loadAnalytics(); }, [testId]);
@@ -533,6 +534,40 @@ export default function TestDetails() {
     { id: 'ai-proctoring', label: 'AI Proctoring', icon: <ShieldCheck     size={15} /> },
     { id: 'settings',      label: 'Settings',      icon: <Settings2       size={15} /> },
   ];
+  const newQuestionItems = [
+    { label: 'MCQ', action: () => navigate('/admin/mcq/new') },
+    { label: 'Coding', action: () => navigate('/admin/coding/new') },
+    { label: 'Behavioral', action: () => handleOpenCustomModal(null, 'behavioral') },
+  ];
+  const activateNewQuestionItem = (index: number) => {
+    const item = newQuestionItems[index];
+    if (!item) return;
+    setShowNewQMenu(false);
+    item.action();
+  };
+  const handleNewQuestionMenuKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!showNewQMenu) {
+        setShowNewQMenu(true);
+        setNewQMenuIndex(0);
+        return;
+      }
+      const direction = e.key === 'ArrowDown' ? 1 : -1;
+      setNewQMenuIndex(i => (i + direction + newQuestionItems.length) % newQuestionItems.length);
+      return;
+    }
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (showNewQMenu) activateNewQuestionItem(newQMenuIndex);
+      else setShowNewQMenu(true);
+      return;
+    }
+    if (e.key === 'Escape' && showNewQMenu) {
+      e.preventDefault();
+      setShowNewQMenu(false);
+    }
+  };
 
   return (
     <div style={{ backgroundColor: '#F9FAFB', minHeight: '100%' }}>
@@ -796,7 +831,8 @@ export default function TestDetails() {
             {/* New question dropdown */}
             <div className="relative">
               {showNewQMenu && <div className="fixed inset-0 z-10" onClick={() => setShowNewQMenu(false)} />}
-              <button onClick={() => setShowNewQMenu(v => !v)}
+              <button onClick={() => { setShowNewQMenu(v => !v); setNewQMenuIndex(0); }}
+                onKeyDown={handleNewQuestionMenuKeyDown}
                 className="btn btn-primary">
                 <Plus size={13} color="white" />
                 New question
@@ -805,14 +841,15 @@ export default function TestDetails() {
               {showNewQMenu && (
                 <div className="absolute right-0 top-full mt-1 w-40 rounded-xl border py-1 z-20"
                   style={{ backgroundColor: 'white', borderColor: 'var(--admin-border)', boxShadow: '0 4px 16px rgba(0,0,0,0.10)' }}>
-                  {[
-                    { label: 'MCQ', action: () => navigate('/admin/mcq/new') },
-                    { label: 'Coding', action: () => navigate('/admin/coding/new') },
-                    { label: 'Behavioral', action: () => handleOpenCustomModal(null, 'behavioral') },
-                  ].map(item => (
-                    <button key={item.label} onClick={() => { setShowNewQMenu(false); item.action(); }}
+                  {newQuestionItems.map((item, index) => (
+                    <button key={item.label} onClick={() => activateNewQuestionItem(index)}
+                      onMouseEnter={() => setNewQMenuIndex(index)}
                       className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors"
-                      style={{ color: 'var(--admin-text-muted)' }}>
+                      style={{
+                        color: index === newQMenuIndex ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)',
+                        backgroundColor: index === newQMenuIndex ? 'var(--admin-accent-soft)' : 'white',
+                        fontWeight: index === newQMenuIndex ? 600 : 400,
+                      }}>
                       {item.label}
                     </button>
                   ))}
@@ -1098,7 +1135,7 @@ export default function TestDetails() {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1" style={{ color: 'var(--admin-text-muted)' }}>Marks</label>
-                <input type="number" min={1} value={customMarks} onChange={e => setCustomMarks(Number(e.target.value))} className="input" />
+                <input type="number" value={customMarks} onChange={e => setCustomMarks(Number(e.target.value))} className="input" />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1" style={{ color: 'var(--admin-text-muted)' }}>Difficulty</label>
@@ -1192,7 +1229,7 @@ export default function TestDetails() {
                           <input type="checkbox" checked={tc.isHidden} onChange={e => setCodingTestCaseField(idx, 'isHidden', e.target.checked)} />
                           Hidden
                         </label>
-                        <input type="number" min={0} className="input w-24" value={tc.marks} onChange={e => setCodingTestCaseField(idx, 'marks', Number(e.target.value))} />
+                        <input type="number" className="input w-24" value={tc.marks} onChange={e => setCodingTestCaseField(idx, 'marks', Number(e.target.value))} />
                       </div>
                     </div>
                   ))}

@@ -264,7 +264,6 @@ export default function CodingForm() {
                 value={formData.marks}
                 onChange={(e) => setFormData({ ...formData, marks: Number(e.target.value) })}
                 className="input"
-                min={1}
                 required
               />
             </div>
@@ -292,8 +291,6 @@ export default function CodingForm() {
                 value={formData.timeLimit}
                 onChange={(e) => setFormData({ ...formData, timeLimit: Number(e.target.value) })}
                 className="input"
-                min={100}
-                max={30000}
               />
             </div>
             <div>
@@ -303,8 +300,6 @@ export default function CodingForm() {
                 value={formData.memoryLimit}
                 onChange={(e) => setFormData({ ...formData, memoryLimit: Number(e.target.value) })}
                 className="input"
-                min={16}
-                max={512}
               />
             </div>
           </div>
@@ -451,7 +446,6 @@ export default function CodingForm() {
                       value={tc.marks}
                       onChange={(e) => updateTestCase(index, 'marks', Number(e.target.value))}
                       className="input w-24 text-sm"
-                      min={0}
                       placeholder="Marks"
                     />
                     {formData.testCases.length > 1 && (

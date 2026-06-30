@@ -11,7 +11,6 @@ import {
   ListChecks,
   Plus,
   ShieldCheck,
-  Sparkles,
   Upload,
 } from 'lucide-react';
 import { adminApi } from '../../services/api';
@@ -105,6 +104,15 @@ const WIZARD_STEPS = [
   { label: 'Review', icon: ClipboardCheck },
 ];
 
+const CUSTOM_CATEGORY_VALUE = '__custom_category__';
+const ROLE_CATEGORY_OPTIONS = [
+  { value: 'back-end', label: 'Back-End Developer' },
+  { value: 'front-end', label: 'Front-End Developer' },
+  { value: 'full-stack', label: 'Full Stack Developer' },
+  { value: 'devops', label: 'DevOps Engineer' },
+  { value: 'data', label: 'Data Scientist' },
+];
+
 function SectionTitle({ children, sub }: { children: React.ReactNode; sub?: string }) {
   return (
     <div className="mb-4">
@@ -168,7 +176,9 @@ export default function TestForm() {
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard' | 'mixed'>('mixed');
-  const [srcs, setSrcs] = useState({ library: true, write: true, ai: false, csv: false });
+  const [srcs, setSrcs] = useState({ library: true, write: true, csv: false });
+  const [isCustomCategory, setIsCustomCategory] = useState(false);
+  const [customCategoryInput, setCustomCategoryInput] = useState('');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -226,9 +236,11 @@ export default function TestForm() {
     try {
       const { data } = await adminApi.getTest(testId!);
       const test = data.test;
+      const loadedCategory = test.category || 'back-end';
+      const loadedCategoryIsCustom = !ROLE_CATEGORY_OPTIONS.some(option => option.value === loadedCategory);
       setFormData({
         name: test.name,
-        category: test.category || 'back-end',
+        category: loadedCategory,
         description: test.description || '',
         instructions: test.instructions || '',
         duration: test.duration,
@@ -247,6 +259,8 @@ export default function TestForm() {
         requireScreenShare: test.requireScreenShare || false,
         requireIdVerification: test.requireIdVerification || false,
       });
+      setIsCustomCategory(loadedCategoryIsCustom);
+      setCustomCategoryInput(loadedCategoryIsCustom ? loadedCategory : '');
     } catch {
       toast.error('Failed to load test');
       navigate('/admin/tests');
@@ -323,6 +337,17 @@ export default function TestForm() {
     e.target.style.borderColor = 'var(--admin-border)';
   };
 
+  const categorySelectValue = isCustomCategory && !customCategoryInput.trim()
+    ? CUSTOM_CATEGORY_VALUE
+    : formData.category;
+  const categorySelectOptions = [
+    ...ROLE_CATEGORY_OPTIONS,
+    ...(isCustomCategory && customCategoryInput.trim()
+      ? [{ value: customCategoryInput.trim(), label: customCategoryInput.trim() }]
+      : []),
+    { value: CUSTOM_CATEGORY_VALUE, label: 'Custom' },
+  ];
+
   const reviewRow = (label: string, value: string | number | boolean | null | undefined) => (
     <div className="flex items-start gap-3 py-2.5 border-b border-gray-100 last:border-0">
       <span className="text-xs font-medium text-gray-500 w-36 shrink-0 pt-0.5">{label}</span>
@@ -371,19 +396,38 @@ export default function TestForm() {
                   </div>
                   <div>
                     <label style={labelStyle}>Role / category</label>
-                    <CustomSelect
-                      value={formData.category}
-                      onChange={category => setFormData(prev => ({ ...prev, category }))}
-                      options={[
-                        { value: 'back-end', label: 'Back-End Developer' },
-                        { value: 'front-end', label: 'Front-End Developer' },
-                        { value: 'full-stack', label: 'Full Stack Developer' },
-                        { value: 'devops', label: 'DevOps Engineer' },
-                        { value: 'data', label: 'Data Scientist' },
-                        { value: 'other', label: 'Other' },
-                      ]}
-                      style={{ width: '100%', minWidth: 0 }}
-                    />
+                    {isCustomCategory ? (
+                      <input
+                        type="text"
+                        value={customCategoryInput}
+                        onChange={e => {
+                          const category = e.target.value;
+                          setCustomCategoryInput(category);
+                          setFormData(prev => ({ ...prev, category }));
+                        }}
+                        placeholder="Type custom role/category"
+                        style={inputStyle}
+                        onFocus={focusGreen}
+                        onBlur={blurGray}
+                      />
+                    ) : (
+                      <CustomSelect
+                        value={categorySelectValue}
+                        onChange={category => {
+                          if (category === CUSTOM_CATEGORY_VALUE) {
+                            setIsCustomCategory(true);
+                            setCustomCategoryInput('');
+                            setFormData(prev => ({ ...prev, category: '' }));
+                            return;
+                          }
+                          setIsCustomCategory(false);
+                          setCustomCategoryInput('');
+                          setFormData(prev => ({ ...prev, category }));
+                        }}
+                        options={categorySelectOptions}
+                        style={{ width: '100%', minWidth: 0 }}
+                      />
+                    )}
                   </div>
                   <div>
                     <label style={labelStyle}>Test code</label>
@@ -407,7 +451,6 @@ export default function TestForm() {
                     onFocus={focusGreen}
                     onBlur={blurGray}
                   />
-                  <p className="mt-1 text-[11px] text-gray-400">Shown to candidates on the instructions screen.</p>
                 </div>
                 <div className="mt-4">
                   <label style={labelStyle}>Instructions for candidates</label>
@@ -421,6 +464,7 @@ export default function TestForm() {
                     onFocus={focusGreen}
                     onBlur={blurGray}
                   />
+                  <p className="mt-1 text-[11px] text-gray-400">Shown to candidates on the instructions screen.</p>
                 </div>
               </section>
 
@@ -442,12 +486,6 @@ export default function TestForm() {
                     icon={<Plus width={15} height={15} stroke="var(--admin-text-subtle)" strokeWidth={1.5} />}
                   />
                   <SourceRow
-                    checked={srcs.ai}
-                    onChange={() => setSrcs(p => ({ ...p, ai: !p.ai }))}
-                    label="AI-generate questions"
-                    icon={<Sparkles width={15} height={15} stroke="var(--admin-text-subtle)" strokeWidth={1.5} />}
-                  />
-                  <SourceRow
                     checked={srcs.csv}
                     onChange={() => setSrcs(p => ({ ...p, csv: !p.csv }))}
                     label="Import from CSV"
@@ -465,19 +503,19 @@ export default function TestForm() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div>
                     <label style={labelStyle}>Duration (minutes) <span style={{ color: '#EF4444' }}>*</span></label>
-                    <input type="number" name="duration" value={formData.duration} onChange={handleChange} min={1} required style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
+                    <input type="number" name="duration" value={formData.duration} onChange={handleChange} required style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
                   </div>
                   <div>
                     <label style={labelStyle}>Passing score (%)</label>
-                    <input type="number" name="passingMarks" value={formData.passingMarks} onChange={handleChange} min={0} style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
+                    <input type="number" name="passingMarks" value={formData.passingMarks} onChange={handleChange} style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
                   </div>
                   <div>
                     <label style={labelStyle}>Total marks <span style={{ color: '#EF4444' }}>*</span></label>
-                    <input type="number" name="totalMarks" value={formData.totalMarks} onChange={handleChange} min={1} required style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
+                    <input type="number" name="totalMarks" value={formData.totalMarks} onChange={handleChange} required style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
                   </div>
                   <div>
                     <label style={labelStyle}>Negative marking</label>
-                    <input type="number" name="negativeMarking" value={formData.negativeMarking} onChange={handleChange} min={0} step={0.25} style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
+                    <input type="number" name="negativeMarking" value={formData.negativeMarking} onChange={handleChange} style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
                   </div>
                 </div>
                 <div className="mt-6">
@@ -539,7 +577,7 @@ export default function TestForm() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label style={labelStyle}>Max violations <span style={{ color: '#EF4444' }}>*</span></label>
-                    <input type="number" name="maxViolations" value={formData.maxViolations} onChange={handleChange} min={1} style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
+                    <input type="number" name="maxViolations" value={formData.maxViolations} onChange={handleChange} style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
                   </div>
                   <div className="space-y-3 pt-6">
                     <CheckOption name="shuffleQuestions" checked={formData.shuffleQuestions} onChange={handleChange} label="Shuffle questions for each candidate" />

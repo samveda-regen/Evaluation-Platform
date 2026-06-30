@@ -62,6 +62,7 @@ const CATEGORIES = [
   'Data Analyst','Data Scientist','DevOps Engineer','Mobile Developer',
   'QA Engineer','Product Manager','UI/UX Designer',
 ];
+const CUSTOM_CATEGORY_VALUE = '__custom_category__';
 const LANGUAGES = ['English','Spanish','German','French','Portuguese','Hindi'];
 
 function fmtForInput(iso?: string | null): string {
@@ -155,6 +156,8 @@ export default function TestSettings() {
   const [original,          setOriginal]           = useState<FormState | null>(null);
   const [form,              setForm]               = useState<FormState | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm]  = useState(false);
+  const [isCustomCategory,  setIsCustomCategory]   = useState(false);
+  const [customCategoryInput, setCustomCategoryInput] = useState('');
 
   // Email template state
   const [emailTab,          setEmailTab]           = useState<EmailTab>('invite');
@@ -172,7 +175,10 @@ export default function TestSettings() {
         adminApi.getEmailTemplates(testId!),
       ]);
       const fs = toFormState(testRes.data.test as Test);
+      const loadedCategoryIsCustom = !CATEGORIES.includes(fs.category);
       setOriginal(fs); setForm(fs);
+      setIsCustomCategory(loadedCategoryIsCustom);
+      setCustomCategoryInput(loadedCategoryIsCustom ? fs.category : '');
       setEmailTemplates(emailRes.data as EmailTemplates);
     } catch { toast.error('Failed to load settings'); }
     finally { setLoading(false); }
@@ -207,6 +213,17 @@ export default function TestSettings() {
   };
 
   const patch = (p: Partial<FormState>) => setForm(prev => prev ? { ...prev, ...p } : prev);
+
+  const categorySelectValue = isCustomCategory && !customCategoryInput.trim()
+    ? CUSTOM_CATEGORY_VALUE
+    : form?.category ?? CUSTOM_CATEGORY_VALUE;
+  const categorySelectOptions = [
+    ...CATEGORIES.map(category => ({ value: category, label: category })),
+    ...(isCustomCategory && customCategoryInput.trim()
+      ? [{ value: customCategoryInput.trim(), label: customCategoryInput.trim() }]
+      : []),
+    { value: CUSTOM_CATEGORY_VALUE, label: 'Custom' },
+  ];
 
   const handleSave = async () => {
     if (!testId || !form) return;
@@ -353,12 +370,36 @@ export default function TestSettings() {
                   {/* Category custom dropdown */}
                   <div>
                     <label style={labelSx}>Category</label>
-                    <CustomSelect
-                      value={form.category}
-                      onChange={category => patch({ category })}
-                      options={CATEGORIES.map(category => ({ value: category, label: category }))}
-                      style={{ width:'100%', minWidth:0 }}
-                    />
+                    {isCustomCategory ? (
+                      <input
+                        type="text"
+                        value={customCategoryInput}
+                        onChange={e => {
+                          const category = e.target.value;
+                          setCustomCategoryInput(category);
+                          patch({ category });
+                        }}
+                        placeholder="Type custom role/category"
+                        style={inputSx}
+                      />
+                    ) : (
+                      <CustomSelect
+                        value={categorySelectValue}
+                        onChange={category => {
+                          if (category === CUSTOM_CATEGORY_VALUE) {
+                            setIsCustomCategory(true);
+                            setCustomCategoryInput('');
+                            patch({ category: '' });
+                            return;
+                          }
+                          setIsCustomCategory(false);
+                          setCustomCategoryInput('');
+                          patch({ category });
+                        }}
+                        options={categorySelectOptions}
+                        style={{ width:'100%', minWidth:0 }}
+                      />
+                    )}
                   </div>
                   {/* Language custom dropdown */}
                   <div>
@@ -389,7 +430,7 @@ export default function TestSettings() {
                   </div>
                   <div>
                     <label style={labelSx}>Closes</label>
-                    <DateTimePicker value={form.endTime} onChange={v => patch({ endTime: v })} placeholder="Select close date & time" />
+                    <DateTimePicker value={form.endTime} onChange={v => patch({ endTime: v })} minDateTime={form.startTime} placeholder="Select close date & time" />
                   </div>
                 </div>
 
@@ -423,8 +464,8 @@ export default function TestSettings() {
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px', marginBottom:'8px' }}>
                   <div>
                     <label style={labelSx}>Passing score (%)</label>
-                    <input type="number" min={0} max={100} value={form.passingScorePercent}
-                      onChange={e => patch({ passingScorePercent: Math.min(100, Math.max(0, Number(e.target.value))) })}
+                    <input type="number" value={form.passingScorePercent}
+                      onChange={e => patch({ passingScorePercent: Number(e.target.value) })}
                       style={inputSx} />
                   </div>
                   <div>

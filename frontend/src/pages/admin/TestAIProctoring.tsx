@@ -144,7 +144,7 @@ export default function TestAIProctoring() {
           autoFlagThreshold, warnOnViolation, captureSnapshot, autoSubmit,
           webcamOn, micOn, screenOn, fullscreenOn,
         },
-        violationPopupSettings: { enabled: warnOnViolation, durationSeconds: 3 },
+        violationPopupSettings: { enabled: warnOnViolation, durationSeconds: 2 },
       });
       toast.success('AI proctoring settings saved');
       await loadTest();

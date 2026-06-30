@@ -186,7 +186,7 @@ export default function TestInstructions() {
           } catch {
             /* ignore */
           }
-          return { enabled: false, durationSeconds: 3 };
+          return { enabled: false, durationSeconds: 2 };
         })(),
         startTime: new Date(data.startTime),
         questions: data.questions,

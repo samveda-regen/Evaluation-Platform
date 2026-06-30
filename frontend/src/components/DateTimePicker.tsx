@@ -112,7 +112,9 @@ export default function DateTimePicker({ value, onChange, placeholder, minDateTi
   const popoverRef = useRef<HTMLDivElement>(null);
 
   const selDate = parseValue(value);
-  const minDate = parseValue(minDateTime || '');
+  const explicitMinDate = parseValue(minDateTime || '');
+  const nowMinDate = new Date();
+  const minDate = explicitMinDate && explicitMinDate > nowMinDate ? explicitMinDate : nowMinDate;
   const effectiveDate = selDate ?? new Date();
 
   useEffect(() => {
@@ -150,9 +152,11 @@ export default function DateTimePicker({ value, onChange, placeholder, minDateTi
     onChange(toLocalStr(d));
   };
 
-  const selectDay = (day: number) => {
+  const selectDay = (year: number, month: number, day: number) => {
     const base = selDate ? new Date(selDate) : new Date();
-    base.setFullYear(viewYear, viewMonth, day);
+    base.setFullYear(year, month, day);
+    setViewYear(year);
+    setViewMonth(month);
     applyDate(base);
   };
 
@@ -181,12 +185,23 @@ export default function DateTimePicker({ value, onChange, placeholder, minDateTi
   const firstDay = new Date(viewYear, viewMonth, 1).getDay();
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
   const prevDays = new Date(viewYear, viewMonth, 0).getDate();
-  const cells: { day: number; type: 'prev'|'curr'|'next' }[] = [];
-  for (let i = 0; i < firstDay; i++) cells.push({ day: prevDays - firstDay + i + 1, type: 'prev' });
-  for (let i = 1; i <= daysInMonth; i++) cells.push({ day: i, type: 'curr' });
-  while (cells.length < 42) cells.push({ day: cells.length - firstDay - daysInMonth + 1, type: 'next' });
+  const cells: { day: number; month: number; year: number; type: 'prev'|'curr'|'next' }[] = [];
+  const prevMonthValue = viewMonth === 0 ? 11 : viewMonth - 1;
+  const prevYearValue = viewMonth === 0 ? viewYear - 1 : viewYear;
+  const nextMonthValue = viewMonth === 11 ? 0 : viewMonth + 1;
+  const nextYearValue = viewMonth === 11 ? viewYear + 1 : viewYear;
+  for (let i = 0; i < firstDay; i++) {
+    cells.push({ day: prevDays - firstDay + i + 1, month: prevMonthValue, year: prevYearValue, type: 'prev' });
+  }
+  for (let i = 1; i <= daysInMonth; i++) {
+    cells.push({ day: i, month: viewMonth, year: viewYear, type: 'curr' });
+  }
+  while (cells.length < 42) {
+    cells.push({ day: cells.length - firstDay - daysInMonth + 1, month: nextMonthValue, year: nextYearValue, type: 'next' });
+  }
 
   const today = new Date();
+  const quickNowDisabled = isBeforeMinDateTime(today);
   const prevMonth = () => viewMonth === 0 ? (setViewYear(y => y - 1), setViewMonth(11)) : setViewMonth(m => m - 1);
   const nextMonth = () => viewMonth === 11 ? (setViewYear(y => y + 1), setViewMonth(0)) : setViewMonth(m => m + 1);
 
@@ -276,17 +291,17 @@ export default function DateTimePicker({ value, onChange, placeholder, minDateTi
 
           <div className="date-grid">
             {cells.map((cell, i) => {
-              const isSelected = cell.type === 'curr' && selDate &&
-                selDate.getDate() === cell.day && selDate.getMonth() === viewMonth && selDate.getFullYear() === viewYear;
-              const isToday = cell.type === 'curr' &&
-                today.getDate() === cell.day && today.getMonth() === viewMonth && today.getFullYear() === viewYear;
-              const isDisabled = cell.type !== 'curr' || isBeforeMinCalendarDate(viewYear, viewMonth, cell.day);
+              const isSelected = Boolean(selDate &&
+                selDate.getDate() === cell.day && selDate.getMonth() === cell.month && selDate.getFullYear() === cell.year);
+              const isToday =
+                today.getDate() === cell.day && today.getMonth() === cell.month && today.getFullYear() === cell.year;
+              const isDisabled = isBeforeMinCalendarDate(cell.year, cell.month, cell.day);
               return (
                 <button
                   key={`${cell.type}-${cell.day}-${i}`}
                   type="button"
                   disabled={isDisabled}
-                  onClick={() => !isDisabled && selectDay(cell.day)}
+                  onClick={() => !isDisabled && selectDay(cell.year, cell.month, cell.day)}
                   className="date-cell"
                   data-muted={cell.type !== 'curr' ? 'true' : undefined}
                   data-disabled={isDisabled ? 'true' : undefined}
@@ -314,8 +329,10 @@ export default function DateTimePicker({ value, onChange, placeholder, minDateTi
       <div className="date-time-footer">
         <button
           type="button"
+          disabled={quickNowDisabled}
           onClick={() => {
             const now = new Date();
+            if (isBeforeMinDateTime(now)) return;
             setViewMonth(now.getMonth());
             setViewYear(now.getFullYear());
             applyDate(now);

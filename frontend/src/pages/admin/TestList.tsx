@@ -22,6 +22,11 @@ type TabFilter = 'all' | 'published' | 'draft' | 'scheduled' | 'archived';
 type ViewMode = 'grid' | 'list';
 type SortBy = 'recent' | 'name' | 'attempts';
 
+const headerActionStyle: React.CSSProperties = {
+  width: '132px',
+  justifyContent: 'center',
+};
+
 function getTestStatus(test: Test): 'Published' | 'Draft' | 'Scheduled' | 'Archived' {
   const now = new Date();
   if (test.endTime && new Date(test.endTime) < now) return 'Archived';
@@ -290,6 +295,7 @@ export default function TestList() {
           <Link
             to="/admin/tests/agent"
             className="btn btn-secondary"
+            style={headerActionStyle}
           >
             <Sparkles size={15} />
             AI Generate
@@ -297,6 +303,7 @@ export default function TestList() {
           <Link
             to="/admin/tests/new"
             className="btn btn-primary"
+            style={headerActionStyle}
           >
             + Create Test
           </Link>
@@ -657,7 +664,8 @@ export default function TestList() {
                 <p className="text-sm text-center" style={{ color: 'var(--admin-text-muted)' }}>{test._count?.attempts || 0}</p>
                 <p className="text-xs" style={{ color: 'var(--admin-text-muted)' }}>{format(new Date(test.startTime), 'MMM d, yyyy')}</p>
                 <button
-                  onClick={e => { e.stopPropagation(); openInvite(test); }}
+                  onClick={e => { e.stopPropagation(); navigate(`/admin/tests/${test.id}`); }}
+                  title="Open test details"
                   className="flex items-center justify-center h-7 w-7 rounded-full transition-colors hover:bg-gray-100"
                   style={{ color: 'var(--admin-text-subtle)' }}
                 >

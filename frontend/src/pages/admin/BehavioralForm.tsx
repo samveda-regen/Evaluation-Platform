@@ -212,7 +212,7 @@ export default function BehavioralForm() {
             <div className="mb-4">
               <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: 'var(--admin-text-muted)' }}>Points</label>
               <input
-                type="number" min={1}
+                type="number"
                 value={formData.marks}
                 onChange={e => setFormData({ ...formData, marks: Number(e.target.value) })}
                 style={{ ...inputSx, resize: undefined }}

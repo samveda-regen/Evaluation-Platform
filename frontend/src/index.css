@@ -1130,11 +1130,18 @@ textarea {
     font-size: var(--admin-control-font-size);
     text-align: left;
     cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
 
   .ui-menu-item:hover,
+  .ui-menu-item[data-highlighted="true"],
   .ui-menu-item[data-active="true"] {
     background: var(--admin-accent-soft);
+  }
+
+  .ui-menu-item[data-highlighted="true"] {
+    color: var(--admin-accent-hover);
+    font-weight: 600;
   }
 
   .ui-chip {
@@ -1428,7 +1435,6 @@ textarea {
 
   .date-cell[data-muted="true"] {
     color: #AEB7C6;
-    cursor: default;
   }
 
   .date-cell[data-disabled="true"] {
@@ -1570,6 +1576,17 @@ textarea {
 
   .date-time-footer-secondary:hover {
     background: var(--admin-hover);
+  }
+
+  .date-time-footer-secondary:disabled {
+    background: var(--admin-surface-soft);
+    color: var(--admin-text-subtle);
+    cursor: not-allowed;
+    opacity: 0.65;
+  }
+
+  .date-time-footer-secondary:disabled:hover {
+    background: var(--admin-surface-soft);
   }
 
   .date-time-footer-primary {

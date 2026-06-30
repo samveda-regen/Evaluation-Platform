@@ -120,13 +120,22 @@ export default function TestInterface() {
   const showViolationWarning = useCallback((message: string, count: number) => {
     setWarningMessage(`Warning: ${message}. Violations: ${count}/${maxViolations}`);
     setShowWarning(true);
-    setTimeout(() => setShowWarning(false), 5000);
+    setTimeout(() => setShowWarning(false), 3500);
   }, [maxViolations]);
 
   const showTrustWarning = useCallback((message: string) => {
     setYellowWarningMessage(`AI Proctoring Alert: ${message}`);
     setShowYellowWarning(true);
-    setTimeout(() => setShowYellowWarning(false), 5000);
+    setTimeout(() => setShowYellowWarning(false), 3500);
+  }, []);
+
+  const dismissPolicyPause = useCallback(() => {
+    if (policyPauseTimerRef.current) {
+      clearTimeout(policyPauseTimerRef.current);
+      policyPauseTimerRef.current = null;
+    }
+    setPolicyPaused(false);
+    setPolicyPauseReason('');
   }, []);
 
   const triggerPolicyPause = useCallback((reason: string, durationMs = 10000) => {
@@ -803,13 +812,33 @@ export default function TestInterface() {
 
       {/* Violation banners */}
       {showWarning && (
-        <div className="fixed top-14 left-0 right-0 bg-red-600 text-white py-2 px-4 text-center z-50 text-sm font-medium shadow">
-          {warningMessage}
+        <div className="fixed top-14 left-0 right-0 bg-red-600 text-white py-2 px-4 z-50 text-sm font-medium shadow">
+          <div className="mx-auto flex max-w-5xl items-center justify-center gap-3">
+            <span className="text-center">{warningMessage}</span>
+            <button
+              type="button"
+              aria-label="Dismiss warning"
+              onClick={() => setShowWarning(false)}
+              className="flex h-6 w-6 items-center justify-center rounded text-lg leading-none transition-colors hover:bg-white/15"
+            >
+              &times;
+            </button>
+          </div>
         </div>
       )}
       {!showWarning && showYellowWarning && (
-        <div className="fixed top-14 left-0 right-0 bg-amber-500 text-white py-2 px-4 text-center z-50 text-sm font-medium shadow">
-          {yellowWarningMessage}
+        <div className="fixed top-14 left-0 right-0 bg-amber-500 text-white py-2 px-4 z-50 text-sm font-medium shadow">
+          <div className="mx-auto flex max-w-5xl items-center justify-center gap-3">
+            <span className="text-center">{yellowWarningMessage}</span>
+            <button
+              type="button"
+              aria-label="Dismiss alert"
+              onClick={() => setShowYellowWarning(false)}
+              className="flex h-6 w-6 items-center justify-center rounded text-lg leading-none transition-colors hover:bg-white/15"
+            >
+              &times;
+            </button>
+          </div>
         </div>
       )}
 
@@ -834,7 +863,18 @@ export default function TestInterface() {
       {/* Test frozen overlay */}
       {isTestFrozen && (
         <div className="fixed inset-0 bg-black/70 z-[70] flex items-center justify-center px-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center">
+          <div className="relative bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center">
+            {policyPaused && !faceFrozen && !proctorStatus.testFrozen && (
+              <button
+                type="button"
+                aria-label="Close pause popup"
+                onClick={dismissPolicyPause}
+                className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full text-xl leading-none transition-colors hover:bg-gray-100"
+                style={{ color: '#64748B' }}
+              >
+                &times;
+              </button>
+            )}
             <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: '#FEF2F2' }}>
               <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -850,7 +890,11 @@ export default function TestInterface() {
                   : policyPauseReason || 'Proctoring policy pause active. Please wait.'}
             </p>
             <p className="text-xs text-gray-400 mt-3">
-              {faceFrozen ? 'Test resumes automatically when your face is detected.' : 'Test resumes automatically.'}
+              {faceFrozen
+                ? 'Test resumes automatically when your face is detected.'
+                : policyPaused && !proctorStatus.testFrozen
+                  ? 'Test resumes automatically, or you can close this message.'
+                  : 'Test resumes automatically.'}
             </p>
           </div>
         </div>

@@ -764,7 +764,6 @@ export default function CustomQuestions() {
                   <input
                     type="number"
                     className="input"
-                    min={1}
                     value={behavioralForm.marks}
                     onChange={(e) => setBehavioralForm((prev) => ({ ...prev, marks: Number(e.target.value) }))}
                     required
@@ -855,7 +854,6 @@ export default function CustomQuestions() {
                   <input
                     type="number"
                     className="input"
-                    min={1}
                     value={mcqForm.marks}
                     onChange={(e) => setMcqForm({ ...mcqForm, marks: Number(e.target.value) })}
                     required
@@ -1099,7 +1097,6 @@ export default function CustomQuestions() {
                   <input
                     type="number"
                     className="input"
-                    min={1}
                     value={codingForm.marks}
                     onChange={(e) => setCodingForm({ ...codingForm, marks: Number(e.target.value) })}
                     required
@@ -1134,7 +1131,6 @@ export default function CustomQuestions() {
                   <input
                     type="number"
                     className="input"
-                    min={100}
                     value={codingForm.timeLimit}
                     onChange={(e) => setCodingForm({ ...codingForm, timeLimit: Number(e.target.value) })}
                   />
@@ -1144,7 +1140,6 @@ export default function CustomQuestions() {
                   <input
                     type="number"
                     className="input"
-                    min={16}
                     value={codingForm.memoryLimit}
                     onChange={(e) => setCodingForm({ ...codingForm, memoryLimit: Number(e.target.value) })}
                   />
