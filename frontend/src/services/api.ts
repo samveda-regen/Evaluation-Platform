@@ -2,7 +2,8 @@ import axios, { AxiosError } from 'axios';
 import type {
   RepositoryCategory,
   RepositoryListResponse,
-  RepositoryQueryParams
+  RepositoryQueryParams,
+  SubmissionResult
 } from '../types';
 
 const viteEnv = (import.meta as unknown as { env?: Record<string, unknown> }).env || {};
@@ -358,6 +359,18 @@ export const adminApi = {
   reviewAttempt: (attemptId: string, data: { reviewed: boolean; reviewNotes?: string }) =>
     api.post(`/admin/attempts/${attemptId}/review`, data),
 
+  releaseAttemptResult: (attemptId: string) =>
+    api.post(`/admin/attempts/${attemptId}/release`),
+
+  sendAttemptResultEmail: (attemptId: string) =>
+    api.post(`/admin/attempts/${attemptId}/send-result-email`),
+
+  gradeBehavioralAnswer: (attemptId: string, questionId: string, marksObtained: number) =>
+    api.post<{ message: string; questionId: string; marksObtained: number; score: number }>(
+      `/admin/attempts/${attemptId}/behavioral/${questionId}/grade`,
+      { marksObtained }
+    ),
+
   reEvaluateAttempt: (attemptId: string) =>
     api.post(`/admin/attempts/${attemptId}/reevaluate`),
 
@@ -524,7 +537,7 @@ export const candidateApi = {
   login: (data: { email: string; password: string; invitationToken?: string; testCode?: string; name?: string; mode?: 'signup' | 'login' | 'auto' }) =>
     api.post('/candidate/login', data),
 
-  loginWithInvitation: (data: { token: string }) =>
+  loginWithInvitation: (data: { token: string } | { accessCode: string; email: string }) =>
     api.post('/candidate/login/invitation', data),
 
   getInvitationDetails: (token: string) =>
@@ -555,7 +568,7 @@ export const candidateApi = {
     api.post('/candidate/activity', data),
 
   submitTest: (data: { autoSubmit?: boolean }) =>
-    api.post('/candidate/test/submit', data),
+    api.post<SubmissionResult>('/candidate/test/submit', data),
 
   // Verification - Candidate
   submitVerification: (data: {

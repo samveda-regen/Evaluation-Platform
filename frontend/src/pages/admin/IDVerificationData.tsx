@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { CreditCard, Camera, CheckCircle2, XCircle, Trash2 } from 'lucide-react';
@@ -177,6 +177,8 @@ function ConfirmModal({ title, body, confirmLabel, confirmColor, onConfirm, onCa
 
 export default function IDVerificationData() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const deepLinkCandidateId = searchParams.get('candidateId');
 
   const [stats,          setStats]          = useState<VerificationStats | null>(null);
   const [queue,          setQueue]          = useState<VerificationCandidate[]>([]);
@@ -195,6 +197,13 @@ export default function IDVerificationData() {
 
   useEffect(() => { void loadStats(); }, []);
   useEffect(() => { void loadQueue(queueFilter); }, [queueFilter]);
+
+  // Deep-link from a notification: jump straight to a specific candidate's record
+  useEffect(() => {
+    if (!deepLinkCandidateId) return;
+    setQueueFilter('all');
+    void loadDetail(deepLinkCandidateId);
+  }, [deepLinkCandidateId]);
 
   const loadStats = async () => {
     try {
@@ -228,7 +237,7 @@ export default function IDVerificationData() {
       );
       setQueue(items);
       const first = items.find(i => i.status === 'pending' || i.status === 'mismatch') ?? items[0];
-      if (first) void loadDetail(first.candidateId);
+      if (first && !deepLinkCandidateId) void loadDetail(first.candidateId);
     } catch { toast.error('Failed to load verification queue'); }
     finally { setLoadingQueue(false); }
   };

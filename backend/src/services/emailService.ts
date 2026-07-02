@@ -11,6 +11,8 @@ Click the button below to get started:
 
 {{test_link}}
 
+Or go to the login page and enter your access code: {{access_code}}
+
 The test will take approximately {{estimated_time}} to complete.
 If you have any questions, feel free to reach out to us.
 
@@ -34,6 +36,7 @@ interface TemplateVars {
   company_name: string;
   estimated_time: string;
   test_link: string;
+  access_code: string;
 }
 
 function applyTemplate(template: string, vars: TemplateVars): string {
@@ -42,7 +45,8 @@ function applyTemplate(template: string, vars: TemplateVars): string {
     .replace(/\{\{test_name\}\}/g,      vars.test_name)
     .replace(/\{\{company_name\}\}/g,   vars.company_name)
     .replace(/\{\{estimated_time\}\}/g, vars.estimated_time)
-    .replace(/\{\{test_link\}\}/g,      vars.test_link);
+    .replace(/\{\{test_link\}\}/g,      vars.test_link)
+    .replace(/\{\{access_code\}\}/g,    vars.access_code);
 }
 
 function textToHtml(text: string): string {
@@ -64,6 +68,7 @@ interface InvitationEmailPayload {
   candidateName: string;
   testName: string;
   testLink: string;
+  accessCode: string;
   companyName?: string;
   estimatedTime?: string;
   // custom templates (if set on the test)
@@ -79,6 +84,16 @@ interface ConfirmationEmailPayload {
   // custom templates (if set on the test)
   confirmEmailSubject?: string | null;
   confirmEmailBody?: string | null;
+}
+
+interface ResultEmailPayload {
+  to: string;
+  candidateName: string;
+  testName: string;
+  companyName?: string;
+  score: number;
+  totalMarks: number;
+  passed: boolean | null;
 }
 
 interface SmtpConfiguration {
@@ -335,6 +350,7 @@ function buildInviteText(payload: InvitationEmailPayload): string {
     company_name:   payload.companyName || 'Our Team',
     estimated_time: payload.estimatedTime || 'some time',
     test_link:      payload.testLink,
+    access_code:    payload.accessCode,
   });
 }
 
@@ -346,6 +362,7 @@ function buildInviteSubject(payload: InvitationEmailPayload): string {
     company_name:   payload.companyName || 'Our Team',
     estimated_time: payload.estimatedTime || 'some time',
     test_link:      payload.testLink,
+    access_code:    payload.accessCode,
   });
 }
 
@@ -365,6 +382,7 @@ function buildConfirmText(payload: ConfirmationEmailPayload): string {
     company_name:   payload.companyName || 'Our Team',
     estimated_time: '',
     test_link:      '',
+    access_code:    '',
   });
 }
 
@@ -376,11 +394,44 @@ function buildConfirmSubject(payload: ConfirmationEmailPayload): string {
     company_name:   payload.companyName || 'Our Team',
     estimated_time: '',
     test_link:      '',
+    access_code:    '',
   });
 }
 
 function buildConfirmHtml(payload: ConfirmationEmailPayload): string {
   const text = buildConfirmText(payload);
+  return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#374151;max-width:600px">
+${textToHtml(text)}
+</div>`;
+}
+
+// ── Build result email ────────────────────────────────────────────────────────
+function resultOutcomeLine(payload: ResultEmailPayload): string {
+  if (payload.passed === null) return '';
+  return payload.passed
+    ? 'Congratulations, you have passed this assessment!'
+    : 'Unfortunately, you did not meet the passing score for this assessment.';
+}
+
+function buildResultText(payload: ResultEmailPayload): string {
+  const companyName = payload.companyName || 'Our Team';
+  const outcomeLine = resultOutcomeLine(payload);
+  return `Hello ${payload.candidateName},
+
+Your results for "${payload.testName}" are ready.
+
+Score: ${payload.score} / ${payload.totalMarks}
+${outcomeLine ? `${outcomeLine}\n` : ''}
+Best regards,
+${companyName} Team`;
+}
+
+function buildResultSubject(payload: ResultEmailPayload): string {
+  return `Your results for ${payload.testName}`;
+}
+
+function buildResultHtml(payload: ResultEmailPayload): string {
+  const text = buildResultText(payload);
   return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#374151;max-width:600px">
 ${textToHtml(text)}
 </div>`;
@@ -639,6 +690,20 @@ export async function sendConfirmationEmail(payload: ConfirmationEmailPayload): 
     );
   } catch (error) {
     console.error('Failed to send confirmation email:', { error });
+    throw error;
+  }
+}
+
+export async function sendResultEmail(payload: ResultEmailPayload): Promise<void> {
+  try {
+    await sendMail(
+      buildResultSubject(payload),
+      buildResultText(payload),
+      buildResultHtml(payload),
+      payload.to
+    );
+  } catch (error) {
+    console.error('Failed to send result email:', { error });
     throw error;
   }
 }

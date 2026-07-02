@@ -11,6 +11,8 @@ import {
   DocumentType,
 } from '../services/verificationService';
 import { uploadIdDocument } from '../services/fileStorageService';
+import { ensureNotificationTable, saveNotification } from './notifications.js';
+import { emitToAdminRoom } from '../services/socketService.js';
 
 /**
  * Submit verification documents and selfie
@@ -50,6 +52,41 @@ export const submitVerificationDocuments = async (req: Request, res: Response): 
       scores: result.scores,
       error: result.error,
     });
+
+    // Notify the test's admin that a candidate is waiting on ID verification — fire-and-forget
+    if (result.success) {
+      const testId = (req as any).candidate?.testId;
+      const attemptId = (req as any).candidate?.attemptId;
+      void (async () => {
+        try {
+          const [candidate, test] = await Promise.all([
+            prisma.candidate.findUnique({ where: { id: candidateId }, select: { name: true, email: true } }),
+            testId ? prisma.test.findUnique({ where: { id: testId }, select: { adminId: true } }) : null,
+          ]);
+          if (test?.adminId) {
+            const candidateName = candidate?.name || candidate?.email || 'A candidate';
+            await ensureNotificationTable();
+            await saveNotification({
+              adminId: test.adminId,
+              type: 'verification_pending',
+              candidateId,
+              candidateName,
+              attemptId: attemptId || '',
+              testId: testId || '',
+              testName: '',
+            });
+            emitToAdminRoom(test.adminId, 'verification-pending', {
+              candidateId,
+              candidateName,
+              attemptId: attemptId || '',
+              timestamp: new Date().toISOString(),
+            });
+          }
+        } catch (err) {
+          console.error('Verification notification error:', err);
+        }
+      })();
+    }
   } catch (error) {
     console.error('Error submitting verification:', error);
     res.status(500).json({ error: 'Failed to process verification' });

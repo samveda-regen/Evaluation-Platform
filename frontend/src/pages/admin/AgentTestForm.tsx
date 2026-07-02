@@ -158,6 +158,7 @@ export default function AgentTestForm() {
 
   /* Step 1 state */
   const [jobProfile, setJobProfile] = useState<JobProfile>({ title: '', experience: '0-2 years', description: '' });
+  const [jobTitleError, setJobTitleError] = useState(false);
 
   /* Step 2 state */
   const [skills,      setSkills]      = useState<string[]>([]);
@@ -231,7 +232,7 @@ export default function AgentTestForm() {
 
   /* -- Step 1 -> 2 -- */
   const handleAnalyzeJob = async () => {
-    if (!jobProfile.title.trim()) { toast.error('Job title is required'); return; }
+    if (!jobProfile.title.trim()) { setJobTitleError(true); return; }
     setAnalyzing(true);
     try {
       const { data } = await adminApi.analyzeJob(jobProfile.title, jobProfile.description, jobProfile.experience);
@@ -375,7 +376,7 @@ export default function AgentTestForm() {
 
   const parseNum = (val: string, fallback: number) => {
     const n = val === '' ? fallback : Number(val);
-    return isNaN(n) ? fallback : Math.floor(n);
+    return isNaN(n) ? fallback : Math.max(0, Math.floor(n));
   };
 
   return (
@@ -421,10 +422,13 @@ export default function AgentTestForm() {
                     <label style={lbl}>Job Title <span style={{ color: '#EF4444' }}>*</span></label>
                     <input type="text"
                       value={jobProfile.title}
-                      onChange={e => setJobProfile(p => ({ ...p, title: e.target.value }))}
+                      onChange={e => { setJobProfile(p => ({ ...p, title: e.target.value })); if (e.target.value.trim()) setJobTitleError(false); }}
                       placeholder="e.g., Senior Software Engineer"
-                      style={inp} onFocus={focus} onBlur={blur}
+                      style={jobTitleError ? { ...inp, borderColor: '#EF4444' } : inp} onFocus={focus} onBlur={blur}
                     />
+                    {jobTitleError && (
+                      <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#EF4444' }}>Please fill this field</p>
+                    )}
                   </div>
                   <div>
                     <label style={lbl}>Experience Level</label>
@@ -452,13 +456,14 @@ export default function AgentTestForm() {
                 <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
                   <button
                     onClick={handleAnalyzeJob}
-                    disabled={analyzing || !jobProfile.title.trim()}
-                    style={analyzing || !jobProfile.title.trim() ? btnDisabled : btnPrimary}
+                    disabled={analyzing}
+                    style={analyzing ? btnDisabled : btnPrimary}
                   >
                     {analyzing ? 'Analyzing...' : 'Analyze & Continue'}
                   </button>
                   <button
                     onClick={() => {
+                      if (!jobProfile.title.trim()) { setJobTitleError(true); return; }
                       const local = extractSkillsLocally(jobProfile.title, jobProfile.description);
                       if (local.length) setSkills(local);
                       setStep(2);
@@ -656,8 +661,8 @@ export default function AgentTestForm() {
                 {(selection.mcqQuestionIds.length < mcqCount || selection.codingQuestionIds.length < codingCount || selection.behavioralQuestionIds.length < behavioralCount) &&
                  selection.mcqQuestionIds.length + selection.codingQuestionIds.length + selection.behavioralQuestionIds.length > 0 && (
                   <div style={{ borderRadius: '10px', padding: '14px 16px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
-                    <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: 0 }}>
-                      Note: Fewer questions were selected than requested. Consider adding more questions with relevant tags to your library.
+                    <p style={{ fontSize: '14px', color: '#991B1B', margin: 0 }}>
+                      <strong>Note:</strong> Fewer questions were selected than requested. Consider adding more questions with relevant tags to your library.
                     </p>
                   </div>
                 )}
@@ -708,7 +713,7 @@ export default function AgentTestForm() {
                   </div>
                   <div>
                     <label style={lbl}>Duration (minutes) <span style={{ color: '#EF4444' }}>*</span></label>
-                    <input type="number"
+                    <input type="number" min={1}
                       value={testSettings.duration === 0 ? '' : testSettings.duration}
                       onChange={e => setTestSettings(p => ({ ...p, duration: e.target.value === '' ? 0 : parseNum(e.target.value, 0) }))}
                       style={inp} onFocus={focus} onBlur={blur}

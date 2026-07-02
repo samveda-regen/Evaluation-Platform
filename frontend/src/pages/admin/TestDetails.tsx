@@ -516,10 +516,6 @@ export default function TestDetails() {
     setCustomType(initialType);
   };
 
-  const handleDuplicateSelected = () => {
-    toast('Open a question individually to duplicate it.');
-  };
-
   const handleRemoveSelected = async () => {
     const ids = [...selectedQIds];
     if (ids.length === 0) return;
@@ -1076,11 +1072,6 @@ export default function TestDetails() {
             <div className="mx-5 mt-4 flex items-center gap-3 rounded-xl px-4 py-3"
               style={{ backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
               <span className="text-sm font-semibold" style={{ color: 'var(--admin-accent-hover)' }}>{selectedQIds.size} selected</span>
-              <button onClick={handleDuplicateSelected}
-                className="px-3 py-1.5 rounded-lg border text-sm font-medium"
-                style={{ borderColor: 'var(--admin-border)', color: 'var(--admin-text-muted)', backgroundColor: 'white' }}>
-                Duplicate
-              </button>
               <button onClick={handleRemoveSelected}
                 className="px-3 py-1.5 rounded-lg text-sm font-medium"
                 style={{ color: '#DC2626', backgroundColor: '#FEF2F2' }}>

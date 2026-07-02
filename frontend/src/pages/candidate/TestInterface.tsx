@@ -71,6 +71,7 @@ export default function TestInterface() {
     mcqAnswers, codingAnswers, behavioralAnswers, isSubmitted,
     setCurrentQuestion, saveMCQAnswer, saveCodingAnswer, saveBehavioralAnswer,
     incrementViolations, setSubmitted, violationPopupSettings,
+    allowBackNavigation, showTimer, autoSubmitOnTimeout,
   } = useTestStore();
 
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
@@ -96,8 +97,10 @@ export default function TestInterface() {
   const [networkQuality, setNetworkQuality] = useState<'excellent' | 'good' | 'fair' | 'poor'>('good');
   const [showNetworkInfo, setShowNetworkInfo] = useState(false);
   const [networkPopupPos, setNetworkPopupPos] = useState<{ top: number; right: number } | null>(null);
+  const [timeUp, setTimeUp] = useState(false);
 
   const autoSaveRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const highestReachedIndexRef = useRef(0);
   const cameraPreviewRef = useRef<HTMLVideoElement | null>(null);
   const networkBtnRef = useRef<HTMLButtonElement | null>(null);
   const isFullscreenRef = useRef(false);
@@ -223,8 +226,19 @@ export default function TestInterface() {
   const hiddenAtRef = useRef<number | null>(null);
   const blurAtRef = useRef<number | null>(null);
   const isTestFrozen = proctorStatus.testFrozen || faceFrozen || policyPaused;
+  const answeringLocked = isTestFrozen || timeUp;
 
   useEffect(() => { proctorStatusRef.current = proctorStatus; }, [proctorStatus]);
+
+  useEffect(() => {
+    if (currentQuestionIndex > highestReachedIndexRef.current) {
+      highestReachedIndexRef.current = currentQuestionIndex;
+    }
+  }, [currentQuestionIndex]);
+
+  useEffect(() => {
+    if (timeUp && !isSubmitted) setShowConfirmSubmit(true);
+  }, [timeUp, isSubmitted]);
 
   useEffect(() => {
     if (!proctorEnabled) return;
@@ -286,12 +300,15 @@ export default function TestInterface() {
     const updateTimer = () => {
       const remaining = Math.max(0, endTime - Date.now());
       setTimeRemaining(remaining);
-      if (remaining === 0 && !isSubmitted) handleAutoSubmit();
+      if (remaining === 0 && !isSubmitted) {
+        if (autoSubmitOnTimeout) handleAutoSubmit();
+        else setTimeUp(true);
+      }
     };
     updateTimer();
     const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
-  }, [startTime, duration, isSubmitted]);
+  }, [startTime, duration, isSubmitted, autoSubmitOnTimeout]);
 
   useEffect(() => {
     const requestFullscreen = async () => {
@@ -531,7 +548,7 @@ export default function TestInterface() {
   };
 
   const handleMCQSelect = (originalIndex: number) => {
-    if (isSubmitted || isTestFrozen) return;
+    if (isSubmitted || answeringLocked) return;
     const questionId = currentQuestion!.questionId;
     const isMultiple = currentQuestion!.isMultipleChoice;
     const currentSelected = mcqAnswers[questionId] || [];
@@ -542,14 +559,14 @@ export default function TestInterface() {
   };
 
   const handleCodeChange = (value: string | undefined) => {
-    if (isSubmitted || isTestFrozen || !value) return;
+    if (isSubmitted || answeringLocked || !value) return;
     const questionId = currentQuestion!.questionId;
     const currentAnswer = codingAnswers[questionId] || { code: '', language: 'python' };
     saveCodingAnswer(questionId, value, currentAnswer.language);
   };
 
   const handleLanguageChange = (language: string) => {
-    if (isSubmitted || isTestFrozen) return;
+    if (isSubmitted || answeringLocked) return;
     const questionId = currentQuestion!.questionId;
     const currentAnswer = codingAnswers[questionId] || { code: '', language: 'python' };
     let newCode = currentAnswer.code;
@@ -563,7 +580,7 @@ export default function TestInterface() {
   };
 
   const handleRunCode = async () => {
-    if (runningCode || isSubmitted || isTestFrozen) return;
+    if (runningCode || isSubmitted || answeringLocked) return;
     const answer = codingAnswers[currentQuestion!.questionId];
     if (!answer || !answer.code) { toast.error('Please write some code first'); return; }
     setRunningCode(true);
@@ -581,14 +598,14 @@ export default function TestInterface() {
   };
 
   const handleSubmitCode = async () => {
-    if (isSubmitted || isTestFrozen) return;
+    if (isSubmitted || answeringLocked) return;
     await saveCurrentAnswer();
     setCodeSubmitted(true);
     toast.success('Code answer saved');
   };
 
   const handleBehavioralChange = (value: string) => {
-    if (isSubmitted) return;
+    if (isSubmitted || timeUp) return;
     saveBehavioralAnswer(currentQuestion!.questionId, value);
   };
 
@@ -598,8 +615,8 @@ export default function TestInterface() {
     await saveCurrentAnswer();
     try {
       await endProctoringSession();
-      await candidateApi.submitTest({ autoSubmit: true });
-      setSubmitted();
+      const { data: submitResult } = await candidateApi.submitTest({ autoSubmit: true });
+      setSubmitted(submitResult);
       toast.success('Test auto-submitted');
       const previewId = localStorage.getItem('previewMode');
       if (previewId) { localStorage.removeItem('previewMode'); navigate(`/admin/tests/${previewId}`); }
@@ -613,8 +630,8 @@ export default function TestInterface() {
     await saveCurrentAnswer();
     try {
       await endProctoringSession();
-      await candidateApi.submitTest({ autoSubmit: false });
-      setSubmitted();
+      const { data: submitResult } = await candidateApi.submitTest({ autoSubmit: false });
+      setSubmitted(submitResult);
       toast.success('Test submitted successfully');
       const previewId = localStorage.getItem('previewMode');
       if (previewId) { localStorage.removeItem('previewMode'); navigate(`/admin/tests/${previewId}`); }
@@ -724,6 +741,7 @@ export default function TestInterface() {
                 key={idx}
                 onClick={() => {
                   if (isTestFrozen) return;
+                  if (!allowBackNavigation && idx < highestReachedIndexRef.current) return;
                   saveCurrentAnswer();
                   setCurrentQuestion(idx);
                 }}
@@ -759,11 +777,11 @@ export default function TestInterface() {
     <footer className="bg-white border-t flex items-center justify-between px-6 py-3" style={{ borderColor: 'var(--admin-border)' }}>
       <button
         onClick={() => {
-          if (isTestFrozen || currentQuestionIndex === 0) return;
+          if (isTestFrozen || currentQuestionIndex === 0 || !allowBackNavigation) return;
           saveCurrentAnswer();
           setCurrentQuestion(currentQuestionIndex - 1);
         }}
-        disabled={currentQuestionIndex === 0 || isTestFrozen}
+        disabled={currentQuestionIndex === 0 || isTestFrozen || !allowBackNavigation}
         className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -983,18 +1001,20 @@ export default function TestInterface() {
             </button>
           )}
           {/* Timer */}
-          <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: timeRemaining < 300000 ? 'rgba(239,68,68,0.18)' : 'rgba(245,158,11,0.18)', border: `1px solid ${timeRemaining < 300000 ? 'rgba(239,68,68,0.55)' : 'rgba(245,158,11,0.55)'}` }}>
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke={timeRemaining < 300000 ? '#EF4444' : '#F59E0B'} strokeWidth={1.8}>
-              <circle cx="12" cy="12" r="9" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />
-            </svg>
-            <span
-              className="text-sm font-bold font-mono tabular-nums"
-              style={{ color: timeRemaining < 300000 ? '#EF4444' : '#F59E0B' }}
-            >
-              {formatTime(timeRemaining)}
-            </span>
-          </div>
+          {showTimer && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: timeRemaining < 300000 ? 'rgba(239,68,68,0.18)' : 'rgba(245,158,11,0.18)', border: `1px solid ${timeRemaining < 300000 ? 'rgba(239,68,68,0.55)' : 'rgba(245,158,11,0.55)'}` }}>
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke={timeRemaining < 300000 ? '#EF4444' : '#F59E0B'} strokeWidth={1.8}>
+                <circle cx="12" cy="12" r="9" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />
+              </svg>
+              <span
+                className="text-sm font-bold font-mono tabular-nums"
+                style={{ color: timeRemaining < 300000 ? '#EF4444' : '#F59E0B' }}
+              >
+                {formatTime(timeRemaining)}
+              </span>
+            </div>
+          )}
         </div>
       </header>
 
@@ -1132,7 +1152,7 @@ export default function TestInterface() {
                     value={codingAnswers[currentQuestion.questionId]?.code || ''}
                     onChange={handleCodeChange}
                     theme="vs-dark"
-                    options={{ minimap: { enabled: false }, fontSize: 13, wordWrap: 'on', scrollBeyondLastLine: false, readOnly: isTestFrozen, lineNumbers: 'on', tabSize: 2 }}
+                    options={{ minimap: { enabled: false }, fontSize: 13, wordWrap: 'on', scrollBeyondLastLine: false, readOnly: answeringLocked, lineNumbers: 'on', tabSize: 2 }}
                   />
                 </div>
 
@@ -1150,7 +1170,7 @@ export default function TestInterface() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={handleRunCode}
-                      disabled={runningCode || isTestFrozen}
+                      disabled={runningCode || answeringLocked}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
                       style={{ background: 'transparent', border: '1px solid #555', color: '#D4D4D4' }}
                     >
@@ -1165,7 +1185,7 @@ export default function TestInterface() {
                     </button>
                     <button
                       onClick={handleSubmitCode}
-                      disabled={isTestFrozen || codeSubmitted}
+                      disabled={answeringLocked || codeSubmitted}
                       className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white disabled:opacity-60 transition-colors"
                       style={{ background: codeSubmitted ? 'var(--admin-accent-hover)' : 'var(--admin-accent)' }}
                     >
@@ -1298,7 +1318,7 @@ export default function TestInterface() {
                       <textarea
                         value={behavioralText}
                         onChange={(e) => handleBehavioralChange(e.target.value)}
-                        disabled={isSubmitted}
+                        disabled={isSubmitted || timeUp}
                         rows={12}
                         placeholder="Write your response here..."
                         className="w-full rounded-xl border px-4 py-4 text-sm text-gray-700 resize-none outline-none transition-colors"
@@ -1342,22 +1362,26 @@ export default function TestInterface() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2 text-center">Submit Test?</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-2 text-center">{timeUp ? "Time's up!" : 'Submit Test?'}</h2>
             <p className="text-sm text-gray-500 mb-1 text-center">
               You have answered <span className="font-semibold text-gray-700">{getAnsweredCount()}</span> of <span className="font-semibold text-gray-700">{questions.length}</span> questions.
             </p>
             {markedForReview.size > 0 && (
               <p className="text-sm text-amber-600 mb-2 text-center">{markedForReview.size} question{markedForReview.size > 1 ? 's' : ''} marked for review.</p>
             )}
-            <p className="text-sm text-gray-400 mb-6 text-center">This action cannot be undone.</p>
+            <p className="text-sm text-gray-400 mb-6 text-center">
+              {timeUp ? 'Your answers are locked. Please submit now.' : 'This action cannot be undone.'}
+            </p>
             <div className="flex gap-3">
-              <button
-                onClick={() => setShowConfirmSubmit(false)}
-                className="flex-1 py-3 rounded-xl font-semibold text-sm border text-gray-700 hover:bg-gray-50 transition-colors"
-                style={{ borderColor: 'var(--admin-border)' }}
-              >
-                Cancel
-              </button>
+              {!timeUp && (
+                <button
+                  onClick={() => setShowConfirmSubmit(false)}
+                  className="flex-1 py-3 rounded-xl font-semibold text-sm border text-gray-700 hover:bg-gray-50 transition-colors"
+                  style={{ borderColor: 'var(--admin-border)' }}
+                >
+                  Cancel
+                </button>
+              )}
               <button
                 onClick={handleManualSubmit}
                 disabled={submitting || isTestFrozen}

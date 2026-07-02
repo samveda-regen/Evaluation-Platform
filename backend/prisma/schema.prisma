@@ -140,6 +140,7 @@ model TestInvitation {
   email     String
   phone     String?
   token     String           @unique
+  accessCode String?         @unique
   status    InvitationStatus @default(PENDING)
   sentAt    DateTime?
   error     String?
@@ -335,6 +336,11 @@ model TestAttempt {
   reviewedAt  DateTime?
   reviewedBy  String?
   reviewNotes String?
+
+  resultReleased    Boolean   @default(true)
+  releasedAt        DateTime?
+  releasedBy        String?
+  resultEmailSentAt DateTime?
 
   test      Test      @relation(fields: [testId], references: [id])
   candidate Candidate @relation(fields: [candidateId], references: [id])

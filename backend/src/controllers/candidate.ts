@@ -10,13 +10,15 @@ import { Prisma } from '@prisma/client';
 import {
   InvitationServiceError,
   consumeInvitation,
-  getInvitationContextForLogin
+  getInvitationContextForLogin,
+  resolveInvitationTokenFromAccessCode
 } from '../services/invitationService.js';
 import { uploadSnapshot } from '../services/fileStorageService.js';
 import { parseStoredCustomAIViolationEvents } from '../utils/proctoringConfig.js';
 import { sendCandidateScoreWebhook } from '../services/candidateScoreWebhookService.js';
-import { sendConfirmationEmail } from '../services/emailService.js';
+import { sendConfirmationEmail, sendResultEmail } from '../services/emailService.js';
 import { saveNotification, ensureNotificationTable } from './notifications.js';
+import { getTestGradingPreferences } from '../utils/testPreferences.js';
 
 export async function candidateLogin(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -470,10 +472,18 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
 
 export async function candidateInvitationLogin(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
-    const rawToken = typeof req.body.token === 'string' ? req.body.token.trim() : '';
+    let rawToken = typeof req.body.token === 'string' ? req.body.token.trim() : '';
+
     if (!rawToken) {
-      res.status(400).json({ error: 'Invitation token is required' });
-      return;
+      const rawAccessCode = typeof req.body.accessCode === 'string' ? req.body.accessCode.trim() : '';
+      const rawEmail = typeof req.body.email === 'string' ? req.body.email.trim() : '';
+
+      if (!rawAccessCode || !rawEmail) {
+        res.status(400).json({ error: 'Access code and email are required' });
+        return;
+      }
+
+      rawToken = await resolveInvitationTokenFromAccessCode(rawAccessCode, rawEmail);
     }
 
     const invitationDetails = await getInvitationContextForLogin(rawToken);
@@ -868,16 +878,24 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
       }
     } catch { /* columns not yet created — safe to ignore */ }
 
-    // Derive device requirements from proctoringSettings JSON (same as getTestDetails)
+    // Derive device requirements + test-behavior flags from proctoringSettings JSON (same as getTestDetails)
     let startRequireCamera = test.requireCamera;
     let startRequireMicrophone = test.requireMicrophone;
     let startRequireScreenShare = test.requireScreenShare;
-    if (test.proctorEnabled && proctoringSettingsRawForStart) {
+    let startAllowBackNavigation = false;
+    let startShowTimer = true;
+    let startAutoSubmitOnTimeout = true;
+    if (proctoringSettingsRawForStart) {
       try {
         const ps = JSON.parse(proctoringSettingsRawForStart) as Record<string, unknown>;
-        if (typeof ps.webcamOn === 'boolean') startRequireCamera = ps.webcamOn;
-        if (typeof ps.micOn === 'boolean') startRequireMicrophone = ps.micOn;
-        if (typeof ps.screenOn === 'boolean') startRequireScreenShare = ps.screenOn;
+        if (test.proctorEnabled) {
+          if (typeof ps.webcamOn === 'boolean') startRequireCamera = ps.webcamOn;
+          if (typeof ps.micOn === 'boolean') startRequireMicrophone = ps.micOn;
+          if (typeof ps.screenOn === 'boolean') startRequireScreenShare = ps.screenOn;
+        }
+        if (typeof ps.allowBackNavigation === 'boolean') startAllowBackNavigation = ps.allowBackNavigation;
+        if (typeof ps.showTimer === 'boolean') startShowTimer = ps.showTimer;
+        if (typeof ps.autoSubmitOnTimeout === 'boolean') startAutoSubmitOnTimeout = ps.autoSubmitOnTimeout;
       } catch { /* ignore malformed JSON */ }
     }
 
@@ -895,6 +913,9 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
         maxViolations: test.maxViolations,
         customAIViolations: parseStoredCustomAIViolationEvents(test.customAIViolations),
         violationPopupSettings: violationPopupSettingsRaw || undefined,
+        allowBackNavigation: startAllowBackNavigation,
+        showTimer: startShowTimer,
+        autoSubmitOnTimeout: startAutoSubmitOnTimeout,
       },
       questions,
       startTime: attempt.startTime
@@ -1433,11 +1454,22 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
       }
     }
 
+    // Behavioral answers can't be auto-graded — fold in any marks already assigned
+    // (normally none yet at submission time) so the total score formula stays consistent
+    // with re-evaluation and manual grading.
+    for (const behavioralAnswer of attempt.behavioralAnswers) {
+      totalScore += behavioralAnswer.marksObtained ?? 0;
+    }
+
     // Execute all database updates in a transaction for consistency
     const attemptStatus = autoSubmit ? 'auto_submitted' : 'submitted';
     const webhookStatus = attemptStatus === 'submitted' || attemptStatus === 'auto_submitted'
       ? 'completed'
       : attemptStatus;
+
+    const gradingPreferences = await getTestGradingPreferences(testId);
+    const resultReleased = gradingPreferences.gradingMode !== 'Manual';
+    const passed = test.passingMarks != null ? totalScore >= test.passingMarks : null;
 
     await prisma.$transaction([
       // Batch update MCQ answers
@@ -1461,7 +1493,8 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
           status: attemptStatus,
           endTime: new Date(),
           submittedAt: new Date(),
-          score: totalScore
+          score: totalScore,
+          resultReleased
         }
       }),
       // Log submission
@@ -1477,10 +1510,14 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
       })
     ]);
 
+    const showScore = resultReleased && gradingPreferences.showScoreToCandidate;
+
     res.json({
       message: 'Test submitted successfully',
-      score: totalScore,
-      totalMarks: test.totalMarks
+      totalMarks: test.totalMarks,
+      resultReleased,
+      showScore,
+      ...(showScore ? { score: totalScore, passed } : {})
     });
 
     const submissionPayload = {
@@ -1577,6 +1614,47 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
           console.log(`Confirmation email sent to ${candidateEmail} for test "${testRow.name}"`);
         } catch (err) {
           console.error('Confirmation email error:', err);
+        }
+      })();
+    }
+
+    // Send result email — fire-and-forget, gated by the test's grading-mode/email settings
+    if (resultReleased && gradingPreferences.sendResultEmail && candidateEmail) {
+      void (async () => {
+        try {
+          const testRow = await prisma.test.findUnique({
+            where: { id: testId },
+            select: { name: true, companyId: true },
+          });
+          if (!testRow) return;
+
+          let companyName = 'Our Team';
+          if (testRow.companyId) {
+            try {
+              const company = await prisma.company.findUnique({
+                where: { id: testRow.companyId },
+                select: { name: true },
+              });
+              if (company?.name) companyName = company.name;
+            } catch { /* company name is optional */ }
+          }
+
+          await sendResultEmail({
+            to: candidateEmail,
+            candidateName,
+            testName: testRow.name,
+            companyName,
+            score: totalScore,
+            totalMarks: test.totalMarks,
+            passed,
+          });
+          await prisma.testAttempt.update({
+            where: { id: attemptId },
+            data: { resultEmailSentAt: new Date() },
+          });
+          console.log(`Result email sent to ${candidateEmail} for test "${testRow.name}"`);
+        } catch (err) {
+          console.error('Result email error:', err);
         }
       })();
     }

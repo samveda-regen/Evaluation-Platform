@@ -10,6 +10,7 @@ type RawNotification = {
   testId: string | null;
   testName: string;
   candidateName: string;
+  candidateId: string | null;
   autoSubmit: boolean;
   timestamp: Date;
   isRead: boolean;
@@ -26,6 +27,7 @@ export async function ensureNotificationTable(): Promise<void> {
       "testId"        TEXT,
       "testName"      TEXT NOT NULL DEFAULT '',
       "candidateName" TEXT NOT NULL DEFAULT '',
+      "candidateId"   TEXT,
       "autoSubmit"    BOOLEAN NOT NULL DEFAULT false,
       "timestamp"     TIMESTAMPTZ NOT NULL DEFAULT now(),
       "isRead"        BOOLEAN NOT NULL DEFAULT false,
@@ -33,24 +35,26 @@ export async function ensureNotificationTable(): Promise<void> {
       CONSTRAINT "Notification_pkey" PRIMARY KEY ("id")
     )
   `;
+  await prisma.$executeRaw`ALTER TABLE "Notification" ADD COLUMN IF NOT EXISTS "candidateId" TEXT`;
   await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "Notification_adminId_idx" ON "Notification" ("adminId")`;
   await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "Notification_createdAt_idx" ON "Notification" ("createdAt" DESC)`;
 }
 
 export async function saveNotification(payload: {
   adminId: string;
-  type: 'started' | 'completed';
+  type: 'started' | 'completed' | 'verification_pending';
   attemptId: string;
   testId: string;
   testName: string;
   candidateName: string;
+  candidateId?: string;
   autoSubmit?: boolean;
 }): Promise<void> {
   try {
-    const id = `${payload.type}-${payload.attemptId}`;
+    const id = `${payload.type}-${payload.attemptId || payload.candidateId}`;
     const autoSubmit = payload.autoSubmit ?? false;
     await prisma.$executeRaw`
-      INSERT INTO "Notification" (id, "adminId", type, "attemptId", "testId", "testName", "candidateName", "autoSubmit", timestamp, "isRead", "createdAt")
+      INSERT INTO "Notification" (id, "adminId", type, "attemptId", "testId", "testName", "candidateName", "candidateId", "autoSubmit", timestamp, "isRead", "createdAt")
       VALUES (
         ${id},
         ${payload.adminId},
@@ -59,6 +63,7 @@ export async function saveNotification(payload: {
         ${payload.testId},
         ${payload.testName},
         ${payload.candidateName},
+        ${payload.candidateId ?? null},
         ${autoSubmit},
         now(),
         false,
@@ -75,7 +80,7 @@ export async function getNotifications(req: AuthenticatedRequest, res: Response)
   try {
     const adminId = req.admin!.id;
     const rows = await prisma.$queryRaw<RawNotification[]>`
-      SELECT id, "adminId", type, "attemptId", "testId", "testName", "candidateName",
+      SELECT id, "adminId", type, "attemptId", "testId", "testName", "candidateName", "candidateId",
              "autoSubmit", timestamp, "isRead", "createdAt"
       FROM "Notification"
       WHERE "adminId" = ${adminId}
@@ -89,6 +94,7 @@ export async function getNotifications(req: AuthenticatedRequest, res: Response)
         testId: r.testId,
         testName: r.testName,
         candidateName: r.candidateName,
+        candidateId: r.candidateId,
         autoSubmit: r.autoSubmit,
         type: r.type,
         timestamp: r.timestamp,

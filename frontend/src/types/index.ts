@@ -241,3 +241,11 @@ export interface RepositoryListResponse {
   questions: RepositoryQuestion[];
   pagination: Pagination;
 }
+
+export interface SubmissionResult {
+  totalMarks: number;
+  resultReleased: boolean;
+  showScore: boolean;
+  score?: number;
+  passed?: boolean | null;
+}

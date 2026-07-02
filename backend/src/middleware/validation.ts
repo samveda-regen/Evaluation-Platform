@@ -125,9 +125,25 @@ export const candidateLoginValidation: ValidationChain[] = [
 
 export const invitationLoginValidation: ValidationChain[] = [
   body('token')
+    .optional({ checkFalsy: true })
     .isString()
     .isLength({ min: 32 })
-    .withMessage('Valid invitation token is required')
+    .withMessage('Valid invitation token is required'),
+  body('accessCode')
+    .optional({ checkFalsy: true })
+    .isString()
+    .isLength({ min: 6 })
+    .withMessage('Valid access code is required'),
+  body('email')
+    .optional({ checkFalsy: true })
+    .isEmail()
+    .withMessage('Valid email is required'),
+  body().custom((value) => {
+    if (!value?.token && !(value?.accessCode && value?.email)) {
+      throw new Error('Provide either an invitation token, or an access code with email');
+    }
+    return true;
+  })
 ];
 
 // Answer submission validation

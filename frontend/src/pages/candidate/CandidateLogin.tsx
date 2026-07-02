@@ -13,6 +13,7 @@ interface TestInfo {
   invitedBy?: string;
   candidateName?: string;
   candidateEmail?: string;
+  accessCode?: string | null;
 }
 
 export default function CandidateLogin() {
@@ -44,6 +45,7 @@ export default function CandidateLogin() {
           invitedBy:       data.invitation?.company   || data.invitation?.organizationName || '',
           candidateName:   data.invitation?.name      || '',
           candidateEmail:  data.invitation?.email     || '',
+          accessCode:      data.invitation?.accessCode || null,
         });
         if (data.invitation?.name)  setName(data.invitation.name);
         if (data.invitation?.email) setEmail(data.invitation.email);
@@ -58,13 +60,24 @@ export default function CandidateLogin() {
 
   const handleContinue = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = accessCode.trim();
-    if (!token) { toast.error('Please enter your access code'); return; }
+    const codeOrToken = accessCode.trim();
+    if (!codeOrToken) { toast.error('Please enter your access code'); return; }
     if (!consented) { toast.error('Please accept the consent to continue'); return; }
+
+    // Arriving via a clicked invite link always authenticates via that link's token,
+    // regardless of what's shown in the access code field. A manually-typed short
+    // access code needs the email to disambiguate it.
+    const usingLinkToken = !!invitationToken;
+    if (!usingLinkToken && !email.trim()) {
+      toast.error('Please enter your email');
+      return;
+    }
 
     setLoading(true);
     try {
-      const { data } = await candidateApi.loginWithInvitation({ token });
+      const { data } = await candidateApi.loginWithInvitation(
+        usingLinkToken ? { token: invitationToken } : { accessCode: codeOrToken, email: email.trim() }
+      );
       setCandidate(data.candidate, data.token);
       localStorage.setItem('attemptId',        data.attempt.id);
       localStorage.setItem('attemptStartTime', data.attempt.startTime);
@@ -216,22 +229,57 @@ export default function CandidateLogin() {
             />
           </div>
 
-          {/* Access code */}
-          <div style={{ marginBottom: '6px' }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '7px' }}>
-              Access code
-            </label>
-            <input
-              type="text"
-              value={accessCode}
-              onChange={e => setAccessCode(e.target.value.toUpperCase())}
-              placeholder="NODE-7XQ2"
-              style={{ ...inputStyle, letterSpacing: '0.15em', fontFamily: 'monospace', fontSize: '14px' }}
-              onFocus={e => (e.target.style.borderColor = 'var(--admin-accent)')}
-              onBlur={e  => (e.target.style.borderColor = 'var(--admin-border)')}
-            />
-          </div>
-          <p style={{ fontSize: '12px', color: 'var(--admin-accent)', margin: '0 0 20px' }}>Found in your invitation email.</p>
+          {/* Access code — when arriving via a clicked invite link, show the short code
+              read-only for reference (identity is already proven by the link's token).
+              Otherwise, let the candidate type it in manually. */}
+          {invitationToken && testInfo?.accessCode ? (
+            <>
+              <div style={{ marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '7px' }}>
+                  Access code
+                </label>
+                <input
+                  type="text"
+                  value={testInfo.accessCode}
+                  readOnly
+                  style={{ ...inputStyle, letterSpacing: '0.15em', fontFamily: 'monospace', fontSize: '14px', backgroundColor: '#F9FAFB', color: '#374151', cursor: 'default' }}
+                />
+              </div>
+              <p style={{ fontSize: '12px', color: 'var(--admin-accent)', margin: '0 0 20px' }}>Verified via your invite link.</p>
+            </>
+          ) : invitationToken ? (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '10px 14px', borderRadius: '10px', marginBottom: '20px',
+              backgroundColor: 'var(--admin-accent-soft)', border: '1px solid #BBF7D0',
+            }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                <path d="M9 12l2 2 4-4" stroke="var(--admin-accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                <circle cx="12" cy="12" r="9" stroke="var(--admin-accent)" strokeWidth="1.8"/>
+              </svg>
+              <span style={{ fontSize: '13px', color: 'var(--admin-accent-hover)', fontWeight: 500 }}>
+                Access verified via your invite link
+              </span>
+            </div>
+          ) : (
+            <>
+              <div style={{ marginBottom: '6px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '7px' }}>
+                  Access code
+                </label>
+                <input
+                  type="text"
+                  value={accessCode}
+                  onChange={e => setAccessCode(e.target.value.toUpperCase())}
+                  placeholder="NODE-7382"
+                  style={{ ...inputStyle, letterSpacing: '0.15em', fontFamily: 'monospace', fontSize: '14px' }}
+                  onFocus={e => (e.target.style.borderColor = 'var(--admin-accent)')}
+                  onBlur={e  => (e.target.style.borderColor = 'var(--admin-border)')}
+                />
+              </div>
+              <p style={{ fontSize: '12px', color: 'var(--admin-accent)', margin: '0 0 20px' }}>Found in your invitation email.</p>
+            </>
+          )}
 
           {/* Consent */}
           <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', cursor: 'pointer', marginBottom: '22px' }}>

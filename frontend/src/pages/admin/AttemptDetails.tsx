@@ -30,6 +30,9 @@ interface AttemptData {
     reviewed?: boolean;
     reviewedAt?: string | null;
     reviewNotes?: string | null;
+    resultReleased?: boolean;
+    releasedAt?: string | null;
+    resultEmailSentAt?: string | null;
   };
   test: {
     id: string;
@@ -147,6 +150,10 @@ export default function AttemptDetails() {
   const [reviewSaving,  setReviewSaving]  = useState(false);
   const [reviewFilter,  setReviewFilter]  = useState<ReviewFilter>('all');
   const [reviewed,      setReviewed]      = useState(false);
+  const [releasing,     setReleasing]     = useState(false);
+  const [emailingResult,setEmailingResult]= useState(false);
+  const [behavioralDrafts, setBehavioralDrafts] = useState<Record<string, string>>({});
+  const [gradingQuestionId, setGradingQuestionId] = useState<string | null>(null);
 
   useEffect(() => { void loadAttempt(); }, [attemptId]);
 
@@ -180,6 +187,73 @@ export default function AttemptDetails() {
       void loadAttempt();
     } catch { toast.error('Failed to re-evaluate'); }
     finally { setReEvaluating(false); }
+  };
+
+  const handleReleaseResults = async () => {
+    if (!data || data.attempt.resultReleased) return;
+    setReleasing(true);
+    try {
+      const { data: releaseData } = await adminApi.releaseAttemptResult(attemptId!);
+      setData(prev => prev ? {
+        ...prev,
+        attempt: {
+          ...prev.attempt,
+          resultReleased: releaseData.attempt?.resultReleased ?? true,
+          releasedAt: releaseData.attempt?.releasedAt ?? null,
+        },
+      } : prev);
+      toast.success('Results released to candidate');
+    } catch {
+      toast.error('Failed to release results');
+    } finally {
+      setReleasing(false);
+    }
+  };
+
+  const handleEmailResult = async () => {
+    if (!data) return;
+    setEmailingResult(true);
+    try {
+      const { data: emailData } = await adminApi.sendAttemptResultEmail(attemptId!);
+      setData(prev => prev ? {
+        ...prev,
+        attempt: { ...prev.attempt, resultEmailSentAt: emailData.attempt?.resultEmailSentAt ?? new Date().toISOString() },
+      } : prev);
+      toast.success('Result email sent to candidate');
+    } catch (err: unknown) {
+      const message = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      toast.error(message || 'Failed to send result email');
+    } finally {
+      setEmailingResult(false);
+    }
+  };
+
+  const handleGradeBehavioral = async (questionId: string, maxMarks: number) => {
+    if (!data) return;
+    const raw = behavioralDrafts[questionId];
+    const parsed = Number(raw);
+    if (raw === undefined || raw.trim() === '' || Number.isNaN(parsed)) {
+      toast.error('Enter a valid number');
+      return;
+    }
+    const clamped = Math.min(maxMarks, Math.max(0, parsed));
+    setGradingQuestionId(questionId);
+    try {
+      const { data: gradeData } = await adminApi.gradeBehavioralAnswer(attemptId!, questionId, clamped);
+      setData(prev => prev ? {
+        ...prev,
+        attempt: { ...prev.attempt, score: gradeData.score },
+        behavioralAnswers: prev.behavioralAnswers.map(a =>
+          a.questionId === questionId ? { ...a, marksObtained: gradeData.marksObtained } : a
+        ),
+      } : prev);
+      setBehavioralDrafts(prev => { const next = { ...prev }; delete next[questionId]; return next; });
+      toast.success('Marks saved');
+    } catch {
+      toast.error('Failed to save marks');
+    } finally {
+      setGradingQuestionId(null);
+    }
   };
 
   const handleReviewToggle = async () => {
@@ -316,15 +390,30 @@ export default function AttemptDetails() {
             <FileDown size={16} />
             Download PDF
           </button>
-          <button onClick={() => toast('Email sent to candidate')}
+          <button onClick={handleEmailResult}
+            disabled={emailingResult}
             style={{
               display:'flex', alignItems:'center', gap:'5px', padding:'8px 14px',
               border:'1.5px solid var(--admin-border)', borderRadius:'8px', backgroundColor:'white',
-              fontSize:'13px', fontWeight:500, color:'var(--admin-text-muted)', cursor:'pointer',
+              fontSize:'13px', fontWeight:500, color:'var(--admin-text-muted)',
+              cursor: emailingResult ? 'not-allowed' : 'pointer', opacity: emailingResult ? 0.7 : 1,
             }}>
             <Mail size={16} />
-            Email result
+            {emailingResult ? 'Sending...' : 'Email result'}
           </button>
+          {attempt.resultReleased === false && (
+            <button onClick={handleReleaseResults}
+              disabled={releasing}
+              style={{
+                display:'flex', alignItems:'center', gap:'5px', padding:'8px 14px',
+                border:'none', borderRadius:'8px', backgroundColor:'var(--admin-accent)',
+                fontSize:'13px', fontWeight:600, color:'white',
+                cursor: releasing ? 'not-allowed' : 'pointer', opacity: releasing ? 0.7 : 1,
+              }}>
+              <CheckCircle2 size={16} />
+              {releasing ? 'Releasing...' : 'Release results'}
+            </button>
+          )}
           <button onClick={handleReviewToggle}
             disabled={reviewSaving}
             style={{
@@ -593,6 +682,8 @@ export default function AttemptDetails() {
                 {/* -- Behavioral cards -- */}
                 {filteredBehavioral.map((ans, i) => {
                   const score = ans.marksObtained ?? 0;
+                  const draft = behavioralDrafts[ans.questionId];
+                  const isGrading = gradingQuestionId === ans.questionId;
                   return (
                     <div key={ans.questionId} style={{ borderRadius:'12px', border:'1.5px solid var(--admin-accent-disabled)', overflow:'hidden' }}>
                       {/* Behavioral header */}
@@ -616,9 +707,30 @@ export default function AttemptDetails() {
                         <p style={{ fontSize:'11px', fontWeight:600, color:'var(--admin-text-subtle)', textTransform:'uppercase', letterSpacing:'0.05em', margin:'0 0 8px' }}>
                           Candidate's answer
                         </p>
-                        <p style={{ fontSize:'13px', color:'var(--admin-text-muted)', margin:0, lineHeight:'1.7', whiteSpace:'pre-wrap' }}>
+                        <p style={{ fontSize:'13px', color:'var(--admin-text-muted)', margin:'0 0 14px', lineHeight:'1.7', whiteSpace:'pre-wrap' }}>
                           {ans.answerText || '(No answer provided)'}
                         </p>
+                        <div style={{ display:'flex', alignItems:'center', gap:'8px', paddingTop:'12px', borderTop:'1px solid var(--admin-border)' }}>
+                          <p style={{ fontSize:'11px', fontWeight:600, color:'var(--admin-text-subtle)', margin:0 }}>Grade this answer:</p>
+                          <input
+                            type="number"
+                            min={0}
+                            max={ans.marks}
+                            step="0.5"
+                            placeholder={String(score)}
+                            value={draft ?? ''}
+                            onChange={e => setBehavioralDrafts(prev => ({ ...prev, [ans.questionId]: e.target.value }))}
+                            style={{ width:'70px', padding:'6px 8px', borderRadius:'6px', border:'1px solid var(--admin-border)', fontSize:'12px', color:'var(--admin-text)' }}
+                          />
+                          <span style={{ fontSize:'12px', color:'var(--admin-text-subtle)' }}>/ {ans.marks}</span>
+                          <button
+                            onClick={() => handleGradeBehavioral(ans.questionId, ans.marks)}
+                            disabled={isGrading || draft === undefined}
+                            style={{ padding:'6px 12px', borderRadius:'6px', border:'none', backgroundColor:'var(--admin-accent)', color:'#fff', fontSize:'12px', fontWeight:600, cursor: isGrading || draft === undefined ? 'not-allowed' : 'pointer', opacity: isGrading || draft === undefined ? 0.6 : 1 }}
+                          >
+                            {isGrading ? 'Saving…' : 'Save marks'}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );

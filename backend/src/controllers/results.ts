@@ -1,6 +1,18 @@
 import { Response } from 'express';
 import { AuthenticatedRequest } from '../types/index.js';
 import prisma from '../utils/db.js';
+import { sendResultEmail } from '../services/emailService.js';
+import { getTestGradingPreferences } from '../utils/testPreferences.js';
+
+async function resolveCompanyName(companyId: string | null): Promise<string> {
+  if (!companyId) return 'Our Team';
+  try {
+    const company = await prisma.company.findUnique({ where: { id: companyId }, select: { name: true } });
+    return company?.name || 'Our Team';
+  } catch {
+    return 'Our Team';
+  }
+}
 
 interface AttemptReviewState {
   reviewed: boolean;
@@ -255,7 +267,11 @@ export async function getAttemptDetails(req: AuthenticatedRequest, res: Response
         reviewed: reviewState.reviewed,
         reviewedAt: reviewState.reviewedAt,
         reviewedBy: reviewState.reviewedBy,
-        reviewNotes: reviewState.reviewNotes
+        reviewNotes: reviewState.reviewNotes,
+        resultReleased: attempt.resultReleased,
+        releasedAt: attempt.releasedAt,
+        releasedBy: attempt.releasedBy,
+        resultEmailSentAt: attempt.resultEmailSentAt
       },
       test: attempt.test,
       candidate: attempt.candidate,
@@ -313,6 +329,206 @@ export async function reviewAttempt(req: AuthenticatedRequest, res: Response): P
     });
   } catch (error) {
     console.error('Review attempt error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// Releases a manually-graded attempt's results to the candidate (score visibility +
+// result email become active per the test's settings, same as Automatic grading does at submission time).
+export async function releaseAttemptResult(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { attemptId } = req.params;
+
+    const attempt = await prisma.testAttempt.findUnique({
+      where: { id: attemptId },
+      include: {
+        test: { select: { id: true, adminId: true, name: true, companyId: true, totalMarks: true, passingMarks: true } },
+        candidate: { select: { email: true, name: true } }
+      }
+    });
+
+    if (!attempt) {
+      res.status(404).json({ error: 'Attempt not found' });
+      return;
+    }
+
+    if (attempt.test.adminId !== req.admin!.id) {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    const updated = await prisma.testAttempt.update({
+      where: { id: attemptId },
+      data: {
+        resultReleased: true,
+        releasedAt: new Date(),
+        releasedBy: req.admin!.id
+      }
+    });
+
+    if (attempt.candidate?.email && !attempt.resultEmailSentAt && attempt.score != null) {
+      const preferences = await getTestGradingPreferences(attempt.test.id);
+      if (preferences.sendResultEmail) {
+        try {
+          const passed = attempt.test.passingMarks != null ? attempt.score >= attempt.test.passingMarks : null;
+          await sendResultEmail({
+            to: attempt.candidate.email,
+            candidateName: attempt.candidate.name || 'Candidate',
+            testName: attempt.test.name,
+            companyName: await resolveCompanyName(attempt.test.companyId),
+            score: attempt.score,
+            totalMarks: attempt.test.totalMarks,
+            passed
+          });
+          await prisma.testAttempt.update({ where: { id: attemptId }, data: { resultEmailSentAt: new Date() } });
+        } catch (err) {
+          console.error('Result email error (release):', err);
+        }
+      }
+    }
+
+    res.json({
+      message: 'Results released to candidate',
+      attempt: {
+        id: updated.id,
+        resultReleased: updated.resultReleased,
+        releasedAt: updated.releasedAt,
+        releasedBy: updated.releasedBy
+      }
+    });
+  } catch (error) {
+    console.error('Release attempt result error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// Lets an admin manually (re)send the result email for a single attempt, regardless of
+// the test's automatic sendResultEmail/gradingMode settings — an explicit one-off action.
+export async function sendAttemptResultEmail(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { attemptId } = req.params;
+
+    const attempt = await prisma.testAttempt.findUnique({
+      where: { id: attemptId },
+      include: {
+        test: { select: { adminId: true, name: true, companyId: true, totalMarks: true, passingMarks: true } },
+        candidate: { select: { email: true, name: true } }
+      }
+    });
+
+    if (!attempt) {
+      res.status(404).json({ error: 'Attempt not found' });
+      return;
+    }
+
+    if (attempt.test.adminId !== req.admin!.id) {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    if (!attempt.candidate?.email) {
+      res.status(400).json({ error: 'Candidate has no email on file' });
+      return;
+    }
+
+    if (attempt.score == null) {
+      res.status(400).json({ error: 'Attempt has not been scored yet' });
+      return;
+    }
+
+    const passed = attempt.test.passingMarks != null ? attempt.score >= attempt.test.passingMarks : null;
+    await sendResultEmail({
+      to: attempt.candidate.email,
+      candidateName: attempt.candidate.name || 'Candidate',
+      testName: attempt.test.name,
+      companyName: await resolveCompanyName(attempt.test.companyId),
+      score: attempt.score,
+      totalMarks: attempt.test.totalMarks,
+      passed
+    });
+
+    const updated = await prisma.testAttempt.update({
+      where: { id: attemptId },
+      data: { resultEmailSentAt: new Date() }
+    });
+
+    res.json({
+      message: 'Result email sent',
+      attempt: { id: updated.id, resultEmailSentAt: updated.resultEmailSentAt }
+    });
+  } catch (error) {
+    console.error('Send attempt result email error:', error);
+    res.status(500).json({ error: 'Failed to send result email' });
+  }
+}
+
+// Admin manually assigns marks to a free-text behavioral answer, since these can't be
+// auto-graded like MCQ/coding. Recalculates the attempt's total score afterwards.
+export async function gradeBehavioralAnswer(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { attemptId, questionId } = req.params;
+    const { marksObtained } = req.body;
+
+    if (typeof marksObtained !== 'number' || Number.isNaN(marksObtained)) {
+      res.status(400).json({ error: 'marksObtained must be a number' });
+      return;
+    }
+
+    const attempt = await prisma.testAttempt.findUnique({
+      where: { id: attemptId },
+      include: {
+        test: { select: { adminId: true } },
+        mcqAnswers: { select: { marksObtained: true } },
+        codingAnswers: { select: { marksObtained: true } },
+        behavioralAnswers: { select: { id: true, questionId: true, marksObtained: true, question: { select: { marks: true } } } }
+      }
+    });
+
+    if (!attempt) {
+      res.status(404).json({ error: 'Attempt not found' });
+      return;
+    }
+
+    if (attempt.test.adminId !== req.admin!.id) {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    const behavioralAnswer = attempt.behavioralAnswers.find(a => a.questionId === questionId);
+    if (!behavioralAnswer) {
+      res.status(404).json({ error: 'Behavioral answer not found' });
+      return;
+    }
+
+    const maxMarks = behavioralAnswer.question.marks;
+    const clampedMarks = Math.min(maxMarks, Math.max(0, marksObtained));
+
+    await prisma.behavioralAnswer.update({
+      where: { id: behavioralAnswer.id },
+      data: { marksObtained: clampedMarks }
+    });
+
+    const mcqTotal = attempt.mcqAnswers.reduce((sum, a) => sum + (a.marksObtained ?? 0), 0);
+    const codingTotal = attempt.codingAnswers.reduce((sum, a) => sum + (a.marksObtained ?? 0), 0);
+    const behavioralTotal = attempt.behavioralAnswers.reduce(
+      (sum, a) => sum + (a.questionId === questionId ? clampedMarks : (a.marksObtained ?? 0)),
+      0
+    );
+    const newScore = mcqTotal + codingTotal + behavioralTotal;
+
+    await prisma.testAttempt.update({
+      where: { id: attemptId },
+      data: { score: newScore }
+    });
+
+    res.json({
+      message: 'Behavioral answer graded',
+      questionId,
+      marksObtained: clampedMarks,
+      score: newScore
+    });
+  } catch (error) {
+    console.error('Grade behavioral answer error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }
@@ -404,6 +620,9 @@ export async function reEvaluateAttempt(req: AuthenticatedRequest, res: Response
               include: { testCases: true }
             }
           }
+        },
+        behavioralAnswers: {
+          select: { marksObtained: true }
         }
       }
     });
@@ -491,6 +710,12 @@ export async function reEvaluateAttempt(req: AuthenticatedRequest, res: Response
           marksObtained: marks
         }
       });
+    }
+
+    // Fold in already-graded behavioral marks — this endpoint only re-runs MCQ/coding
+    // auto-grading and must not silently drop manually-graded behavioral scores.
+    for (const behavioralAnswer of attempt.behavioralAnswers) {
+      totalScore += behavioralAnswer.marksObtained ?? 0;
     }
 
     // Update attempt score

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { TestQuestion, MCQAnswer, CodingAnswer, BehavioralAnswer } from '../types';
+import { TestQuestion, MCQAnswer, CodingAnswer, BehavioralAnswer, SubmissionResult } from '../types';
 import { DEFAULT_CUSTOM_AI_VIOLATIONS, normalizeCustomAIViolationSelection } from '../constants/customAIViolations';
 
 interface TestState {
@@ -25,6 +25,10 @@ interface TestState {
   behavioralAnswers: Record<string, string>;
   violations: number;
   isSubmitted: boolean;
+  submissionResult: SubmissionResult | null;
+  allowBackNavigation: boolean;
+  showTimer: boolean;
+  autoSubmitOnTimeout: boolean;
 
   setTestData: (data: {
     testId: string;
@@ -44,6 +48,9 @@ interface TestState {
     startTime: Date;
     questions: TestQuestion[];
     initialViolations?: number;
+    allowBackNavigation?: boolean;
+    showTimer?: boolean;
+    autoSubmitOnTimeout?: boolean;
   }) => void;
 
   setCurrentQuestion: (index: number) => void;
@@ -51,7 +58,7 @@ interface TestState {
   saveCodingAnswer: (questionId: string, code: string, language: string) => void;
   saveBehavioralAnswer: (questionId: string, answerText: string) => void;
   incrementViolations: () => number;
-  setSubmitted: () => void;
+  setSubmitted: (result?: SubmissionResult) => void;
   resetTest: () => void;
   loadSavedAnswers: (mcq: MCQAnswer[], coding: CodingAnswer[], behavioral: BehavioralAnswer[]) => void;
 }
@@ -79,6 +86,10 @@ export const useTestStore = create<TestState>((set, get) => ({
   behavioralAnswers: {},
   violations: 0,
   isSubmitted: false,
+  submissionResult: null,
+  allowBackNavigation: false,
+  showTimer: true,
+  autoSubmitOnTimeout: true,
 
   setTestData: (data) => set({
     testId: data.testId,
@@ -103,6 +114,9 @@ export const useTestStore = create<TestState>((set, get) => ({
     behavioralAnswers: {},
     violations: data.initialViolations ?? 0,
     isSubmitted: false,
+    allowBackNavigation: data.allowBackNavigation ?? false,
+    showTimer: data.showTimer ?? true,
+    autoSubmitOnTimeout: data.autoSubmitOnTimeout ?? true,
   }),
 
   setCurrentQuestion: (index) => set({ currentQuestionIndex: index }),
@@ -134,7 +148,7 @@ export const useTestStore = create<TestState>((set, get) => ({
     return newViolations;
   },
 
-  setSubmitted: () => set({ isSubmitted: true }),
+  setSubmitted: (result) => set({ isSubmitted: true, submissionResult: result ?? null }),
 
   resetTest: () => set({
     testId: null,
@@ -158,7 +172,11 @@ export const useTestStore = create<TestState>((set, get) => ({
     codingAnswers: {},
     behavioralAnswers: {},
     violations: 0,
-    isSubmitted: false
+    isSubmitted: false,
+    submissionResult: null,
+    allowBackNavigation: false,
+    showTimer: true,
+    autoSubmitOnTimeout: true
   }),
 
   loadSavedAnswers: (mcq, coding, behavioral) => set((state) => {

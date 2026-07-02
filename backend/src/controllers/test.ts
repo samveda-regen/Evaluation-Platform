@@ -162,6 +162,15 @@ function parseDateValue(value: unknown): Date | null {
   return parsed;
 }
 
+function parsePassingMarks(rawPassingMarks: unknown, totalMarks: number): number | null {
+  if (rawPassingMarks === undefined || rawPassingMarks === null || String(rawPassingMarks).trim() === '') {
+    return null;
+  }
+  const parsed = Number.parseInt(String(rawPassingMarks), 10);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.min(Math.max(parsed, 0), Math.max(totalMarks, 0));
+}
+
 function parseMaxViolations(value: unknown): number {
   const parsed = Number.parseInt(String(value ?? '3'), 10);
   if (!Number.isFinite(parsed) || parsed < 1 || parsed > MAX_TEST_VIOLATIONS) {
@@ -300,9 +309,7 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
         startTime: parsedStartTime,
         endTime: parsedEndTime,
         totalMarks: parseInt(totalMarks),
-        passingMarks: passingMarks !== undefined && passingMarks !== null && String(passingMarks).trim() !== ''
-          ? parseInt(passingMarks)
-          : null,
+        passingMarks: parsePassingMarks(passingMarks, parseInt(totalMarks)),
         negativeMarking: negativeMarking ? parseFloat(negativeMarking) : 0,
         shuffleQuestions: shuffleQuestions || false,
         shuffleOptions: shuffleOptions || false,
@@ -658,9 +665,10 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
 
     if (updates.totalMarks) sanitizedUpdates.totalMarks = parseInt(updates.totalMarks);
     if (updates.passingMarks !== undefined) {
-      sanitizedUpdates.passingMarks = updates.passingMarks !== null && String(updates.passingMarks).trim() !== ''
-        ? parseInt(updates.passingMarks)
-        : null;
+      const effectiveTotalMarks = typeof sanitizedUpdates.totalMarks === 'number'
+        ? sanitizedUpdates.totalMarks
+        : test.totalMarks;
+      sanitizedUpdates.passingMarks = parsePassingMarks(updates.passingMarks, effectiveTotalMarks);
     }
     if (updates.negativeMarking !== undefined) sanitizedUpdates.negativeMarking = parseFloat(updates.negativeMarking) || 0;
     if (updates.isActive !== undefined) sanitizedUpdates.isActive = updates.isActive;

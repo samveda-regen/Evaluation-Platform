@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { Test } from '../../types';
-import { ChevronRight, Pencil, Check, Trash2 } from 'lucide-react';
+import { ChevronRight, Pencil, Check, Trash2, Info } from 'lucide-react';
 import DateTimePicker from '../../components/DateTimePicker';
 import CustomSelect from '../../components/CustomSelect';
 
@@ -116,11 +116,46 @@ function toFormState(t: Test): FormState {
     passingScorePercent:   totalMarks > 0 ? Math.round((passingMarks / totalMarks) * 100) : 60,
     gradingMode:           stringSetting(ext, settings, 'gradingMode', 'Automatic'),
     showScoreToCandidate:  booleanSetting(ext, settings, 'showScoreToCandidate', false),
-    sendResultEmail:       booleanSetting(ext, settings, 'sendResultEmail', true),
+    sendResultEmail:       booleanSetting(ext, settings, 'sendResultEmail', false),
     includeAnswerReview:   booleanSetting(ext, settings, 'includeAnswerReview', false),
     totalMarks,
     negativeMarking:       t.negativeMarking ?? 0,
   };
+}
+
+/* -- Info tooltip -- */
+function InfoTooltip({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span
+      style={{ position:'relative', display:'inline-flex', verticalAlign:'middle' }}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-label="More information"
+        style={{
+          display:'flex', alignItems:'center', justifyContent:'center',
+          width:'16px', height:'16px', borderRadius:'50%', border:'none',
+          backgroundColor:'transparent', color:'var(--admin-text-subtle)',
+          cursor:'pointer', padding:0, flexShrink:0,
+        }}
+      >
+        <Info width={14} height={14} strokeWidth={1.75} />
+      </button>
+      {open && (
+        <div style={{
+          position:'absolute', top:'22px', left:0, zIndex:30, width:'280px',
+          padding:'10px 12px', borderRadius:'8px', backgroundColor:'var(--admin-text)',
+          color:'white', fontSize:'12px', lineHeight:1.5, boxShadow:'0 6px 20px rgba(0,0,0,0.2)',
+        }}>
+          {text}
+        </div>
+      )}
+    </span>
+  );
 }
 
 /* -- Toggle -- */
@@ -316,7 +351,8 @@ export default function TestSettings() {
   }) => (
     <div style={{
       display:'flex', alignItems:'center', justifyContent:'space-between', gap:'16px',
-      padding:'18px 0', borderBottom: last ? 'none' : '1px solid var(--admin-border)',
+      padding:'16px 18px', marginBottom: last ? 0 : '12px',
+      borderRadius:'10px', border:'1px solid rgba(239, 68, 68, 0.25)', backgroundColor:'rgba(239, 68, 68, 0.06)',
     }}>
       <div>
         <p style={{ fontSize:'14px', fontWeight:500, color:'var(--admin-text)', margin:'0 0 3px' }}>{label}</p>
@@ -480,14 +516,17 @@ export default function TestSettings() {
             {/* --- RESULTS & GRADING --- */}
             {activePanel === 'grading' && (
               <div>
-                <p style={{ fontSize:'18px', fontWeight:700, color:'var(--admin-text)', margin:'0 0 24px' }}>Results &amp; grading</p>
+                <p style={{ fontSize:'18px', fontWeight:700, color:'var(--admin-text)', margin:'0 0 24px', display:'flex', alignItems:'center', gap:'8px' }}>
+                  Results &amp; grading
+                  <InfoTooltip text="Automatic grading releases each candidate's result the instant they submit. Manual grading holds results until you click 'Release results' on their attempt page. 'Show score to candidate' reveals their score/pass-fail once released. 'Send result email' emails them their outcome once released — you can also send it manually any time from an attempt's page." />
+                </p>
 
                 {/* Passing score + Grading mode */}
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px', marginBottom:'8px' }}>
                   <div>
                     <label style={labelSx}>Passing score (%)</label>
-                    <input type="number" value={form.passingScorePercent}
-                      onChange={e => patch({ passingScorePercent: Number(e.target.value) })}
+                    <input type="number" min={0} max={100} value={form.passingScorePercent}
+                      onChange={e => patch({ passingScorePercent: Math.min(100, Math.max(0, Number(e.target.value) || 0)) })}
                       style={inputSx} />
                   </div>
                   <div>
@@ -653,19 +692,9 @@ export default function TestSettings() {
             {/* --- DANGER ZONE --- */}
             {activePanel === 'danger' && (
               <div>
-                <p style={{ fontSize:'18px', fontWeight:700, color:'var(--admin-text)', margin:'0 0 4px' }}>Danger zone</p>
+                <p style={{ fontSize:'18px', fontWeight:700, color:'#EF4444', margin:'0 0 4px' }}>Danger zone</p>
                 <p style={{ fontSize:'13px', color:'var(--admin-text-muted)', margin:'0 0 8px' }}>These actions are irreversible.</p>
 
-                <DangerRow
-                  label="Archive test"   desc="Hide from candidates, keep data"
-                  btnLabel="Archive"
-                  onClick={() => toast('Archive coming soon', { icon: '??' })}
-                />
-                <DangerRow
-                  label="Duplicate test" desc="Create an editable copy"
-                  btnLabel="Duplicate"
-                  onClick={() => toast('Duplicate coming soon', { icon: '??' })}
-                />
                 <DangerRow
                   label="Delete test"    desc="Permanently remove test & attempts"
                   btnLabel="Delete"     btnRed

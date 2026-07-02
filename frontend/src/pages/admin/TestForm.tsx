@@ -11,7 +11,6 @@ import {
   ListChecks,
   Plus,
   ShieldCheck,
-  Upload,
 } from 'lucide-react';
 import { adminApi } from '../../services/api';
 import DateTimePicker from '../../components/DateTimePicker';
@@ -184,9 +183,10 @@ export default function TestForm() {
   const scrollCardRef = useRef<HTMLDivElement | null>(null);
 
   const [step, setStep] = useState(0);
+  const [titleError, setTitleError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard' | 'mixed'>('mixed');
-  const [srcs, setSrcs] = useState({ library: true, write: true, csv: false });
+  const [srcs, setSrcs] = useState({ library: true, write: true });
   const [isCustomCategory, setIsCustomCategory] = useState(false);
   const [customCategoryInput, setCustomCategoryInput] = useState('');
 
@@ -237,14 +237,14 @@ export default function TestForm() {
   const validateStep = (targetStep = step): boolean => {
     if (targetStep === 0) {
       if (!formData.name.trim()) {
-        toast.error('Test title is required');
+        setTitleError(true);
         return false;
       }
       if (isCustomCategory && !customCategoryInput.trim()) {
         toast.error('Custom role/category is required');
         return false;
       }
-      if (!srcs.library && !srcs.write && !srcs.csv) {
+      if (!srcs.library && !srcs.write) {
         toast.error('Select at least one question source');
         return false;
       }
@@ -397,12 +397,13 @@ export default function TestForm() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
+    if (name === 'name' && value.trim()) setTitleError(false);
     setFormData(prev => ({
       ...prev,
       [name]: type === 'checkbox'
         ? (e.target as HTMLInputElement).checked
         : type === 'number'
-          ? Number(value)
+          ? Math.max(0, Number(value) || 0)
           : value,
     }));
   };
@@ -467,10 +468,13 @@ export default function TestForm() {
                       onChange={handleChange}
                       required
                       placeholder="e.g. Back-End Developer - Node.js"
-                      style={inputStyle}
+                      style={titleError ? { ...inputStyle, borderColor: '#EF4444' } : inputStyle}
                       onFocus={focusGreen}
                       onBlur={blurGray}
                     />
+                    {titleError && (
+                      <p style={{ margin: '6px 0 0', fontSize: '12px', color: '#EF4444' }}>Please fill this field</p>
+                    )}
                   </div>
                   <div>
                     <label style={labelStyle}>Role / category</label>
@@ -563,12 +567,6 @@ export default function TestForm() {
                     label="Write new questions"
                     icon={<Plus width={15} height={15} stroke="var(--admin-text-subtle)" strokeWidth={1.5} />}
                   />
-                  <SourceRow
-                    checked={srcs.csv}
-                    onChange={() => setSrcs(p => ({ ...p, csv: !p.csv }))}
-                    label="Import from CSV"
-                    icon={<Upload width={15} height={15} stroke="var(--admin-text-subtle)" strokeWidth={1.5} />}
-                  />
                 </div>
               </section>
             </div>
@@ -581,7 +579,7 @@ export default function TestForm() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div>
                     <label style={labelStyle}>Duration (minutes) <span style={{ color: '#EF4444' }}>*</span></label>
-                    <input type="number" name="duration" value={formData.duration} onChange={handleChange} required style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
+                    <input type="number" name="duration" min={1} value={formData.duration} onChange={handleChange} required style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
                   </div>
                   <div>
                     <label style={labelStyle}>Passing score (%)</label>

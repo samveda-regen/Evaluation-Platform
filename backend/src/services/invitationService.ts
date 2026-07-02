@@ -1,4 +1,4 @@
-import { randomBytes } from 'crypto';
+import { randomBytes, randomInt } from 'crypto';
 import { Readable } from 'stream';
 import type { Express } from 'express';
 import ExcelJS from 'exceljs';
@@ -13,6 +13,27 @@ const BATCH_DELAY_MS = 1000;
 const EMAIL_SEND_MAX_ATTEMPTS = 3;
 const EMAIL_SEND_RETRY_DELAY_MS = 1500;
 const CANDIDATE_LOGIN_PATH = '/test/login';
+
+// Excludes visually-confusing characters (I, O) so codes are easy to read/type by hand.
+const ACCESS_CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+const ACCESS_CODE_DIGITS = '0123456789';
+
+function generateAccessCode(): string {
+  let letters = '';
+  for (let i = 0; i < 4; i++) letters += ACCESS_CODE_LETTERS[randomInt(ACCESS_CODE_LETTERS.length)];
+  let digits = '';
+  for (let i = 0; i < 4; i++) digits += ACCESS_CODE_DIGITS[randomInt(ACCESS_CODE_DIGITS.length)];
+  return `${letters}-${digits}`;
+}
+
+async function generateUniqueAccessCode(): Promise<string> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = generateAccessCode();
+    const existing = await prisma.testInvitation.findUnique({ where: { accessCode: code }, select: { id: true } });
+    if (!existing) return code;
+  }
+  throw new InvitationServiceError('Could not generate a unique access code. Please try again.', 500);
+}
 
 interface ParsedInvitationRow {
   name: string;
@@ -30,6 +51,7 @@ export interface InvitationDetails {
     id: string;
     name: string;
     email: string;
+    accessCode?: string | null;
   };
   test: {
     id: string;
@@ -274,6 +296,7 @@ async function fetchInvitationByToken(token: string): Promise<InvitationDetails>
       id: true,
       name: true,
       email: true,
+      accessCode: true,
       consumedAt: true,
       test: {
         select: {
@@ -302,10 +325,38 @@ async function fetchInvitationByToken(token: string): Promise<InvitationDetails>
     invitation: {
       id: invitation.id,
       name: invitation.name,
-      email: invitation.email
+      email: invitation.email,
+      accessCode: invitation.accessCode
     },
     test: invitation.test
   };
+}
+
+// Resolves a manually-typed short access code (paired with the candidate's email, since
+// a short code alone has less entropy than the invite-link token) to that invitation's
+// underlying token, so the rest of the login flow can proceed exactly as it does for
+// a clicked invite link.
+export async function resolveInvitationTokenFromAccessCode(accessCode: string, email: string): Promise<string> {
+  const normalizedCode = accessCode.trim().toUpperCase();
+  const normalizedEmail = email.trim().toLowerCase();
+
+  const invitation = await prisma.testInvitation.findFirst({
+    where: {
+      accessCode: normalizedCode,
+      email: { equals: normalizedEmail, mode: 'insensitive' }
+    },
+    select: { token: true, consumedAt: true }
+  });
+
+  if (!invitation) {
+    throw new InvitationServiceError('Invalid access code or email.', 404);
+  }
+
+  if (invitation.consumedAt) {
+    throw new InvitationServiceError('This invitation has already been used.', 400);
+  }
+
+  return invitation.token;
 }
 
 function extractErrorMessage(error: unknown): string {
@@ -393,6 +444,7 @@ export async function sendBulkTestInvitations(input: {
 
       try {
         const token = randomBytes(32).toString('hex');
+        const accessCode = await generateUniqueAccessCode();
 
         const invitation = await prisma.testInvitation.upsert({
           where: {
@@ -406,11 +458,13 @@ export async function sendBulkTestInvitations(input: {
             name: row.name,
             email: row.email,
             token,
+            accessCode,
             status: 'PENDING'
           },
           update: {
             name: row.name,
             token,
+            accessCode,
             status: 'PENDING',
             sentAt: null,
             error: null,
@@ -425,6 +479,7 @@ export async function sendBulkTestInvitations(input: {
           candidateName: row.name,
           testName: test.name,
           testLink: buildInviteLink(invitation.token),
+          accessCode: invitation.accessCode ?? accessCode,
           companyName: (test as any).admin?.company?.name ?? undefined,
           estimatedTime: `${(test as any).duration ?? ''} minutes`,
           inviteEmailSubject: (test as any).inviteEmailSubject ?? undefined,
@@ -560,6 +615,7 @@ export async function sendStructuredTestInvitations(input: {
     let invitationId: string | null = null;
     try {
       const token = randomBytes(32).toString('hex');
+      const accessCode = await generateUniqueAccessCode();
       const invitation = await prisma.testInvitation.upsert({
         where: {
           testId_email: {
@@ -573,12 +629,14 @@ export async function sendStructuredTestInvitations(input: {
           email: row.email,
           phone: row.phone ?? null,
           token,
+          accessCode,
           status: 'PENDING'
         },
         update: {
           name: row.name,
           phone: row.phone ?? null,
           token,
+          accessCode,
           status: 'PENDING',
           sentAt: null,
           error: null,
@@ -593,6 +651,7 @@ export async function sendStructuredTestInvitations(input: {
         candidateName: row.name,
         testName: test.name,
         testLink: buildInviteLink(invitation.token),
+        accessCode: invitation.accessCode ?? accessCode,
         companyName: (test as any).admin?.company?.name ?? undefined,
         estimatedTime: `${(test as any).duration ?? ''} minutes`,
         inviteEmailSubject: (test as any).inviteEmailSubject ?? undefined,

@@ -11,7 +11,6 @@ type Difficulty = 'easy' | 'medium' | 'hard';
 
 const VALID_CATEGORIES: RepositoryCategory[] = ['MCQ', 'CODING', 'BEHAVIORAL'];
 const VALID_DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard'];
-const TEST_SCOPED_TAG_MARKER = '"__test_scoped__"';
 
 function toStringOrUndefined(value: unknown): string | undefined {
   if (typeof value !== 'string') {
@@ -207,21 +206,17 @@ export async function getRepositoryQuestions(req: AuthenticatedRequest, res: Res
 
     switch (category) {
       case 'MCQ': {
-        const where: Prisma.MCQQuestionWhereInput = {
-          source,
-          AND: [
-            {
-              NOT: {
-                tags: { contains: TEST_SCOPED_TAG_MARKER }
-              }
-            }
-          ]
-        };
+        const where: Prisma.MCQQuestionWhereInput = { source };
         if (difficulty) where.difficulty = difficulty;
         if (topic) where.topic = { contains: topic, mode: 'insensitive' };
         if (tag) where.tags = { contains: tag, mode: 'insensitive' };
         if (enabled !== undefined) where.isEnabled = enabled;
-        if (search) where.questionText = { contains: search, mode: 'insensitive' };
+        if (search) {
+          where.OR = [
+            { questionText: { contains: search, mode: 'insensitive' } },
+            { tags: { contains: search, mode: 'insensitive' } }
+          ];
+        }
 
         const [questions, total] = await Promise.all([
           prisma.mCQQuestion.findMany({
@@ -242,16 +237,7 @@ export async function getRepositoryQuestions(req: AuthenticatedRequest, res: Res
       }
 
       case 'CODING': {
-        const where: Prisma.CodingQuestionWhereInput = {
-          source,
-          AND: [
-            {
-              NOT: {
-                tags: { contains: TEST_SCOPED_TAG_MARKER }
-              }
-            }
-          ]
-        };
+        const where: Prisma.CodingQuestionWhereInput = { source };
         if (difficulty) where.difficulty = difficulty;
         if (topic) where.topic = { contains: topic, mode: 'insensitive' };
         if (tag) where.tags = { contains: tag, mode: 'insensitive' };
@@ -259,7 +245,8 @@ export async function getRepositoryQuestions(req: AuthenticatedRequest, res: Res
         if (search) {
           where.OR = [
             { title: { contains: search, mode: 'insensitive' } },
-            { description: { contains: search, mode: 'insensitive' } }
+            { description: { contains: search, mode: 'insensitive' } },
+            { tags: { contains: search, mode: 'insensitive' } }
           ];
         }
 
@@ -282,16 +269,7 @@ export async function getRepositoryQuestions(req: AuthenticatedRequest, res: Res
       }
 
       case 'BEHAVIORAL': {
-        const where: Prisma.BehavioralQuestionWhereInput = {
-          source,
-          AND: [
-            {
-              NOT: {
-                tags: { contains: TEST_SCOPED_TAG_MARKER }
-              }
-            }
-          ]
-        };
+        const where: Prisma.BehavioralQuestionWhereInput = { source };
         if (difficulty) where.difficulty = difficulty;
         if (topic) where.topic = { contains: topic, mode: 'insensitive' };
         if (tag) where.tags = { contains: tag, mode: 'insensitive' };
@@ -300,7 +278,8 @@ export async function getRepositoryQuestions(req: AuthenticatedRequest, res: Res
           where.OR = [
             { title: { contains: search, mode: 'insensitive' } },
             { description: { contains: search, mode: 'insensitive' } },
-            { expectedAnswer: { contains: search, mode: 'insensitive' } }
+            { expectedAnswer: { contains: search, mode: 'insensitive' } },
+            { tags: { contains: search, mode: 'insensitive' } }
           ];
         }
 

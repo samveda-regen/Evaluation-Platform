@@ -191,6 +191,9 @@ export default function TestInstructions() {
         startTime: new Date(data.startTime),
         questions: data.questions,
         initialViolations: 0,
+        allowBackNavigation: data.test.allowBackNavigation,
+        showTimer: data.test.showTimer,
+        autoSubmitOnTimeout: data.test.autoSubmitOnTimeout,
       });
       if (
         savedAnswers.data.mcqAnswers.length > 0 ||

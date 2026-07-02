@@ -45,6 +45,9 @@ import {
   getAttemptDetails,
   flagAttempt,
   reviewAttempt,
+  releaseAttemptResult,
+  sendAttemptResultEmail,
+  gradeBehavioralAnswer,
   deleteAttempt,
   reEvaluateAttempt,
   exportResults,
@@ -149,6 +152,9 @@ router.get('/tests/:testId/results', adminAuth, paginationValidation, handleVali
 router.get('/attempts/:attemptId', adminAuth, getAttemptDetails);
 router.post('/attempts/:attemptId/flag', adminAuth, flagAttempt);
 router.post('/attempts/:attemptId/review', adminAuth, reviewAttempt);
+router.post('/attempts/:attemptId/release', adminAuth, releaseAttemptResult);
+router.post('/attempts/:attemptId/send-result-email', adminAuth, sendAttemptResultEmail);
+router.post('/attempts/:attemptId/behavioral/:questionId/grade', adminAuth, gradeBehavioralAnswer);
 router.delete('/attempts/:attemptId', adminAuth, deleteAttempt);
 router.post('/attempts/:attemptId/reevaluate', adminAuth, reEvaluateAttempt);
 router.get('/tests/:testId/export', adminAuth, exportResults);

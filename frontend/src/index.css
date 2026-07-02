@@ -2022,6 +2022,32 @@ textarea {
   color: #fca5a5;
 }
 
+/* ── Adaptive zoom for admin UI on smaller desktop screens ── */
+/* Applied to .admin-shell only — login and candidate pages are unaffected.
+   Height and min-width compensate so the shell fills the full viewport after zoom. */
+@media (max-width: 1439px) {
+  .admin-shell {
+    zoom: 0.9;
+    height: calc(100vh / 0.9) !important;
+    min-width: calc(100vw / 0.9);
+  }
+}
+@media (max-width: 1280px) {
+  .admin-shell {
+    zoom: 0.85;
+    height: calc(100vh / 0.85) !important;
+    min-width: calc(100vw / 0.85);
+  }
+}
+@media (max-width: 1152px) {
+  .admin-shell {
+    zoom: 0.8;
+    height: calc(100vh / 0.8) !important;
+    min-width: calc(100vw / 0.8);
+  }
+}
+html { overflow-x: hidden; }
+
 .admin-dark .text-amber-700,
 .admin-dark .text-amber-600,
 .admin-dark .text-yellow-700,

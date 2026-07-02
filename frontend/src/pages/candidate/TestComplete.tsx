@@ -31,6 +31,7 @@ export default function TestComplete() {
     codingAnswers,
     behavioralAnswers,
     startTime,
+    submissionResult,
   } = useTestStore();
 
   const [submittedAt] = useState(() => formatSubmittedAt());
@@ -48,6 +49,13 @@ export default function TestComplete() {
   }).length;
 
   const timeTaken = formatTimeTaken(startTime);
+
+  const resultDetail = submissionResult?.showScore && submissionResult.score !== undefined
+    ? `${submissionResult.score}/${submissionResult.totalMarks}` + (
+        submissionResult.passed === true ? ' · Passed' :
+        submissionResult.passed === false ? ' · Not passed' : ''
+      )
+    : 'Pending review';
 
   const handleClose = () => {
     resetTest();
@@ -173,7 +181,7 @@ export default function TestComplete() {
       >
         {[
           { label: 'Submission confirmed', detail: `Today, ${submittedAt.split('·')[1]?.trim() || new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}` },
-          { label: 'Results', detail: 'Pending review' },
+          { label: 'Results', detail: resultDetail },
           { label: 'Next steps', detail: "You'll be notified by email" },
         ].map(({ label, detail }) => (
           <div key={label} className="flex items-center justify-between">

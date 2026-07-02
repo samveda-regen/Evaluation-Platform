@@ -16,6 +16,7 @@ import {
   Search,
   Pencil,
   ArrowLeft,
+  Tag,
 } from 'lucide-react';
 import BackButton from '../../../components/BackButton';
 import CustomSelect from '../../../components/CustomSelect';
@@ -170,6 +171,8 @@ export default function QuestionBank() {
   const [newDropIndex, setNewDropIndex] = useState(0);
   const [sortOrder,    setSortOrder]    = useState<'most-used'|'newest'|'marks'>('most-used');
   const dropRef = useRef<HTMLDivElement>(null);
+  const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
   const [editBeh, setEditBeh] = useState({
     open: false, id: '', title: '', description: '', marks: 5,
     difficulty: 'medium' as Difficulty, topic: '', expectedAnswer: '',
@@ -195,15 +198,95 @@ export default function QuestionBank() {
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (dropRef.current && !dropRef.current.contains(e.target as Node)) setShowNewDrop(false);
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowSearchSuggestions(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  /* -- Search suggestions (skills + questions, fetched fresh across every category & source) -- */
+  type SearchSuggestion = { type: 'skill' | 'question'; label: string };
+  const [suggestionPool, setSuggestionPool] = useState<RepositoryQuestion[]>([]);
+  const suggestionQueryRef = useRef(0);
+
+  useEffect(() => {
+    const query = draftSearch.trim();
+    if (!query) {
+      setSuggestionPool([]);
+      return;
+    }
+    const requestId = ++suggestionQueryRef.current;
+    const t = setTimeout(async () => {
+      try {
+        const responses = await Promise.all(
+          CUSTOM_CATEGORIES.flatMap(category => [
+            adminApi.getQuestionBankQuestions({ category, search: query, page: 1, limit: 15 }),
+            adminApi.getCustomRepositoryQuestions({ category, search: query, page: 1, limit: 15 }),
+          ])
+        );
+        if (suggestionQueryRef.current !== requestId) return;
+        setSuggestionPool(responses.flatMap(r => r.data.questions));
+      } catch {
+        if (suggestionQueryRef.current === requestId) setSuggestionPool([]);
+      }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [draftSearch]);
+
+  const searchSuggestions = useMemo<SearchSuggestion[]>(() => {
+    const q = draftSearch.trim().toLowerCase();
+    if (!q) return [];
+
+    const skills: string[] = [];
+    const seenSkills = new Set<string>();
+    const titles: string[] = [];
+    const seenTitles = new Set<string>();
+
+    for (const item of suggestionPool) {
+      if (skills.length < 5) {
+        for (const tag of item.tags) {
+          const key = tag.toLowerCase();
+          if (key.includes(q) && !seenSkills.has(key)) {
+            seenSkills.add(key);
+            skills.push(tag);
+            if (skills.length >= 5) break;
+          }
+        }
+      }
+      if (titles.length < 8) {
+        const title = qTitle(item);
+        const key = title.toLowerCase();
+        if (key.includes(q) && !seenTitles.has(key)) {
+          seenTitles.add(key);
+          titles.push(title);
+        }
+      }
+      if (skills.length >= 5 && titles.length >= 8) break;
+    }
+
+    return [
+      ...skills.map(label => ({ type: 'skill' as const, label })),
+      ...titles.map(label => ({ type: 'question' as const, label })),
+    ];
+  }, [draftSearch, suggestionPool]);
+
+  const selectSearchSuggestion = (label: string) => {
+    setDraftSearch(label);
+    setSearch(label);
+    setPage(1);
+    setShowSearchSuggestions(false);
+  };
+
   /* load initial counts */
   useEffect(() => {
     void loadCounts();
   }, []);
+
+  /* live search: fetch results as the user types, debounced */
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(draftSearch), 300);
+    return () => clearTimeout(t);
+  }, [draftSearch]);
 
   /* reload questions on filter change */
   useEffect(() => {
@@ -724,14 +807,15 @@ export default function QuestionBank() {
             marginBottom:'12px',
           }}>
             {/* Search */}
-            <div style={{ position:'relative', minWidth:0 }}>
+            <div ref={searchRef} style={{ position:'relative', minWidth:0 }}>
               <Search style={{ position:'absolute', left:'12px', top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}
                 width={14} height={14} stroke="var(--admin-text-subtle)" strokeWidth={1.5} />
               <input
                 value={draftSearch}
-                onChange={e => setDraftSearch(e.target.value)}
-                onKeyDown={e => { if (e.key==='Enter') { setSearch(draftSearch); setPage(1); } }}
-                placeholder="Search questions..."
+                onChange={e => { setDraftSearch(e.target.value); setShowSearchSuggestions(Boolean(e.target.value.trim())); }}
+                onFocus={() => { if (draftSearch.trim()) setShowSearchSuggestions(true); }}
+                onKeyDown={e => { if (e.key==='Enter') { setSearch(draftSearch); setPage(1); setShowSearchSuggestions(false); } }}
+                placeholder="Search questions or skills..."
                 className="admin-filter-input"
                 style={{
                   width:'100%', padding:'9px 12px 9px 36px', borderRadius:'9px',
@@ -739,6 +823,37 @@ export default function QuestionBank() {
                   outline:'none', boxSizing:'border-box',
                 }}
               />
+              {showSearchSuggestions && searchSuggestions.length > 0 && (
+                <div style={{
+                  position:'absolute', top:'calc(100% + 4px)', left:0, right:0, zIndex:20,
+                  backgroundColor:'white', border:'1px solid var(--admin-border)', borderRadius:'9px',
+                  boxShadow:'0 4px 16px rgba(0,0,0,0.08)', maxHeight:'260px', overflowY:'auto', padding:'6px',
+                }}>
+                  {searchSuggestions.map((s, i) => (
+                    <button
+                      key={`${s.type}-${s.label}-${i}`}
+                      type="button"
+                      onClick={() => selectSearchSuggestion(s.label)}
+                      className="flex items-center gap-2"
+                      style={{
+                        width:'100%', textAlign:'left', padding:'7px 8px', borderRadius:'6px',
+                        border:'none', background:'transparent', cursor:'pointer', fontSize:'13px',
+                        color:'var(--admin-text)',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.backgroundColor='var(--admin-accent-soft)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.backgroundColor='transparent'; }}
+                    >
+                      {s.type === 'skill'
+                        ? <Tag width={13} height={13} stroke="var(--admin-text-subtle)" strokeWidth={1.5} />
+                        : <Search width={13} height={13} stroke="var(--admin-text-subtle)" strokeWidth={1.5} />}
+                      <span style={{ flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{s.label}</span>
+                      <span style={{ fontSize:'11px', color:'var(--admin-text-subtle)', flexShrink:0 }}>
+                        {s.type === 'skill' ? 'Skill' : 'Question'}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             {/* Count badge */}
             <div style={{ padding:'6px 14px', borderRadius:'20px', backgroundColor:META_BADGE_CFG.bg, fontSize:'12px', fontWeight:500, color:META_BADGE_CFG.color, whiteSpace:'nowrap', flexShrink:0 }}>
