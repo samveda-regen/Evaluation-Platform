@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { format } from 'date-fns';
-import { ChevronRight, Search } from 'lucide-react';
+import { ChevronRight, Search, CheckCheck } from 'lucide-react';
 import { adminApi } from '../../services/api';
 import BackButton from '../../components/BackButton';
 import CustomSelect from '../../components/CustomSelect';
@@ -12,6 +12,7 @@ interface Attempt {
   startTime: string;
   status: string;
   score: number | null;
+  reviewed?: boolean;
   candidate: { id: string; name: string; email: string };
   test: { id: string; name: string };
 }
@@ -65,6 +66,29 @@ const STATUS_OPTIONS = [
   { value: 'in_progress',    label: 'Inprogress' },
 ];
 
+const REVIEW_OPTIONS = [
+  { value: '', label: 'All review' },
+  { value: 'false', label: 'Pending review' },
+  { value: 'true', label: 'Reviewed' },
+];
+
+function ReviewBadge({ reviewed }: { reviewed?: boolean }) {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: '5px',
+      padding: '4px 12px', borderRadius: '20px',
+      backgroundColor: reviewed ? 'var(--admin-accent-soft)' : '#F9FAFB',
+      border: '1px solid var(--admin-border)',
+      fontSize: '12px', fontWeight: 500,
+      color: reviewed ? 'var(--admin-accent-hover)' : 'var(--admin-text-subtle)',
+      whiteSpace: 'nowrap',
+    }}>
+      {reviewed && <CheckCheck size={12} />}
+      {reviewed ? 'Reviewed' : 'Pending'}
+    </span>
+  );
+}
+
 export default function AllAttempts() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -78,6 +102,7 @@ export default function AllAttempts() {
 
   const [testId,      setTestId]      = useState(searchParams.get('testId')  || '');
   const [status,      setStatus]      = useState(searchParams.get('status')  || '');
+  const [reviewed,    setReviewed]    = useState(searchParams.get('reviewed') || '');
   const [searchInput, setSearchInput] = useState(searchParams.get('search')  || '');
   const [search,      setSearch]      = useState(searchParams.get('search')  || '');
 
@@ -87,6 +112,7 @@ export default function AllAttempts() {
       const { data } = await adminApi.getAllAttempts({
         testId: testId || undefined,
         status: status || undefined,
+        reviewed: reviewed || undefined,
         search: search || undefined,
         page:   pg,
         limit:  PAGE_SIZE,
@@ -100,7 +126,7 @@ export default function AllAttempts() {
     } finally {
       setLoading(false);
     }
-  }, [testId, status, search]);
+  }, [testId, status, reviewed, search]);
 
   useEffect(() => { void load(1); }, [load]);
 
@@ -108,12 +134,13 @@ export default function AllAttempts() {
     const next = new URLSearchParams();
     if (testId) next.set('testId', testId);
     if (status) next.set('status', status);
+    if (reviewed) next.set('reviewed', reviewed);
     if (search) next.set('search', search);
     setSearchParams(next, { replace: true });
-  }, [testId, status, search, setSearchParams]);
+  }, [testId, status, reviewed, search, setSearchParams]);
 
   function applySearch() { setSearch(searchInput.trim()); }
-  const hasFilters = testId || status || search;
+  const hasFilters = testId || status || reviewed || search;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   return (
@@ -138,7 +165,7 @@ export default function AllAttempts() {
         boxShadow: '0 1px 4px rgba(0,0,0,0.07)',
         padding: '14px 18px', marginBottom: '16px',
         display: 'grid',
-        gridTemplateColumns: 'minmax(0, 1fr) minmax(140px, 180px) 140px auto',
+        gridTemplateColumns: 'minmax(0, 1fr) minmax(140px, 180px) 140px 150px auto',
         alignItems: 'center',
         gap: '10px',
         overflow: 'visible',
@@ -176,6 +203,13 @@ export default function AllAttempts() {
           style={{ width: '140px', minWidth: '140px' }}
         />
 
+        <CustomSelect
+          value={reviewed}
+          onChange={setReviewed}
+          options={REVIEW_OPTIONS}
+          style={{ width: '150px', minWidth: '150px' }}
+        />
+
         {/* Search btn */}
         <button
           onClick={applySearch}
@@ -202,7 +236,7 @@ export default function AllAttempts() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--admin-border)' }}>
-                  {['CANDIDATE', 'TEST', 'WHEN', 'STATUS', 'SCORE', ''].map((h, i) => (
+                  {['CANDIDATE', 'TEST', 'WHEN', 'STATUS', 'REVIEW', 'SCORE', ''].map((h, i) => (
                     <th key={i} style={{
                       padding: '14px 16px', textAlign: 'left',
                       fontSize: '11px', fontWeight: 600,
@@ -261,6 +295,10 @@ export default function AllAttempts() {
                     {/* Status */}
                     <td style={{ padding: '14px 16px' }}>
                       <StatusBadge status={attempt.status} />
+                    </td>
+
+                    <td style={{ padding: '14px 16px' }}>
+                      <ReviewBadge reviewed={attempt.reviewed} />
                     </td>
 
                     {/* Score */}

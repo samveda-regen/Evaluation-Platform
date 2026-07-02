@@ -35,6 +35,15 @@ function toISOStringFromLocalDateTime(value: string): string | null {
   return parsed.toISOString();
 }
 
+function marksToPercent(passingMarks: number | null | undefined, totalMarks: number): number {
+  if (passingMarks == null) return 0;
+  return totalMarks > 0 ? Math.round((passingMarks / totalMarks) * 100) : passingMarks;
+}
+
+function percentToMarks(passingScorePercent: number, totalMarks: number): number {
+  return totalMarks > 0 ? Math.round((passingScorePercent / 100) * totalMarks) : passingScorePercent;
+}
+
 function CheckOption({ name, checked, onChange, label, disabled }: {
   name: string;
   checked: boolean;
@@ -105,6 +114,7 @@ const WIZARD_STEPS = [
 ];
 
 const CUSTOM_CATEGORY_VALUE = '__custom_category__';
+const MAX_TEST_VIOLATIONS = 150;
 const ROLE_CATEGORY_OPTIONS = [
   { value: 'back-end', label: 'Back-End Developer' },
   { value: 'front-end', label: 'Front-End Developer' },
@@ -189,7 +199,7 @@ export default function TestForm() {
     startTime: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
     endTime: '',
     totalMarks: 100,
-    passingMarks: 40,
+    passingScorePercent: 40,
     negativeMarking: 0,
     shuffleQuestions: false,
     shuffleOptions: false,
@@ -224,6 +234,69 @@ export default function TestForm() {
     setFormData(prev => ({ ...prev, endTime }));
   };
 
+  const validateStep = (targetStep = step): boolean => {
+    if (targetStep === 0) {
+      if (!formData.name.trim()) {
+        toast.error('Test title is required');
+        return false;
+      }
+      if (isCustomCategory && !customCategoryInput.trim()) {
+        toast.error('Custom role/category is required');
+        return false;
+      }
+      if (!srcs.library && !srcs.write && !srcs.csv) {
+        toast.error('Select at least one question source');
+        return false;
+      }
+      return true;
+    }
+
+    if (targetStep === 1) {
+      if (!Number.isFinite(formData.duration) || formData.duration <= 0) {
+        toast.error('Duration must be greater than 0 minutes');
+        return false;
+      }
+      if (!Number.isFinite(formData.totalMarks) || formData.totalMarks <= 0) {
+        toast.error('Total marks must be greater than 0');
+        return false;
+      }
+      if (!Number.isFinite(formData.passingScorePercent) || formData.passingScorePercent < 0 || formData.passingScorePercent > 100) {
+        toast.error('Passing score must be between 0 and 100');
+        return false;
+      }
+      if (!Number.isFinite(formData.negativeMarking) || formData.negativeMarking < 0) {
+        toast.error('Negative marking cannot be negative');
+        return false;
+      }
+      if (!toISOStringFromLocalDateTime(formData.startTime)) {
+        toast.error('Start time is required');
+        return false;
+      }
+      if (formData.endTime && !calculateDurationMinutes(formData.startTime, formData.endTime)) {
+        toast.error('End time must be after start time');
+        return false;
+      }
+      return true;
+    }
+
+    if (targetStep === 2) {
+      if (!Number.isFinite(formData.maxViolations) || formData.maxViolations < 1 || formData.maxViolations > MAX_TEST_VIOLATIONS) {
+        toast.error(`Max violations must be between 1 and ${MAX_TEST_VIOLATIONS}`);
+        return false;
+      }
+      return true;
+    }
+
+    return true;
+  };
+
+  const validateAllSteps = () => [0, 1, 2].every(validateStep);
+
+  const handleNextStep = () => {
+    if (!validateStep(step)) return;
+    setStep(s => Math.min(WIZARD_STEPS.length - 1, s + 1));
+  };
+
   useEffect(() => {
     if (isEditing) void loadTest();
   }, [testId]);
@@ -236,7 +309,10 @@ export default function TestForm() {
     try {
       const { data } = await adminApi.getTest(testId!);
       const test = data.test;
-      const loadedCategory = test.category || 'back-end';
+      const testSettings = test.proctoringSettings && typeof test.proctoringSettings === 'object' && !Array.isArray(test.proctoringSettings)
+        ? test.proctoringSettings as Record<string, unknown>
+        : {};
+      const loadedCategory = test.category || (typeof testSettings.category === 'string' ? testSettings.category : '') || 'back-end';
       const loadedCategoryIsCustom = !ROLE_CATEGORY_OPTIONS.some(option => option.value === loadedCategory);
       setFormData({
         name: test.name,
@@ -247,7 +323,7 @@ export default function TestForm() {
         startTime: format(new Date(test.startTime), "yyyy-MM-dd'T'HH:mm"),
         endTime: test.endTime ? format(new Date(test.endTime), "yyyy-MM-dd'T'HH:mm") : '',
         totalMarks: test.totalMarks,
-        passingMarks: test.passingMarks || 0,
+        passingScorePercent: marksToPercent(test.passingMarks, test.totalMarks),
         negativeMarking: test.negativeMarking,
         shuffleQuestions: test.shuffleQuestions,
         shuffleOptions: test.shuffleOptions,
@@ -269,6 +345,7 @@ export default function TestForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateAllSteps()) return;
     setLoading(true);
     try {
       const derivedDuration = calculateDurationMinutes(formData.startTime, formData.endTime);
@@ -295,6 +372,7 @@ export default function TestForm() {
         startTime: startTimeIso,
         duration: formData.duration,
         endTime: endTimeIso || undefined,
+        passingMarks: percentToMarks(formData.passingScorePercent, formData.totalMarks),
       };
 
       if (isEditing) {
@@ -507,7 +585,7 @@ export default function TestForm() {
                   </div>
                   <div>
                     <label style={labelStyle}>Passing score (%)</label>
-                    <input type="number" name="passingMarks" value={formData.passingMarks} onChange={handleChange} style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
+                    <input type="number" name="passingScorePercent" value={formData.passingScorePercent} onChange={handleChange} style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
                   </div>
                   <div>
                     <label style={labelStyle}>Total marks <span style={{ color: '#EF4444' }}>*</span></label>
@@ -577,7 +655,7 @@ export default function TestForm() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label style={labelStyle}>Max violations <span style={{ color: '#EF4444' }}>*</span></label>
-                    <input type="number" name="maxViolations" value={formData.maxViolations} onChange={handleChange} style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
+                    <input type="number" name="maxViolations" value={formData.maxViolations} onChange={handleChange} min={1} max={MAX_TEST_VIOLATIONS} style={inputStyle} onFocus={focusGreen} onBlur={blurGray} />
                   </div>
                   <div className="space-y-3 pt-6">
                     <CheckOption name="shuffleQuestions" checked={formData.shuffleQuestions} onChange={handleChange} label="Shuffle questions for each candidate" />
@@ -610,7 +688,7 @@ export default function TestForm() {
                 </div>
                 <div className="px-5 py-1">
                   {reviewRow('Total Marks', formData.totalMarks)}
-                  {reviewRow('Passing Score', `${formData.passingMarks}%`)}
+                  {reviewRow('Passing Score', `${formData.passingScorePercent}%`)}
                   {reviewRow('Negative Marking', formData.negativeMarking)}
                   {reviewRow('Proctoring', formData.proctorEnabled ? 'Enabled' : 'Disabled')}
                   {reviewRow('Max Violations', formData.maxViolations)}
@@ -634,7 +712,7 @@ export default function TestForm() {
         {step < WIZARD_STEPS.length - 1 ? (
           <button
             type="button"
-            onClick={() => setStep(s => Math.min(WIZARD_STEPS.length - 1, s + 1))}
+            onClick={handleNextStep}
             className="btn btn-primary"
           >
             {step === WIZARD_STEPS.length - 2 ? 'Review' : 'Next'} <ArrowRight width={13} height={13} strokeWidth={2} />

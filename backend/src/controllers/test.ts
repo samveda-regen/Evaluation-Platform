@@ -18,9 +18,52 @@ import {
 } from '../utils/proctoringConfig.js';
 
 const TEST_SCOPED_TAG = '__test_scoped__';
+const MAX_TEST_VIOLATIONS = 150;
+const TEST_PREFERENCE_KEYS = [
+  'category',
+  'language',
+  'requireInvitationLink',
+  'allowAccessCode',
+  'allowBackNavigation',
+  'showTimer',
+  'autoSubmitOnTimeout',
+  'gradingMode',
+  'showScoreToCandidate',
+  'sendResultEmail',
+  'includeAnswerReview',
+] as const;
 
 function generateTestCode(): string {
   return uuidv4().substring(0, 8).toUpperCase();
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function collectTestPreferences(source: Record<string, unknown>): Record<string, unknown> {
+  return TEST_PREFERENCE_KEYS.reduce<Record<string, unknown>>((prefs, key) => {
+    const value = source[key];
+    if (value === undefined) return prefs;
+
+    if (typeof value === 'string') {
+      prefs[key] = sanitizeInput(value);
+    } else if (typeof value === 'boolean') {
+      prefs[key] = value;
+    }
+
+    return prefs;
+  }, {});
+}
+
+function parseRawJsonObject(raw: string | null): Record<string, unknown> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 function toTestOwnerTag(testId: string): string {
@@ -119,6 +162,14 @@ function parseDateValue(value: unknown): Date | null {
   return parsed;
 }
 
+function parseMaxViolations(value: unknown): number {
+  const parsed = Number.parseInt(String(value ?? '3'), 10);
+  if (!Number.isFinite(parsed) || parsed < 1 || parsed > MAX_TEST_VIOLATIONS) {
+    throw new Error(`Max violations must be between 1 and ${MAX_TEST_VIOLATIONS}`);
+  }
+  return parsed;
+}
+
 function mapTestWithCustomAI<T extends { customAIViolations?: string | null }>(test: T): Omit<T, 'customAIViolations'> & { customAIViolations: string[] } {
   return {
     ...test,
@@ -209,6 +260,14 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
       return;
     }
 
+    let requestedMaxViolations: number;
+    try {
+      requestedMaxViolations = parseMaxViolations(maxViolations);
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid max violations' });
+      return;
+    }
+
     const enabledAIViolations =
       customAIViolations === undefined
         ? [...DEFAULT_CUSTOM_AI_VIOLATION_EVENTS]
@@ -241,12 +300,14 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
         startTime: parsedStartTime,
         endTime: parsedEndTime,
         totalMarks: parseInt(totalMarks),
-        passingMarks: passingMarks ? parseInt(passingMarks) : null,
+        passingMarks: passingMarks !== undefined && passingMarks !== null && String(passingMarks).trim() !== ''
+          ? parseInt(passingMarks)
+          : null,
         negativeMarking: negativeMarking ? parseFloat(negativeMarking) : 0,
         shuffleQuestions: shuffleQuestions || false,
         shuffleOptions: shuffleOptions || false,
         allowMultipleAttempts: allowMultipleAttempts || false,
-        maxViolations: maxViolations || 3,
+        maxViolations: requestedMaxViolations,
         proctorEnabled: proctorEnabled || false,
         requireCamera: requireCamera || false,
         requireMicrophone: requireMicrophone || false,
@@ -257,6 +318,19 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
         ...(adminRecord.companyId ? { companyId: adminRecord.companyId } : {})
       }
     });
+
+    const testPreferences = collectTestPreferences(req.body as Record<string, unknown>);
+    if (Object.keys(testPreferences).length > 0) {
+      try {
+        await prisma.$executeRaw`
+          UPDATE "Test"
+          SET "proctoringSettings" = ${JSON.stringify(testPreferences)}
+          WHERE id = ${test.id}
+        `;
+      } catch {
+        // Optional JSON settings columns may not exist in older local databases.
+      }
+    }
 
     res.status(201).json({
       message: 'Test created successfully',
@@ -583,13 +657,24 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
     }
 
     if (updates.totalMarks) sanitizedUpdates.totalMarks = parseInt(updates.totalMarks);
-    if (updates.passingMarks !== undefined) sanitizedUpdates.passingMarks = updates.passingMarks ? parseInt(updates.passingMarks) : null;
+    if (updates.passingMarks !== undefined) {
+      sanitizedUpdates.passingMarks = updates.passingMarks !== null && String(updates.passingMarks).trim() !== ''
+        ? parseInt(updates.passingMarks)
+        : null;
+    }
     if (updates.negativeMarking !== undefined) sanitizedUpdates.negativeMarking = parseFloat(updates.negativeMarking) || 0;
     if (updates.isActive !== undefined) sanitizedUpdates.isActive = updates.isActive;
     if (updates.shuffleQuestions !== undefined) sanitizedUpdates.shuffleQuestions = updates.shuffleQuestions;
     if (updates.shuffleOptions !== undefined) sanitizedUpdates.shuffleOptions = updates.shuffleOptions;
     if (updates.allowMultipleAttempts !== undefined) sanitizedUpdates.allowMultipleAttempts = updates.allowMultipleAttempts;
-    if (updates.maxViolations !== undefined) sanitizedUpdates.maxViolations = parseInt(updates.maxViolations);
+    if (updates.maxViolations !== undefined) {
+      try {
+        sanitizedUpdates.maxViolations = parseMaxViolations(updates.maxViolations);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid max violations' });
+        return;
+      }
+    }
     if (updates.proctorEnabled !== undefined) sanitizedUpdates.proctorEnabled = updates.proctorEnabled;
     if (updates.requireCamera !== undefined) sanitizedUpdates.requireCamera = updates.requireCamera;
     if (updates.requireMicrophone !== undefined) sanitizedUpdates.requireMicrophone = updates.requireMicrophone;
@@ -621,9 +706,30 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
     // Persist proctoringSettings and violationPopupSettings via raw SQL
     // (these columns are not in the generated Prisma schema yet)
     try {
-      const psJson = updates.proctoringSettings !== undefined
-        ? JSON.stringify(updates.proctoringSettings)
+      const rawPreferenceUpdates = collectTestPreferences(updates as Record<string, unknown>);
+      const incomingProctoringSettings = isRecord(updates.proctoringSettings)
+        ? updates.proctoringSettings as Record<string, unknown>
         : null;
+      let psJson: string | null = null;
+
+      if (incomingProctoringSettings || Object.keys(rawPreferenceUpdates).length > 0) {
+        let existingSettings: Record<string, unknown> = {};
+        try {
+          const rows = await prisma.$queryRaw<Array<{ proctoringSettings: string | null }>>`
+            SELECT "proctoringSettings" FROM "Test" WHERE id = ${testId}
+          `;
+          existingSettings = parseRawJsonObject(rows[0]?.proctoringSettings ?? null);
+        } catch {
+          existingSettings = {};
+        }
+
+        psJson = JSON.stringify({
+          ...existingSettings,
+          ...(incomingProctoringSettings ?? {}),
+          ...rawPreferenceUpdates,
+        });
+      }
+
       const vpJson = updates.violationPopupSettings !== undefined
         ? JSON.stringify(updates.violationPopupSettings)
         : null;

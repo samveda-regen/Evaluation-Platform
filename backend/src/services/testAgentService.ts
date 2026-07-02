@@ -3,6 +3,8 @@ import prisma from '../utils/db.js';
 import { Prisma } from '@prisma/client';
 import { DEFAULT_CUSTOM_AI_VIOLATION_EVENTS } from '../utils/proctoringConfig.js';
 
+const MAX_TEST_VIOLATIONS = 150;
+
 /* ── local helpers (no LLM required) ─────────────────────────────────── */
 
 function hasLLMKey(): boolean {
@@ -190,6 +192,13 @@ function selectQuestionsLocally(
     suggestedTestName: `${jobTitle} Assessment`,
     suggestedDescription: `Assessment for ${jobTitle} covering ${skills.slice(0, 3).join(', ')} and related topics.`,
   };
+}
+
+function normalizeMaxViolations(value?: number): number {
+  if (value === undefined || value === null) return 3;
+  const parsed = Math.floor(Number(value));
+  if (!Number.isFinite(parsed)) return 3;
+  return Math.min(MAX_TEST_VIOLATIONS, Math.max(1, parsed));
 }
 
 interface JobProfile {
@@ -401,6 +410,7 @@ export async function createTestFromSelection(
     startTime: Date;
     endTime?: Date;
     passingMarks?: number;
+    passingScorePercent?: number;
     negativeMarking?: number;
     shuffleQuestions?: boolean;
     shuffleOptions?: boolean;
@@ -428,6 +438,10 @@ export async function createTestFromSelection(
     mcqQuestions.reduce((sum: number, q: { marks: number }) => sum + q.marks, 0) +
     codingQuestions.reduce((sum: number, q: { marks: number }) => sum + q.marks, 0) +
     behavioralQuestions.reduce((sum: number, q: { marks: number }) => sum + q.marks, 0);
+  const passingMarks =
+    testSettings.passingScorePercent !== undefined
+      ? Math.round((testSettings.passingScorePercent / 100) * totalMarks)
+      : testSettings.passingMarks;
 
   // Generate unique test code
   const testCode = generateTestCode();
@@ -443,11 +457,11 @@ export async function createTestFromSelection(
         startTime: testSettings.startTime,
         endTime: testSettings.endTime,
         totalMarks,
-        passingMarks: testSettings.passingMarks,
+        passingMarks,
         negativeMarking: testSettings.negativeMarking || 0,
         shuffleQuestions: testSettings.shuffleQuestions ?? false,
         shuffleOptions: testSettings.shuffleOptions ?? false,
-        maxViolations: testSettings.maxViolations ?? 3,
+        maxViolations: normalizeMaxViolations(testSettings.maxViolations),
         customAIViolations: JSON.stringify(DEFAULT_CUSTOM_AI_VIOLATION_EVENTS),
         adminId,
         ...(testSettings.companyId ? { companyId: testSettings.companyId } : {})

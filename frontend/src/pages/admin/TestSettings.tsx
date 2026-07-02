@@ -70,32 +70,54 @@ function fmtForInput(iso?: string | null): string {
   try { return new Date(iso).toISOString().slice(0,16); } catch { return ''; }
 }
 
+function settingsObject(t: Test): Record<string, unknown> {
+  const ext = t as unknown as Record<string, unknown>;
+  return ext.proctoringSettings && typeof ext.proctoringSettings === 'object' && !Array.isArray(ext.proctoringSettings)
+    ? ext.proctoringSettings as Record<string, unknown>
+    : {};
+}
+
+function settingValue(ext: Record<string, unknown>, settings: Record<string, unknown>, key: string): unknown {
+  return ext[key] ?? settings[key];
+}
+
+function stringSetting(ext: Record<string, unknown>, settings: Record<string, unknown>, key: string, fallback: string): string {
+  const value = settingValue(ext, settings, key);
+  return typeof value === 'string' && value.trim() ? value : fallback;
+}
+
+function booleanSetting(ext: Record<string, unknown>, settings: Record<string, unknown>, key: string, fallback: boolean): boolean {
+  const value = settingValue(ext, settings, key);
+  return typeof value === 'boolean' ? value : fallback;
+}
+
 function toFormState(t: Test): FormState {
   const ext = t as unknown as Record<string, unknown>;
+  const settings = settingsObject(t);
   const totalMarks = t.totalMarks ?? 100;
   const passingMarks = t.passingMarks ?? 40;
   return {
     name:               t.name ?? '',
     description:        t.description ?? '',
-    category:           (ext.category as string) ?? 'Back-End Developer',
-    language:           (ext.language as string) ?? 'English',
+    category:           stringSetting(ext, settings, 'category', 'Back-End Developer'),
+    language:           stringSetting(ext, settings, 'language', 'English'),
     startTime:          fmtForInput(t.startTime),
     endTime:            fmtForInput(t.endTime),
-    requireInvitationLink: (ext.requireInvitationLink as boolean) ?? true,
+    requireInvitationLink: booleanSetting(ext, settings, 'requireInvitationLink', true),
     limitToOneAttempt:     !(t.allowMultipleAttempts ?? false),
     requireIdVerification: t.requireIdVerification ?? false,
-    allowAccessCode:       (ext.allowAccessCode as boolean) ?? false,
+    allowAccessCode:       booleanSetting(ext, settings, 'allowAccessCode', false),
     shuffleQuestions:      t.shuffleQuestions ?? false,
     shuffleOptions:        t.shuffleOptions ?? false,
-    allowBackNavigation:   (ext.allowBackNavigation as boolean) ?? false,
-    showTimer:             (ext.showTimer as boolean) ?? true,
-    autoSubmitOnTimeout:   (ext.autoSubmitOnTimeout as boolean) ?? true,
+    allowBackNavigation:   booleanSetting(ext, settings, 'allowBackNavigation', false),
+    showTimer:             booleanSetting(ext, settings, 'showTimer', true),
+    autoSubmitOnTimeout:   booleanSetting(ext, settings, 'autoSubmitOnTimeout', true),
     negativeMarkingEnabled:(t.negativeMarking ?? 0) > 0,
     passingScorePercent:   totalMarks > 0 ? Math.round((passingMarks / totalMarks) * 100) : 60,
-    gradingMode:           (ext.gradingMode as string) ?? 'Automatic',
-    showScoreToCandidate:  (ext.showScoreToCandidate as boolean) ?? false,
-    sendResultEmail:       (ext.sendResultEmail as boolean) ?? true,
-    includeAnswerReview:   (ext.includeAnswerReview as boolean) ?? false,
+    gradingMode:           stringSetting(ext, settings, 'gradingMode', 'Automatic'),
+    showScoreToCandidate:  booleanSetting(ext, settings, 'showScoreToCandidate', false),
+    sendResultEmail:       booleanSetting(ext, settings, 'sendResultEmail', true),
+    includeAnswerReview:   booleanSetting(ext, settings, 'includeAnswerReview', false),
     totalMarks,
     negativeMarking:       t.negativeMarking ?? 0,
   };

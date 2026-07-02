@@ -26,8 +26,22 @@ export default function MCQForm() {
   const { questionId } = useParams<{ questionId: string }>();
   const location = useLocation();
   const isEditing = Boolean(questionId);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const editQuestion = (location.state as any)?.question;
+  const routeState = location.state as {
+    question?: Record<string, unknown>;
+    returnTo?: string;
+    activeSection?: string;
+  } | null;
+  const editQuestion = routeState?.question;
+  const editSource = editQuestion?.source === 'QUESTION_BANK' ? 'QUESTION_BANK' : 'CUSTOM';
+  const returnTo = routeState?.returnTo ?? '/admin/repository/question-bank';
+  const returnSection = routeState?.activeSection ?? (editSource === 'CUSTOM' ? 'CUSTOM' : 'all');
+  const finishNavigation = () => {
+    navigate(returnTo, {
+      state: returnTo.includes('/admin/repository/question-bank')
+        ? { activeSection: returnSection }
+        : undefined,
+    });
+  };
 
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -51,17 +65,19 @@ export default function MCQForm() {
   useEffect(() => {
     if (isEditing && editQuestion) {
       setFormData({
-        questionText: editQuestion.questionText ?? '',
+        questionText: typeof editQuestion.questionText === 'string' ? editQuestion.questionText : '',
         options: Array.isArray(editQuestion.options) && editQuestion.options.length >= 2
-          ? editQuestion.options
+          ? editQuestion.options.filter((option): option is string => typeof option === 'string')
           : ['', '', '', ''],
-        correctAnswers: Array.isArray(editQuestion.correctAnswers) ? editQuestion.correctAnswers : [],
-        marks: editQuestion.marks ?? 5,
-        isMultipleChoice: editQuestion.isMultipleChoice ?? false,
-        explanation: editQuestion.explanation ?? '',
-        difficulty: editQuestion.difficulty ?? 'easy',
-        topic: editQuestion.topic ?? '',
-        tags: Array.isArray(editQuestion.tags) ? editQuestion.tags : [],
+        correctAnswers: Array.isArray(editQuestion.correctAnswers)
+          ? editQuestion.correctAnswers.filter((answer): answer is number => typeof answer === 'number')
+          : [],
+        marks: typeof editQuestion.marks === 'number' ? editQuestion.marks : 5,
+        isMultipleChoice: typeof editQuestion.isMultipleChoice === 'boolean' ? editQuestion.isMultipleChoice : false,
+        explanation: typeof editQuestion.explanation === 'string' ? editQuestion.explanation : '',
+        difficulty: editQuestion.difficulty === 'medium' || editQuestion.difficulty === 'hard' ? editQuestion.difficulty : 'easy',
+        topic: typeof editQuestion.topic === 'string' ? editQuestion.topic : '',
+        tags: Array.isArray(editQuestion.tags) ? editQuestion.tags.filter((tag): tag is string => typeof tag === 'string') : [],
       });
     }
   // run once on mount
@@ -142,22 +158,32 @@ export default function MCQForm() {
 
   /* --- Submit --- */
   const handleSubmit = async () => {
+    if (!formData.questionText.trim()) { toast.error('Enter a question prompt'); return; }
+    if (!Number.isFinite(formData.marks) || formData.marks <= 0) { toast.error('Marks must be greater than 0'); return; }
     const nonEmpty = formData.options.filter(o=>o.trim()!=='');
     if (nonEmpty.length < 2) { toast.error('At least 2 options required'); return; }
-    if (!formData.correctAnswers.length) { toast.error('Select a correct answer'); return; }
-    if (!formData.questionText.trim()) { toast.error('Enter a question prompt'); return; }
+    const optionIsFilled = (index: number) => Boolean(formData.options[index]?.trim());
+    if (!formData.correctAnswers.length || formData.correctAnswers.some(index => !optionIsFilled(index))) {
+      toast.error('Select a filled option as the correct answer');
+      return;
+    }
     setLoading(true);
     try {
       if (isEditing && questionId) {
-        await adminApi.updateCustomMCQ(questionId, { ...formData, options: nonEmpty });
+        const updatePayload = { ...formData, options: nonEmpty };
+        if (editSource === 'QUESTION_BANK') {
+          await adminApi.updateQuestionBankMCQ(questionId, updatePayload);
+        } else {
+          await adminApi.updateCustomMCQ(questionId, updatePayload);
+        }
         toast.success('Question updated');
-        navigate(-1);
+        finishNavigation();
       } else {
         const res = await adminApi.createMCQ({ ...formData, options: nonEmpty });
         const id: string | undefined = res?.data?.question?.id;
         if (id && mediaAssets.length) await adminApi.assignMediaToQuestion(id, mediaAssets.map(a=>a.id));
         toast.success('Question created');
-        navigate('/admin/repository/question-bank', { state: { activeSection: 'CUSTOM' } });
+        finishNavigation();
       }
     } catch (err: unknown) {
       toast.error((err as {response?:{data?:{error?:string}}})?.response?.data?.error || 'Save failed');
@@ -181,7 +207,7 @@ export default function MCQForm() {
       <div style={{ marginBottom:'24px' }}>
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
-            <BackButton />
+            <BackButton onClick={finishNavigation} />
             <div>
               <h1 style={{ fontSize: "32px", fontWeight: 700, letterSpacing: "-0.02em", color: "var(--admin-text)", margin: 0, lineHeight: 1.2 }}>{isEditing ? 'Edit MCQ question' : 'New MCQ question'}</h1>
               <p className="text-sm mt-1" style={{ color:'var(--admin-text-muted)' }}>
@@ -190,7 +216,7 @@ export default function MCQForm() {
             </div>
           </div>
           <div className="flex items-center gap-3 flex-shrink-0">
-            <button onClick={() => navigate(-1)}
+            <button onClick={finishNavigation}
               className="btn btn-secondary">
               Cancel
             </button>

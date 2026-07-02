@@ -2,6 +2,35 @@ import { Response } from 'express';
 import { AuthenticatedRequest } from '../types/index.js';
 import prisma from '../utils/db.js';
 
+interface AttemptReviewState {
+  reviewed: boolean;
+  reviewedAt: Date | null;
+  reviewedBy: string | null;
+  reviewNotes: string | null;
+}
+
+async function getAttemptReviewState(attemptId: string): Promise<AttemptReviewState> {
+  try {
+    const rows = await prisma.$queryRaw<AttemptReviewState[]>`
+      SELECT "reviewed", "reviewedAt", "reviewedBy", "reviewNotes"
+      FROM "TestAttempt"
+      WHERE id = ${attemptId}
+      LIMIT 1
+    `;
+    return rows[0] ?? { reviewed: false, reviewedAt: null, reviewedBy: null, reviewNotes: null };
+  } catch {
+    return { reviewed: false, reviewedAt: null, reviewedBy: null, reviewNotes: null };
+  }
+}
+
+async function getAttemptReviewMap(attemptIds: string[]): Promise<Map<string, AttemptReviewState>> {
+  if (attemptIds.length === 0) return new Map();
+  const entries = await Promise.all(
+    attemptIds.map(async id => [id, await getAttemptReviewState(id)] as const)
+  );
+  return new Map(entries);
+}
+
 export async function getTestResults(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { testId } = req.params;
@@ -210,6 +239,8 @@ export async function getAttemptDetails(req: AuthenticatedRequest, res: Response
       marksObtained: a.marksObtained
     }));
 
+    const reviewState = await getAttemptReviewState(attempt.id);
+
     res.json({
       attempt: {
         id: attempt.id,
@@ -220,7 +251,11 @@ export async function getAttemptDetails(req: AuthenticatedRequest, res: Response
         score: attempt.score,
         violations: attempt.violations,
         isFlagged: attempt.isFlagged,
-        flagReason: attempt.flagReason
+        flagReason: attempt.flagReason,
+        reviewed: reviewState.reviewed,
+        reviewedAt: reviewState.reviewedAt,
+        reviewedBy: reviewState.reviewedBy,
+        reviewNotes: reviewState.reviewNotes
       },
       test: attempt.test,
       candidate: attempt.candidate,
@@ -231,6 +266,53 @@ export async function getAttemptDetails(req: AuthenticatedRequest, res: Response
     });
   } catch (error) {
     console.error('Get attempt details error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function reviewAttempt(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { attemptId } = req.params;
+    const { reviewed = true, reviewNotes } = req.body;
+
+    const attempt = await prisma.testAttempt.findUnique({
+      where: { id: attemptId },
+      include: {
+        test: { select: { adminId: true } }
+      }
+    });
+
+    if (!attempt) {
+      res.status(404).json({ error: 'Attempt not found' });
+      return;
+    }
+
+    if (attempt.test.adminId !== req.admin!.id) {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    const isReviewed = Boolean(reviewed);
+    await prisma.$executeRaw`
+      UPDATE "TestAttempt"
+      SET
+        "reviewed" = ${isReviewed},
+        "reviewedAt" = ${isReviewed ? new Date() : null},
+        "reviewedBy" = ${isReviewed ? req.admin!.id : null},
+        "reviewNotes" = ${isReviewed && typeof reviewNotes === 'string' && reviewNotes.trim() ? reviewNotes.trim() : null}
+      WHERE id = ${attemptId}
+    `;
+
+    const reviewState = await getAttemptReviewState(attemptId);
+    res.json({
+      message: isReviewed ? 'Attempt marked as reviewed' : 'Attempt review cleared',
+      attempt: {
+        id: attemptId,
+        ...reviewState
+      }
+    });
+  } catch (error) {
+    console.error('Review attempt error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }
@@ -525,6 +607,7 @@ export async function getDashboardStats(req: AuthenticatedRequest, res: Response
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
     sevenDaysAgo.setHours(0, 0, 0, 0);
+    const now = new Date();
 
     const [
       totalTests,
@@ -537,7 +620,17 @@ export async function getDashboardStats(req: AuthenticatedRequest, res: Response
       avgTrustRow,
     ] = await Promise.all([
       prisma.test.count({ where: { adminId } }),
-      prisma.test.count({ where: { adminId, isActive: true } }),
+      prisma.test.count({
+        where: {
+          adminId,
+          isActive: true,
+          startTime: { lte: now },
+          OR: [
+            { endTime: null },
+            { endTime: { gte: now } }
+          ]
+        }
+      }),
       prisma.testAttempt.count({ where: { test: { adminId } } }),
       Promise.all([
         prisma.mCQQuestion.count(),
@@ -588,9 +681,15 @@ export async function getDashboardStats(req: AuthenticatedRequest, res: Response
       ? Math.round(trustScores.reduce((s, v) => s + v, 0) / trustScores.length)
       : 0;
 
+    const recentAttemptReviewMap = await getAttemptReviewMap(recentAttempts.map(attempt => attempt.id));
+    const recentAttemptsWithReview = recentAttempts.map(attempt => ({
+      ...attempt,
+      ...(recentAttemptReviewMap.get(attempt.id) ?? { reviewed: false, reviewedAt: null, reviewedBy: null, reviewNotes: null }),
+    }));
+
     res.json({
       stats: { totalTests, activeTests, totalAttempts, totalQuestions },
-      recentAttempts,
+      recentAttempts: recentAttemptsWithReview,
       weeklyAttempts,
       integrityStats: {
         flagged: flaggedCount,
@@ -612,11 +711,25 @@ export async function getAllAttempts(req: AuthenticatedRequest, res: Response): 
     const skip  = (page - 1) * limit;
     const testId = ((req.query.testId as string) || '').trim();
     const status = ((req.query.status as string) || '').trim();
+    const reviewed = ((req.query.reviewed as string) || '').trim();
     const search = ((req.query.search as string) || '').trim();
 
     const where: Record<string, unknown> = { test: { adminId } };
     if (testId)  where.testId = testId;
     if (status)  where.status = status;
+    if (reviewed === 'true' || reviewed === 'false') {
+      try {
+        const reviewRows = await prisma.$queryRaw<Array<{ id: string }>>`
+          SELECT ta.id
+          FROM "TestAttempt" ta
+          INNER JOIN "Test" t ON t.id = ta."testId"
+          WHERE t."adminId" = ${adminId} AND ta."reviewed" = ${reviewed === 'true'}
+        `;
+        where.id = { in: reviewRows.map(row => row.id) };
+      } catch {
+        where.id = { in: [] };
+      }
+    }
     if (search) {
       where.OR = [
         { candidate: { name:  { contains: search } } },
@@ -644,6 +757,7 @@ export async function getAllAttempts(req: AuthenticatedRequest, res: Response): 
         orderBy: { name: 'asc' },
       }),
     ]);
+    const reviewMap = await getAttemptReviewMap(attempts.map(attempt => attempt.id));
 
     res.json({
       attempts: attempts.map(a => ({
@@ -655,6 +769,8 @@ export async function getAllAttempts(req: AuthenticatedRequest, res: Response): 
         score:         a.score,
         violations:    a.violations,
         isFlagged:     a.isFlagged,
+        reviewed:      reviewMap.get(a.id)?.reviewed ?? false,
+        reviewedAt:    reviewMap.get(a.id)?.reviewedAt ?? null,
         candidate:     a.candidate,
         test:          { id: a.test.id, name: a.test.name },
         trustScore:    typeof a.analytics?.trustScore === 'number'

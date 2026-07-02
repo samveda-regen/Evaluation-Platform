@@ -27,6 +27,9 @@ interface AttemptData {
     violations: number;
     isFlagged: boolean;
     flagReason?: string;
+    reviewed?: boolean;
+    reviewedAt?: string | null;
+    reviewNotes?: string | null;
   };
   test: {
     id: string;
@@ -141,6 +144,7 @@ export default function AttemptDetails() {
   const [data,          setData]          = useState<AttemptData | null>(null);
   const [loading,       setLoading]       = useState(true);
   const [reEvaluating,  setReEvaluating]  = useState(false);
+  const [reviewSaving,  setReviewSaving]  = useState(false);
   const [reviewFilter,  setReviewFilter]  = useState<ReviewFilter>('all');
   const [reviewed,      setReviewed]      = useState(false);
 
@@ -150,6 +154,7 @@ export default function AttemptDetails() {
     try {
       const { data: d } = await adminApi.getAttemptDetails(attemptId!);
       setData(d);
+      setReviewed(Boolean(d.attempt?.reviewed));
     } catch {
       toast.error('Failed to load attempt details');
       navigate(-1);
@@ -175,6 +180,30 @@ export default function AttemptDetails() {
       void loadAttempt();
     } catch { toast.error('Failed to re-evaluate'); }
     finally { setReEvaluating(false); }
+  };
+
+  const handleReviewToggle = async () => {
+    const nextReviewed = !reviewed;
+    setReviewSaving(true);
+    try {
+      const { data: reviewData } = await adminApi.reviewAttempt(attemptId!, { reviewed: nextReviewed });
+      const persistedReviewed = Boolean(reviewData.attempt?.reviewed);
+      setReviewed(persistedReviewed);
+      setData(prev => prev ? {
+        ...prev,
+        attempt: {
+          ...prev.attempt,
+          reviewed: persistedReviewed,
+          reviewedAt: reviewData.attempt?.reviewedAt ?? null,
+          reviewNotes: reviewData.attempt?.reviewNotes ?? null,
+        },
+      } : prev);
+      toast.success(persistedReviewed ? 'Marked as reviewed' : 'Review unmarked');
+    } catch {
+      toast.error('Failed to update review status');
+    } finally {
+      setReviewSaving(false);
+    }
   };
 
   if (loading) return (
@@ -296,15 +325,17 @@ export default function AttemptDetails() {
             <Mail size={16} />
             Email result
           </button>
-          <button onClick={() => { setReviewed(!reviewed); toast.success(reviewed ? 'Review unmarked' : 'Marked as reviewed'); }}
+          <button onClick={handleReviewToggle}
+            disabled={reviewSaving}
             style={{
               display:'flex', alignItems:'center', gap:'5px', padding:'8px 16px',
               border:'none', borderRadius:'8px',
               backgroundColor: reviewed ? 'var(--admin-accent-hover)' : 'var(--admin-accent)',
-              fontSize:'13px', fontWeight:600, color:'white', cursor:'pointer',
+              fontSize:'13px', fontWeight:600, color:'white', cursor: reviewSaving ? 'not-allowed' : 'pointer',
+              opacity: reviewSaving ? 0.7 : 1,
             }}>
             <CheckCheck size={15} color="white" />
-            {reviewed ? 'Reviewed' : 'Mark reviewed'}
+            {reviewSaving ? 'Saving...' : reviewed ? 'Reviewed' : 'Mark reviewed'}
           </button>
         </div>
       </div>

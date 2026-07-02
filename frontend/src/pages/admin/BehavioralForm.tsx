@@ -12,8 +12,22 @@ export default function BehavioralForm() {
   const { questionId } = useParams<{ questionId: string }>();
   const location = useLocation();
   const isEditing = Boolean(questionId);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const editQuestion = (location.state as any)?.question;
+  const routeState = location.state as {
+    question?: Record<string, unknown>;
+    returnTo?: string;
+    activeSection?: string;
+  } | null;
+  const editQuestion = routeState?.question;
+  const editSource = editQuestion?.source === 'QUESTION_BANK' ? 'QUESTION_BANK' : 'CUSTOM';
+  const returnTo = routeState?.returnTo ?? '/admin/repository/question-bank';
+  const returnSection = routeState?.activeSection ?? (editSource === 'CUSTOM' ? 'CUSTOM' : 'all');
+  const finishNavigation = () => {
+    navigate(returnTo, {
+      state: returnTo.includes('/admin/repository/question-bank')
+        ? { activeSection: returnSection }
+        : undefined,
+    });
+  };
 
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -31,13 +45,13 @@ export default function BehavioralForm() {
   useEffect(() => {
     if (isEditing && editQuestion) {
       setFormData({
-        title: editQuestion.title ?? '',
-        description: editQuestion.description ?? '',
-        expectedAnswer: editQuestion.expectedAnswer ?? '',
-        marks: editQuestion.marks ?? 5,
-        difficulty: (editQuestion.difficulty as Difficulty) ?? 'medium',
-        topic: editQuestion.topic ?? '',
-        tags: Array.isArray(editQuestion.tags) ? editQuestion.tags : [],
+        title: typeof editQuestion.title === 'string' ? editQuestion.title : '',
+        description: typeof editQuestion.description === 'string' ? editQuestion.description : '',
+        expectedAnswer: typeof editQuestion.expectedAnswer === 'string' ? editQuestion.expectedAnswer : '',
+        marks: typeof editQuestion.marks === 'number' ? editQuestion.marks : 5,
+        difficulty: editQuestion.difficulty === 'easy' || editQuestion.difficulty === 'hard' ? editQuestion.difficulty : 'medium',
+        topic: typeof editQuestion.topic === 'string' ? editQuestion.topic : '',
+        tags: Array.isArray(editQuestion.tags) ? editQuestion.tags.filter((tag): tag is string => typeof tag === 'string') : [],
       });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -55,16 +69,21 @@ export default function BehavioralForm() {
 
   const handleSubmit = async () => {
     if (!formData.title.trim()) { toast.error('Title is required'); return; }
+    if (!Number.isFinite(formData.marks) || formData.marks <= 0) { toast.error('Marks must be greater than 0'); return; }
     setLoading(true);
     try {
       if (isEditing && questionId) {
-        await adminApi.updateCustomBehavioral(questionId, formData);
+        if (editSource === 'QUESTION_BANK') {
+          await adminApi.updateQuestionBankBehavioral(questionId, formData);
+        } else {
+          await adminApi.updateCustomBehavioral(questionId, formData);
+        }
         toast.success('Question updated');
-        navigate(-1);
+        finishNavigation();
       } else {
         await adminApi.createCustomBehavioral(formData);
         toast.success('Question created');
-        navigate('/admin/repository/question-bank', { state: { activeSection: 'CUSTOM' } });
+        finishNavigation();
       }
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
@@ -92,7 +111,7 @@ export default function BehavioralForm() {
       <div style={{ marginBottom: '24px' }}>
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
-            <BackButton />
+            <BackButton onClick={finishNavigation} />
             <div>
               <h1 style={{ fontSize: "32px", fontWeight: 700, letterSpacing: "-0.02em", color: "var(--admin-text)", margin: 0, lineHeight: 1.2 }}>
                 {isEditing ? 'Edit Behavioral Question' : 'New Behavioral Question'}
@@ -104,7 +123,7 @@ export default function BehavioralForm() {
           </div>
           <div className="flex items-center gap-3 flex-shrink-0">
             <button
-              onClick={() => navigate(-1)}
+              onClick={finishNavigation}
               className="btn btn-secondary"
             >
               Cancel

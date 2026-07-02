@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../../services/api';
 import {
   CheckSquare,
-  Code2,
+  Braces,
   Brain,
+  FolderCode,
   ToggleLeft,
   ToggleRight,
   LibraryBig,
@@ -14,7 +15,9 @@ import {
   ChevronDown,
   Search,
   Pencil,
+  ArrowLeft,
 } from 'lucide-react';
+import BackButton from '../../../components/BackButton';
 import CustomSelect from '../../../components/CustomSelect';
 import type {
   Pagination,
@@ -45,6 +48,7 @@ const SIDEBAR_ITEMS: SidebarItem[] = [
 type Difficulty = 'easy' | 'medium' | 'hard';
 const CUSTOM_CATEGORIES: RepositoryCategory[] = ['MCQ', 'CODING', 'BEHAVIORAL'];
 const CUSTOM_FETCH_LIMIT = 100;
+const PAGE_SIZE = 20;
 
 /* -- Type helpers -- */
 function isMCQ(q: RepositoryQuestion): q is RepositoryMCQQuestion { return q.repositoryCategory === 'MCQ'; }
@@ -56,26 +60,38 @@ function qTitle(q: RepositoryQuestion): string {
   return (q as { title: string }).title || '';
 }
 
+function byNewestFirst(a: RepositoryQuestion, b: RepositoryQuestion) {
+  return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+}
+
 /* -- Type icon -- */
 function TypeIcon({
   cat,
   size = 32,
   iconSize = 14,
+  isCustom = false,
 }: {
   cat: RepositoryCategory;
   size?: number;
   iconSize?: number;
+  isCustom?: boolean;
 }) {
   const boxStyle = {
     width: `${size}px`,
     height: `${size}px`,
     borderRadius: size <= 28 ? '6px' : '8px',
-    backgroundColor: 'var(--admin-accent-soft)',
+    backgroundColor: isCustom ? 'rgba(234, 112, 48, 0.12)' : 'var(--admin-accent-soft)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   };
+
+  if (isCustom) return (
+    <div style={boxStyle}>
+      <FolderCode width={iconSize} height={iconSize} stroke="var(--admin-accent)" strokeWidth={2} />
+    </div>
+  );
 
   if (cat === 'MCQ') return (
     <div style={boxStyle}>
@@ -84,7 +100,7 @@ function TypeIcon({
   );
   if (cat === 'CODING') return (
     <div style={boxStyle}>
-      <Code2 width={iconSize} height={iconSize} stroke="var(--admin-accent-hover)" strokeWidth={2} />
+      <Braces width={iconSize} height={iconSize} stroke="var(--admin-accent-hover)" strokeWidth={2} />
     </div>
   );
   return (
@@ -92,6 +108,16 @@ function TypeIcon({
       <Brain width={iconSize} height={iconSize} stroke="var(--admin-accent-hover)" strokeWidth={2} />
     </div>
   );
+}
+
+function SidebarIcon({ category, active }: { category: SidebarCategory; active: boolean }) {
+  const color = active ? 'var(--admin-accent-hover)' : 'var(--admin-text-subtle)';
+  const common = { width: 14, height: 14, stroke: color, strokeWidth: 1.8 };
+  if (category === 'MCQ') return <CheckSquare {...common} />;
+  if (category === 'CODING') return <Braces {...common} />;
+  if (category === 'BEHAVIORAL') return <Brain {...common} />;
+  if (category === 'CUSTOM') return <FolderCode {...common} />;
+  return <LibraryBig {...common} />;
 }
 
 const META_BADGE_CFG = { bg:'var(--admin-accent-soft)', color:'var(--admin-accent-hover)' };
@@ -116,9 +142,18 @@ export default function QuestionBank() {
   const location = useLocation();
 
   // If navigated from a test's "Add from Library" button, these will be set
-  const routeState = location.state as { fromTestId?: string; fromTestName?: string; activeSection?: SidebarCategory } | null;
-  const fromTestId: string | undefined = routeState?.fromTestId;
-  const fromTestName: string | undefined = routeState?.fromTestName;
+  const routeState = location.state as {
+    fromTestId?: string;
+    fromTestName?: string;
+    fromTestQuestionIds?: string[];
+    returnTo?: string;
+    activeSection?: SidebarCategory;
+  } | null;
+  const urlParams = new URLSearchParams(location.search);
+  const fromTestId: string | undefined = routeState?.fromTestId ?? urlParams.get('fromTestId') ?? undefined;
+  const fromTestName: string | undefined = routeState?.fromTestName ?? urlParams.get('fromTestName') ?? undefined;
+  const fromTestQuestionIds = routeState?.fromTestQuestionIds ?? [];
+  const returnTo = routeState?.returnTo ?? urlParams.get('returnTo') ?? (fromTestId ? `/admin/tests/${fromTestId}?tab=questions` : '/admin/repository/question-bank');
   const initialSidebarItem = SIDEBAR_ITEMS.find(item => item.category === routeState?.activeSection) ?? SIDEBAR_ITEMS[0];
 
   /* -- State -- */
@@ -147,6 +182,14 @@ export default function QuestionBank() {
   const [testsLoading,   setTestsLoading]   = useState(false);
   const [addingTestId,   setAddingTestId]   = useState<string | null>(null);
   const [testSearch,     setTestSearch]     = useState('');
+  const [addedQuestionIds, setAddedQuestionIds] = useState<Set<string>>(new Set());
+  const excludedQuestionIds = useMemo(
+    () => new Set([...fromTestQuestionIds, ...addedQuestionIds]),
+    [fromTestQuestionIds, addedQuestionIds]
+  );
+  const excludedQuestionKey = Array.from(excludedQuestionIds).sort().join('|');
+  const filterAlreadyAddedQuestions = (items: RepositoryQuestion[]) =>
+    excludedQuestionIds.size > 0 ? items.filter(q => !excludedQuestionIds.has(q.id)) : items;
 
   /* close dropdown on outside click */
   useEffect(() => {
@@ -173,58 +216,87 @@ export default function QuestionBank() {
 
   useEffect(() => {
     void loadQuestions();
-  }, [activeItem, page, search]);
+  }, [activeItem, page, search, excludedQuestionKey]);
 
   const loadCounts = async () => {
     try {
-      const [mcq, coding, beh, custom] = await Promise.all([
+      const [mcq, coding, beh, customMcq, customCoding, customBeh] = await Promise.all([
         adminApi.getQuestionBankQuestions({ category:'MCQ',       page:1, limit:1 }),
         adminApi.getQuestionBankQuestions({ category:'CODING',    page:1, limit:1 }),
         adminApi.getQuestionBankQuestions({ category:'BEHAVIORAL',page:1, limit:1 }),
-        fetchCustomQuestions({ limit: 1 }),
+        adminApi.getCustomRepositoryQuestions({ category:'MCQ',       page:1, limit:1 }),
+        adminApi.getCustomRepositoryQuestions({ category:'CODING',    page:1, limit:1 }),
+        adminApi.getCustomRepositoryQuestions({ category:'BEHAVIORAL',page:1, limit:1 }),
       ]);
-      const m = mcq.data.pagination.total;
-      const c = coding.data.pagination.total;
-      const b = beh.data.pagination.total;
-      setCounts({ all: m+c+b, MCQ: m, CODING: c, BEHAVIORAL: b, CUSTOM: custom.total });
+      const bankMcq = mcq.data.pagination.total;
+      const bankCoding = coding.data.pagination.total;
+      const bankBeh = beh.data.pagination.total;
+      const customM = customMcq.data.pagination.total;
+      const customC = customCoding.data.pagination.total;
+      const customB = customBeh.data.pagination.total;
+      const m = bankMcq + customM;
+      const c = bankCoding + customC;
+      const b = bankBeh + customB;
+      setCounts({ all: m+c+b, MCQ: m, CODING: c, BEHAVIORAL: b, CUSTOM: customM+customC+customB });
     } catch { /* silent */ }
   };
+
+  async function fetchQuestionsBySource(options: {
+    source: 'QUESTION_BANK' | 'CUSTOM';
+    category: RepositoryCategory;
+    limit?: number;
+    search?: string;
+    topic?: string;
+  }) {
+    const limit = options.limit ?? CUSTOM_FETCH_LIMIT;
+    const fetcher = options.source === 'CUSTOM'
+      ? adminApi.getCustomRepositoryQuestions
+      : adminApi.getQuestionBankQuestions;
+
+    const firstResponse = await fetcher({
+      category: options.category,
+      page: 1,
+      limit,
+      search: options.search || undefined,
+      topic: options.topic || undefined,
+    });
+    const { totalPages } = firstResponse.data.pagination;
+    if (totalPages <= 1) return firstResponse.data;
+
+    const restResponses = await Promise.all(
+      Array.from({ length: totalPages - 1 }, (_, index) =>
+        fetcher({
+          category: options.category,
+          page: index + 2,
+          limit,
+          search: options.search || undefined,
+          topic: options.topic || undefined,
+        })
+      )
+    );
+
+    return {
+      questions: [
+        ...firstResponse.data.questions,
+        ...restResponses.flatMap(response => response.data.questions),
+      ],
+      pagination: firstResponse.data.pagination,
+    };
+  }
 
   async function fetchCustomQuestions(options: {
     limit?: number;
     search?: string;
   } = {}) {
-    const limit = options.limit ?? CUSTOM_FETCH_LIMIT;
     const categoryResults = await Promise.all(
-      CUSTOM_CATEGORIES.map(async category => {
-        const firstResponse = await adminApi.getCustomRepositoryQuestions({
+      CUSTOM_CATEGORIES.map(category =>
+        fetchQuestionsBySource({
+          source: 'CUSTOM',
           category,
-          page: 1,
-          limit,
+          limit: options.limit,
           search: options.search || undefined,
-        });
-        const { totalPages } = firstResponse.data.pagination;
-        if (totalPages <= 1) return firstResponse.data;
-
-        const restResponses = await Promise.all(
-          Array.from({ length: totalPages - 1 }, (_, index) =>
-            adminApi.getCustomRepositoryQuestions({
-              category,
-              page: index + 2,
-              limit,
-              search: options.search || undefined,
-            })
-          )
-        );
-
-        return {
-          questions: [
-            ...firstResponse.data.questions,
-            ...restResponses.flatMap(response => response.data.questions),
-          ],
-          pagination: firstResponse.data.pagination,
-        };
-      })
+        })
+      )
     );
     return {
       questions: categoryResults.flatMap(result => result.questions),
@@ -232,40 +304,90 @@ export default function QuestionBank() {
     };
   }
 
+  async function fetchMergedCategoryQuestions(category: RepositoryCategory, options: {
+    search?: string;
+    topic?: string;
+  } = {}) {
+    const [bank, custom] = await Promise.all([
+      fetchQuestionsBySource({
+        source: 'QUESTION_BANK',
+        category,
+        search: options.search,
+        topic: options.topic,
+      }),
+      fetchQuestionsBySource({
+        source: 'CUSTOM',
+        category,
+        search: options.search,
+        topic: options.topic,
+      }),
+    ]);
+
+    const questions = [...bank.questions, ...custom.questions].sort(byNewestFirst);
+    return {
+      questions,
+      total: bank.pagination.total + custom.pagination.total,
+    };
+  }
+
   const loadQuestions = async () => {
     setLoading(true);
     try {
       if (activeItem.category === 'all') {
-        const [r1, r2, r3] = await Promise.all([
-          adminApi.getQuestionBankQuestions({ category:'MCQ',       page, limit:10, search:search||undefined }),
-          adminApi.getQuestionBankQuestions({ category:'CODING',    page, limit:5,  search:search||undefined }),
-          adminApi.getQuestionBankQuestions({ category:'BEHAVIORAL',page, limit:5,  search:search||undefined }),
+        const [mcq, coding, behavioral] = await Promise.all([
+          fetchMergedCategoryQuestions('MCQ', { search: search || undefined }),
+          fetchMergedCategoryQuestions('CODING', { search: search || undefined }),
+          fetchMergedCategoryQuestions('BEHAVIORAL', { search: search || undefined }),
         ]);
-        const combined = [...r1.data.questions, ...r2.data.questions, ...r3.data.questions];
-        const total    = r1.data.pagination.total + r2.data.pagination.total + r3.data.pagination.total;
-        setQuestions(combined);
-        setPagination({ page, limit:20, total, totalPages: Math.ceil(total/20) });
+        const availableMcq = filterAlreadyAddedQuestions(mcq.questions);
+        const availableCoding = filterAlreadyAddedQuestions(coding.questions);
+        const availableBehavioral = filterAlreadyAddedQuestions(behavioral.questions);
+        const combined = [...availableMcq, ...availableCoding, ...availableBehavioral].sort(byNewestFirst);
+        const total = combined.length;
+        const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+        if (page > totalPages) {
+          setPage(totalPages);
+          return;
+        }
+        const start = (page - 1) * PAGE_SIZE;
+        setQuestions(combined.slice(start, start + PAGE_SIZE));
+        setPagination({ page, limit: PAGE_SIZE, total, totalPages });
+        setCounts(prev => ({
+          ...prev,
+          all: total,
+          MCQ: availableMcq.length,
+          CODING: availableCoding.length,
+          BEHAVIORAL: availableBehavioral.length,
+        }));
       } else if (activeItem.category === 'CUSTOM') {
-        const { questions: custom, total } = await fetchCustomQuestions({ search: search || undefined });
-        const start = (page - 1) * 20;
-        setQuestions(custom.slice(start, start + 20));
-        setPagination({ page, limit: 20, total, totalPages: Math.max(1, Math.ceil(total / 20)) });
+        const { questions: custom } = await fetchCustomQuestions({ search: search || undefined });
+        const availableCustom = filterAlreadyAddedQuestions(custom);
+        const total = availableCustom.length;
+        const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+        if (page > totalPages) {
+          setPage(totalPages);
+          return;
+        }
+        const start = (page - 1) * PAGE_SIZE;
+        setQuestions(availableCustom.slice(start, start + PAGE_SIZE));
+        setPagination({ page, limit: PAGE_SIZE, total, totalPages });
         setCounts(prev => ({ ...prev, CUSTOM: total }));
       } else {
-        const { data } = await adminApi.getQuestionBankQuestions({
-          category: activeItem.category as RepositoryCategory,
-          page,
-          limit: 20,
-          search:    search    || undefined,
-          topic:     activeItem.topic || undefined,
+        const { questions: merged } = await fetchMergedCategoryQuestions(activeItem.category as RepositoryCategory, {
+          search: search || undefined,
+          topic: activeItem.topic || undefined,
         });
-        setQuestions(data.questions);
-        setPagination(data.pagination);
-        if (!activeItem.topic) {
-          setCounts(prev => ({ ...prev, [activeItem.id]: data.pagination.total }));
-        } else {
-          setCounts(prev => ({ ...prev, [activeItem.id]: data.pagination.total }));
+        const availableMerged = filterAlreadyAddedQuestions(merged);
+        const total = availableMerged.length;
+        const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+        if (page > totalPages) {
+          setPage(totalPages);
+          return;
         }
+        const start = (page - 1) * PAGE_SIZE;
+        setQuestions(availableMerged.slice(start, start + PAGE_SIZE));
+        setPagination({ page, limit: PAGE_SIZE, total, totalPages });
+        setCounts(prev => ({ ...prev, [activeItem.id]: total }));
       }
     } catch { toast.error('Failed to load questions'); }
     finally { setLoading(false); }
@@ -280,10 +402,18 @@ export default function QuestionBank() {
 
     try {
       if (q.isEnabled) {
-        await adminApi.disableQuestionBankQuestion(q.id, activeItem.category === 'all' ? q.repositoryCategory : activeItem.category as RepositoryCategory);
+        if (q.source === 'CUSTOM') {
+          await adminApi.disableCustomRepositoryQuestion(q.id, q.repositoryCategory);
+        } else {
+          await adminApi.disableQuestionBankQuestion(q.id, q.repositoryCategory);
+        }
         toast.success('Question disabled');
       } else {
-        await adminApi.enableQuestionBankQuestion(q.id, activeItem.category === 'all' ? q.repositoryCategory : activeItem.category as RepositoryCategory);
+        if (q.source === 'CUSTOM') {
+          await adminApi.enableCustomRepositoryQuestion(q.id, q.repositoryCategory);
+        } else {
+          await adminApi.enableQuestionBankQuestion(q.id, q.repositoryCategory);
+        }
         toast.success('Question enabled');
       }
       setQuestions(applyEnabledState);
@@ -309,12 +439,18 @@ export default function QuestionBank() {
   };
 
   const handleEdit = (q: RepositoryQuestion) => {
+    const editState = {
+      question: q,
+      returnTo,
+      activeSection: activeItem.category,
+    };
+
     if (isMCQ(q)) {
-      navigate(`/admin/mcq/${q.id}/edit`, { state: { question: q } });
+      navigate(`/admin/mcq/${q.id}/edit`, { state: editState });
     } else if (isCoding(q)) {
-      navigate(`/admin/coding/${q.id}/edit`, { state: { question: q } });
+      navigate(`/admin/coding/${q.id}/edit`, { state: editState });
     } else {
-      navigate(`/admin/behavioral/${q.id}/edit`, { state: { question: q } });
+      navigate(`/admin/behavioral/${q.id}/edit`, { state: editState });
     }
   };
 
@@ -337,7 +473,7 @@ export default function QuestionBank() {
     try {
       const questionType = q.repositoryCategory.toLowerCase(); // 'mcq' | 'coding' | 'behavioral'
       await adminApi.addQuestionToTest(testId, { questionId: q.id, questionType });
-      toast.success(`Added to test`);
+      toast.success('Added to test');
       setAddModal(null);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
@@ -352,6 +488,18 @@ export default function QuestionBank() {
       const questionType = q.repositoryCategory.toLowerCase();
       await adminApi.addQuestionToTest(targetTestId, { questionId: q.id, questionType });
       toast.success('Added to test');
+      setAddedQuestionIds(prev => {
+        const next = new Set(prev);
+        next.add(q.id);
+        return next;
+      });
+      setQuestions(prev => prev.filter(item => item.id !== q.id));
+      setPagination(prev => {
+        if (!prev) return prev;
+        const total = Math.max(0, prev.total - 1);
+        const totalPages = Math.max(1, Math.ceil(total / prev.limit));
+        return { ...prev, total, totalPages, page: Math.min(prev.page, totalPages) };
+      });
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
       toast.error(e.response?.data?.error || 'Failed to add question');
@@ -360,6 +508,7 @@ export default function QuestionBank() {
 
   const handleSaveBehavioral = async () => {
     if (!editBeh.title.trim()) { toast.error('Title required'); return; }
+    if (editBeh.marks < 1) { toast.error('Marks must be greater than 0'); return; }
     setSavingBeh(true);
     try {
       await adminApi.updateCustomBehavioral(editBeh.id, {
@@ -468,14 +617,25 @@ export default function QuestionBank() {
               <span style={{ color:'var(--admin-accent)', fontWeight:400, marginLeft:'6px' }}>- click Add on any question to add it directly</span>
             </span>
           </div>
+          <button
+            type="button"
+            onClick={() => navigate(returnTo)}
+            className="admin-btn admin-btn-secondary"
+            style={{ minHeight:'32px', padding:'6px 10px', fontSize:'12px' }}>
+            <ArrowLeft width={13} height={13} strokeWidth={2} />
+            Back to test
+          </button>
         </div>
       )}
 
       {/* -- HEADER -- */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold" style={{ color:'var(--admin-text)', margin:0 }}>Question Library</h1>
-          <p className="text-sm mt-0.5" style={{ color:'var(--admin-text-muted)' }}>Reusable question bank across all tests.</p>
+        <div className="flex items-start gap-3">
+          <BackButton mt="3px" />
+          <div>
+            <h1 className="text-2xl font-bold" style={{ color:'var(--admin-text)', margin:0 }}>Question Library</h1>
+            <p className="text-sm mt-0.5" style={{ color:'var(--admin-text-muted)' }}>Reusable question bank across all tests.</p>
+          </div>
         </div>
 
         <div className="admin-header-actions">
@@ -537,7 +697,7 @@ export default function QuestionBank() {
                   key={item.id}
                   type="button"
                   onClick={() => handleSidebarClick(item)}
-                  className="flex items-center py-3 text-sm font-semibold transition-colors"
+                  className="flex items-center gap-1.5 py-3 text-sm font-semibold transition-colors"
                   style={{
                     color: isActive ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)',
                     border:0,
@@ -548,6 +708,7 @@ export default function QuestionBank() {
                     cursor:'pointer',
                   }}
                 >
+                  <SidebarIcon category={item.category} active={isActive} />
                   <span>{item.label}</span>
                 </button>
               );
@@ -691,7 +852,7 @@ export default function QuestionBank() {
                     }} />
 
                     {/* Type icon */}
-                    <TypeIcon cat={cat} />
+                    <TypeIcon cat={cat} isCustom={isCustomQuestion} />
 
                     {/* Question content */}
                     <div style={{ flex:1, minWidth:0 }}>
@@ -701,7 +862,21 @@ export default function QuestionBank() {
                       <div style={{ display:'flex', flexWrap:'wrap', gap:'5px', alignItems:'center' }}>
                         <Badge label={catLabel} {...META_BADGE_CFG} />
                         {isCustomQuestion && (
-                          <Badge label="Custom" bg="rgba(234, 112, 48, 0.12)" color="var(--admin-accent)" />
+                          <span style={{
+                            display:'inline-flex',
+                            alignItems:'center',
+                            gap:'4px',
+                            fontSize:'11px',
+                            fontWeight:500,
+                            padding:'2px 8px',
+                            borderRadius:'20px',
+                            backgroundColor:'rgba(234, 112, 48, 0.12)',
+                            color:'var(--admin-accent)',
+                            whiteSpace:'nowrap',
+                          }}>
+                            <FolderCode width={11} height={11} stroke="currentColor" strokeWidth={2} />
+                            Custom
+                          </span>
                         )}
                         <Badge label={diff.charAt(0).toUpperCase()+diff.slice(1)} {...META_BADGE_CFG} />
                         {q.topic && (
@@ -729,50 +904,44 @@ export default function QuestionBank() {
                           <p style={{ fontSize:'10px', color:'var(--admin-text-subtle)', margin:'2px 0 0' }}>marks</p>
                         </div>
                       )}
-                      {!isCustomQuestion && (
-                        <>
-                          {/* Add to test */}
-                          {(() => {
-                            const isAddingThis = fromTestId
-                              ? addingTestId === fromTestId + q.id
-                              : false;
-                            return (
-                              <button
-                                type="button"
-                                onClick={() => fromTestId ? void handleAddDirectToTest(q, fromTestId) : openAddToTest(q)}
-                                disabled={isAddingThis}
-                                title={fromTestId ? `Add to ${fromTestName ?? 'test'}` : 'Add to test'}
-                                className="admin-btn admin-btn-secondary"
-                                style={{ minHeight:'32px', padding:'6px 10px', fontSize:'12px' }}>
-                                {isAddingThis ? (
-                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2" style={{ borderColor:'var(--admin-accent-hover)' }} />
-                                ) : (
-                                  <Plus width={13} height={13} stroke="var(--admin-accent-hover)" strokeWidth={2.5} />
-                                )}
-                                Add
-                              </button>
-                            );
-                          })()}
-                          {/* Toggle enable/disable */}
+                      {/* Add to test */}
+                      {(() => {
+                        const isAddingThis = fromTestId ? addingTestId === fromTestId + q.id : false;
+                        return (
                           <button
                             type="button"
-                            onClick={() => handleToggle(q)}
-                            title={q.isEnabled ? 'Disable question' : 'Enable question'}
-                            className="admin-icon-toggle"
-                            data-state={q.isEnabled ? 'on' : 'off'}>
-                            <ToggleIcon enabled={q.isEnabled} />
+                            onClick={() => fromTestId ? void handleAddDirectToTest(q, fromTestId) : void openAddToTest(q)}
+                            disabled={isAddingThis}
+                            title={fromTestId ? `Add to ${fromTestName ?? 'test'}` : 'Add to test'}
+                            className="admin-btn admin-btn-secondary"
+                            style={{ minHeight:'32px', padding:'6px 10px', fontSize:'12px' }}>
+                            {isAddingThis ? (
+                              <div className="animate-spin rounded-full h-3 w-3 border-b-2" style={{ borderColor:'var(--admin-accent-hover)' }} />
+                            ) : (
+                              <Plus width={13} height={13} stroke="var(--admin-accent-hover)" strokeWidth={2.5} />
+                            )}
+                            Add
                           </button>
-                          {/* Edit */}
-                          <button
-                            type="button"
-                            onClick={() => handleEdit(q)}
-                            title="Edit question"
-                            style={{ padding:'6px 10px', borderRadius:'var(--admin-control-radius)', border:'1.5px solid var(--admin-border)', backgroundColor:'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'4px', fontSize:'12px', fontWeight:500, color:'var(--admin-text-muted)' }}>
-                            <Pencil width={13} height={13} stroke="var(--admin-text-muted)" strokeWidth={1.5} />
-                            Edit
-                          </button>
-                        </>
-                      )}
+                        );
+                      })()}
+                      {/* Toggle enable/disable */}
+                      <button
+                        type="button"
+                        onClick={() => handleToggle(q)}
+                        title={q.isEnabled ? 'Disable question' : 'Enable question'}
+                        className="admin-icon-toggle"
+                        data-state={q.isEnabled ? 'on' : 'off'}>
+                        <ToggleIcon enabled={q.isEnabled} />
+                      </button>
+                      {/* Edit */}
+                      <button
+                        type="button"
+                        onClick={() => handleEdit(q)}
+                        title="Edit question"
+                        style={{ padding:'6px 10px', borderRadius:'var(--admin-control-radius)', border:'1.5px solid var(--admin-border)', backgroundColor:'white', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'4px', fontSize:'12px', fontWeight:500, color:'var(--admin-text-muted)' }}>
+                        <Pencil width={13} height={13} stroke="var(--admin-text-muted)" strokeWidth={1.5} />
+                        Edit
+                      </button>
                     </div>
                   </div>
                 );

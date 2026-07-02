@@ -485,9 +485,14 @@ export async function deleteRepositoryQuestion(req: AuthenticatedRequest, res: R
 }
 
 // ==========================================
-// UPDATE CUSTOM QUESTIONS
+// UPDATE REPOSITORY QUESTIONS
 // ==========================================
-export async function updateCustomMCQ(req: AuthenticatedRequest, res: Response) {
+async function updateMCQBySource(
+  req: AuthenticatedRequest,
+  res: Response,
+  expectedSource: QuestionSource,
+  sourceLabel: string
+) {
   try {
     const { questionId } = req.params;
 
@@ -496,8 +501,8 @@ export async function updateCustomMCQ(req: AuthenticatedRequest, res: Response) 
       res.status(404).json({ error: 'Question not found' });
       return;
     }
-    if (existing.source !== QuestionSource.CUSTOM) {
-      res.status(400).json({ error: 'Only custom questions can be edited.' });
+    if (existing.source !== expectedSource) {
+      res.status(400).json({ error: `Only ${sourceLabel} questions can be edited from this endpoint.` });
       return;
     }
 
@@ -548,12 +553,17 @@ export async function updateCustomMCQ(req: AuthenticatedRequest, res: Response) 
 
     res.json({ message: 'MCQ question updated successfully', question: serializeMCQQuestion(updated) });
   } catch (error) {
-    console.error('Update custom MCQ error:', error);
+    console.error(`Update ${sourceLabel} MCQ error:`, error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }
 
-export async function updateCustomCoding(req: AuthenticatedRequest, res: Response) {
+async function updateCodingBySource(
+  req: AuthenticatedRequest,
+  res: Response,
+  expectedSource: QuestionSource,
+  sourceLabel: string
+) {
   try {
     const { questionId } = req.params;
 
@@ -562,8 +572,8 @@ export async function updateCustomCoding(req: AuthenticatedRequest, res: Respons
       res.status(404).json({ error: 'Question not found' });
       return;
     }
-    if (existing.source !== QuestionSource.CUSTOM) {
-      res.status(400).json({ error: 'Only custom questions can be edited.' });
+    if (existing.source !== expectedSource) {
+      res.status(400).json({ error: `Only ${sourceLabel} questions can be edited from this endpoint.` });
       return;
     }
 
@@ -625,12 +635,17 @@ export async function updateCustomCoding(req: AuthenticatedRequest, res: Respons
 
     res.json({ message: 'Coding question updated successfully', question: serializeCodingQuestion(updated) });
   } catch (error) {
-    console.error('Update custom coding error:', error);
+    console.error(`Update ${sourceLabel} coding error:`, error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }
 
-export async function updateCustomBehavioral(req: AuthenticatedRequest, res: Response) {
+async function updateBehavioralBySource(
+  req: AuthenticatedRequest,
+  res: Response,
+  expectedSource: QuestionSource,
+  sourceLabel: string
+) {
   try {
     const { questionId } = req.params;
 
@@ -639,8 +654,8 @@ export async function updateCustomBehavioral(req: AuthenticatedRequest, res: Res
       res.status(404).json({ error: 'Question not found' });
       return;
     }
-    if (existing.source !== QuestionSource.CUSTOM) {
-      res.status(400).json({ error: 'Only custom questions can be edited.' });
+    if (existing.source !== expectedSource) {
+      res.status(400).json({ error: `Only ${sourceLabel} questions can be edited from this endpoint.` });
       return;
     }
 
@@ -672,9 +687,33 @@ export async function updateCustomBehavioral(req: AuthenticatedRequest, res: Res
 
     res.json({ message: 'Behavioral question updated successfully', question: serializeBehavioralQuestion(updated) });
   } catch (error) {
-    console.error('Update custom behavioral error:', error);
+    console.error(`Update ${sourceLabel} behavioral error:`, error);
     res.status(500).json({ error: 'Internal server error' });
   }
+}
+
+export async function updateCustomMCQ(req: AuthenticatedRequest, res: Response) {
+  return updateMCQBySource(req, res, QuestionSource.CUSTOM, 'custom');
+}
+
+export async function updateCustomCoding(req: AuthenticatedRequest, res: Response) {
+  return updateCodingBySource(req, res, QuestionSource.CUSTOM, 'custom');
+}
+
+export async function updateCustomBehavioral(req: AuthenticatedRequest, res: Response) {
+  return updateBehavioralBySource(req, res, QuestionSource.CUSTOM, 'custom');
+}
+
+export async function updateQuestionBankMCQ(req: AuthenticatedRequest, res: Response) {
+  return updateMCQBySource(req, res, QuestionSource.QUESTION_BANK, 'question bank');
+}
+
+export async function updateQuestionBankCoding(req: AuthenticatedRequest, res: Response) {
+  return updateCodingBySource(req, res, QuestionSource.QUESTION_BANK, 'question bank');
+}
+
+export async function updateQuestionBankBehavioral(req: AuthenticatedRequest, res: Response) {
+  return updateBehavioralBySource(req, res, QuestionSource.QUESTION_BANK, 'question bank');
 }
 
 // ==========================================

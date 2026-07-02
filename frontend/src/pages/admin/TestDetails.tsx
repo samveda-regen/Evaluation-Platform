@@ -32,6 +32,7 @@ import {
   X,
   Link2,
   Upload,
+  Pencil,
 } from 'lucide-react';
 
 interface InvitationSummary {
@@ -64,6 +65,11 @@ interface TestQuestion {
   codingQuestion?: CodingQuestion;
   behavioralQuestion?: BehavioralQuestion;
 }
+
+type EditableQuestionPayload = Record<string, unknown> & {
+  id?: string;
+  source?: string;
+};
 
 interface TestSection {
   id: string;
@@ -104,6 +110,28 @@ function getTestStatus(test: Test): 'Published' | 'Draft' | 'Scheduled' | 'Archi
 }
 
 const SCORE_BANDS = ['0-40', '40-55', '55-70', '70-85', '85-100'];
+
+function parseJsonArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseJsonObject(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
+  if (typeof value !== 'string') return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
 
 /* -- Build display buckets — always show all 5 bands, defaulting to 0 -- */
 function buildBuckets(dist: Record<string, number> | null, _totalMarks: number) {
@@ -197,6 +225,7 @@ export default function TestDetails() {
   const [customMessage, setCustomMessage] = useState('');
   const [sendingInvitations, setSendingInvitations] = useState(false);
   const [invitationSummary, setInvitationSummary] = useState<InvitationSummary | null>(null);
+  const [candidateRefreshKey, setCandidateRefreshKey] = useState(0);
   const [manualCandidates, setManualCandidates] = useState<ManualCandidate[]>([]);
   const [manualName, setManualName] = useState('');
   const [manualEmail, setManualEmail] = useState('');
@@ -366,6 +395,7 @@ export default function TestDetails() {
     try {
       const { data } = await adminApi.sendInvitations(testId, formData);
       setInvitationSummary(data);
+      if ((data.sent ?? 0) > 0) setCandidateRefreshKey(key => key + 1);
       toast.success(data.failed > 0 && data.sent > 0
         ? `Partial: ${data.sent} sent, ${data.failed} failed`
         : 'Invitation batch completed');
@@ -415,6 +445,60 @@ export default function TestDetails() {
       await adminApi.removeQuestionFromTest(testId!, questionId);
       toast.success('Question removed'); loadTest();
     } catch { toast.error('Failed to remove question'); }
+  };
+
+  const handleEditQuestion = (q: TestQuestion) => {
+    const type = q.questionType;
+    const rawQuestion = (
+      type === 'mcq' ? q.mcqQuestion
+      : type === 'coding' ? q.codingQuestion
+      : type === 'behavioral' ? q.behavioralQuestion
+      : null
+    ) as EditableQuestionPayload | null;
+
+    if (!rawQuestion?.id) {
+      toast.error('Question details are not available for editing');
+      return;
+    }
+
+    if (type === 'mcq') {
+      const question = {
+        ...rawQuestion,
+        options: parseJsonArray(rawQuestion.options),
+        correctAnswers: parseJsonArray(rawQuestion.correctAnswers),
+        tags: parseJsonArray(rawQuestion.tags),
+      };
+      navigate(`/admin/mcq/${rawQuestion.id}/edit`, {
+        state: { question, returnTo: `/admin/tests/${testId}?tab=questions` },
+      });
+      return;
+    }
+
+    if (type === 'coding') {
+      const question = {
+        ...rawQuestion,
+        supportedLanguages: parseJsonArray(rawQuestion.supportedLanguages),
+        codeTemplates: parseJsonObject(rawQuestion.codeTemplates),
+        tags: parseJsonArray(rawQuestion.tags),
+      };
+      navigate(`/admin/coding/${rawQuestion.id}/edit`, {
+        state: { question, returnTo: `/admin/tests/${testId}?tab=questions` },
+      });
+      return;
+    }
+
+    if (type === 'behavioral') {
+      const question = {
+        ...rawQuestion,
+        tags: parseJsonArray(rawQuestion.tags),
+      };
+      navigate(`/admin/behavioral/${rawQuestion.id}/edit`, {
+        state: { question, returnTo: `/admin/tests/${testId}?tab=questions` },
+      });
+      return;
+    }
+
+    toast.error('Unsupported question type');
   };
 
 
@@ -468,18 +552,41 @@ export default function TestDetails() {
 
   const handleAddCustomQuestion = async () => {
     if (!testId) return;
+    if (!Number.isFinite(customMarks) || customMarks <= 0) { toast.error('Marks must be greater than 0'); return; }
     setSavingCustom(true);
     try {
       const common = { marks: customMarks, difficulty: customDifficulty, topic: customTopic.trim() || undefined, tags: parseTagInput(), sectionId: activeSectionId || undefined };
       if (customType === 'mcq') {
+        if (!customMCQ.questionText.trim()) { toast.error('Question prompt is required'); setSavingCustom(false); return; }
         const cleanedOptions = customMCQ.options.map(o => o.trim()).filter(o => o.length > 0);
+        if (cleanedOptions.length < 2) { toast.error('At least 2 options are required'); setSavingCustom(false); return; }
         const correctAnswers = customMCQ.correctAnswers.split(',').map(i => parseInt(i.trim(), 10)).filter(i => Number.isInteger(i) && i > 0).map(i => i - 1);
+        if (correctAnswers.length === 0 || correctAnswers.some(index => index < 0 || index >= cleanedOptions.length)) {
+          toast.error('Enter valid correct option numbers');
+          setSavingCustom(false);
+          return;
+        }
         await adminApi.addCustomQuestionToTest(testId, { questionType: 'mcq', questionText: customMCQ.questionText, options: cleanedOptions, correctAnswers, isMultipleChoice: customMCQ.isMultipleChoice, explanation: customMCQ.explanation.trim() || undefined, ...common });
       } else if (customType === 'coding') {
+        if (!customCoding.title.trim()) { toast.error('Coding title is required'); setSavingCustom(false); return; }
+        if (!customCoding.description.trim()) { toast.error('Coding description is required'); setSavingCustom(false); return; }
+        if (!customCoding.inputFormat.trim()) { toast.error('Input format is required'); setSavingCustom(false); return; }
+        if (!customCoding.outputFormat.trim()) { toast.error('Output format is required'); setSavingCustom(false); return; }
+        if (!customCoding.sampleInput.trim()) { toast.error('Sample input is required'); setSavingCustom(false); return; }
+        if (!customCoding.sampleOutput.trim()) { toast.error('Sample output is required'); setSavingCustom(false); return; }
+        if (!Number.isFinite(customCoding.timeLimit) || customCoding.timeLimit <= 0) { toast.error('Time limit must be greater than 0'); setSavingCustom(false); return; }
+        if (!Number.isFinite(customCoding.memoryLimit) || customCoding.memoryLimit <= 0) { toast.error('Memory limit must be greater than 0'); setSavingCustom(false); return; }
         const supportedLanguages = customCoding.supportedLanguages.split(',').map(l => l.trim().toLowerCase()).filter(l => l.length > 0);
+        if (supportedLanguages.length === 0) { toast.error('At least one language is required'); setSavingCustom(false); return; }
         const testCases = customCodingTestCases.map(tc => ({ input: tc.input, expectedOutput: tc.expectedOutput, isHidden: tc.isHidden, marks: tc.marks })).filter(tc => tc.input.trim().length > 0 && tc.expectedOutput.trim().length > 0);
+        if (testCases.length === 0 || testCases.some(tc => !Number.isFinite(tc.marks) || tc.marks <= 0)) {
+          toast.error('Each coding question needs a test case with expected output and marks greater than 0');
+          setSavingCustom(false);
+          return;
+        }
         await adminApi.addCustomQuestionToTest(testId, { questionType: 'coding', title: customCoding.title, description: customCoding.description, inputFormat: customCoding.inputFormat, outputFormat: customCoding.outputFormat, constraints: customCoding.constraints.trim() || undefined, sampleInput: customCoding.sampleInput, sampleOutput: customCoding.sampleOutput, supportedLanguages, timeLimit: customCoding.timeLimit, memoryLimit: customCoding.memoryLimit, partialScoring: customCoding.partialScoring, testCases, ...common });
       } else {
+        if (!customBehavioral.title.trim()) { toast.error('Behavioral title is required'); setSavingCustom(false); return; }
         await adminApi.addCustomQuestionToTest(testId, { questionType: 'behavioral', title: customBehavioral.title, description: customBehavioral.description, expectedAnswer: customBehavioral.expectedAnswer.trim() || undefined, ...common });
       }
       toast.success('Custom question added to test');
@@ -548,6 +655,11 @@ export default function TestDetails() {
 
   /* -- Questions-tab computed values -- */
   const allFlatQuestions = [...unsectionedQuestions, ...sections.flatMap(s => s.questions || [])];
+  const existingLibraryQuestionIds = Array.from(new Set(
+    allFlatQuestions
+      .map(q => q.mcqQuestion?.id || q.codingQuestion?.id || q.behavioralQuestion?.id)
+      .filter((id): id is string => Boolean(id))
+  ));
   const qTextOf = (q: TestQuestion): string =>
     (q.questionType === 'mcq' ? q.mcqQuestion?.questionText
       : q.questionType === 'coding' ? q.codingQuestion?.title
@@ -614,8 +726,8 @@ export default function TestDetails() {
     { id: 'settings',      label: 'Settings',      icon: <Settings2       size={15} /> },
   ];
   const newQuestionItems = [
-    { label: 'MCQ', action: () => navigate('/admin/mcq/new') },
-    { label: 'Coding', action: () => navigate('/admin/coding/new') },
+    { label: 'MCQ', action: () => handleOpenCustomModal(null, 'mcq') },
+    { label: 'Coding', action: () => handleOpenCustomModal(null, 'coding') },
     { label: 'Behavioral', action: () => handleOpenCustomModal(null, 'behavioral') },
   ];
   const activateNewQuestionItem = (index: number) => {
@@ -902,7 +1014,22 @@ export default function TestDetails() {
               Section
             </button>
             {/* Add from Library */}
-            <button onClick={() => navigate('/admin/repository/question-bank', { state: { fromTestId: testId, fromTestName: test?.name } })}
+            <button onClick={() => {
+              const returnTo = `/admin/tests/${testId}?tab=questions`;
+              const params = new URLSearchParams({
+                fromTestId: testId!,
+                fromTestName: test?.name ?? '',
+                returnTo,
+              });
+              navigate(`/admin/repository/question-bank?${params.toString()}`, {
+                state: {
+                  fromTestId: testId,
+                  fromTestName: test?.name,
+                  fromTestQuestionIds: existingLibraryQuestionIds,
+                  returnTo,
+                },
+              });
+            }}
               className="btn btn-secondary">
               <LibraryBig size={14} />
               Add from Library
@@ -999,7 +1126,7 @@ export default function TestDetails() {
                         <th key={col} className="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide"
                           style={{ color: 'var(--admin-text-subtle)', whiteSpace: 'nowrap' }}>{col}</th>
                       ))}
-                      <th className="px-3 py-3 w-10" />
+                      <th className="px-3 py-3 w-20" />
                     </tr>
                   </thead>
                   <tbody>
@@ -1093,11 +1220,21 @@ export default function TestDetails() {
                             <span className="text-sm font-semibold" style={{ color: 'var(--admin-text-muted)' }}>{marks}</span>
                           </td>
                           <td className="px-3 py-3.5">
-                            <button onClick={() => handleRemoveQuestion(q.id)}
-                              className="p-1.5 rounded-lg hover:bg-red-50 transition-colors"
-                              title="Remove from test">
-                              <Trash2 size={14} color="#EF4444" />
-                            </button>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleEditQuestion(q)}
+                                className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                                title="Edit question">
+                                <Pencil size={14} color="var(--admin-text-muted)" />
+                              </button>
+                              <button onClick={() => handleRemoveQuestion(q.id)}
+                                type="button"
+                                className="p-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                                title="Remove from test">
+                                <Trash2 size={14} color="#EF4444" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1138,7 +1275,7 @@ export default function TestDetails() {
       )}
 
       {/* --------------- CANDIDATES TAB --------------- */}
-      {activeTab === 'candidates' && <TestCandidatesPanel testId={testId!} onInvite={openInviteModal} />}
+      {activeTab === 'candidates' && <TestCandidatesPanel testId={testId!} onInvite={openInviteModal} refreshKey={candidateRefreshKey} />}
 
       {/* --------------- AI PROCTORING TAB --------------- */}
       {activeTab === 'ai-proctoring' && <TestAIProctoring />}

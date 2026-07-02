@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { format } from 'date-fns';
-import { Sparkles, ClipboardCheck, Activity, Users, Database, ChevronRight } from 'lucide-react';
+import { Sparkles, ClipboardCheck, Activity, Users, Database, ChevronRight, CheckCheck } from 'lucide-react';
 import Icon from '../../components/Icon';
 
 interface DashboardStats {
@@ -18,6 +18,7 @@ interface RecentAttempt {
   startTime: string;
   status: string;
   score?: number;
+  reviewed?: boolean;
   candidate: { name: string; email: string };
   test: { name: string };
 }
@@ -189,6 +190,22 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+function ReviewBadge({ reviewed }: { reviewed?: boolean }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 text-xs font-medium rounded-full px-2.5 py-1"
+      style={{
+        backgroundColor: reviewed ? 'var(--admin-accent-soft)' : '#F9FAFB',
+        color: reviewed ? 'var(--admin-accent-hover)' : 'var(--admin-text-subtle)',
+        border: '1px solid var(--admin-border)',
+      }}
+    >
+      {reviewed && <CheckCheck size={12} />}
+      {reviewed ? 'Reviewed' : 'Pending'}
+    </span>
+  );
+}
+
 const DEFAULT_WEEK: { label: string; value: number }[] = [
   'Sun','Mon','Tue','Wed','Thu','Fri','Sat'
 ].map(label => ({ label, value: 0 }));
@@ -203,6 +220,7 @@ export default function AdminDashboard() {
   const [recentAttempts, setRecentAttempts] = useState<RecentAttempt[]>([]);
   const [weeklyData, setWeeklyData] = useState<{ label: string; value: number }[]>(DEFAULT_WEEK);
   const [integrity, setIntegrity] = useState({ flagged: 0, clean: 0, avgTrustScore: 0 });
+  const [reviewFilter, setReviewFilter] = useState<'all' | 'reviewed' | 'pending'>('all');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => { loadDashboard(); }, []);
@@ -243,6 +261,13 @@ export default function AdminDashboard() {
 
   const today = new Date();
   const dateLabel = format(today, "EEEE, d MMMM yyyy");
+  const reviewedRecentCount = recentAttempts.filter(attempt => attempt.reviewed).length;
+  const pendingRecentCount = recentAttempts.length - reviewedRecentCount;
+  const visibleRecentAttempts = recentAttempts.filter(attempt => {
+    if (reviewFilter === 'reviewed') return Boolean(attempt.reviewed);
+    if (reviewFilter === 'pending') return !attempt.reviewed;
+    return true;
+  });
 
   if (loading) {
     return (
@@ -400,24 +425,45 @@ export default function AdminDashboard() {
         className="rounded-xl p-5"
         style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}
       >
-        <div className="flex items-start justify-between mb-4">
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
           <div>
             <p style={{ fontSize: '16px', fontWeight: 600, color: 'var(--admin-text)', margin: 0 }}>Recent attempts</p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--admin-text-subtle)' }}>Latest candidate submissions across all tests</p>
           </div>
-          <Link to="/admin/all-attempts" className="text-sm font-medium" style={{ color: 'var(--admin-accent)' }}>
-            <span className="inline-flex items-center gap-1">View all <ChevronRight size={14} /></span>
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            {([
+              { value: 'all', label: `All ${recentAttempts.length}` },
+              { value: 'pending', label: `Pending ${pendingRecentCount}` },
+              { value: 'reviewed', label: `Reviewed ${reviewedRecentCount}` },
+            ] as const).map(option => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setReviewFilter(option.value)}
+                className="text-xs font-medium rounded-full px-3 py-1.5"
+                style={{
+                  backgroundColor: reviewFilter === option.value ? 'var(--admin-accent)' : '#F9FAFB',
+                  color: reviewFilter === option.value ? 'white' : 'var(--admin-text-muted)',
+                  border: '1px solid var(--admin-border)',
+                }}
+              >
+                {option.label}
+              </button>
+            ))}
+            <Link to="/admin/all-attempts" className="text-sm font-medium" style={{ color: 'var(--admin-accent)' }}>
+              <span className="inline-flex items-center gap-1">View all <ChevronRight size={14} /></span>
+            </Link>
+          </div>
         </div>
 
-        {recentAttempts.length === 0 ? (
+        {visibleRecentAttempts.length === 0 ? (
           <p className="text-sm py-4" style={{ color: 'var(--admin-text-muted)' }}>No attempts yet</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--admin-border)' }}>
-                  {['CANDIDATE', 'TEST', 'WHEN', 'STATUS', 'SCORE', ''].map((h, i) => (
+                  {['CANDIDATE', 'TEST', 'WHEN', 'STATUS', 'REVIEW', 'SCORE', ''].map((h, i) => (
                     <th
                       key={i}
                       className="pb-3 text-left text-xs font-semibold tracking-wider"
@@ -429,7 +475,7 @@ export default function AdminDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {recentAttempts.map((attempt) => (
+                {visibleRecentAttempts.map((attempt) => (
                   <tr key={attempt.id} style={{ borderBottom: '1px solid #F9FAFB' }}>
                     <td className="py-3 pr-4">
                       <div className="flex items-center gap-3">
@@ -454,6 +500,9 @@ export default function AdminDashboard() {
                     </td>
                     <td className="py-3 pr-4">
                       <StatusBadge status={attempt.status} />
+                    </td>
+                    <td className="py-3 pr-4">
+                      <ReviewBadge reviewed={attempt.reviewed} />
                     </td>
                     <td className="py-3 pr-4">
                       <p className="text-sm font-medium" style={{ color: 'var(--admin-text)' }}>

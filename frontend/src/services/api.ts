@@ -130,10 +130,11 @@ export const adminApi = {
   getRecentCompletedAttempts: (limit = 20) =>
     api.get(`/admin/attempts/completed/recent?limit=${limit}`),
 
-  getAllAttempts: (params: { testId?: string; status?: string; search?: string; page?: number; limit?: number } = {}) => {
+  getAllAttempts: (params: { testId?: string; status?: string; reviewed?: string; search?: string; page?: number; limit?: number } = {}) => {
     const q = new URLSearchParams();
     if (params.testId)  q.set('testId',  params.testId);
     if (params.status)  q.set('status',  params.status);
+    if (params.reviewed) q.set('reviewed', params.reviewed);
     if (params.search)  q.set('search',  params.search);
     if (params.page)    q.set('page',    String(params.page));
     if (params.limit)   q.set('limit',   String(params.limit));
@@ -294,6 +295,47 @@ export const adminApi = {
     tags?: string[];
   }) => api.put(`/admin/repository/custom/behavioral/${questionId}`, data),
 
+  updateQuestionBankMCQ: (questionId: string, data: {
+    questionText?: string;
+    options?: string[];
+    correctAnswers?: number[];
+    isMultipleChoice?: boolean;
+    marks?: number;
+    difficulty?: 'easy' | 'medium' | 'hard';
+    topic?: string;
+    tags?: string[];
+    explanation?: string;
+  }) => api.put(`/admin/repository/question-bank/mcq/${questionId}`, data),
+
+  updateQuestionBankCoding: (questionId: string, data: {
+    title?: string;
+    description?: string;
+    inputFormat?: string;
+    outputFormat?: string;
+    sampleInput?: string;
+    sampleOutput?: string;
+    constraints?: string;
+    marks?: number;
+    difficulty?: 'easy' | 'medium' | 'hard';
+    topic?: string;
+    tags?: string[];
+    supportedLanguages?: string[];
+    codeTemplates?: Record<string, string>;
+    timeLimit?: number;
+    memoryLimit?: number;
+    partialScoring?: boolean;
+  }) => api.put(`/admin/repository/question-bank/coding/${questionId}`, data),
+
+  updateQuestionBankBehavioral: (questionId: string, data: {
+    title?: string;
+    description?: string;
+    expectedAnswer?: string;
+    marks?: number;
+    difficulty?: 'easy' | 'medium' | 'hard';
+    topic?: string;
+    tags?: string[];
+  }) => api.put(`/admin/repository/question-bank/behavioral/${questionId}`, data),
+
   enableCustomRepositoryQuestion: (questionId: string, category: RepositoryCategory) =>
     api.put(`/admin/repository/custom/${questionId}/enable?category=${category}`),
 
@@ -312,6 +354,9 @@ export const adminApi = {
 
   flagAttempt: (attemptId: string, data: { isFlagged: boolean; reason?: string }) =>
     api.post(`/admin/attempts/${attemptId}/flag`, data),
+
+  reviewAttempt: (attemptId: string, data: { reviewed: boolean; reviewNotes?: string }) =>
+    api.post(`/admin/attempts/${attemptId}/review`, data),
 
   reEvaluateAttempt: (attemptId: string) =>
     api.post(`/admin/attempts/${attemptId}/reevaluate`),

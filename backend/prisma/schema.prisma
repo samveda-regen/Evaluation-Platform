@@ -331,6 +331,10 @@ model TestAttempt {
   violations  Int       @default(0)
   isFlagged   Boolean   @default(false)
   flagReason  String?
+  reviewed    Boolean   @default(false)
+  reviewedAt  DateTime?
+  reviewedBy  String?
+  reviewNotes String?
 
   test      Test      @relation(fields: [testId], references: [id])
   candidate Candidate @relation(fields: [candidateId], references: [id])

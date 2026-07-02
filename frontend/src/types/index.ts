@@ -35,6 +35,8 @@ export interface Test {
   requireScreenShare?: boolean;
   requireIdVerification?: boolean;
   customAIViolations?: string[];
+  proctoringSettings?: Record<string, unknown>;
+  violationPopupSettings?: Record<string, unknown>;
   createdAt: string;
   _count?: {
     questions: number;

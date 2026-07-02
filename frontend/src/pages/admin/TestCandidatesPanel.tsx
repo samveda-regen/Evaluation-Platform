@@ -28,6 +28,7 @@ interface TestInfo { id: string; name: string; testCode: string; totalMarks: num
 interface TestCandidatesPanelProps {
   testId: string;
   onInvite?: () => void;
+  refreshKey?: number;
 }
 
 /* --- Helpers --- */
@@ -58,6 +59,9 @@ function getCandStatus(invite: InvitationRow, attempt?: TestAttempt): CandStatus
   if (invite.inviteStatus === 'FAILED') return 'Failed';
   return 'Invited';
 }
+function statusFilterValue(status: CandStatus): string {
+  return status.toLowerCase().replace(/\s+/g, '_');
+}
 const STATUS_CFG: Record<CandStatus, { bg: string; color: string; dot: string; label: string }> = {
   'Submitted':   { bg:'var(--admin-accent-soft)', color:'var(--admin-accent-hover)', dot:'var(--admin-accent)', label:'Submitted' },
   'In progress': { bg:'var(--admin-accent-soft)', color:'var(--admin-accent-link)', dot:'var(--admin-accent)', label:'In progress' },
@@ -66,7 +70,7 @@ const STATUS_CFG: Record<CandStatus, { bg: string; color: string; dot: string; l
   'Failed':      { bg:'#FEF2F2', color:'#DC2626', dot:'#EF4444', label:'Failed' },
 };
 
-export default function TestCandidatesPanel({ testId, onInvite }: TestCandidatesPanelProps) {
+export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }: TestCandidatesPanelProps) {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -80,7 +84,7 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
   const [exporting, setExporting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  useEffect(() => { load(); }, [testId]);
+  useEffect(() => { load(); }, [testId, refreshKey]);
 
   const load = async () => {
     setInvLoading(true); setResLoading(true);
@@ -145,8 +149,7 @@ export default function TestCandidatesPanel({ testId, onInvite }: TestCandidates
     const matchSearch = !q || inv.name.toLowerCase().includes(q) || inv.email.toLowerCase().includes(q);
     if (!matchSearch) return false;
     if (statusFilter === 'all') return true;
-    const s = getCandStatus(inv, attempt).toLowerCase().replace(' ','_');
-    return s === statusFilter;
+    return statusFilterValue(getCandStatus(inv, attempt)) === statusFilter;
   });
 
   /* -- Selected candidate -- */

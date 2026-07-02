@@ -1,6 +1,8 @@
 import { body, param, query, ValidationChain, validationResult } from 'express-validator';
 import { Request, Response, NextFunction } from 'express';
 
+const MAX_TEST_VIOLATIONS = 150;
+
 export const handleValidationErrors = (req: Request, res: Response, next: NextFunction): void => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -37,7 +39,7 @@ export const createTestValidation: ValidationChain[] = [
   body('totalMarks').isInt({ min: 1 }).withMessage('Total marks must be positive'),
   body('passingMarks').optional().isInt({ min: 0 }).withMessage('Passing marks must be non-negative'),
   body('negativeMarking').optional().isFloat({ min: 0 }).withMessage('Negative marking must be non-negative'),
-  body('maxViolations').optional().isInt({ min: 1 }).withMessage('Max violations must be at least 1'),
+  body('maxViolations').optional().isInt({ min: 1, max: MAX_TEST_VIOLATIONS }).withMessage('Max violations must be between 1 and 150'),
   body('proctorEnabled').optional().isBoolean().withMessage('Proctor enabled must be boolean'),
   body('requireCamera').optional().isBoolean().withMessage('Require camera must be boolean'),
   body('requireMicrophone').optional().isBoolean().withMessage('Require microphone must be boolean'),
@@ -57,7 +59,7 @@ export const updateTestValidation: ValidationChain[] = [
   body('totalMarks').optional().isInt({ min: 1 }),
   body('passingMarks').optional().isInt({ min: 0 }),
   body('negativeMarking').optional().isFloat({ min: 0 }),
-  body('maxViolations').optional().isInt({ min: 1 }),
+  body('maxViolations').optional().isInt({ min: 1, max: MAX_TEST_VIOLATIONS }).withMessage('Max violations must be between 1 and 150'),
   body('proctorEnabled').optional().isBoolean(),
   body('requireCamera').optional().isBoolean(),
   body('requireMicrophone').optional().isBoolean(),

@@ -44,6 +44,7 @@ import {
   getTestResults,
   getAttemptDetails,
   flagAttempt,
+  reviewAttempt,
   deleteAttempt,
   reEvaluateAttempt,
   exportResults,
@@ -75,7 +76,10 @@ import {
   createCustomBehavioral,
   updateCustomMCQ,
   updateCustomCoding,
-  updateCustomBehavioral
+  updateCustomBehavioral,
+  updateQuestionBankMCQ,
+  updateQuestionBankCoding,
+  updateQuestionBankBehavioral
 } from '../controllers/repository.js';
 import {
   getNotifications,
@@ -144,6 +148,7 @@ router.get('/attempts', adminAuth, getAllAttempts);
 router.get('/tests/:testId/results', adminAuth, paginationValidation, handleValidationErrors, getTestResults);
 router.get('/attempts/:attemptId', adminAuth, getAttemptDetails);
 router.post('/attempts/:attemptId/flag', adminAuth, flagAttempt);
+router.post('/attempts/:attemptId/review', adminAuth, reviewAttempt);
 router.delete('/attempts/:attemptId', adminAuth, deleteAttempt);
 router.post('/attempts/:attemptId/reevaluate', adminAuth, reEvaluateAttempt);
 router.get('/tests/:testId/export', adminAuth, exportResults);
@@ -180,6 +185,10 @@ router.put('/repository/question-bank/:questionId/enable', adminAuth, async (req
 router.put('/repository/question-bank/:questionId/disable', adminAuth, async (req, res) => {
   return toggleRepositoryQuestion(req, res, false);
 });
+
+router.put('/repository/question-bank/mcq/:questionId', adminAuth, updateQuestionBankMCQ);
+router.put('/repository/question-bank/coding/:questionId', adminAuth, updateQuestionBankCoding);
+router.put('/repository/question-bank/behavioral/:questionId', adminAuth, updateQuestionBankBehavioral);
 
 // Custom Questions (create/enable/disable/delete)
 router.get(

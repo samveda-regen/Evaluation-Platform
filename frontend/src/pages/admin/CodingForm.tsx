@@ -18,8 +18,22 @@ export default function CodingForm() {
   const { questionId } = useParams<{ questionId: string }>();
   const location = useLocation();
   const isEditing = Boolean(questionId);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const editQuestion = (location.state as any)?.question;
+  const routeState = location.state as {
+    question?: Record<string, unknown>;
+    returnTo?: string;
+    activeSection?: string;
+  } | null;
+  const editQuestion = routeState?.question;
+  const editSource = editQuestion?.source === 'QUESTION_BANK' ? 'QUESTION_BANK' : 'CUSTOM';
+  const returnTo = routeState?.returnTo ?? '/admin/repository/question-bank';
+  const returnSection = routeState?.activeSection ?? (editSource === 'CUSTOM' ? 'CUSTOM' : 'all');
+  const finishNavigation = () => {
+    navigate(returnTo, {
+      state: returnTo.includes('/admin/repository/question-bank')
+        ? { activeSection: returnSection }
+        : undefined,
+    });
+  };
 
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -46,27 +60,29 @@ export default function CodingForm() {
   useEffect(() => {
     if (isEditing && editQuestion) {
       setFormData({
-        title: editQuestion.title ?? '',
-        description: editQuestion.description ?? '',
-        inputFormat: editQuestion.inputFormat ?? '',
-        outputFormat: editQuestion.outputFormat ?? '',
-        constraints: editQuestion.constraints ?? '',
-        sampleInput: editQuestion.sampleInput ?? '',
-        sampleOutput: editQuestion.sampleOutput ?? '',
-        marks: editQuestion.marks ?? 20,
-        timeLimit: editQuestion.timeLimit ?? 2000,
-        memoryLimit: editQuestion.memoryLimit ?? 256,
+        title: typeof editQuestion.title === 'string' ? editQuestion.title : '',
+        description: typeof editQuestion.description === 'string' ? editQuestion.description : '',
+        inputFormat: typeof editQuestion.inputFormat === 'string' ? editQuestion.inputFormat : '',
+        outputFormat: typeof editQuestion.outputFormat === 'string' ? editQuestion.outputFormat : '',
+        constraints: typeof editQuestion.constraints === 'string' ? editQuestion.constraints : '',
+        sampleInput: typeof editQuestion.sampleInput === 'string' ? editQuestion.sampleInput : '',
+        sampleOutput: typeof editQuestion.sampleOutput === 'string' ? editQuestion.sampleOutput : '',
+        marks: typeof editQuestion.marks === 'number' ? editQuestion.marks : 20,
+        timeLimit: typeof editQuestion.timeLimit === 'number' ? editQuestion.timeLimit : 2000,
+        memoryLimit: typeof editQuestion.memoryLimit === 'number' ? editQuestion.memoryLimit : 256,
         supportedLanguages: Array.isArray(editQuestion.supportedLanguages)
-          ? editQuestion.supportedLanguages
+          ? editQuestion.supportedLanguages.filter((language): language is string => typeof language === 'string')
           : ['python', 'javascript'],
-        codeTemplates: editQuestion.codeTemplates ?? {},
-        partialScoring: editQuestion.partialScoring ?? false,
-        testCases: editQuestion.testCases?.length
-          ? editQuestion.testCases
+        codeTemplates: editQuestion.codeTemplates && typeof editQuestion.codeTemplates === 'object' && !Array.isArray(editQuestion.codeTemplates)
+          ? editQuestion.codeTemplates as Record<string, string>
+          : {},
+        partialScoring: typeof editQuestion.partialScoring === 'boolean' ? editQuestion.partialScoring : false,
+        testCases: Array.isArray(editQuestion.testCases) && editQuestion.testCases.length
+          ? editQuestion.testCases as TestCase[]
           : [{ input: '', expectedOutput: '', isHidden: false, marks: 10 }],
-        difficulty: editQuestion.difficulty ?? 'medium',
-        topic: editQuestion.topic ?? '',
-        tags: Array.isArray(editQuestion.tags) ? editQuestion.tags : [],
+        difficulty: typeof editQuestion.difficulty === 'string' ? editQuestion.difficulty : 'medium',
+        topic: typeof editQuestion.topic === 'string' ? editQuestion.topic : '',
+        tags: Array.isArray(editQuestion.tags) ? editQuestion.tags.filter((tag): tag is string => typeof tag === 'string') : [],
       });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -90,25 +106,41 @@ export default function CodingForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (formData.testCases.length === 0) {
-      toast.error('At least one test case is required');
-      return;
-    }
+    if (!formData.title.trim()) { toast.error('Title is required'); return; }
+    if (!formData.description.trim()) { toast.error('Description is required'); return; }
+    if (!formData.inputFormat.trim()) { toast.error('Input format is required'); return; }
+    if (!formData.outputFormat.trim()) { toast.error('Output format is required'); return; }
+    if (!formData.sampleInput.trim()) { toast.error('Sample input is required'); return; }
+    if (!formData.sampleOutput.trim()) { toast.error('Sample output is required'); return; }
+    if (!Number.isFinite(formData.marks) || formData.marks <= 0) { toast.error('Marks must be greater than 0'); return; }
+    if (!Number.isFinite(formData.timeLimit) || formData.timeLimit <= 0) { toast.error('Time limit must be greater than 0'); return; }
+    if (!Number.isFinite(formData.memoryLimit) || formData.memoryLimit <= 0) { toast.error('Memory limit must be greater than 0'); return; }
+    if (formData.supportedLanguages.length === 0) { toast.error('At least one language is required'); return; }
+    if (formData.testCases.length === 0) { toast.error('At least one test case is required'); return; }
+    const invalidTestCase = formData.testCases.find(
+      tc => !tc.expectedOutput.trim() || !Number.isFinite(tc.marks) || tc.marks <= 0
+    );
+    if (invalidTestCase) { toast.error('Each test case needs expected output and marks greater than 0'); return; }
 
     setLoading(true);
 
     try {
       if (isEditing && questionId) {
-        await adminApi.updateCustomCoding(questionId, {
+        const updatePayload = {
           ...formData,
           difficulty: formData.difficulty as 'easy' | 'medium' | 'hard',
-        });
+        };
+        if (editSource === 'QUESTION_BANK') {
+          await adminApi.updateQuestionBankCoding(questionId, updatePayload);
+        } else {
+          await adminApi.updateCustomCoding(questionId, updatePayload);
+        }
         toast.success('Question updated');
-        navigate(-1);
+        finishNavigation();
       } else {
         await adminApi.createCoding(formData);
         toast.success('Question created');
-        navigate('/admin/repository/question-bank', { state: { activeSection: 'CUSTOM' } });
+        finishNavigation();
       }
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } } };
@@ -163,7 +195,7 @@ export default function CodingForm() {
   return (
     <div>
       <div className="flex items-start gap-3 mb-6">
-        <BackButton mt="0" />
+        <BackButton mt="0" onClick={finishNavigation} />
         <h1 style={{ fontSize: "32px", fontWeight: 700, letterSpacing: "-0.02em", color: "var(--admin-text)", margin: 0, lineHeight: 1.2 }}>{isEditing ? 'Edit Coding Question' : 'Create Coding Question'}</h1>
       </div>
 
@@ -488,7 +520,7 @@ export default function CodingForm() {
           <button type="submit" disabled={loading} className="btn btn-primary">
             {loading ? 'Saving...' : 'Create Question'}
           </button>
-          <button type="button" onClick={() => navigate('/admin/repository/custom')} className="btn btn-secondary">
+          <button type="button" onClick={finishNavigation} className="btn btn-secondary">
             Cancel
           </button>
         </div>

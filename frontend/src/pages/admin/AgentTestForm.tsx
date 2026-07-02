@@ -37,6 +37,8 @@ interface TestSettings {
   maxViolations: number;
 }
 
+const MAX_TEST_VIOLATIONS = 150;
+
 /* -- Baseline skill list for autocomplete (used as a seed before/if the library list loads) -- */
 const SKILL_SUGGESTIONS = [
   'JavaScript','TypeScript','Python','Java','C++','C#','Go','Rust','Ruby','PHP','Swift','Kotlin','Scala',
@@ -270,6 +272,7 @@ export default function AgentTestForm() {
   /* -- Step 2 -> 3 -- */
   const handleGenerateTest = async () => {
     if (!skills.length)                              { toast.error('At least one skill is required'); return; }
+    if (mcqCount < 0 || codingCount < 0 || behavioralCount < 0) { toast.error('Question counts cannot be negative'); return; }
     if (!mcqCount && !codingCount && !behavioralCount) { toast.error('At least one question type must be > 0'); return; }
     setLoading(true);
     try {
@@ -307,6 +310,13 @@ export default function AgentTestForm() {
     if (!selection)                  { toast.error('No test selection available'); return; }
     if (!testSettings.startTime)     { toast.error('Start time is required'); return; }
     if (!testSettings.name.trim())   { toast.error('Test name is required'); return; }
+    if (!Number.isFinite(testSettings.duration) || testSettings.duration <= 0) { toast.error('Duration must be greater than 0 minutes'); return; }
+    if (!Number.isFinite(testSettings.passingMarks) || testSettings.passingMarks < 0) { toast.error('Passing marks cannot be negative'); return; }
+    if (!Number.isFinite(testSettings.negativeMarking) || testSettings.negativeMarking < 0) { toast.error('Negative marking cannot be negative'); return; }
+    if (!Number.isFinite(testSettings.maxViolations) || testSettings.maxViolations < 1 || testSettings.maxViolations > MAX_TEST_VIOLATIONS) {
+      toast.error(`Max violations must be between 1 and ${MAX_TEST_VIOLATIONS}`);
+      return;
+    }
     setLoading(true);
     try {
       const { data } = await adminApi.createTestFromAgent({
@@ -543,6 +553,7 @@ export default function AgentTestForm() {
                     <input type="number"
                       value={mcqCount}
                       onChange={e => setMcqCount(parseNum(e.target.value, 0))}
+                      min={0}
                       style={inp} onFocus={focus} onBlur={blur}
                     />
                   </div>
@@ -551,6 +562,7 @@ export default function AgentTestForm() {
                     <input type="number"
                       value={codingCount}
                       onChange={e => setCodingCount(parseNum(e.target.value, 0))}
+                      min={0}
                       style={inp} onFocus={focus} onBlur={blur}
                     />
                   </div>
@@ -741,6 +753,7 @@ export default function AgentTestForm() {
                     <input type="number"
                       value={testSettings.maxViolations}
                       onChange={e => setTestSettings(p => ({ ...p, maxViolations: parseNum(e.target.value, 3) }))}
+                      min={1} max={MAX_TEST_VIOLATIONS}
                       style={inp} onFocus={focus} onBlur={blur}
                     />
                   </div>

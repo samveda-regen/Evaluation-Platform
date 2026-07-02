@@ -163,6 +163,7 @@ export const createTestFromAgent = async (req: AuthenticatedRequest, res: Respon
         startTime: new Date(testSettings.startTime),
         endTime: testSettings.endTime ? new Date(testSettings.endTime) : undefined,
         passingMarks: testSettings.passingMarks,
+        passingScorePercent: testSettings.passingScorePercent,
         negativeMarking: testSettings.negativeMarking,
         shuffleQuestions: testSettings.shuffleQuestions,
         shuffleOptions: testSettings.shuffleOptions,
