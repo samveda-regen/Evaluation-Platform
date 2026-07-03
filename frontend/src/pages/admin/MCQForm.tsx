@@ -30,11 +30,13 @@ export default function MCQForm() {
     question?: Record<string, unknown>;
     returnTo?: string;
     activeSection?: string;
+    addToTestId?: string;
   } | null;
   const editQuestion = routeState?.question;
   const editSource = editQuestion?.source === 'QUESTION_BANK' ? 'QUESTION_BANK' : 'CUSTOM';
   const returnTo = routeState?.returnTo ?? '/admin/repository/question-bank';
   const returnSection = routeState?.activeSection ?? (editSource === 'CUSTOM' ? 'CUSTOM' : 'all');
+  const addToTestId = routeState?.addToTestId;
   const finishNavigation = () => {
     navigate(returnTo, {
       state: returnTo.includes('/admin/repository/question-bank')
@@ -179,10 +181,16 @@ export default function MCQForm() {
         toast.success('Question updated');
         finishNavigation();
       } else {
-        const res = await adminApi.createMCQ({ ...formData, options: nonEmpty });
+        const res = addToTestId
+          ? await adminApi.addCustomQuestionToTest(addToTestId, {
+              questionType: 'mcq',
+              ...formData,
+              options: nonEmpty,
+            })
+          : await adminApi.createMCQ({ ...formData, options: nonEmpty });
         const id: string | undefined = res?.data?.question?.id;
         if (id && mediaAssets.length) await adminApi.assignMediaToQuestion(id, mediaAssets.map(a=>a.id));
-        toast.success('Question created');
+        toast.success(addToTestId ? 'Question created and added to test' : 'Question created');
         finishNavigation();
       }
     } catch (err: unknown) {

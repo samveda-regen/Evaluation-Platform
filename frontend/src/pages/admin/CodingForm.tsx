@@ -22,11 +22,13 @@ export default function CodingForm() {
     question?: Record<string, unknown>;
     returnTo?: string;
     activeSection?: string;
+    addToTestId?: string;
   } | null;
   const editQuestion = routeState?.question;
   const editSource = editQuestion?.source === 'QUESTION_BANK' ? 'QUESTION_BANK' : 'CUSTOM';
   const returnTo = routeState?.returnTo ?? '/admin/repository/question-bank';
   const returnSection = routeState?.activeSection ?? (editSource === 'CUSTOM' ? 'CUSTOM' : 'all');
+  const addToTestId = routeState?.addToTestId;
   const finishNavigation = () => {
     navigate(returnTo, {
       state: returnTo.includes('/admin/repository/question-bank')
@@ -138,8 +140,16 @@ export default function CodingForm() {
         toast.success('Question updated');
         finishNavigation();
       } else {
-        await adminApi.createCoding(formData);
-        toast.success('Question created');
+        if (addToTestId) {
+          await adminApi.addCustomQuestionToTest(addToTestId, {
+            questionType: 'coding',
+            ...formData,
+            difficulty: formData.difficulty as 'easy' | 'medium' | 'hard',
+          });
+        } else {
+          await adminApi.createCoding(formData);
+        }
+        toast.success(addToTestId ? 'Question created and added to test' : 'Question created');
         finishNavigation();
       }
     } catch (error: unknown) {

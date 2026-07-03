@@ -70,22 +70,6 @@ function toTestOwnerTag(testId: string): string {
   return `__test:${testId}`;
 }
 
-function parseJsonTags(tags: string | null): string[] {
-  if (!tags) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(tags) as unknown;
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return parsed.filter((item): item is string => typeof item === 'string');
-  } catch {
-    return [];
-  }
-}
-
 function parseIncomingTags(value: unknown): string[] {
   if (value === undefined || value === null) {
     return [];
@@ -129,16 +113,6 @@ function toTestScopedTagJson(testId: string, userTags: unknown): string {
   const ownerTag = toTestOwnerTag(testId);
   const merged = new Set<string>([TEST_SCOPED_TAG, ownerTag, ...parseIncomingTags(userTags)]);
   return JSON.stringify(Array.from(merged));
-}
-
-function isTestScopedForAnotherTest(tags: string | null, testId: string): boolean {
-  const parsedTags = parseJsonTags(tags);
-  const hasScopedTag = parsedTags.includes(TEST_SCOPED_TAG);
-  if (!hasScopedTag) {
-    return false;
-  }
-
-  return !parsedTags.includes(toTestOwnerTag(testId));
 }
 
 function toOptionalSanitizedString(value: unknown): string | null {
@@ -1049,10 +1023,6 @@ export async function addQuestionToTest(req: AuthenticatedRequest, res: Response
         res.status(404).json({ error: 'MCQ question not found' });
         return;
       }
-      if (isTestScopedForAnotherTest(mcq.tags, testId)) {
-        res.status(400).json({ error: 'This question is scoped to another test and cannot be reused.' });
-        return;
-      }
     } else if (questionType === 'coding') {
       const coding = await prisma.codingQuestion.findFirst({
         where: {
@@ -1062,10 +1032,6 @@ export async function addQuestionToTest(req: AuthenticatedRequest, res: Response
       });
       if (!coding) {
         res.status(404).json({ error: 'Coding question not found' });
-        return;
-      }
-      if (isTestScopedForAnotherTest(coding.tags, testId)) {
-        res.status(400).json({ error: 'This question is scoped to another test and cannot be reused.' });
         return;
       }
     } else if (questionType === 'behavioral') {
@@ -1079,12 +1045,33 @@ export async function addQuestionToTest(req: AuthenticatedRequest, res: Response
         res.status(404).json({ error: 'Behavioral question not found' });
         return;
       }
-      if (isTestScopedForAnotherTest(behavioral.tags, testId)) {
-        res.status(400).json({ error: 'This question is scoped to another test and cannot be reused.' });
-        return;
-      }
     } else {
       res.status(400).json({ error: 'Invalid question type' });
+      return;
+    }
+
+    const existingQuestion = await prisma.testQuestion.findFirst({
+      where: {
+        testId,
+        ...(questionType === 'mcq'
+          ? { mcqQuestionId: questionId }
+          : questionType === 'coding'
+            ? { codingQuestionId: questionId }
+            : { behavioralQuestionId: questionId })
+      },
+      include: {
+        mcqQuestion: true,
+        codingQuestion: true,
+        behavioralQuestion: true
+      }
+    });
+
+    if (existingQuestion) {
+      res.status(200).json({
+        message: 'Question already exists in test',
+        testQuestion: existingQuestion,
+        alreadyAdded: true
+      });
       return;
     }
 

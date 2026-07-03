@@ -722,15 +722,20 @@ export default function TestDetails() {
     { id: 'settings',      label: 'Settings',      icon: <Settings2       size={15} /> },
   ];
   const newQuestionItems = [
-    { label: 'MCQ', action: () => handleOpenCustomModal(null, 'mcq') },
-    { label: 'Coding', action: () => handleOpenCustomModal(null, 'coding') },
-    { label: 'Behavioral', action: () => handleOpenCustomModal(null, 'behavioral') },
+    { label: 'MCQ', path: '/admin/mcq/new' },
+    { label: 'Coding', path: '/admin/coding/new' },
+    { label: 'Behavioral', path: '/admin/behavioral/new' },
   ];
   const activateNewQuestionItem = (index: number) => {
     const item = newQuestionItems[index];
     if (!item) return;
     setShowNewQMenu(false);
-    item.action();
+    navigate(item.path, {
+      state: {
+        addToTestId: testId,
+        returnTo: `/admin/tests/${testId}?tab=questions`,
+      },
+    });
   };
   const handleNewQuestionMenuKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {

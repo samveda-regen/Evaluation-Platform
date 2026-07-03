@@ -154,6 +154,7 @@ export default function QuestionBank() {
   const fromTestId: string | undefined = routeState?.fromTestId ?? urlParams.get('fromTestId') ?? undefined;
   const fromTestName: string | undefined = routeState?.fromTestName ?? urlParams.get('fromTestName') ?? undefined;
   const fromTestQuestionIds = routeState?.fromTestQuestionIds ?? [];
+  const fromTestQuestionIdsKey = fromTestQuestionIds.join('|');
   const returnTo = routeState?.returnTo ?? urlParams.get('returnTo') ?? (fromTestId ? `/admin/tests/${fromTestId}?tab=questions` : '/admin/repository/question-bank');
   const initialSidebarItem = SIDEBAR_ITEMS.find(item => item.category === routeState?.activeSection) ?? SIDEBAR_ITEMS[0];
 
@@ -186,13 +187,44 @@ export default function QuestionBank() {
   const [addingTestId,   setAddingTestId]   = useState<string | null>(null);
   const [testSearch,     setTestSearch]     = useState('');
   const [addedQuestionIds, setAddedQuestionIds] = useState<Set<string>>(new Set());
+  const [currentTestQuestionIds, setCurrentTestQuestionIds] = useState<string[]>(fromTestQuestionIds);
   const excludedQuestionIds = useMemo(
-    () => new Set([...fromTestQuestionIds, ...addedQuestionIds]),
-    [fromTestQuestionIds, addedQuestionIds]
+    () => new Set([...currentTestQuestionIds, ...addedQuestionIds]),
+    [currentTestQuestionIds, addedQuestionIds]
   );
   const excludedQuestionKey = Array.from(excludedQuestionIds).sort().join('|');
   const filterAlreadyAddedQuestions = (items: RepositoryQuestion[]) =>
-    excludedQuestionIds.size > 0 ? items.filter(q => !excludedQuestionIds.has(q.id)) : items;
+    items.filter(q => !excludedQuestionIds.has(q.id));
+
+  useEffect(() => {
+    if (!fromTestId) return;
+    if (fromTestQuestionIds.length > 0) {
+      setCurrentTestQuestionIds(fromTestQuestionIds);
+      return;
+    }
+
+    let cancelled = false;
+    adminApi.getTest(fromTestId)
+      .then(({ data }) => {
+        if (cancelled) return;
+        const testQuestions = [
+          ...(data.test?.questions ?? []),
+          ...((data.test?.sections ?? []).flatMap((section: { questions?: unknown[] }) => section.questions ?? [])),
+        ] as Array<{
+          mcqQuestion?: { id?: string };
+          codingQuestion?: { id?: string };
+          behavioralQuestion?: { id?: string };
+        }>;
+        setCurrentTestQuestionIds(Array.from(new Set(
+          testQuestions
+            .map(q => q.mcqQuestion?.id || q.codingQuestion?.id || q.behavioralQuestion?.id)
+            .filter((id): id is string => Boolean(id))
+        )));
+      })
+      .catch(() => {});
+
+    return () => { cancelled = true; };
+  }, [fromTestId, fromTestQuestionIdsKey]);
 
   /* close dropdown on outside click */
   useEffect(() => {

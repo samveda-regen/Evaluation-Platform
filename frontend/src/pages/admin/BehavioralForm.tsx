@@ -16,11 +16,13 @@ export default function BehavioralForm() {
     question?: Record<string, unknown>;
     returnTo?: string;
     activeSection?: string;
+    addToTestId?: string;
   } | null;
   const editQuestion = routeState?.question;
   const editSource = editQuestion?.source === 'QUESTION_BANK' ? 'QUESTION_BANK' : 'CUSTOM';
   const returnTo = routeState?.returnTo ?? '/admin/repository/question-bank';
   const returnSection = routeState?.activeSection ?? (editSource === 'CUSTOM' ? 'CUSTOM' : 'all');
+  const addToTestId = routeState?.addToTestId;
   const finishNavigation = () => {
     navigate(returnTo, {
       state: returnTo.includes('/admin/repository/question-bank')
@@ -69,6 +71,7 @@ export default function BehavioralForm() {
 
   const handleSubmit = async () => {
     if (!formData.title.trim()) { toast.error('Title is required'); return; }
+    if (addToTestId && !formData.description.trim()) { toast.error('Description is required'); return; }
     if (!Number.isFinite(formData.marks) || formData.marks <= 0) { toast.error('Marks must be greater than 0'); return; }
     setLoading(true);
     try {
@@ -81,8 +84,15 @@ export default function BehavioralForm() {
         toast.success('Question updated');
         finishNavigation();
       } else {
-        await adminApi.createCustomBehavioral(formData);
-        toast.success('Question created');
+        if (addToTestId) {
+          await adminApi.addCustomQuestionToTest(addToTestId, {
+            questionType: 'behavioral',
+            ...formData,
+          });
+        } else {
+          await adminApi.createCustomBehavioral(formData);
+        }
+        toast.success(addToTestId ? 'Question created and added to test' : 'Question created');
         finishNavigation();
       }
     } catch (err: unknown) {
