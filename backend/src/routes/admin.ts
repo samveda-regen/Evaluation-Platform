@@ -6,13 +6,25 @@ import {
   handleValidationErrors,
   adminLoginValidation,
   adminRegisterValidation,
+  updateAdminCompanyValidation,
+  forgotPasswordValidation,
+  resetPasswordValidation,
   createTestValidation,
   updateTestValidation,
   createMCQValidation,
   createCodingValidation,
   paginationValidation
 } from '../middleware/validation.js';
-import { registerAdmin, loginAdmin, getAdminProfile, updateAdminProfile, changeAdminPassword } from '../controllers/adminAuth.js';
+import {
+  registerAdmin,
+  loginAdmin,
+  getAdminProfile,
+  updateAdminProfile,
+  updateAdminCompany,
+  changeAdminPassword,
+  forgotPassword,
+  resetPassword
+} from '../controllers/adminAuth.js';
 import {
   createTest,
   createAdminPreviewAttempt,
@@ -101,8 +113,11 @@ const invitationUpload = multer({
 // Auth routes
 router.post('/register', adminRegisterValidation, handleValidationErrors, registerAdmin);
 router.post('/login', adminLoginValidation, handleValidationErrors, loginAdmin);
+router.post('/forgot-password', forgotPasswordValidation, handleValidationErrors, forgotPassword);
+router.post('/reset-password', resetPasswordValidation, handleValidationErrors, resetPassword);
 router.get('/profile', adminAuth, getAdminProfile);
 router.put('/profile', adminAuth, updateAdminProfile);
+router.put('/profile/company', adminAuth, updateAdminCompanyValidation, handleValidationErrors, updateAdminCompany);
 router.put('/change-password', adminAuth, changeAdminPassword);
 
 // Dashboard

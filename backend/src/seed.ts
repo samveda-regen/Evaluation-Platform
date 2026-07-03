@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { QuestionSource } from '@prisma/client';
 import prisma from './utils/db.js';
 
 async function main() {
@@ -34,14 +35,18 @@ async function main() {
       orderBy: { createdAt: 'asc' }
     });
 
+    // Seeded sample questions are shared library content, not any one
+    // admin's private custom question, so they belong in the QUESTION_BANK.
+    const dataWithSource = { ...data, source: QuestionSource.QUESTION_BANK };
+
     if (existing) {
       return prisma.mCQQuestion.update({
         where: { id: existing.id },
-        data
+        data: dataWithSource
       });
     }
 
-    return prisma.mCQQuestion.create({ data });
+    return prisma.mCQQuestion.create({ data: dataWithSource });
   };
 
   const mcq1 = await upsertMcqByText({
@@ -112,6 +117,7 @@ async function main() {
           memoryLimit: data.memoryLimit,
           supportedLanguages: data.supportedLanguages,
           partialScoring: data.partialScoring,
+          source: QuestionSource.QUESTION_BANK,
           testCases: {
             create: data.testCases
           }
@@ -133,6 +139,7 @@ async function main() {
         memoryLimit: data.memoryLimit,
         supportedLanguages: data.supportedLanguages,
         partialScoring: data.partialScoring,
+        source: QuestionSource.QUESTION_BANK,
         testCases: {
           create: data.testCases
         }

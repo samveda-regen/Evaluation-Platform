@@ -13,10 +13,13 @@ export default function AdminProfile() {
     : 'AD';
 
   const [name, setName]               = useState(admin?.name || '');
+  const [companyName, setCompanyName] = useState(admin?.companyName || '');
+  const [companyId, setCompanyId]     = useState(admin?.companyExternalId || '');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword]         = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [savingName, setSavingName]   = useState(false);
+  const [savingCompany, setSavingCompany] = useState(false);
   const [savingPw, setSavingPw]       = useState(false);
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew]         = useState(false);
@@ -32,6 +35,22 @@ export default function AdminProfile() {
       const e = err as { response?: { data?: { error?: string } } };
       toast.error(e.response?.data?.error || 'Failed to update name');
     } finally { setSavingName(false); }
+  };
+
+  const handleSaveCompany = async () => {
+    if (!companyName.trim() || !companyId.trim()) {
+      toast.error('Company name and Company ID are both required');
+      return;
+    }
+    setSavingCompany(true);
+    try {
+      const { data } = await adminApi.updateCompany({ companyName: companyName.trim(), companyId: companyId.trim() });
+      setAdmin(data.admin, localStorage.getItem('adminToken') || undefined);
+      toast.success('Company linked');
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } } };
+      toast.error(e.response?.data?.error || 'Failed to link company');
+    } finally { setSavingCompany(false); }
   };
 
   const handleChangePassword = async () => {
@@ -135,26 +154,37 @@ export default function AdminProfile() {
           <div style={{ marginBottom: '16px' }}>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--admin-text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Company name</label>
             <input
-              value={admin?.companyName || ''}
-              disabled
-              style={disabledInputSx}
-              placeholder="No company linked"
+              value={companyName}
+              onChange={e => setCompanyName(e.target.value)}
+              style={inputSx}
+              placeholder="e.g. Regen Consult"
             />
           </div>
 
-          <div>
+          <div style={{ marginBottom: '16px' }}>
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: 'var(--admin-text-muted)', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Company ID</label>
             <input
-              value={admin?.companyExternalId || ''}
-              disabled
-              style={disabledInputSx}
-              placeholder="No company ID"
+              value={companyId}
+              onChange={e => setCompanyId(e.target.value)}
+              style={inputSx}
+              placeholder="e.g. REGEN-001"
             />
           </div>
 
-          <p style={{ fontSize: '11px', color: 'var(--admin-text-subtle)', margin: '12px 0 0' }}>
-            Company details are set during registration and cannot be changed here.
+          <p style={{ fontSize: '11px', color: 'var(--admin-text-subtle)', margin: '0 0 16px' }}>
+            Linking a company here applies to tests you create from now on — it does not change tests you've already created.
           </p>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              onClick={handleSaveCompany}
+              disabled={savingCompany || (companyName.trim() === (admin?.companyName || '') && companyId.trim() === (admin?.companyExternalId || ''))}
+              className="btn btn-primary"
+              style={{ opacity: (companyName.trim() === (admin?.companyName || '') && companyId.trim() === (admin?.companyExternalId || '')) ? 0.5 : 1 }}
+            >
+              {savingCompany ? 'Saving…' : admin?.companyName ? 'Update company' : 'Link company'}
+            </button>
+          </div>
         </div>
 
         {/* Password */}

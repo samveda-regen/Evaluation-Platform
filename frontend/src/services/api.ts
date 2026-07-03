@@ -1,4 +1,6 @@
 import axios, { AxiosError } from 'axios';
+import { toast } from 'react-hot-toast';
+import { useAuthStore } from '../context/authStore';
 import type {
   RepositoryCategory,
   RepositoryListResponse,
@@ -70,14 +72,40 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Admin endpoints that are called without an existing session - a 401 here
+// means bad credentials/an invalid link, not an expired session.
+const ADMIN_PUBLIC_AUTH_PATHS = ['/admin/login', '/admin/register', '/admin/forgot-password', '/admin/reset-password'];
+
 // Response interceptor to handle errors
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError<{ error: string }>) => {
     if (error.response?.status === 401) {
-      // Clear tokens and redirect to login
-      localStorage.removeItem('adminToken');
-      localStorage.removeItem('candidateToken');
+      const url = error.config?.url || '';
+      const isAdminRoute =
+        url.startsWith('/admin') ||
+        url.startsWith('/analytics') ||
+        url.startsWith('/media') ||
+        url.startsWith('/files/admin') ||
+        url.startsWith('/proctoring/admin') ||
+        url.startsWith('/verification/admin');
+      const isPublicAdminAuthRoute = ADMIN_PUBLIC_AUTH_PATHS.some((path) => url.startsWith(path));
+      const hadAdminToken = !!localStorage.getItem('adminToken');
+
+      if (isAdminRoute && !isPublicAdminAuthRoute && hadAdminToken) {
+        // The admin's token was rejected on a route that requires one - either
+        // the 2h session timeout elapsed or the token is otherwise invalid.
+        useAuthStore.getState().logoutAdmin();
+        if (typeof window !== 'undefined' && window.location.pathname !== '/admin/login') {
+          toast.error('Your session has expired. Please log in again.');
+          window.location.href = '/admin/login';
+        }
+      } else {
+        // Not an authenticated-session case (e.g. a failed login attempt) -
+        // just clear any stale tokens and let the caller handle its own error.
+        localStorage.removeItem('adminToken');
+        localStorage.removeItem('candidateToken');
+      }
     }
     return Promise.reject(error);
   }
@@ -116,11 +144,20 @@ export const adminApi = {
   login: (data: { email: string; password: string }) =>
     api.post('/admin/login', data),
 
+  forgotPassword: (data: { email: string }) =>
+    api.post('/admin/forgot-password', data),
+
+  resetPassword: (data: { token: string; newPassword: string }) =>
+    api.post('/admin/reset-password', data),
+
   getProfile: () =>
     api.get('/admin/profile'),
 
   updateProfile: (data: { name: string }) =>
     api.put('/admin/profile', data),
+
+  updateCompany: (data: { companyName: string; companyId: string }) =>
+    api.put('/admin/profile/company', data),
 
   changePassword: (data: { currentPassword: string; newPassword: string }) =>
     api.put('/admin/change-password', data),

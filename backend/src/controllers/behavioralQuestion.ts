@@ -24,16 +24,23 @@ export async function getBehavioralQuestions(req: AuthenticatedRequest, res: Res
     const skip = (page - 1) * limit;
     const search = req.query.search as string | undefined;
 
+    const ownershipFilter = { OR: [{ adminId: req.admin!.id }, { adminId: null }] };
     const where = search
       ? {
-          OR: [
-            { title: { contains: search } },
-            { description: { contains: search } },
-            { expectedAnswer: { contains: search } }
+          ...ownershipFilter,
+          AND: [
+            {
+              OR: [
+                { title: { contains: search } },
+                { description: { contains: search } },
+                { expectedAnswer: { contains: search } }
+              ]
+            }
           ],
           NOT: { tags: { contains: TEST_SCOPED_TAG_MARKER } }
         }
       : {
+          ...ownershipFilter,
           NOT: { tags: { contains: TEST_SCOPED_TAG_MARKER } }
         };
 

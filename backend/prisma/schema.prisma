@@ -32,6 +32,8 @@ model Admin {
   companyId String?
   externalProvider String?
   externalUserId String?
+  resetPasswordTokenHash String?
+  resetPasswordExpiresAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   company   Company? @relation(fields: [companyId], references: [id])
@@ -39,8 +41,10 @@ model Admin {
   tests     Test[]
   mcqQuestions    MCQQuestion[]
   codingQuestions CodingQuestion[]
+  behavioralQuestions BehavioralQuestion[]
 
   @@index([companyId])
+  @@index([resetPasswordTokenHash])
   @@unique([externalProvider, externalUserId])
 }
 
@@ -259,6 +263,9 @@ model BehavioralQuestion {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  adminId String?
+  admin   Admin? @relation(fields: [adminId], references: [id])
+
   testQuestions TestQuestion[]
   answers       BehavioralAnswer[]
 
@@ -266,6 +273,7 @@ model BehavioralQuestion {
   @@index([repositoryCategory])
   @@index([difficulty])
   @@index([isEnabled])
+  @@index([adminId])
 }
 
 model TestCase {

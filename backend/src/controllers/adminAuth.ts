@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import { generateAdminToken } from '../utils/jwt.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import { sanitizeInput } from '../utils/sanitize.js';
-import { sendAdminWelcomeEmail } from '../services/emailService.js';
+import { sendAdminWelcomeEmail, sendAdminPasswordResetEmail } from '../services/emailService.js';
 import prisma from '../utils/db.js';
 
 export async function registerAdmin(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -255,6 +255,53 @@ export async function updateAdminProfile(req: AuthenticatedRequest, res: Respons
   }
 }
 
+export async function updateAdminCompany(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { companyName, companyId } = req.body;
+
+    const sanitizedName = sanitizeInput(String(companyName ?? '').trim());
+    const sanitizedExternalId = sanitizeInput(String(companyId ?? '').trim());
+
+    if (!sanitizedName || !sanitizedExternalId) {
+      res.status(400).json({ error: 'Company name and Company ID are required' });
+      return;
+    }
+
+    // Only new companies get their name set here; if the Company ID already
+    // belongs to an existing company we link to it as-is rather than letting
+    // one admin's typo rename a company shared by other admins.
+    const admin = await prisma.$transaction(async (tx) => {
+      const companyRecord = await tx.company.upsert({
+        where: { externalCompanyId: sanitizedExternalId },
+        create: { externalCompanyId: sanitizedExternalId, name: sanitizedName },
+        update: {},
+      });
+
+      return tx.admin.update({
+        where: { id: req.admin!.id },
+        data: { companyId: companyRecord.id },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          company: { select: { name: true, externalCompanyId: true } },
+        },
+      });
+    });
+
+    res.json({
+      admin: {
+        ...admin,
+        companyName: admin.company?.name ?? null,
+        companyExternalId: admin.company?.externalCompanyId ?? null,
+      }
+    });
+  } catch (error) {
+    console.error('Update admin company error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 export async function changeAdminPassword(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -279,6 +326,95 @@ export async function changeAdminPassword(req: AuthenticatedRequest, res: Respon
     res.json({ message: 'Password updated successfully' });
   } catch (error) {
     console.error('Change admin password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+const RESET_TOKEN_TTL_MINUTES = 30;
+const GENERIC_FORGOT_PASSWORD_MESSAGE = "If an account exists for that email, we've sent a password reset link.";
+
+export async function forgotPassword(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { email } = req.body;
+    const sanitizedEmail = sanitizeInput(String(email ?? '')).toLowerCase();
+
+    const admin = await prisma.admin.findUnique({ where: { email: sanitizedEmail } });
+
+    // Always respond the same way whether or not the account exists, so this
+    // endpoint can't be used to enumerate registered admin emails.
+    if (admin) {
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+      const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60 * 1000);
+
+      await prisma.admin.update({
+        where: { id: admin.id },
+        data: { resetPasswordTokenHash: tokenHash, resetPasswordExpiresAt: expiresAt }
+      });
+
+      const frontendUrl = process.env.FRONTEND_URL || 'https://humint.talentsatq.ai';
+      const resetUrl = `${frontendUrl}/admin/reset-password?token=${rawToken}`;
+
+      try {
+        await sendAdminPasswordResetEmail({
+          to: admin.email,
+          name: admin.name,
+          resetUrl,
+          expiresInMinutes: RESET_TOKEN_TTL_MINUTES
+        });
+      } catch (emailError) {
+        console.error('Password reset email failed to send:', emailError);
+      }
+    }
+
+    res.json({ message: GENERIC_FORGOT_PASSWORD_MESSAGE });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function resetPassword(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (typeof token !== 'string' || !token.trim()) {
+      res.status(400).json({ error: 'Reset token is required' });
+      return;
+    }
+    if (typeof newPassword !== 'string' || newPassword.length < 8) {
+      res.status(400).json({ error: 'New password must be at least 8 characters' });
+      return;
+    }
+
+    const tokenHash = crypto.createHash('sha256').update(token.trim()).digest('hex');
+
+    const admin = await prisma.admin.findFirst({
+      where: {
+        resetPasswordTokenHash: tokenHash,
+        resetPasswordExpiresAt: { gt: new Date() }
+      }
+    });
+
+    if (!admin) {
+      res.status(400).json({ error: 'This reset link is invalid or has expired. Please request a new one.' });
+      return;
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+    await prisma.admin.update({
+      where: { id: admin.id },
+      data: {
+        password: hashedPassword,
+        resetPasswordTokenHash: null,
+        resetPasswordExpiresAt: null
+      }
+    });
+
+    res.json({ message: 'Password reset successful. You can now log in with your new password.' });
+  } catch (error) {
+    console.error('Reset password error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }

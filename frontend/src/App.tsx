@@ -3,6 +3,8 @@ import { useAuthStore } from './context/authStore';
 
 // Admin pages
 import AdminLogin from './pages/admin/AdminLogin';
+import ForgotPassword from './pages/admin/ForgotPassword';
+import ResetPassword from './pages/admin/ResetPassword';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import TestList from './pages/admin/TestList';
 import TestForm from './pages/admin/TestForm';
@@ -79,6 +81,8 @@ export default function App() {
 
       {/* Admin routes */}
       <Route path="/admin/login" element={<AdminLogin />} />
+      <Route path="/admin/forgot-password" element={<ForgotPassword />} />
+      <Route path="/admin/reset-password" element={<ResetPassword />} />
       <Route
         path="/admin"
         element={

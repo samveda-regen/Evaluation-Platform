@@ -680,6 +680,48 @@ TalentstaQ Team`;
   }
 }
 
+interface AdminPasswordResetEmailPayload {
+  to: string;
+  name: string;
+  resetUrl: string;
+  expiresInMinutes: number;
+}
+
+export async function sendAdminPasswordResetEmail(payload: AdminPasswordResetEmailPayload): Promise<void> {
+  const subject = `Reset your TalentstaQ password`;
+  const textBody = `Hi ${payload.name},
+
+We received a request to reset the password for your TalentstaQ admin account (${payload.to}).
+
+Reset your password here:
+${payload.resetUrl}
+
+This link expires in ${payload.expiresInMinutes} minutes and can only be used once.
+
+If you didn't request this, you can safely ignore this email — your password won't be changed.
+
+Best regards,
+TalentstaQ Team`;
+
+  const htmlBody = `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#374151;max-width:600px">
+<p>Hi ${escapeHtml(payload.name)},</p>
+<p>We received a request to reset the password for your TalentstaQ admin account (${escapeHtml(payload.to)}).</p>
+<p style="margin:24px 0">
+  <a href="${payload.resetUrl}" style="background:#111827;color:#ffffff;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:600">Reset password</a>
+</p>
+<p style="color:#6B7280;font-size:13px">This link expires in ${payload.expiresInMinutes} minutes and can only be used once.</p>
+<p>If you didn't request this, you can safely ignore this email — your password won't be changed.</p>
+<p>Best regards,<br/>TalentstaQ Team</p>
+</div>`;
+
+  try {
+    await sendMailViaResend(subject, textBody, htmlBody, payload.to);
+  } catch (error) {
+    console.error('Failed to send admin password reset email:', { error });
+    throw error;
+  }
+}
+
 export async function sendConfirmationEmail(payload: ConfirmationEmailPayload): Promise<void> {
   try {
     await sendMail(

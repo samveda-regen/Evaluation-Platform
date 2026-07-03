@@ -138,6 +138,15 @@ function parseTagsInput(tags: unknown): string[] | null {
   return [];
 }
 
+function isOwnedByRequester(
+  question: { source: QuestionSource; adminId?: string | null },
+  requesterId: string
+): boolean {
+  // QUESTION_BANK items are a shared library with no owner; CUSTOM items
+  // belong to the admin who created them and must stay isolated per-account.
+  return question.source !== QuestionSource.CUSTOM || question.adminId === requesterId;
+}
+
 function buildPagination(page: number, limit: number, total: number) {
   return {
     page,
@@ -207,6 +216,7 @@ export async function getRepositoryQuestions(req: AuthenticatedRequest, res: Res
     switch (category) {
       case 'MCQ': {
         const where: Prisma.MCQQuestionWhereInput = { source };
+        if (source === QuestionSource.CUSTOM) where.adminId = req.admin!.id;
         if (difficulty) where.difficulty = difficulty;
         if (topic) where.topic = { contains: topic, mode: 'insensitive' };
         if (tag) where.tags = { contains: tag, mode: 'insensitive' };
@@ -238,6 +248,7 @@ export async function getRepositoryQuestions(req: AuthenticatedRequest, res: Res
 
       case 'CODING': {
         const where: Prisma.CodingQuestionWhereInput = { source };
+        if (source === QuestionSource.CUSTOM) where.adminId = req.admin!.id;
         if (difficulty) where.difficulty = difficulty;
         if (topic) where.topic = { contains: topic, mode: 'insensitive' };
         if (tag) where.tags = { contains: tag, mode: 'insensitive' };
@@ -270,6 +281,7 @@ export async function getRepositoryQuestions(req: AuthenticatedRequest, res: Res
 
       case 'BEHAVIORAL': {
         const where: Prisma.BehavioralQuestionWhereInput = { source };
+        if (source === QuestionSource.CUSTOM) where.adminId = req.admin!.id;
         if (difficulty) where.difficulty = difficulty;
         if (topic) where.topic = { contains: topic, mode: 'insensitive' };
         if (tag) where.tags = { contains: tag, mode: 'insensitive' };
@@ -326,7 +338,7 @@ export async function toggleRepositoryQuestion(
     switch (category) {
       case 'MCQ': {
         const existing = await prisma.mCQQuestion.findUnique({ where: { id: questionId } });
-        if (!existing) {
+        if (!existing || !isOwnedByRequester(existing, req.admin!.id)) {
           res.status(404).json({ error: 'Question not found' });
           return;
         }
@@ -340,7 +352,7 @@ export async function toggleRepositoryQuestion(
 
       case 'CODING': {
         const existing = await prisma.codingQuestion.findUnique({ where: { id: questionId } });
-        if (!existing) {
+        if (!existing || !isOwnedByRequester(existing, req.admin!.id)) {
           res.status(404).json({ error: 'Question not found' });
           return;
         }
@@ -354,7 +366,7 @@ export async function toggleRepositoryQuestion(
 
       case 'BEHAVIORAL': {
         const existing = await prisma.behavioralQuestion.findUnique({ where: { id: questionId } });
-        if (!existing) {
+        if (!existing || !isOwnedByRequester(existing, req.admin!.id)) {
           res.status(404).json({ error: 'Question not found' });
           return;
         }
@@ -397,6 +409,10 @@ export async function deleteRepositoryQuestion(req: AuthenticatedRequest, res: R
           res.status(400).json({ error: 'Only custom questions can be deleted from this endpoint.' });
           return;
         }
+        if (question.adminId !== req.admin!.id) {
+          res.status(404).json({ error: 'Question not found' });
+          return;
+        }
 
         const inTest = await prisma.testQuestion.findFirst({
           where: { mcqQuestionId: questionId }
@@ -420,6 +436,10 @@ export async function deleteRepositoryQuestion(req: AuthenticatedRequest, res: R
           res.status(400).json({ error: 'Only custom questions can be deleted from this endpoint.' });
           return;
         }
+        if (question.adminId !== req.admin!.id) {
+          res.status(404).json({ error: 'Question not found' });
+          return;
+        }
 
         const inTest = await prisma.testQuestion.findFirst({
           where: { codingQuestionId: questionId }
@@ -441,6 +461,10 @@ export async function deleteRepositoryQuestion(req: AuthenticatedRequest, res: R
         }
         if (question.source !== QuestionSource.CUSTOM) {
           res.status(400).json({ error: 'Only custom questions can be deleted from this endpoint.' });
+          return;
+        }
+        if (question.adminId !== req.admin!.id) {
+          res.status(404).json({ error: 'Question not found' });
           return;
         }
 
@@ -482,6 +506,10 @@ async function updateMCQBySource(
     }
     if (existing.source !== expectedSource) {
       res.status(400).json({ error: `Only ${sourceLabel} questions can be edited from this endpoint.` });
+      return;
+    }
+    if (!isOwnedByRequester(existing, req.admin!.id)) {
+      res.status(404).json({ error: 'Question not found' });
       return;
     }
 
@@ -553,6 +581,10 @@ async function updateCodingBySource(
     }
     if (existing.source !== expectedSource) {
       res.status(400).json({ error: `Only ${sourceLabel} questions can be edited from this endpoint.` });
+      return;
+    }
+    if (!isOwnedByRequester(existing, req.admin!.id)) {
+      res.status(404).json({ error: 'Question not found' });
       return;
     }
 
@@ -635,6 +667,10 @@ async function updateBehavioralBySource(
     }
     if (existing.source !== expectedSource) {
       res.status(400).json({ error: `Only ${sourceLabel} questions can be edited from this endpoint.` });
+      return;
+    }
+    if (!isOwnedByRequester(existing, req.admin!.id)) {
+      res.status(404).json({ error: 'Question not found' });
       return;
     }
 
@@ -745,7 +781,8 @@ export async function createCustomBehavioral(req: AuthenticatedRequest, res: Res
         tags: parsedTags ? JSON.stringify(parsedTags) : null,
         source: QuestionSource.CUSTOM,
         repositoryCategory: QuestionRepositoryCategory.BEHAVIORAL,
-        isEnabled: true
+        isEnabled: true,
+        adminId: req.admin!.id
       }
     });
 

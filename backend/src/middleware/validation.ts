@@ -30,6 +30,20 @@ export const integrationAdminRegisterValidation: ValidationChain[] = [
   body('name').trim().isLength({ min: 2 }).withMessage('Name must be at least 2 characters')
 ];
 
+export const updateAdminCompanyValidation: ValidationChain[] = [
+  body('companyName').trim().isLength({ min: 1, max: 200 }).withMessage('Company name must be between 1 and 200 characters'),
+  body('companyId').trim().isLength({ min: 1, max: 100 }).withMessage('Company ID must be between 1 and 100 characters')
+];
+
+export const forgotPasswordValidation: ValidationChain[] = [
+  body('email').isEmail().normalizeEmail().withMessage('Valid email is required')
+];
+
+export const resetPasswordValidation: ValidationChain[] = [
+  body('token').trim().isLength({ min: 1 }).withMessage('Reset token is required'),
+  body('newPassword').isLength({ min: 8 }).withMessage('New password must be at least 8 characters')
+];
+
 // Test validation
 export const createTestValidation: ValidationChain[] = [
   body('name').trim().isLength({ min: 1 }).withMessage('Test name is required'),

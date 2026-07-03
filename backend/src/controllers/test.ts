@@ -1069,7 +1069,12 @@ export async function addQuestionToTest(req: AuthenticatedRequest, res: Response
         return;
       }
     } else if (questionType === 'behavioral') {
-      const behavioral = await prisma.behavioralQuestion.findUnique({ where: { id: questionId } });
+      const behavioral = await prisma.behavioralQuestion.findFirst({
+        where: {
+          id: questionId,
+          OR: [{ adminId: req.admin!.id }, { adminId: null }]
+        }
+      });
       if (!behavioral) {
         res.status(404).json({ error: 'Behavioral question not found' });
         return;
@@ -1245,7 +1250,8 @@ export async function addCustomQuestionToTest(req: AuthenticatedRequest, res: Re
             tags: toTestScopedTagJson(testId, req.body.tags),
             source: QuestionSource.CUSTOM,
             repositoryCategory: QuestionRepositoryCategory.MCQ,
-            isEnabled: true
+            isEnabled: true,
+            adminId: req.admin!.id
           }
         });
 
@@ -1380,6 +1386,7 @@ export async function addCustomQuestionToTest(req: AuthenticatedRequest, res: Re
             source: QuestionSource.CUSTOM,
             repositoryCategory: QuestionRepositoryCategory.CODING,
             isEnabled: true,
+            adminId: req.admin!.id,
             testCases: {
               create: testCases.map((tc: { input: string; expectedOutput: string; isHidden: boolean; marks: number }) => ({
                 input: tc.input,
@@ -1459,7 +1466,8 @@ export async function addCustomQuestionToTest(req: AuthenticatedRequest, res: Re
             tags: toTestScopedTagJson(testId, req.body.tags),
             source: QuestionSource.CUSTOM,
             repositoryCategory: QuestionRepositoryCategory.BEHAVIORAL,
-            isEnabled: true
+            isEnabled: true,
+            adminId: req.admin!.id
           }
         });
 

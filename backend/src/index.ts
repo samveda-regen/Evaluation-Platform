@@ -208,6 +208,8 @@ app.use(cookieParser());
 
 app.use('/api/admin/login', authLimiter);
 app.use('/api/admin/register', authLimiter);
+app.use('/api/admin/forgot-password', authLimiter);
+app.use('/api/admin/reset-password', authLimiter);
 app.use('/api/candidate/login', authLimiter);
 
 app.use('/api/candidate/answer', submissionLimiter);
