@@ -65,9 +65,21 @@ const CATEGORIES = [
 const CUSTOM_CATEGORY_VALUE = '__custom_category__';
 const LANGUAGES = ['English','Spanish','German','French','Portuguese','Hindi'];
 
+function pad(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
 function fmtForInput(iso?: string | null): string {
   if (!iso) return '';
-  try { return new Date(iso).toISOString().slice(0,16); } catch { return ''; }
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}T${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`;
+}
+
+function toISOStringFromLocalDateTime(value: string): string | undefined {
+  if (!value) return undefined;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
 }
 
 function settingsObject(t: Test): Record<string, unknown> {
@@ -289,8 +301,8 @@ export default function TestSettings() {
       await adminApi.updateTest(testId, {
         name: form.name, description: form.description,
         category: form.category, language: form.language,
-        startTime: form.startTime || undefined,
-        endTime:   form.endTime   || undefined,
+        startTime: toISOStringFromLocalDateTime(form.startTime),
+        endTime:   toISOStringFromLocalDateTime(form.endTime),
         requireInvitationLink: form.requireInvitationLink,
         allowMultipleAttempts: !form.limitToOneAttempt,
         requireIdVerification: form.requireIdVerification,
