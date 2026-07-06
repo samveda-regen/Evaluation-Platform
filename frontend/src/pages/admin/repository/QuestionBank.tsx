@@ -189,19 +189,27 @@ export default function QuestionBank() {
   const [addedQuestionIds, setAddedQuestionIds] = useState<Set<string>>(new Set());
   const [currentTestQuestionIds, setCurrentTestQuestionIds] = useState<string[]>(fromTestQuestionIds);
   const excludedQuestionIds = useMemo(
-    () => new Set([...currentTestQuestionIds, ...addedQuestionIds]),
-    [currentTestQuestionIds, addedQuestionIds]
+    () => fromTestId ? new Set([...currentTestQuestionIds, ...addedQuestionIds]) : new Set<string>(),
+    [fromTestId, currentTestQuestionIds, addedQuestionIds]
   );
   const excludedQuestionKey = Array.from(excludedQuestionIds).sort().join('|');
   const filterAlreadyAddedQuestions = (items: RepositoryQuestion[]) =>
     items.filter(q => !excludedQuestionIds.has(q.id));
 
   useEffect(() => {
-    if (!fromTestId) return;
+    setAddedQuestionIds(new Set());
+
+    if (!fromTestId) {
+      setCurrentTestQuestionIds([]);
+      return;
+    }
+
     if (fromTestQuestionIds.length > 0) {
       setCurrentTestQuestionIds(fromTestQuestionIds);
       return;
     }
+
+    setCurrentTestQuestionIds([]);
 
     let cancelled = false;
     adminApi.getTest(fromTestId)
