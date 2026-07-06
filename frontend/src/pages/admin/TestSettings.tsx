@@ -42,7 +42,6 @@ interface FormState {
   /* Test behavior */
   shuffleQuestions: boolean;
   shuffleOptions: boolean;
-  allowBackNavigation: boolean;
   showTimer: boolean;
   autoSubmitOnTimeout: boolean;
   negativeMarkingEnabled: boolean;
@@ -65,9 +64,21 @@ const CATEGORIES = [
 const CUSTOM_CATEGORY_VALUE = '__custom_category__';
 const LANGUAGES = ['English','Spanish','German','French','Portuguese','Hindi'];
 
+function pad(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
 function fmtForInput(iso?: string | null): string {
   if (!iso) return '';
-  try { return new Date(iso).toISOString().slice(0,16); } catch { return ''; }
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}T${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`;
+}
+
+function toISOStringFromLocalDateTime(value: string): string | undefined {
+  if (!value) return undefined;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
 }
 
 function settingsObject(t: Test): Record<string, unknown> {
@@ -109,7 +120,6 @@ function toFormState(t: Test): FormState {
     allowAccessCode:       booleanSetting(ext, settings, 'allowAccessCode', false),
     shuffleQuestions:      t.shuffleQuestions ?? false,
     shuffleOptions:        t.shuffleOptions ?? false,
-    allowBackNavigation:   booleanSetting(ext, settings, 'allowBackNavigation', false),
     showTimer:             booleanSetting(ext, settings, 'showTimer', true),
     autoSubmitOnTimeout:   booleanSetting(ext, settings, 'autoSubmitOnTimeout', true),
     negativeMarkingEnabled:(t.negativeMarking ?? 0) > 0,
@@ -289,15 +299,14 @@ export default function TestSettings() {
       await adminApi.updateTest(testId, {
         name: form.name, description: form.description,
         category: form.category, language: form.language,
-        startTime: form.startTime || undefined,
-        endTime:   form.endTime   || undefined,
+        startTime: toISOStringFromLocalDateTime(form.startTime),
+        endTime:   toISOStringFromLocalDateTime(form.endTime),
         requireInvitationLink: form.requireInvitationLink,
         allowMultipleAttempts: !form.limitToOneAttempt,
         requireIdVerification: form.requireIdVerification,
         allowAccessCode:       form.allowAccessCode,
         shuffleQuestions:      form.shuffleQuestions,
         shuffleOptions:        form.shuffleOptions,
-        allowBackNavigation:   form.allowBackNavigation,
         showTimer:             form.showTimer,
         autoSubmitOnTimeout:   form.autoSubmitOnTimeout,
         negativeMarking:       form.negativeMarkingEnabled ? 0.25 : 0,
@@ -506,7 +515,6 @@ export default function TestSettings() {
 
                 <ToggleRow label="Randomize question order"  desc="Shuffle per candidate"               on={form.shuffleQuestions}       onChange={() => patch({ shuffleQuestions: !form.shuffleQuestions })} />
                 <ToggleRow label="Randomize answer options"  desc="Shuffle MCQ choices"                 on={form.shuffleOptions}         onChange={() => patch({ shuffleOptions: !form.shuffleOptions })} />
-                <ToggleRow label="Allow back navigation"     desc="Revisit previous questions"          on={form.allowBackNavigation}    onChange={() => patch({ allowBackNavigation: !form.allowBackNavigation })} />
                 <ToggleRow label="Show timer"                desc="Visible countdown"                   on={form.showTimer}              onChange={() => patch({ showTimer: !form.showTimer })} />
                 <ToggleRow label="Auto-submit on timeout"    desc="Submit when time ends"               on={form.autoSubmitOnTimeout}    onChange={() => patch({ autoSubmitOnTimeout: !form.autoSubmitOnTimeout })} />
                 <ToggleRow label="Negative marking"          desc="Deduct points for wrong answers"     on={form.negativeMarkingEnabled} onChange={() => patch({ negativeMarkingEnabled: !form.negativeMarkingEnabled })} last />

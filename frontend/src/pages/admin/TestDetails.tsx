@@ -101,11 +101,13 @@ interface TestAnalytics {
 
 type ActiveTab = 'overview' | 'questions' | 'candidates' | 'ai-proctoring' | 'settings';
 
+const STATUS_START_GRACE_MS = 60 * 1000;
+
 function getTestStatus(test: Test): 'Published' | 'Draft' | 'Scheduled' | 'Archived' {
-  const now = new Date();
-  if (test.endTime && new Date(test.endTime) < now) return 'Archived';
+  const nowMs = Date.now();
+  if (test.endTime && new Date(test.endTime).getTime() < nowMs) return 'Archived';
   if (!test.isActive) return 'Draft';
-  if (new Date(test.startTime) > now) return 'Scheduled';
+  if (new Date(test.startTime).getTime() > nowMs + STATUS_START_GRACE_MS) return 'Scheduled';
   return 'Published';
 }
 
@@ -815,11 +817,6 @@ export default function TestDetails() {
             >
               <Link2 size={14} />
               Invite link
-              {totalAttempts > 0 && (
-                <span className="text-xs font-bold" style={{ color: 'var(--admin-text-subtle)' }}>
-                  {Math.min(totalAttempts, 9)}
-                </span>
-              )}
             </button>
             <button
               onClick={handlePublish}

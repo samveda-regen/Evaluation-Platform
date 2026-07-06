@@ -26,7 +26,6 @@ interface TestState {
   violations: number;
   isSubmitted: boolean;
   submissionResult: SubmissionResult | null;
-  allowBackNavigation: boolean;
   showTimer: boolean;
   autoSubmitOnTimeout: boolean;
 
@@ -48,7 +47,6 @@ interface TestState {
     startTime: Date;
     questions: TestQuestion[];
     initialViolations?: number;
-    allowBackNavigation?: boolean;
     showTimer?: boolean;
     autoSubmitOnTimeout?: boolean;
   }) => void;
@@ -87,7 +85,6 @@ export const useTestStore = create<TestState>((set, get) => ({
   violations: 0,
   isSubmitted: false,
   submissionResult: null,
-  allowBackNavigation: false,
   showTimer: true,
   autoSubmitOnTimeout: true,
 
@@ -114,7 +111,6 @@ export const useTestStore = create<TestState>((set, get) => ({
     behavioralAnswers: {},
     violations: data.initialViolations ?? 0,
     isSubmitted: false,
-    allowBackNavigation: data.allowBackNavigation ?? false,
     showTimer: data.showTimer ?? true,
     autoSubmitOnTimeout: data.autoSubmitOnTimeout ?? true,
   }),
@@ -174,7 +170,6 @@ export const useTestStore = create<TestState>((set, get) => ({
     violations: 0,
     isSubmitted: false,
     submissionResult: null,
-    allowBackNavigation: false,
     showTimer: true,
     autoSubmitOnTimeout: true
   }),

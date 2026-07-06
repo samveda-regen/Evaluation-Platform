@@ -71,7 +71,7 @@ export default function TestInterface() {
     mcqAnswers, codingAnswers, behavioralAnswers, isSubmitted,
     setCurrentQuestion, saveMCQAnswer, saveCodingAnswer, saveBehavioralAnswer,
     incrementViolations, setSubmitted, violationPopupSettings,
-    allowBackNavigation, showTimer, autoSubmitOnTimeout,
+    showTimer, autoSubmitOnTimeout,
   } = useTestStore();
 
   const [timeRemaining, setTimeRemaining] = useState<number>(0);
@@ -100,7 +100,6 @@ export default function TestInterface() {
   const [timeUp, setTimeUp] = useState(false);
 
   const autoSaveRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const highestReachedIndexRef = useRef(0);
   const cameraPreviewRef = useRef<HTMLVideoElement | null>(null);
   const networkBtnRef = useRef<HTMLButtonElement | null>(null);
   const isFullscreenRef = useRef(false);
@@ -229,12 +228,6 @@ export default function TestInterface() {
   const answeringLocked = isTestFrozen || timeUp;
 
   useEffect(() => { proctorStatusRef.current = proctorStatus; }, [proctorStatus]);
-
-  useEffect(() => {
-    if (currentQuestionIndex > highestReachedIndexRef.current) {
-      highestReachedIndexRef.current = currentQuestionIndex;
-    }
-  }, [currentQuestionIndex]);
 
   useEffect(() => {
     if (timeUp && !isSubmitted) setShowConfirmSubmit(true);
@@ -741,7 +734,6 @@ export default function TestInterface() {
                 key={idx}
                 onClick={() => {
                   if (isTestFrozen) return;
-                  if (!allowBackNavigation && idx < highestReachedIndexRef.current) return;
                   saveCurrentAnswer();
                   setCurrentQuestion(idx);
                 }}
@@ -777,11 +769,11 @@ export default function TestInterface() {
     <footer className="bg-white border-t flex items-center justify-between px-6 py-3" style={{ borderColor: 'var(--admin-border)' }}>
       <button
         onClick={() => {
-          if (isTestFrozen || currentQuestionIndex === 0 || !allowBackNavigation) return;
+          if (isTestFrozen || currentQuestionIndex === 0) return;
           saveCurrentAnswer();
           setCurrentQuestion(currentQuestionIndex - 1);
         }}
-        disabled={currentQuestionIndex === 0 || isTestFrozen || !allowBackNavigation}
+        disabled={currentQuestionIndex === 0 || isTestFrozen}
         className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

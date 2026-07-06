@@ -882,7 +882,6 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
     let startRequireCamera = test.requireCamera;
     let startRequireMicrophone = test.requireMicrophone;
     let startRequireScreenShare = test.requireScreenShare;
-    let startAllowBackNavigation = false;
     let startShowTimer = true;
     let startAutoSubmitOnTimeout = true;
     if (proctoringSettingsRawForStart) {
@@ -893,7 +892,6 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
           if (typeof ps.micOn === 'boolean') startRequireMicrophone = ps.micOn;
           if (typeof ps.screenOn === 'boolean') startRequireScreenShare = ps.screenOn;
         }
-        if (typeof ps.allowBackNavigation === 'boolean') startAllowBackNavigation = ps.allowBackNavigation;
         if (typeof ps.showTimer === 'boolean') startShowTimer = ps.showTimer;
         if (typeof ps.autoSubmitOnTimeout === 'boolean') startAutoSubmitOnTimeout = ps.autoSubmitOnTimeout;
       } catch { /* ignore malformed JSON */ }
@@ -913,7 +911,6 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
         maxViolations: test.maxViolations,
         customAIViolations: parseStoredCustomAIViolationEvents(test.customAIViolations),
         violationPopupSettings: violationPopupSettingsRaw || undefined,
-        allowBackNavigation: startAllowBackNavigation,
         showTimer: startShowTimer,
         autoSubmitOnTimeout: startAutoSubmitOnTimeout,
       },

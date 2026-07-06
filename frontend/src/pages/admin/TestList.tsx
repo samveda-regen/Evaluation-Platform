@@ -27,11 +27,13 @@ const headerActionStyle: React.CSSProperties = {
   justifyContent: 'center',
 };
 
+const STATUS_START_GRACE_MS = 60 * 1000;
+
 function getTestStatus(test: Test): 'Published' | 'Draft' | 'Scheduled' | 'Archived' {
-  const now = new Date();
-  if (test.endTime && new Date(test.endTime) < now) return 'Archived';
+  const nowMs = Date.now();
+  if (test.endTime && new Date(test.endTime).getTime() < nowMs) return 'Archived';
   if (!test.isActive) return 'Draft';
-  if (new Date(test.startTime) > now) return 'Scheduled';
+  if (new Date(test.startTime).getTime() > nowMs + STATUS_START_GRACE_MS) return 'Scheduled';
   return 'Published';
 }
 
