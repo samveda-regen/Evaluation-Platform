@@ -156,6 +156,10 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
   const snapshotAnalysisInFlightRef = useRef(false);
   const analysisFailureStreakRef = useRef(0);
   const analysisBackoffUntilRef = useRef(0);
+  // Real (not nominal) time since the previous analysis cycle actually ran —
+  // reported to the backend so the Superadmin Observer's live telemetry
+  // reflects the achieved proctoring refresh rate, not the configured one.
+  const lastAnalysisAtRef = useRef<number | null>(null);
 
   const serverViolationSeenRef = useRef<Record<string, number>>({});
   const obstructionStateRef = useRef<{
@@ -967,6 +971,12 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
         ? undefined
         : audioAnalyzerRef.current?.analyze();
 
+      const analysisStartedAt = Date.now();
+      const actualIntervalMs = lastAnalysisAtRef.current !== null
+        ? analysisStartedAt - lastAnalysisAtRef.current
+        : undefined;
+      lastAnalysisAtRef.current = analysisStartedAt;
+
       let analysisResult: { violations: ViolationData[]; shouldTerminate: boolean };
       try {
         analysisResult = await submitAnalysis(session.sessionId, {
@@ -978,6 +988,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
             isFullscreen: !!document.fullscreenElement,
             tabVisible: !document.hidden,
           },
+          ...(actualIntervalMs !== undefined ? { actualIntervalMs } : {}),
         });
       } catch (err) {
         console.error('snapshot analysis API failed:', err);
@@ -1336,6 +1347,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     runAudioAnalysis,
     capturePreviewFrame,
     captureEvidenceFrame,
+    screenStream: screenStreamRef.current,
   };
 }
 

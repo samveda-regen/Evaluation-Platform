@@ -36,12 +36,41 @@ model Admin {
   resetPasswordExpiresAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Force-logout: any JWT with iat before this timestamp is rejected by
+  // adminAuth, regardless of its own expiry. Set by the superadmin
+  // "kill session" action — kills every device/tab at once.
+  tokensValidAfter DateTime?
+
+  // Persistent login lockout (on top of the IP-based rate limiter).
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+
+  // Security-driven lock (anomaly detection or manual superadmin action).
+  // Distinct from AdminBilling.status='suspended', which only blocks
+  // billed actions — this blocks the account entirely.
+  securityLocked       Boolean  @default(false)
+  securityLockReason   String?
+  securityLockedAt     DateTime?
+
+  // Soft-delete grace period. While pendingDeletionAt is set and in the
+  // future, the account still works normally; a scheduled job performs the
+  // real cascade-delete once it elapses. Superadmin can cancel any time
+  // before then.
+  pendingDeletionAt          DateTime?
+  deletionReason             String?
+  deletionScheduledByEmail   String?
+
   company   Company? @relation(fields: [companyId], references: [id])
   sessions  AuthSession[]
   tests     Test[]
   mcqQuestions    MCQQuestion[]
   codingQuestions CodingQuestion[]
   behavioralQuestions BehavioralQuestion[]
+  actionLogs  AdminActionLog[]
+  auditLogs   AuditLog[]
+  clickEvents AdminClickEvent[]
+  billing     AdminBilling?
 
   @@index([companyId])
   @@index([resetPasswordTokenHash])
@@ -105,6 +134,10 @@ model Test {
   shuffleOptions        Boolean   @default(false)
   allowMultipleAttempts Boolean   @default(false)
   maxViolations         Int       @default(3)
+  // Set true only by the AI test-generation flow (testAgent.ts) — lets the
+  // billing subsystem count AI generations distinctly from manually-created
+  // tests without a separate log table.
+  isAiGenerated         Boolean   @default(false)
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
@@ -776,4 +809,308 @@ model FileStorage {
   @@index([questionId])
   @@index([candidateId])
   @@index([sessionId])
+}
+
+// ===================== Superadmin Observer =====================
+
+model SuperAdmin {
+  id          String    @id @default(uuid())
+  email       String    @unique
+  password    String
+  name        String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  lastLoginAt DateTime?
+
+  // full_control: everything. read_only: every GET works, every mutating
+  // route is rejected by requireFullControl — lets a second person watch
+  // without being able to delete accounts, toggle locks, etc.
+  role String @default("full_control")
+
+  tokensValidAfter DateTime?
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+
+  totpSecret  String?
+  totpEnabled Boolean @default(false)
+
+  sessions SuperAdminSession[]
+}
+
+// Mirrors AuthSession (used today by the integration/recruiter refresh
+// flow) but scoped to SuperAdmin, which isn't an Admin row.
+model SuperAdminSession {
+  id               String    @id @default(uuid())
+  superAdminId     String
+  refreshTokenHash String    @unique
+  userAgent        String?
+  ipAddress        String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  superAdmin SuperAdmin @relation(fields: [superAdminId], references: [id], onDelete: Cascade)
+
+  @@index([superAdminId])
+}
+
+// One row per (owner, device) fingerprint ever seen at login — first sight
+// of a new one triggers a "new device/IP" alert.
+model LoginDeviceFingerprint {
+  id              String   @id @default(uuid())
+  ownerType       String // admin | superadmin
+  ownerId         String
+  fingerprintHash String
+  firstSeenAt     DateTime @default(now())
+  lastSeenAt      DateTime @default(now())
+
+  @@unique([ownerType, ownerId, fingerprintHash])
+}
+
+model SuperAdminIpAllowlistEntry {
+  id             String   @id @default(uuid())
+  cidrOrIp       String
+  label          String?
+  createdAt      DateTime @default(now())
+  createdByEmail String?
+}
+
+// Singleton (key="global") toggle for the superadmin login IP allowlist.
+// Defaults OFF — enabling it without at least one allowlist entry covering
+// your own current IP would lock you out, so the login/toggle endpoint
+// refuses to enable it if the caller's own IP isn't already listed.
+model SecuritySettings {
+  id                 String   @id @default(uuid())
+  key                String   @unique
+  ipAllowlistEnabled Boolean  @default(false)
+  updatedByEmail     String?
+  updatedAt          DateTime @updatedAt
+}
+
+model AlertConfig {
+  id                       String   @id @default(uuid())
+  key                      String   @unique
+  enabled                  Boolean  @default(false)
+  emailTo                  String?
+  slackWebhookUrl          String?
+  genericWebhookUrl        String?
+  apiLatencyP95ThresholdMs Int?
+  sustainedMinutes         Int      @default(5)
+  updatedByEmail           String?
+  updatedAt                DateTime @updatedAt
+}
+
+model AlertLog {
+  id           String   @id @default(uuid())
+  type         String
+  severity     String // info | warning | critical
+  message      String
+  meta         Json?
+  delivered    Boolean  @default(false)
+  deliveryError String?
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([type])
+}
+
+// Maintains the running tip of the AuditLog hash chain (see AuditLog.hash).
+// Kept as its own singleton row rather than re-querying "the last AuditLog
+// row" so the chain update can happen inside the same transaction as the
+// AuditLog insert without a race between concurrent writers.
+model AuditChainState {
+  id       String  @id @default(uuid())
+  key      String  @unique
+  lastHash String?
+}
+
+// Server-guaranteed log of every authenticated admin API request.
+// adminId is intentionally nullable/SetNull (not Cascade): deleting an
+// admin must not erase the oversight record of what that admin did.
+model AdminActionLog {
+  id         String   @id @default(uuid())
+  adminId    String?
+  admin      Admin?   @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  adminEmail String
+  adminName  String
+  method     String
+  path       String
+  statusCode Int
+  durationMs Int
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([adminId])
+  @@index([createdAt])
+}
+
+// Before/after diff log for mutating admin actions (the "what changed" trail).
+model AuditLog {
+  id           String   @id @default(uuid())
+  actorAdminId String?
+  actorAdmin   Admin?   @relation(fields: [actorAdminId], references: [id], onDelete: SetNull)
+  actorEmail   String
+  action       String // create | update | delete
+  resourceType String
+  resourceId   String?
+  // Encrypted (AES-256-GCM) when AUDIT_ENCRYPTION_KEY is configured — shape
+  // is then { enc: "<base64 ciphertext>" } instead of the raw diff. Falls
+  // back to plaintext (with a startup warning) if no key is configured.
+  before       Json?
+  after        Json?
+  createdAt    DateTime @default(now())
+
+  // Tamper-evident hash chain — see AuditChainState. prevHash/hash are
+  // nullable so historical rows predating this feature don't need a
+  // backfill; the verifier treats the first hashed row as the chain start.
+  prevHash String?
+  hash     String?
+
+  @@index([actorAdminId])
+  @@index([resourceType, resourceId])
+  @@index([createdAt])
+}
+
+// Client-reported UI click/navigation stream, supplementing AdminActionLog
+// with interactions that don't hit the network (opening a modal, etc).
+model AdminClickEvent {
+  id              String   @id @default(uuid())
+  adminId         String?
+  admin           Admin?   @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  adminEmail      String
+  sessionId       String
+  eventType       String
+  targetLabel     String?
+  targetSelector  String?
+  route           String?
+  metadata        Json?
+  clientTimestamp DateTime
+  receivedAt      DateTime @default(now())
+
+  @@index([adminId])
+  @@index([receivedAt])
+}
+
+model FeatureFlag {
+  id             String   @id @default(uuid())
+  key            String   @unique
+  label          String
+  description    String?
+  enabled        Boolean  @default(true)
+  scope          String   @default("GLOBAL") // GLOBAL | ADMIN
+  scopedAdminId  String?
+  updatedByEmail String?
+  updatedAt      DateTime @updatedAt
+
+  @@index([scopedAdminId])
+}
+
+// Periodic rollup of live telemetry (ping, proctoring fps, CV latency,
+// failed-request rate) for historical charts. "Live" numbers themselves
+// are served from an in-memory ring buffer, not this table.
+model TelemetrySnapshot {
+  id                   String   @id @default(uuid())
+  capturedAt           DateTime @default(now())
+  activeSessions       Int
+  medianPingMs         Float?
+  refreshFps           Float?
+  cvLatencyP50Ms       Float?
+  cvLatencyP95Ms       Float?
+  failedRequestRatePct Float?
+  regionBreakdown      Json?
+  // Overall application smoothness: real admin-API response times (not
+  // just proctoring/CV calls) and real browser rendering frame rate,
+  // reported by admin tabs via a requestAnimationFrame loop.
+  apiLatencyP50Ms      Float?
+  apiLatencyP95Ms      Float?
+  appFps               Float?
+
+  @@index([capturedAt])
+}
+
+// ==================== BILLING (superadmin-managed, preview) ====================
+// The whole billing subsystem is gated by BillingSettings.enabled (a single
+// row, checked by the billingGate middleware before any quota is enforced).
+// When disabled — the default — every quota check is a no-op and the app
+// behaves exactly as it did before this subsystem existed. This is
+// deliberate: billing is not yet board-approved and must be a fully inert,
+// zero-risk toggle until it is switched on.
+
+model BillingPlan {
+  id                      String   @id @default(uuid())
+  key                     String   @unique
+  label                   String
+  description             String?
+  priceMonthly            Float?
+  // null = unlimited for any of the limits below
+  maxTests                Int?
+  maxAiGenerations        Int?
+  maxInvitationsPerCycle  Int?
+  maxConcurrentProctoring Int?
+  maxCustomQuestions      Int?
+  maxStorageMb            Int?
+  isCustom                Boolean  @default(false)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  subscriptions AdminBilling[]
+}
+
+// One row per Admin (billing is scoped to the individual exam-portal admin,
+// matching how every other superadmin screen — accounts, action log,
+// feature flags — is already scoped to Admin rather than Company).
+model AdminBilling {
+  id                 String    @id @default(uuid())
+  adminId            String    @unique
+  admin              Admin     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  planId             String
+  plan               BillingPlan @relation(fields: [planId], references: [id])
+  status             String    @default("active") // active | trialing | suspended | cancelled
+  trialEndsAt        DateTime?
+  currentPeriodStart DateTime  @default(now())
+  currentPeriodEnd   DateTime?
+  addOnAiGenerations Int       @default(0)
+  overrideNote       String?
+  suspendedAt        DateTime?
+  suspendedReason    String?
+  updatedByEmail     String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  invoices BillingInvoice[]
+
+  @@index([planId])
+  @@index([status])
+}
+
+// Manual billing/payment record — this build does not integrate a live
+// payment processor (no Stripe/Razorpay credentials exist yet), so invoices
+// are recorded by the superadmin rather than generated from webhooks. The
+// schema is shaped so a real processor could be wired in later without a
+// migration (add a `providerRef` column and start writing rows from a
+// webhook handler instead of the manual-entry endpoint).
+model BillingInvoice {
+  id             String   @id @default(uuid())
+  adminBillingId String
+  adminBilling   AdminBilling @relation(fields: [adminBillingId], references: [id], onDelete: Cascade)
+  amount         Float
+  currency       String   @default("USD")
+  status         String // paid | pending | failed | manual
+  note           String?
+  issuedAt       DateTime @default(now())
+  createdByEmail String?
+
+  @@index([adminBillingId])
+  @@index([issuedAt])
+}
+
+// Singleton row (key = "global") — the master enable/disable switch for the
+// entire billing subsystem.
+model BillingSettings {
+  id             String   @id @default(uuid())
+  key            String   @unique
+  enabled        Boolean  @default(false)
+  updatedByEmail String?
+  updatedAt      DateTime @updatedAt
 }

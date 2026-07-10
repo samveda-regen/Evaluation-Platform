@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { QuestionRepositoryCategory, QuestionSource } from '@prisma/client';
+import { Prisma, QuestionRepositoryCategory, QuestionSource } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import { AuthenticatedRequest } from '../types/index.js';
 import { sanitizeInput } from '../utils/sanitize.js';
@@ -759,6 +759,35 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
   }
 }
 
+// Deletes a Test and everything under it. Extracted from the single-test
+// delete flow so the same, already-battle-tested cascade order can also be
+// used by the Superadmin Observer's admin-account deletion (which needs to
+// wipe every test an admin owns, not just one) — see
+// superAdminAccounts.ts::deleteAdminAccount. Must be called inside an
+// existing transaction (`tx`), since required FKs on Test/MCQQuestion/etc.
+// default to Restrict, not Cascade, and Postgres enforces child-before-
+// parent deletion order.
+export async function cascadeDeleteTestTx(tx: Prisma.TransactionClient, testId: string): Promise<void> {
+  const attempts = await tx.testAttempt.findMany({ where: { testId }, select: { id: true } });
+  const attemptIds = attempts.map((a) => a.id);
+
+  if (attemptIds.length > 0) {
+    await tx.performanceAnalytics.deleteMany({ where: { attemptId: { in: attemptIds } } });
+    await tx.proctorEvent.deleteMany({ where: { session: { attemptId: { in: attemptIds } } } });
+    await tx.proctorRecording.deleteMany({ where: { session: { attemptId: { in: attemptIds } } } });
+    await tx.faceSnapshot.deleteMany({ where: { session: { attemptId: { in: attemptIds } } } });
+    await tx.proctorSession.deleteMany({ where: { attemptId: { in: attemptIds } } });
+    await tx.mCQAnswer.deleteMany({ where: { attemptId: { in: attemptIds } } });
+    await tx.codingAnswer.deleteMany({ where: { attemptId: { in: attemptIds } } });
+    await tx.activityLog.deleteMany({ where: { attemptId: { in: attemptIds } } });
+    await tx.testAttempt.deleteMany({ where: { testId } });
+  }
+
+  await tx.testAnalytics.deleteMany({ where: { testId } });
+  await tx.testQuestion.deleteMany({ where: { testId } });
+  await tx.test.delete({ where: { id: testId } });
+}
+
 export async function deleteTest(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { testId } = req.params;
@@ -767,9 +796,6 @@ export async function deleteTest(req: AuthenticatedRequest, res: Response): Prom
       where: {
         id: testId,
         adminId: req.admin!.id
-      },
-      include: {
-        attempts: true
       }
     });
 
@@ -778,65 +804,8 @@ export async function deleteTest(req: AuthenticatedRequest, res: Response): Prom
       return;
     }
 
-    // Delete all related data in a transaction
     await prisma.$transaction(async (tx) => {
-      // Get all attempt IDs for this test
-      const attemptIds = test.attempts.map(a => a.id);
-
-      if (attemptIds.length > 0) {
-        // Delete all attempt-related data
-        await tx.performanceAnalytics.deleteMany({
-          where: { attemptId: { in: attemptIds } }
-        });
-
-        await tx.proctorEvent.deleteMany({
-          where: { session: { attemptId: { in: attemptIds } } }
-        });
-
-        await tx.proctorRecording.deleteMany({
-          where: { session: { attemptId: { in: attemptIds } } }
-        });
-
-        await tx.faceSnapshot.deleteMany({
-          where: { session: { attemptId: { in: attemptIds } } }
-        });
-
-        await tx.proctorSession.deleteMany({
-          where: { attemptId: { in: attemptIds } }
-        });
-
-        await tx.mCQAnswer.deleteMany({
-          where: { attemptId: { in: attemptIds } }
-        });
-
-        await tx.codingAnswer.deleteMany({
-          where: { attemptId: { in: attemptIds } }
-        });
-
-        await tx.activityLog.deleteMany({
-          where: { attemptId: { in: attemptIds } }
-        });
-
-        // Delete test attempts
-        await tx.testAttempt.deleteMany({
-          where: { testId }
-        });
-      }
-
-      // Delete test analytics
-      await tx.testAnalytics.deleteMany({
-        where: { testId }
-      });
-
-      // Delete test questions
-      await tx.testQuestion.deleteMany({
-        where: { testId }
-      });
-
-      // Finally, delete the test
-      await tx.test.delete({
-        where: { id: testId }
-      });
+      await cascadeDeleteTestTx(tx, testId);
     });
 
     res.json({ message: 'Test deleted successfully' });

@@ -1,7 +1,14 @@
 import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { verifyToken } from '../utils/jwt.js';
-import { AuthenticatedRequest, AdminPayload, CandidatePayload, IntegrationPayload } from '../types/index.js';
+import { getAdminSecurityState, getSuperAdminSecurityState } from '../services/sessionSecurity.js';
+import {
+  AuthenticatedRequest,
+  AdminPayload,
+  CandidatePayload,
+  IntegrationPayload,
+  SuperAdminPayload,
+} from '../types/index.js';
 
 type RecruiterJwtPayload = jwt.JwtPayload & {
   sub?: string;
@@ -71,7 +78,7 @@ function verifyRecruiterAccessToken(token: string): IntegrationPayload | null {
   }
 }
 
-export function adminAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+export async function adminAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -87,7 +94,76 @@ export function adminAuth(req: AuthenticatedRequest, res: Response, next: NextFu
     return;
   }
 
-  req.admin = payload as AdminPayload;
+  const adminPayload = payload as AdminPayload;
+
+  // Defense-in-depth on top of the signature/expiry check above, which
+  // remains the primary and always-enforced boundary. A failure looking up
+  // this extra state (e.g. a transient DB hiccup) fails OPEN — it must
+  // never turn a DB blip into a platform-wide admin outage.
+  try {
+    const state = await getAdminSecurityState(adminPayload.id);
+    if (state.tokensValidAfter && (adminPayload.iat ?? 0) * 1000 < state.tokensValidAfter) {
+      res.status(401).json({ error: 'session_revoked', message: 'Your session was revoked. Please log in again.' });
+      return;
+    }
+    if (state.securityLocked) {
+      res.status(403).json({
+        error: 'account_locked',
+        message: `Your account has been locked${state.securityLockReason ? `: ${state.securityLockReason}` : ''}.`,
+      });
+      return;
+    }
+  } catch (error) {
+    console.error('adminAuth security-state check failed, failing open:', error);
+  }
+
+  req.admin = adminPayload;
+  next();
+}
+
+export async function superAdminAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    res.status(401).json({ error: 'Authorization token required' });
+    return;
+  }
+
+  const token = authHeader.split(' ')[1];
+  const payload = verifyToken(token);
+
+  if (!payload || payload.role !== 'superadmin') {
+    res.status(401).json({ error: 'Invalid or expired superadmin token' });
+    return;
+  }
+
+  const superAdminPayload = payload as SuperAdminPayload;
+
+  try {
+    const state = await getSuperAdminSecurityState(superAdminPayload.id);
+    if (state.tokensValidAfter && (superAdminPayload.iat ?? 0) * 1000 < state.tokensValidAfter) {
+      res.status(401).json({ error: 'session_revoked', message: 'Your session was revoked. Please log in again.' });
+      return;
+    }
+  } catch (error) {
+    console.error('superAdminAuth security-state check failed, failing open:', error);
+  }
+
+  req.superAdmin = superAdminPayload;
+  next();
+}
+
+// Applied per-route after superAdminAuth, on mutating endpoints only.
+// read_only superadmins can hit every GET route freely (nothing here gates
+// reads) but are rejected from anything that changes state.
+export function requireFullControl(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+  if (req.superAdmin?.accessLevel === 'read_only') {
+    res.status(403).json({
+      error: 'read_only_superadmin',
+      message: 'Your superadmin account is read-only and cannot perform this action.',
+    });
+    return;
+  }
   next();
 }
 

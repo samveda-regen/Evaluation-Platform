@@ -16,9 +16,14 @@ import {
   getAttemptProctoringSummary,
   updateMobileDevice,
   updateMonitorCount,
+  getAllLiveAdminSessions,
   getLiveTestSessions,
   ingestExternalEngineEvent,
 } from '../controllers/proctoring';
+import {
+  getAdminLiveToken,
+  getCandidateLiveToken,
+} from '../controllers/liveProctoring';
 
 const router = Router();
 
@@ -26,6 +31,9 @@ const router = Router();
 
 // Initialize proctoring session when test starts
 router.post('/session/:attemptId/init', candidateAuth, initializeSession);
+
+// Start the separate LiveKit/WebRTC media pipeline after proctoring permissions pass.
+router.post('/live/candidate/attempt/:attemptId/token', candidateAuth, getCandidateLiveToken);
 
 // Submit real-time proctoring analysis data
 router.post('/session/:sessionId/analysis', candidateAuth, submitAnalysis);
@@ -73,7 +81,13 @@ router.get('/admin/session/:sessionId/recordings', adminAuth, getSessionRecordin
 // Get proctoring summary for an attempt
 router.get('/admin/attempt/:attemptId/summary', adminAuth, getAttemptProctoringSummary);
 
+// Get all live proctoring sessions for the admin across tests
+router.get('/admin/live', adminAuth, getAllLiveAdminSessions);
+
 // Get all live proctoring sessions for a test
 router.get('/admin/test/:testId/live', adminAuth, getLiveTestSessions);
+
+// Watch a candidate's LiveKit/WebRTC room without granting publish permissions.
+router.post('/admin/live/attempt/:attemptId/token', adminAuth, getAdminLiveToken);
 
 export default router;

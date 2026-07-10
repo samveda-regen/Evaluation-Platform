@@ -17,9 +17,19 @@ import analyticsRoutes from './routes/analytics.js';
 import filesRoutes from './routes/files.js';
 import invitationRoutes from './routes/invitations.js';
 import integrationRoutes from './routes/integration.js';
+import superadminRoutes from './routes/superadmin.js';
 import { setSocketServer } from './services/socketService.js';
+import { adminActionLogger } from './middleware/adminActionLogger.js';
+import { verifyToken } from './utils/jwt.js';
+import { SUPERADMIN_ROOM, emitToSuperAdminRoom } from './services/socketService.js';
+import { recordPingSample, recordAppFpsSample, getLiveTelemetrySnapshot } from './services/telemetryRingBuffer.js';
 import prisma from './utils/db.js';
 import { ensureNotificationTable } from './controllers/notifications.js';
+import { ensureDefaultFeatureFlags } from './controllers/superAdminFeatureFlags.js';
+import { ensureDefaultBillingPlans } from './services/billing.js';
+import { checkTelemetryThresholds } from './services/telemetryAlerting.js';
+import { runAnomalyDetection } from './services/anomalyLock.js';
+import { runScheduledDeletions } from './services/softDelete.js';
 
 function applyEnvFile(envPath: string): boolean {
   if (!fs.existsSync(envPath)) return false;
@@ -148,6 +158,7 @@ const io = new SocketServer(httpServer, {
 setSocketServer(io);
 
 const candidateSocketPresence = new Map<string, { testId: string; attemptId: string }>();
+const adminSocketPresence = new Map<string, { adminId: string; adminEmail?: string }>();
 
 const PORT = process.env.PORT || 3000;
 
@@ -211,6 +222,14 @@ app.use('/api/admin/register', authLimiter);
 app.use('/api/admin/forgot-password', authLimiter);
 app.use('/api/admin/reset-password', authLimiter);
 app.use('/api/candidate/login', authLimiter);
+app.use('/api/superadmin/login', authLimiter);
+app.use('/api/admin/refresh-token', authLimiter);
+app.use('/api/superadmin/refresh-token', authLimiter);
+
+// Superadmin Observer: guaranteed-complete admin activity log. Registered
+// before route mounting so it observes every admin request regardless of
+// which route file handled it (see adminActionLogger.ts for how).
+app.use(adminActionLogger);
 
 app.use('/api/candidate/answer', submissionLimiter);
 app.use('/api/candidate/test/submit', submissionLimiter);
@@ -252,6 +271,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/files', filesRoutes);
 app.use('/api/invitations', invitationRoutes);
 app.use('/api/integration', integrationRoutes);
+app.use('/api/superadmin', superadminRoutes);
 
 // WebSocket
 io.on('connection', (socket) => {
@@ -264,7 +284,41 @@ io.on('connection', (socket) => {
 
   socket.on('admin-join', (adminId: string) => {
     socket.join(`admin-${adminId}`);
+    adminSocketPresence.set(socket.id, { adminId });
+    emitToSuperAdminRoom('admin-online', { adminId, timestamp: new Date().toISOString() });
     console.log(`Admin ${adminId} joined monitoring`);
+  });
+
+  // Unlike admin-join above (which trusts a bare client-supplied id — a
+  // pre-existing gap in this codebase), superadmin-join carries the actual
+  // JWT and is verified server-side before the socket is allowed into the
+  // observer room, since that room silently streams every admin's activity.
+  socket.on('superadmin-join', (token: string) => {
+    const payload = typeof token === 'string' ? verifyToken(token) : null;
+    if (!payload || payload.role !== 'superadmin') {
+      socket.emit('superadmin-join-rejected', { reason: 'invalid_token' });
+      return;
+    }
+    socket.join(SUPERADMIN_ROOM);
+    socket.emit('superadmin-join-accepted', {
+      onlineAdmins: [...new Set([...adminSocketPresence.values()].map((p) => p.adminId))],
+    });
+  });
+
+  // App-level echo used to measure real round-trip latency for admin
+  // sessions (Socket.io doesn't expose transport-level RTT to app code).
+  socket.on('latency-ping', (clientTs: number) => {
+    socket.emit('latency-pong', clientTs);
+  });
+
+  socket.on('report-latency', (rttMs: number) => {
+    recordPingSample(rttMs);
+  });
+
+  // Real browser-measured rendering FPS from an admin tab's own
+  // requestAnimationFrame loop — the "how smooth does the UI feel" signal.
+  socket.on('report-app-fps', (fps: number) => {
+    recordAppFpsSample(fps);
   });
 
   socket.on('admin-proctor-join', (testId: string) => {
@@ -332,6 +386,23 @@ io.on('connection', (socket) => {
       });
       candidateSocketPresence.delete(socket.id);
     }
+
+    const adminInfo = adminSocketPresence.get(socket.id);
+    if (adminInfo) {
+      // Only announce fully offline once no other socket (e.g. another tab)
+      // for the same admin is still connected.
+      const stillConnectedElsewhere = [...adminSocketPresence.entries()].some(
+        ([id, info]) => id !== socket.id && info.adminId === adminInfo.adminId
+      );
+      adminSocketPresence.delete(socket.id);
+      if (!stillConnectedElsewhere) {
+        emitToSuperAdminRoom('admin-offline', {
+          adminId: adminInfo.adminId,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
+
     console.log('Client disconnected:', socket.id);
   });
 });
@@ -346,6 +417,48 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
+
+// Periodically samples the live telemetry ring buffers into TelemetrySnapshot
+// so the Superadmin Observer's history charts show real sampled data, never
+// invented. The "live" numbers themselves are pushed to the observer room in
+// real time (see TELEMETRY_TICK_INTERVAL_MS below) so the Telemetry screen
+// updates on its own — no manual refresh needed — and are also served on
+// demand via the REST endpoint (superAdminTelemetry.ts::getLiveTelemetry)
+// for the initial page load.
+const TELEMETRY_SNAPSHOT_INTERVAL_MS = 60_000;
+async function snapshotTelemetry(): Promise<void> {
+  try {
+    const activeSessions = await prisma.proctorSession.count({ where: { endedAt: null } });
+    // sampleCounts isn't a TelemetrySnapshot column — it's diagnostic-only,
+    // included in the live/tick payloads but not persisted.
+    const { sampleCounts: _sampleCounts, ...persistable } = getLiveTelemetrySnapshot();
+    const snapshot = await prisma.telemetrySnapshot.create({
+      data: { activeSessions, ...persistable },
+    });
+    emitToSuperAdminRoom('telemetry-snapshot', snapshot);
+  } catch (error) {
+    console.error('Telemetry snapshot failed:', error);
+  }
+}
+
+const TELEMETRY_TICK_INTERVAL_MS = 3_000;
+async function tickLiveTelemetry(): Promise<void> {
+  try {
+    const activeSessions = await prisma.proctorSession.count({ where: { endedAt: null } });
+    const snapshot = getLiveTelemetrySnapshot();
+    emitToSuperAdminRoom('telemetry-tick', {
+      capturedAt: new Date().toISOString(),
+      activeSessions,
+      ...snapshot,
+    });
+    void checkTelemetryThresholds(snapshot.apiLatencyP95Ms);
+  } catch (error) {
+    console.error('Telemetry tick failed:', error);
+  }
+}
+
+const ANOMALY_DETECTION_INTERVAL_MS = 10 * 60 * 1000;
+const SCHEDULED_DELETION_INTERVAL_MS = 15 * 60 * 1000;
 
 function validateDatabaseUrl(): void {
   const databaseUrl = process.env.DATABASE_URL || '';
@@ -368,6 +481,12 @@ async function startServer(): Promise<void> {
     await ensureNotificationTable();
     console.log('Notification table: ready');
 
+    await ensureDefaultFeatureFlags();
+    console.log('Feature flags: ready');
+
+    await ensureDefaultBillingPlans();
+    console.log('Billing plans: ready (billing disabled by default)');
+
     // Ensure extended Test columns exist (idempotent)
     await prisma.$executeRaw`ALTER TABLE "Test" ADD COLUMN IF NOT EXISTS "proctoringSettings" TEXT`;
     await prisma.$executeRaw`ALTER TABLE "Test" ADD COLUMN IF NOT EXISTS "violationPopupSettings" TEXT`;
@@ -380,6 +499,11 @@ async function startServer(): Promise<void> {
     console.error('Database connectivity check failed. Verify PostgreSQL and DATABASE_URL.', error);
     process.exit(1);
   }
+
+  setInterval(() => void snapshotTelemetry(), TELEMETRY_SNAPSHOT_INTERVAL_MS);
+  setInterval(() => void tickLiveTelemetry(), TELEMETRY_TICK_INTERVAL_MS);
+  setInterval(() => void runAnomalyDetection(), ANOMALY_DETECTION_INTERVAL_MS);
+  setInterval(() => void runScheduledDeletions(), SCHEDULED_DELETION_INTERVAL_MS);
 
   httpServer.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);

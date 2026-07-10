@@ -135,6 +135,10 @@ export interface ProctoringAnalysis {
     isFullscreen: boolean;
     tabVisible: boolean;
   };
+  // Client-measured real interval (ms) since the previous analysis cycle —
+  // the actual achieved proctoring refresh rate, not the nominal configured
+  // one. Fed into the Superadmin Observer's telemetry ring buffer.
+  actualIntervalMs?: number;
 }
 
 export interface ViolationEvent {

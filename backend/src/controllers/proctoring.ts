@@ -18,6 +18,7 @@ import {
 import { emitToProctorTargets } from '../services/socketService';
 import { analyzeFrameWithPythonForSession } from '../services/pythonVisionService';
 import { parseStoredCustomAIViolationEvents } from '../utils/proctoringConfig.js';
+import { recordFrameIntervalSample } from '../services/telemetryRingBuffer.js';
 
 const PROCTOR_TRACE = (process.env.PROCTOR_TRACE || 'false').toLowerCase() === 'true';
 const PROCTOR_AUTO_FLAG_ON_CRITICAL =
@@ -71,7 +72,7 @@ const EVENT_TYPE_ALIASES: Record<string, string> = {
   gaze_away: 'looking_away',
   voice: 'voice_detected',
   voice_activity: 'voice_detected',
-  speech_detected: 'voice_detected',
+  speech_detected: 'voice_detected',  
   audio_voice: 'voice_detected',
   tab_change: 'tab_switch',
   tab_switched: 'tab_switch',
@@ -611,6 +612,13 @@ export const submitAnalysis = async (req: Request, res: Response): Promise<void>
       receivedAt: new Date().toISOString(),
     });
     void storeTelemetry(sessionId, 'analysis', telemetryPayload);
+
+    // Real (not nominal) proctoring refresh rate, as actually achieved on
+    // the candidate's device — feeds the Superadmin Observer's live
+    // telemetry ring buffer (see telemetryRingBuffer.ts::getRefreshFps).
+    if (typeof analysisData.actualIntervalMs === 'number') {
+      recordFrameIntervalSample(analysisData.actualIntervalMs);
+    }
 
     // Analyze proctoring data for violations
     const violations = analyzeProctoring(analysisData);
@@ -1866,7 +1874,7 @@ export const getLiveTestSessions = async (req: Request, res: Response): Promise<
       const latestSnapshotTime = latestSnapshot ? new Date(latestSnapshot.capturedAt).getTime() : 0;
       const sessionStartTime = session ? new Date(session.startedAt).getTime() : 0;
       const latestSignalTime = Math.max(latestEventTime, latestSnapshotTime, sessionStartTime);
-      const online = !!session && !session.endedAt && now - latestSignalTime < 120000;
+      const online = !!session && !session.endedAt && (now - latestSignalTime < 120000 || attempt.status === 'in_progress');
 
       return {
         sessionId: session?.id || '',
@@ -1904,6 +1912,113 @@ export const getLiveTestSessions = async (req: Request, res: Response): Promise<
     });
   } catch (error) {
     console.error('Error getting live test sessions:', error);
+    res.status(500).json({ error: 'Failed to fetch live sessions' });
+  }
+};
+
+/**
+ * Get all live proctoring candidates for the authenticated admin.
+ * This powers /admin/live-proctoring without requiring a testId in the URL.
+ */
+export const getAllLiveAdminSessions = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const adminId = (req as any).admin?.id;
+
+    const attempts = await prisma.testAttempt.findMany({
+      where: {
+        status: 'in_progress',
+        test: { adminId },
+      },
+      select: {
+        id: true,
+        testId: true,
+        status: true,
+        startTime: true,
+        violations: true,
+        isFlagged: true,
+        candidate: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        test: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        analytics: {
+          select: {
+            trustScore: true,
+          },
+        },
+        proctorSession: {
+          include: {
+            events: {
+              orderBy: { timestamp: 'desc' },
+              take: 1,
+            },
+            faceSnapshots: {
+              orderBy: { capturedAt: 'desc' },
+              take: 1,
+            },
+          },
+        },
+      },
+      orderBy: { startTime: 'desc' },
+      take: 100,
+    });
+
+    const now = Date.now();
+    const liveCandidates = attempts.map(attempt => {
+      const session = attempt.proctorSession;
+      const latestEvent = session?.events?.[0];
+      const latestSnapshot = session?.faceSnapshots?.[0];
+      const latestEventTime = latestEvent ? new Date(latestEvent.timestamp).getTime() : 0;
+      const latestSnapshotTime = latestSnapshot ? new Date(latestSnapshot.capturedAt).getTime() : 0;
+      const sessionStartTime = session ? new Date(session.startedAt).getTime() : 0;
+      const latestSignalTime = Math.max(latestEventTime, latestSnapshotTime, sessionStartTime);
+      const online = !!session && !session.endedAt && (now - latestSignalTime < 120000 || attempt.status === 'in_progress');
+
+      return {
+        sessionId: session?.id || '',
+        attemptId: attempt.id,
+        testId: attempt.testId,
+        test: attempt.test,
+        candidate: attempt.candidate,
+        status: {
+          online,
+          cameraEnabled: session?.cameraEnabled || false,
+          microphoneEnabled: session?.microphoneEnabled || false,
+          screenShareEnabled: session?.screenShareEnabled || false,
+          monitorCount: session?.monitorCount || 1,
+          externalMonitorDetected: session?.externalMonitorDetected || false,
+          faceVerified: session?.faceVerified || false,
+        },
+        violations: attempt.violations,
+        isFlagged: attempt.isFlagged,
+        trustScore: attempt.analytics?.trustScore ?? 100,
+        livePreviewUrl: latestEvent?.snapshotUrl || latestSnapshot?.imageUrl || null,
+        lastViolation: latestEvent
+          ? {
+              type: latestEvent.eventType,
+              severity: latestEvent.severity,
+              description: latestEvent.description,
+              timestamp: latestEvent.timestamp,
+            }
+          : null,
+      };
+    });
+
+    res.json({
+      success: true,
+      total: liveCandidates.length,
+      candidates: liveCandidates,
+    });
+  } catch (error) {
+    console.error('Error getting all live admin sessions:', error);
     res.status(500).json({ error: 'Failed to fetch live sessions' });
   }
 };

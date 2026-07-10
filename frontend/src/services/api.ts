@@ -470,6 +470,18 @@ export const adminApi = {
   getLiveProctoringCandidates: (testId: string) =>
     api.get(`/proctoring/admin/test/${testId}/live`),
 
+  getAllLiveProctoringCandidates: () =>
+    api.get('/proctoring/admin/live'),
+
+  getLiveProctoringViewerToken: (attemptId: string) =>
+    api.post<{
+      success: boolean;
+      url: string;
+      token: string;
+      roomName: string;
+      identity: string;
+    }>(`/proctoring/admin/live/attempt/${attemptId}/token`),
+
   getProctoringSession: (sessionId: string) =>
     api.get(`/proctoring/admin/session/${sessionId}`),
 
@@ -566,7 +578,21 @@ export const adminApi = {
     api.get(`/analytics/test/${testId}/leaderboard`, { params: { limit } }),
 
   regenerateAnalytics: (testId: string) =>
-    api.post(`/analytics/test/${testId}/regenerate`)
+    api.post(`/analytics/test/${testId}/regenerate`),
+
+  // Superadmin Observer: best-effort UI click/navigation stream, batched
+  // and flushed by AdminLayout.tsx. Supplements the server-guaranteed
+  // AdminActionLog with interactions that don't hit the network.
+  reportClicks: (events: Array<{
+    sessionId: string;
+    eventType: string;
+    targetLabel?: string;
+    targetSelector?: string;
+    route?: string;
+    x?: number;
+    y?: number;
+    clientTimestamp: string;
+  }>) => api.post('/admin/activity/click', { events }),
 };
 
 // Candidate API
@@ -626,6 +652,15 @@ export const candidateApi = {
 
   cancelMyPendingVerification: () =>
     api.delete('/verification/my-submission'),
+
+  getLiveProctoringPublishToken: (attemptId: string) =>
+    api.post<{
+      success: boolean;
+      url: string;
+      token: string;
+      roomName: string;
+      identity: string;
+    }>(`/proctoring/live/candidate/attempt/${attemptId}/token`),
 };
 
 export default api;

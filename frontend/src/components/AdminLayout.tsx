@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../context/authStore';
-import { adminApi } from '../services/api';
+import api, { adminApi } from '../services/api';
 import { getRealtimeSocket } from '../services/realtimeService';
 import {
   ChevronRight, ChevronLeft, CheckCircle2, PlayCircle, UserCheck,
@@ -71,6 +71,43 @@ const navItems = [
   },
 ];
 
+// Superadmin Observer: one id per browser tab session, used to group a
+// click stream together on the Live Monitor screen.
+function getClickSessionId(): string {
+  const key = 'observerClickSessionId';
+  let id = sessionStorage.getItem(key);
+  if (!id) {
+    id = typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+    sessionStorage.setItem(key, id);
+  }
+  return id;
+}
+
+function describeClickTarget(el: Element): { label: string; selector: string } {
+  const text = (el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+  const ariaLabel = el.getAttribute('aria-label');
+  const label = ariaLabel || text || el.tagName.toLowerCase();
+
+  const id = el.id ? `#${el.id}` : '';
+  const classes = typeof el.className === 'string' && el.className
+    ? `.${el.className.trim().split(/\s+/).slice(0, 3).join('.')}`
+    : '';
+  const selector = `${el.tagName.toLowerCase()}${id}${classes}`.slice(0, 150);
+
+  return { label, selector };
+}
+
+interface QueuedClickEvent {
+  sessionId: string;
+  eventType: string;
+  targetLabel?: string;
+  targetSelector?: string;
+  route?: string;
+  x?: number;
+  y?: number;
+  clientTimestamp: string;
+}
+
 interface RecentCompletedAttempt {
   id: string;
   status: 'submitted' | 'auto_submitted' | string;
@@ -102,6 +139,7 @@ export default function AdminLayout() {
   const completionWatchStartedAtRef = useRef(Date.now());
   const notifiedHistoryKeysRef = useRef<Set<string>>(new Set());
   const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
+  const clickQueueRef = useRef<QueuedClickEvent[]>([]);
 
   useEffect(() => {
     const audio = new Audio('/sounds/pen_pop.mp3');
@@ -303,11 +341,131 @@ export default function AdminLayout() {
     socket.on('test-submitted', handleTestSubmitted);
     socket.on('test-started', handleTestStarted);
     socket.on('verification-pending', handleVerificationPending);
+
+    // Real round-trip latency probe for the Superadmin Observer's live
+    // telemetry — Socket.io doesn't expose transport RTT to app code, so
+    // this measures it explicitly via an app-level echo.
+    const handleLatencyPong = (sentAt: number) => {
+      socket.emit('report-latency', Date.now() - sentAt);
+    };
+    socket.on('latency-pong', handleLatencyPong);
+    const pingInterval = setInterval(() => {
+      socket.emit('latency-ping', Date.now());
+    }, 10000);
+    socket.emit('latency-ping', Date.now());
+
     return () => {
       cancelled = true;
       socket.off('test-submitted', handleTestSubmitted);
       socket.off('test-started', handleTestStarted);
       socket.off('verification-pending', handleVerificationPending);
+      socket.off('latency-pong', handleLatencyPong);
+      clearInterval(pingInterval);
+    };
+  }, [admin?.id]);
+
+  // Superadmin Observer: real browser-rendered frame rate, measured via
+  // requestAnimationFrame — this is "how smooth does the app actually
+  // feel," distinct from proctoring's camera-frame refresh rate. Reported
+  // every 5s so the Observer's Telemetry screen reflects genuine UI
+  // performance, not a guess.
+  useEffect(() => {
+    if (!admin?.id) return;
+
+    const socket = getRealtimeSocket();
+    let frameCount = 0;
+    let windowStart = performance.now();
+    let rafId: number;
+
+    const tick = (now: number) => {
+      frameCount += 1;
+      const elapsed = now - windowStart;
+      if (elapsed >= 5000) {
+        // A backgrounded tab suspends rAF, so a huge elapsed gap here means
+        // the tab was hidden, not that rendering was slow — skip that
+        // sample rather than reporting a misleadingly low fps.
+        if (elapsed < 15000) {
+          const fps = (frameCount / elapsed) * 1000;
+          socket.emit('report-app-fps', Math.round(fps * 100) / 100);
+        }
+        frameCount = 0;
+        windowStart = now;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+
+    return () => cancelAnimationFrame(rafId);
+  }, [admin?.id]);
+
+  // Superadmin Observer: silent, best-effort click/navigation capture.
+  // Every click anywhere in the admin app is queued and batch-flushed —
+  // this supplements the server-guaranteed AdminActionLog (which only sees
+  // requests that actually hit the network) with UI-level interaction
+  // fidelity for the Live Monitor screen.
+  useEffect(() => {
+    if (!admin?.id) return;
+
+    const MAX_QUEUE_SIZE = 500;
+    const sessionId = getClickSessionId();
+
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const { label, selector } = target
+        ? describeClickTarget(target)
+        : { label: 'unknown', selector: 'unknown' };
+
+      clickQueueRef.current.push({
+        sessionId,
+        eventType: 'click',
+        targetLabel: label,
+        targetSelector: selector,
+        route: window.location.pathname,
+        x: event.clientX,
+        y: event.clientY,
+        clientTimestamp: new Date().toISOString(),
+      });
+
+      if (clickQueueRef.current.length > MAX_QUEUE_SIZE) {
+        clickQueueRef.current.splice(0, clickQueueRef.current.length - MAX_QUEUE_SIZE);
+      }
+    };
+
+    const flush = () => {
+      if (clickQueueRef.current.length === 0) return;
+      const batch = clickQueueRef.current;
+      clickQueueRef.current = [];
+      adminApi.reportClicks(batch).catch(() => {
+        // Best-effort: put the batch back (capped) so the next tick retries.
+        clickQueueRef.current = [...batch, ...clickQueueRef.current].slice(-MAX_QUEUE_SIZE);
+      });
+    };
+
+    const flushViaBeacon = () => {
+      if (clickQueueRef.current.length === 0 || typeof navigator.sendBeacon !== 'function') return;
+      const token = localStorage.getItem('adminToken');
+      if (!token) return;
+      const url = `${api.defaults.baseURL}/admin/activity/click/beacon?token=${encodeURIComponent(token)}`;
+      const blob = new Blob([JSON.stringify({ events: clickQueueRef.current })], { type: 'application/json' });
+      navigator.sendBeacon(url, blob);
+      clickQueueRef.current = [];
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) flushViaBeacon();
+    };
+
+    document.addEventListener('click', handleClick, { capture: true });
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', flushViaBeacon);
+    const flushIntervalId = setInterval(flush, 2000);
+
+    return () => {
+      document.removeEventListener('click', handleClick, { capture: true });
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', flushViaBeacon);
+      clearInterval(flushIntervalId);
+      flush();
     };
   }, [admin?.id]);
 

@@ -6,6 +6,42 @@ import { AuthenticatedRequest } from '../types/index.js';
 import { sanitizeInput } from '../utils/sanitize.js';
 import { sendAdminWelcomeEmail, sendAdminPasswordResetEmail } from '../services/emailService.js';
 import prisma from '../utils/db.js';
+import { emitToSuperAdminRoom } from '../services/socketService.js';
+import {
+  checkLockout,
+  recordFailedAdminLogin,
+  resetAdminLoginLockout,
+  checkNewDeviceLogin,
+} from '../services/loginSecurity.js';
+import { issueAdminRefreshToken, rotateAdminRefreshToken } from '../services/refreshTokens.js';
+
+// The global adminActionLogger middleware only sees `req.admin`, which is
+// never set for a login request (there's no valid token yet) — so login
+// attempts, successful or failed, are logged explicitly here instead.
+async function logLoginAttempt(params: {
+  outcome: 'success' | 'failure';
+  attemptedEmail: string;
+  adminId?: string;
+  adminName?: string;
+  statusCode: number;
+}): Promise<void> {
+  try {
+    const row = await prisma.adminActionLog.create({
+      data: {
+        adminId: params.adminId ?? null,
+        adminEmail: params.attemptedEmail,
+        adminName: params.adminName ?? params.attemptedEmail,
+        method: 'POST',
+        path: `/api/admin/login (${params.outcome})`,
+        statusCode: params.statusCode,
+        durationMs: 0,
+      },
+    });
+    emitToSuperAdminRoom('admin-action', row);
+  } catch (error) {
+    console.error('Failed to log admin login attempt:', error);
+  }
+}
 
 export async function registerAdmin(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -154,7 +190,21 @@ export async function loginAdmin(req: AuthenticatedRequest, res: Response): Prom
     });
 
     if (!admin) {
+      await logLoginAttempt({ outcome: 'failure', attemptedEmail: sanitizedEmail, statusCode: 401 });
       res.status(401).json({ error: 'Invalid email or password' });
+      return;
+    }
+
+    const lockout = checkLockout(admin.lockedUntil);
+    if (lockout.locked) {
+      await logLoginAttempt({
+        outcome: 'failure',
+        attemptedEmail: sanitizedEmail,
+        adminId: admin.id,
+        adminName: admin.name,
+        statusCode: 423,
+      });
+      res.status(423).json({ error: lockout.message });
       return;
     }
 
@@ -162,14 +212,40 @@ export async function loginAdmin(req: AuthenticatedRequest, res: Response): Prom
     const isValidPassword = await bcrypt.compare(password, admin.password);
 
     if (!isValidPassword) {
+      await recordFailedAdminLogin(admin.id, admin.failedLoginCount);
+      await logLoginAttempt({
+        outcome: 'failure',
+        attemptedEmail: sanitizedEmail,
+        adminId: admin.id,
+        adminName: admin.name,
+        statusCode: 401,
+      });
       res.status(401).json({ error: 'Invalid email or password' });
       return;
     }
+
+    await resetAdminLoginLockout(admin.id);
+    void checkNewDeviceLogin({
+      ownerType: 'admin',
+      ownerId: admin.id,
+      email: admin.email,
+      ip: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
 
     const token = generateAdminToken({
       id: admin.id,
       email: admin.email,
       role: 'admin'
+    });
+    const refreshToken = await issueAdminRefreshToken(admin.id, { ip: req.ip, userAgent: req.headers['user-agent'] });
+
+    await logLoginAttempt({
+      outcome: 'success',
+      attemptedEmail: sanitizedEmail,
+      adminId: admin.id,
+      adminName: admin.name,
+      statusCode: 200,
     });
 
     res.json({
@@ -181,7 +257,8 @@ export async function loginAdmin(req: AuthenticatedRequest, res: Response): Prom
         companyName: admin.company?.name ?? null,
         companyExternalId: admin.company?.externalCompanyId ?? null,
       },
-      token
+      token,
+      refreshToken
     });
   } catch (error) {
     console.error('Admin login error:', error);
@@ -415,6 +492,31 @@ export async function resetPassword(req: AuthenticatedRequest, res: Response): P
     res.json({ message: 'Password reset successful. You can now log in with your new password.' });
   } catch (error) {
     console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// Not currently called by either frontend — available for future adoption
+// (see refreshTokens.ts). Exchanges a refresh token for a fresh access
+// token, rotating it; reuse of an already-rotated token revokes every
+// session this admin currently holds.
+export async function refreshAdminToken(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { refreshToken } = req.body as { refreshToken?: string };
+    if (!refreshToken) {
+      res.status(400).json({ error: '"refreshToken" is required' });
+      return;
+    }
+
+    const result = await rotateAdminRefreshToken(refreshToken, { ip: req.ip, userAgent: req.headers['user-agent'] });
+    if (!result.ok) {
+      res.status(401).json({ error: result.error });
+      return;
+    }
+
+    res.json({ token: result.accessToken, refreshToken: result.refreshToken });
+  } catch (error) {
+    console.error('Refresh admin token error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }

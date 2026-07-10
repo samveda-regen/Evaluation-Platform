@@ -1,6 +1,10 @@
 import { Router, type Response } from 'express';
 import multer from 'multer';
 import { adminAuth } from '../middleware/auth.js';
+import { requireFeatureEnabled } from '../middleware/featureLock.js';
+import { requireWithinQuota } from '../middleware/billingGate.js';
+import { auditLog } from '../middleware/auditLog.js';
+import prisma from '../utils/db.js';
 import type { AuthenticatedRequest } from '../types/index.js';
 import {
   handleValidationErrors,
@@ -18,6 +22,7 @@ import {
 import {
   registerAdmin,
   loginAdmin,
+  refreshAdminToken,
   getAdminProfile,
   updateAdminProfile,
   updateAdminCompany,
@@ -102,6 +107,7 @@ import {
   clearAllNotifications,
   deleteOneNotification,
 } from '../controllers/notifications.js';
+import { recordAdminClicks, recordAdminClicksBeacon } from '../controllers/adminActivity.js';
 const router = Router();
 const invitationUpload = multer({
   storage: multer.memoryStorage(),
@@ -113,6 +119,7 @@ const invitationUpload = multer({
 // Auth routes
 router.post('/register', adminRegisterValidation, handleValidationErrors, registerAdmin);
 router.post('/login', adminLoginValidation, handleValidationErrors, loginAdmin);
+router.post('/refresh-token', refreshAdminToken);
 router.post('/forgot-password', forgotPasswordValidation, handleValidationErrors, forgotPassword);
 router.post('/reset-password', resetPasswordValidation, handleValidationErrors, resetPassword);
 router.get('/profile', adminAuth, getAdminProfile);
@@ -126,13 +133,51 @@ router.get('/attempts/completed/recent', adminAuth, getRecentCompletedAttempts);
 router.get('/invitations/dashboard', adminAuth, getInvitationDashboard);
 
 // Test routes
-router.post('/tests', adminAuth, createTestValidation, handleValidationErrors, createTest);
+router.post(
+  '/tests',
+  adminAuth,
+  requireFeatureEnabled('test_creation'),
+  requireWithinQuota('tests'),
+  createTestValidation,
+  handleValidationErrors,
+  auditLog({ resourceType: 'Test', action: 'create' }),
+  createTest
+);
 router.get('/tests', adminAuth, paginationValidation, handleValidationErrors, getTests);
 router.get('/tests/:testId', adminAuth, getTestById);
-router.put('/tests/:testId', adminAuth, updateTestValidation, handleValidationErrors, updateTest);
-router.delete('/tests/:testId', adminAuth, deleteTest);
+router.put(
+  '/tests/:testId',
+  adminAuth,
+  updateTestValidation,
+  handleValidationErrors,
+  auditLog({
+    resourceType: 'Test',
+    action: 'update',
+    resourceIdParam: 'testId',
+    fetchBefore: (id) => prisma.test.findUnique({ where: { id } }),
+  }),
+  updateTest
+);
+router.delete(
+  '/tests/:testId',
+  adminAuth,
+  auditLog({
+    resourceType: 'Test',
+    action: 'delete',
+    resourceIdParam: 'testId',
+    fetchBefore: (id) => prisma.test.findUnique({ where: { id } }),
+  }),
+  deleteTest
+);
 router.post('/tests/:testId/try', adminAuth, createAdminPreviewAttempt);
-router.post('/tests/:testId/send-invitations', adminAuth, invitationUpload.single('file'), sendTestInvitations);
+router.post(
+  '/tests/:testId/send-invitations',
+  adminAuth,
+  requireFeatureEnabled('invitation_sending'),
+  requireWithinQuota('invitations'),
+  invitationUpload.single('file'),
+  sendTestInvitations
+);
 router.get('/tests/:testId/invitations', adminAuth, getTestInvitationDashboard);
 router.delete('/tests/:testId/invitations/:invitationId', adminAuth, deleteTestInvitationCandidate);
 router.post('/tests/:testId/sections', adminAuth, createTestSection);
@@ -149,14 +194,54 @@ router.delete('/tests/:testId/questions/:questionId', adminAuth, removeQuestionF
 router.put('/tests/:testId/questions/reorder', adminAuth, reorderTestQuestions);
 
 // MCQ routes
-router.post('/mcq', adminAuth, createMCQValidation, handleValidationErrors, createMCQQuestion);
+router.post(
+  '/mcq',
+  adminAuth,
+  requireFeatureEnabled('question_repository_writes'),
+  requireWithinQuota('customQuestions'),
+  createMCQValidation,
+  handleValidationErrors,
+  auditLog({ resourceType: 'MCQQuestion', action: 'create' }),
+  createMCQQuestion
+);
 router.get('/mcq', adminAuth, paginationValidation, handleValidationErrors, getMCQQuestions);
-router.delete('/mcq/:questionId', adminAuth, deleteMCQQuestion);
+router.delete(
+  '/mcq/:questionId',
+  adminAuth,
+  requireFeatureEnabled('question_repository_writes'),
+  auditLog({
+    resourceType: 'MCQQuestion',
+    action: 'delete',
+    resourceIdParam: 'questionId',
+    fetchBefore: (id) => prisma.mCQQuestion.findUnique({ where: { id } }),
+  }),
+  deleteMCQQuestion
+);
 
 // Coding question routes
-router.post('/coding', adminAuth, createCodingValidation, handleValidationErrors, createCodingQuestion);
+router.post(
+  '/coding',
+  adminAuth,
+  requireFeatureEnabled('question_repository_writes'),
+  requireWithinQuota('customQuestions'),
+  createCodingValidation,
+  handleValidationErrors,
+  auditLog({ resourceType: 'CodingQuestion', action: 'create' }),
+  createCodingQuestion
+);
 router.get('/coding', adminAuth, paginationValidation, handleValidationErrors, getCodingQuestions);
-router.delete('/coding/:questionId', adminAuth, deleteCodingQuestion);
+router.delete(
+  '/coding/:questionId',
+  adminAuth,
+  requireFeatureEnabled('question_repository_writes'),
+  auditLog({
+    resourceType: 'CodingQuestion',
+    action: 'delete',
+    resourceIdParam: 'questionId',
+    fetchBefore: (id) => prisma.codingQuestion.findUnique({ where: { id } }),
+  }),
+  deleteCodingQuestion
+);
 
 // Behavioral question routes
 router.get('/behavioral', adminAuth, paginationValidation, handleValidationErrors, getBehavioralQuestions);
@@ -172,15 +257,28 @@ router.post('/attempts/:attemptId/send-result-email', adminAuth, sendAttemptResu
 router.post('/attempts/:attemptId/behavioral/:questionId/grade', adminAuth, gradeBehavioralAnswer);
 router.delete('/attempts/:attemptId', adminAuth, deleteAttempt);
 router.post('/attempts/:attemptId/reevaluate', adminAuth, reEvaluateAttempt);
-router.get('/tests/:testId/export', adminAuth, exportResults);
+router.get('/tests/:testId/export', adminAuth, requireFeatureEnabled('results_export'), exportResults);
 router.get('/trust-reports', adminAuth, getTrustReports);
 router.post('/attempts/:attemptId/trust-report/reevaluate', adminAuth, reEvaluateTrustReport);
 
 // Agent routes - AI-powered test generation
 router.get('/agent/library-skills', adminAuth, getLibrarySkills);
 router.post('/agent/analyze-job', adminAuth, analyzeJob);
-router.post('/agent/generate-test', adminAuth, generateTest);
-router.post('/agent/create-test', adminAuth, createTestFromAgent);
+router.post(
+  '/agent/generate-test',
+  adminAuth,
+  requireFeatureEnabled('ai_test_generator'),
+  requireWithinQuota('aiGenerations'),
+  generateTest
+);
+router.post(
+  '/agent/create-test',
+  adminAuth,
+  requireFeatureEnabled('ai_test_generator'),
+  requireWithinQuota('aiGenerations'),
+  auditLog({ resourceType: 'Test', action: 'create' }),
+  createTestFromAgent
+);
 router.post('/agent/suggest-tags', adminAuth, suggestTags);
 
 // ==============================
@@ -223,12 +321,70 @@ router.get(
   }
 );
 
-router.post('/repository/custom/mcq', adminAuth, createMCQValidation, handleValidationErrors, createCustomMCQ);
-router.post('/repository/custom/coding', adminAuth, createCodingValidation, handleValidationErrors, createCustomCoding);
-router.post('/repository/custom/behavioral', adminAuth, createCustomBehavioral);
-router.put('/repository/custom/mcq/:questionId', adminAuth, updateCustomMCQ);
-router.put('/repository/custom/coding/:questionId', adminAuth, updateCustomCoding);
-router.put('/repository/custom/behavioral/:questionId', adminAuth, updateCustomBehavioral);
+router.post(
+  '/repository/custom/mcq',
+  adminAuth,
+  requireFeatureEnabled('question_repository_writes'),
+  requireWithinQuota('customQuestions'),
+  createMCQValidation,
+  handleValidationErrors,
+  auditLog({ resourceType: 'MCQQuestion', action: 'create' }),
+  createCustomMCQ
+);
+router.post(
+  '/repository/custom/coding',
+  adminAuth,
+  requireFeatureEnabled('question_repository_writes'),
+  requireWithinQuota('customQuestions'),
+  createCodingValidation,
+  handleValidationErrors,
+  auditLog({ resourceType: 'CodingQuestion', action: 'create' }),
+  createCustomCoding
+);
+router.post(
+  '/repository/custom/behavioral',
+  adminAuth,
+  requireFeatureEnabled('question_repository_writes'),
+  requireWithinQuota('customQuestions'),
+  auditLog({ resourceType: 'BehavioralQuestion', action: 'create' }),
+  createCustomBehavioral
+);
+router.put(
+  '/repository/custom/mcq/:questionId',
+  adminAuth,
+  requireFeatureEnabled('question_repository_writes'),
+  auditLog({
+    resourceType: 'MCQQuestion',
+    action: 'update',
+    resourceIdParam: 'questionId',
+    fetchBefore: (id) => prisma.mCQQuestion.findUnique({ where: { id } }),
+  }),
+  updateCustomMCQ
+);
+router.put(
+  '/repository/custom/coding/:questionId',
+  adminAuth,
+  requireFeatureEnabled('question_repository_writes'),
+  auditLog({
+    resourceType: 'CodingQuestion',
+    action: 'update',
+    resourceIdParam: 'questionId',
+    fetchBefore: (id) => prisma.codingQuestion.findUnique({ where: { id } }),
+  }),
+  updateCustomCoding
+);
+router.put(
+  '/repository/custom/behavioral/:questionId',
+  adminAuth,
+  requireFeatureEnabled('question_repository_writes'),
+  auditLog({
+    resourceType: 'BehavioralQuestion',
+    action: 'update',
+    resourceIdParam: 'questionId',
+    fetchBefore: (id) => prisma.behavioralQuestion.findUnique({ where: { id } }),
+  }),
+  updateCustomBehavioral
+);
 router.put('/repository/custom/:questionId/enable', adminAuth, async (req, res) => {
   return toggleRepositoryQuestion(req, res, true);
 });
@@ -236,7 +392,19 @@ router.put('/repository/custom/:questionId/disable', adminAuth, async (req, res)
   return toggleRepositoryQuestion(req, res, false);
 });
 
-router.delete('/repository/custom/:questionId', adminAuth, deleteRepositoryQuestion);
+router.delete(
+  '/repository/custom/:questionId',
+  adminAuth,
+  requireFeatureEnabled('question_repository_writes'),
+  auditLog({ resourceType: 'RepositoryQuestion', action: 'delete', resourceIdParam: 'questionId' }),
+  deleteRepositoryQuestion
+);
+
+// Superadmin Observer: admin self-reports its own UI click stream
+router.post('/activity/click', adminAuth, recordAdminClicks);
+// sendBeacon-compatible fallback for the final flush on tab close (no
+// Authorization header support in sendBeacon — see recordAdminClicksBeacon).
+router.post('/activity/click/beacon', recordAdminClicksBeacon);
 
 // Notifications
 router.get('/notifications', adminAuth, getNotifications);

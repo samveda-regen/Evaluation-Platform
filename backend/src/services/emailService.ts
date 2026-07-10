@@ -749,3 +749,11 @@ export async function sendResultEmail(payload: ResultEmailPayload): Promise<void
     throw error;
   }
 }
+
+// Minimal, template-free send used by the superadmin alerting service —
+// deliberately plain text/html rather than a branded template, since these
+// are internal operational notices, not candidate/admin-facing mail.
+export async function sendPlainEmail(payload: { to: string; subject: string; text: string }): Promise<void> {
+  const escaped = payload.text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  await sendMail(payload.subject, payload.text, `<pre style="font-family:monospace">${escaped}</pre>`, payload.to);
+}

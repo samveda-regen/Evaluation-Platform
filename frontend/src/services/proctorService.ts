@@ -136,6 +136,10 @@ export async function submitAnalysis(sessionId: string, analysisData: {
     isFullscreen: boolean;
     tabVisible: boolean;
   };
+  // Real measured time since the previous analysis cycle (ms) — see
+  // useProctoring.ts::runSnapshotAnalysis. Feeds the Superadmin Observer's
+  // live proctoring-refresh-rate telemetry.
+  actualIntervalMs?: number;
 }): Promise<{ violations: ViolationData[]; shouldTerminate: boolean }> {
   const response = await api.post(`/proctoring/session/${sessionId}/analysis`, analysisData);
   return {
