@@ -1,0 +1,13 @@
+# Local dev infrastructure for the code-execution / proctoring queue work.
+# Production should point REDIS_URL at a managed/operated Redis instead of this.
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: ["redis-server", "--save", "60", "1"]
+
+volumes:
+  redis-data:

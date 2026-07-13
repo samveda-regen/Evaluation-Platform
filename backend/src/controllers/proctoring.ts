@@ -18,6 +18,7 @@ import {
 import { emitToProctorTargets } from '../services/socketService';
 import { analyzeFrameWithPythonForSession } from '../services/pythonVisionService';
 import { parseStoredCustomAIViolationEvents } from '../utils/proctoringConfig.js';
+import { proctorAnalysisQueue, proctorAnalysisQueueEvents, ProctorAnalysisResult } from '../queues/proctorAnalysisQueue.js';
 
 const PROCTOR_TRACE = (process.env.PROCTOR_TRACE || 'false').toLowerCase() === 'true';
 const PROCTOR_AUTO_FLAG_ON_CRITICAL =
@@ -215,11 +216,13 @@ interface CachedEvidenceFrame {
 
 const evidenceFrameBySession = new Map<string, CachedEvidenceFrame>();
 const violationLastStoredAtMs = new Map<string, number>();
-const PROCTOR_MAX_CONCURRENT_ANALYSIS = Number(process.env.PROCTOR_MAX_CONCURRENT_ANALYSIS || 140);
+// Superseded by the proctor-analysis BullMQ queue + PROCTOR_ANALYSIS_WORKER_CONCURRENCY
+// below: that hard global counter used to silently drop any frame submitted once
+// 140 were in flight across the whole server. See submitAnalysis()/processProctoringAnalysis().
+const PROCTOR_ANALYSIS_WAIT_TIMEOUT_MS = Number(process.env.PROCTOR_ANALYSIS_WAIT_TIMEOUT_MS || 8000);
 const PROCTOR_MAX_CONCURRENT_RECORDING_UPLOADS = Number(
   process.env.PROCTOR_MAX_CONCURRENT_RECORDING_UPLOADS || 30
 );
-let activeAnalysisRequests = 0;
 let activeRecordingUploads = 0;
 const PROCTOR_EVENT_COOLDOWN_MS: Record<string, number> = {
   voice_detected: Number(process.env.PROCTOR_VOICE_VIOLATION_COOLDOWN_MS || 120000),
@@ -525,89 +528,26 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
 };
 
 /**
- * Submit proctoring analysis data for processing
+ * Core analysis logic — runs inside the proctor-analysis BullMQ worker
+ * (src/workers/proctorAnalysisWorker.ts), in-process with the API server
+ * (it needs the live socket.io instance via emitToProctorTargets). Extracted
+ * out of submitAnalysis() so the HTTP handler can stay a thin
+ * enqueue-and-bounded-wait wrapper — see submitAnalysis() below for why this
+ * can't be pure fire-and-forget.
  */
-export const submitAnalysis = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { sessionId } = req.params;
-    const analysisData: ProctoringAnalysis = req.body;
-    cacheEvidenceFrame(sessionId, analysisData.frameData);
-    proctorTrace('submit_analysis_in', {
-      sessionId,
-      hasFrame: !!analysisData.frameData,
-      frameLength: analysisData.frameData?.length || 0,
-      faceDetected: analysisData.face?.faceDetected ?? null,
-      faceCount: analysisData.face?.faceCount ?? null,
-      gazeDirection: analysisData.gaze?.gazeDirection ?? null,
-      lookingAtScreen: analysisData.gaze?.isLookingAtScreen ?? null,
-      audioLevel: analysisData.audio?.audioLevel ?? null,
-      suspiciousAudio: analysisData.audio?.suspiciousSound ?? null,
-      hasVoice: analysisData.audio?.hasVoice ?? null,
-      monitorCount: analysisData.screenInfo?.monitorCount ?? null,
-      isFullscreen: analysisData.screenInfo?.isFullscreen ?? null,
-      tabVisible: analysisData.screenInfo?.tabVisible ?? null,
-      objectCount: analysisData.objects?.objects?.length ?? 0,
-      phoneDetected: analysisData.objects?.phoneDetected ?? null,
-      secondScreenDetected: analysisData.objects?.secondScreenDetected ?? null,
-    });
-
-    if (activeAnalysisRequests >= PROCTOR_MAX_CONCURRENT_ANALYSIS) {
-      res.json({
-        success: true,
-        violations: [],
-        totalViolations: 0,
-        maxViolations: 0,
-        shouldTerminate: false,
-        isFlagged: false,
-        overloaded: true,
-      });
-      return;
-    }
-    activeAnalysisRequests += 1;
-
-    try {
-
-      // Verify session exists
-      const session = await prisma.proctorSession.findUnique({
-        where: { id: sessionId },
-        select: {
-          id: true,
-          attemptId: true,
-          attempt: {
-            select: {
-              test: {
-                select: {
-                  customAIViolations: true,
-                },
-              },
-            },
-          },
-        },
-      });
-
-      if (!session) {
-        res.status(404).json({ error: 'Session not found' });
-        return;
-      }
-
-    // Server-side rate limit: if the last analysis for this session was processed
-    // less than PROCTOR_SESSION_MIN_INTERVAL_MS ago, return early with an empty
-    // result. This caps Python CV load at ~50 req/s for 200 concurrent candidates
-    // instead of 100 req/s, without any loss of proctoring coverage.
-    const nowMs = Date.now();
-    const lastAnalysisMs = sessionAnalysisLastMs.get(sessionId) || 0;
-    if (nowMs - lastAnalysisMs < PROCTOR_SESSION_MIN_INTERVAL_MS) {
-      res.json({ success: true, violations: [], totalViolations: 0, maxViolations: 0, shouldTerminate: false, isFlagged: false });
-      return;
-    }
-    sessionAnalysisLastMs.set(sessionId, nowMs);
+export async function processProctoringAnalysis(
+  sessionId: string,
+  attemptId: string,
+  customAIViolationsRaw: string | null,
+  analysisData: ProctoringAnalysis
+): Promise<ProctorAnalysisResult> {
     const enabledEvents = new Set(
-      parseStoredCustomAIViolationEvents(session.attempt.test.customAIViolations)
+      parseStoredCustomAIViolationEvents(customAIViolationsRaw)
     );
 
     const telemetryPayload = stripLargeFields({
       ...analysisData,
-      attemptId: session.attemptId,
+      attemptId,
       receivedAt: new Date().toISOString(),
     });
     void storeTelemetry(sessionId, 'analysis', telemetryPayload);
@@ -740,7 +680,7 @@ export const submitAnalysis = async (req: Request, res: Response): Promise<void>
 
     // Check if attempt should be auto-flagged or terminated
     const attempt = await prisma.testAttempt.findUnique({
-      where: { id: session.attemptId },
+      where: { id: attemptId },
       include: {
         test: { select: { maxViolations: true } },
       },
@@ -748,11 +688,11 @@ export const submitAnalysis = async (req: Request, res: Response): Promise<void>
 
     const criticalViolationDetected = storedViolations.some(v => v.severity === 'critical');
     const shouldFlag = PROCTOR_AUTO_FLAG_ON_CRITICAL && criticalViolationDetected;
-    const shouldTerminate = attempt && attempt.violations >= attempt.test.maxViolations;
+    const shouldTerminate = !!attempt && attempt.violations >= attempt.test.maxViolations;
 
     if (attempt) {
-      emitToProctorTargets(attempt.testId, session.attemptId, 'candidate-status', {
-        attemptId: session.attemptId,
+      emitToProctorTargets(attempt.testId, attemptId, 'candidate-status', {
+        attemptId,
         testId: attempt.testId,
         sessionId,
         status: {
@@ -771,8 +711,8 @@ export const submitAnalysis = async (req: Request, res: Response): Promise<void>
 
     if (attempt) {
       for (const violation of storedViolations) {
-        emitToProctorTargets(attempt.testId, session.attemptId, 'violation-detected', {
-          attemptId: session.attemptId,
+        emitToProctorTargets(attempt.testId, attemptId, 'violation-detected', {
+          attemptId,
           testId: attempt.testId,
           sessionId,
           violation: {
@@ -788,7 +728,7 @@ export const submitAnalysis = async (req: Request, res: Response): Promise<void>
 
     if (shouldFlag && attempt && !attempt.isFlagged) {
       await prisma.testAttempt.update({
-        where: { id: session.attemptId },
+        where: { id: attemptId },
         data: {
           isFlagged: true,
           flagReason: 'Auto-flagged due to critical proctoring violation',
@@ -796,23 +736,123 @@ export const submitAnalysis = async (req: Request, res: Response): Promise<void>
       });
     }
 
-      res.json({
-        success: true,
-        violations: storedViolations,
-        totalViolations: attempt?.violations || 0,
-        maxViolations: attempt?.test.maxViolations || 3,
-        shouldTerminate,
-        isFlagged: !!attempt?.isFlagged || shouldFlag,
-      });
-      proctorTrace('submit_analysis_out', {
-        sessionId,
-        returnedViolationCount: storedViolations.length,
-        returnedViolationTypes: storedViolations.map(v => v.eventType),
-        shouldTerminate,
-        isFlagged: shouldFlag || attempt?.isFlagged,
-      });
-    } finally {
-      activeAnalysisRequests = Math.max(0, activeAnalysisRequests - 1);
+    proctorTrace('submit_analysis_out', {
+      sessionId,
+      returnedViolationCount: storedViolations.length,
+      returnedViolationTypes: storedViolations.map(v => v.eventType),
+      shouldTerminate,
+      isFlagged: shouldFlag || attempt?.isFlagged,
+    });
+
+    return {
+      success: true,
+      violations: storedViolations,
+      totalViolations: attempt?.violations || 0,
+      maxViolations: attempt?.test.maxViolations || 3,
+      shouldTerminate,
+      isFlagged: !!attempt?.isFlagged || shouldFlag,
+    };
+}
+
+const PROCTOR_ANALYSIS_OVERLOADED_RESPONSE = {
+  success: true,
+  violations: [],
+  totalViolations: 0,
+  maxViolations: 0,
+  shouldTerminate: false,
+  isFlagged: false,
+  overloaded: true,
+};
+
+/**
+ * Submit proctoring analysis data for processing.
+ *
+ * Thin controller: cheap per-session throttle + session lookup happen here
+ * synchronously (so a bad sessionId 404s immediately instead of waiting out
+ * the queue), then the actual analysis (including the Python CV HTTP call)
+ * is enqueued to the proctor-analysis queue and awaited with a bounded
+ * timeout. This can't be fire-and-forget — the frontend uses shouldTerminate
+ * and violations from the response synchronously (e.g. to force-submit a
+ * test) — so unlike code execution, there's no way to just ack immediately.
+ * If the bounded wait itself times out (queue+CV pipeline genuinely
+ * saturated), we fall back to the same empty "overloaded" response the old
+ * hard 140-in-flight cap used to return, but that's now the exception path
+ * instead of the everyday one at scale.
+ */
+export const submitAnalysis = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { sessionId } = req.params;
+    const analysisData: ProctoringAnalysis = req.body;
+    cacheEvidenceFrame(sessionId, analysisData.frameData);
+    proctorTrace('submit_analysis_in', {
+      sessionId,
+      hasFrame: !!analysisData.frameData,
+      frameLength: analysisData.frameData?.length || 0,
+      faceDetected: analysisData.face?.faceDetected ?? null,
+      faceCount: analysisData.face?.faceCount ?? null,
+      gazeDirection: analysisData.gaze?.gazeDirection ?? null,
+      lookingAtScreen: analysisData.gaze?.isLookingAtScreen ?? null,
+      audioLevel: analysisData.audio?.audioLevel ?? null,
+      suspiciousAudio: analysisData.audio?.suspiciousSound ?? null,
+      hasVoice: analysisData.audio?.hasVoice ?? null,
+      monitorCount: analysisData.screenInfo?.monitorCount ?? null,
+      isFullscreen: analysisData.screenInfo?.isFullscreen ?? null,
+      tabVisible: analysisData.screenInfo?.tabVisible ?? null,
+      objectCount: analysisData.objects?.objects?.length ?? 0,
+      phoneDetected: analysisData.objects?.phoneDetected ?? null,
+      secondScreenDetected: analysisData.objects?.secondScreenDetected ?? null,
+    });
+
+    // Cheap in-memory per-session throttle, checked before touching Redis at
+    // all. Caps Python CV load per-candidate to ~1 analysis per
+    // PROCTOR_SESSION_MIN_INTERVAL_MS regardless of server-wide load.
+    const nowMs = Date.now();
+    const lastAnalysisMs = sessionAnalysisLastMs.get(sessionId) || 0;
+    if (nowMs - lastAnalysisMs < PROCTOR_SESSION_MIN_INTERVAL_MS) {
+      res.json({ success: true, violations: [], totalViolations: 0, maxViolations: 0, shouldTerminate: false, isFlagged: false });
+      return;
+    }
+    sessionAnalysisLastMs.set(sessionId, nowMs);
+
+    // Verify session exists — kept outside the queue so an invalid sessionId
+    // fails fast instead of waiting out the bounded queue timeout below.
+    const session = await prisma.proctorSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        id: true,
+        attemptId: true,
+        attempt: {
+          select: {
+            test: {
+              select: {
+                customAIViolations: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    const job = await proctorAnalysisQueue.add('analyze', {
+      sessionId,
+      attemptId: session.attemptId,
+      customAIViolations: session.attempt.test.customAIViolations,
+      analysisData,
+    });
+
+    try {
+      const result = await job.waitUntilFinished(proctorAnalysisQueueEvents, PROCTOR_ANALYSIS_WAIT_TIMEOUT_MS);
+      res.json(result);
+    } catch {
+      // Bounded wait exceeded — queue + Python CV pipeline genuinely
+      // saturated. Same shape as the old hard-cap fallback, now the rare
+      // exception path instead of triggering at a fixed in-memory count.
+      res.json(PROCTOR_ANALYSIS_OVERLOADED_RESPONSE);
     }
   } catch (error) {
     console.error('Error submitting analysis:', error);

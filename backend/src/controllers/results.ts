@@ -3,6 +3,13 @@ import { AuthenticatedRequest } from '../types/index.js';
 import prisma from '../utils/db.js';
 import { sendResultEmail } from '../services/emailService.js';
 import { getTestGradingPreferences } from '../utils/testPreferences.js';
+import { testGradingQueue, testGradingQueueEvents } from '../queues/testGradingQueue.js';
+
+// Generous — this is a deliberate one-off admin action (not a latency-
+// sensitive candidate-facing path), and a single attempt can have several
+// coding questions each with several test cases across languages with real
+// compile time (Java/C++). Bounded so the request can't hang forever.
+const REEVALUATE_WAIT_TIMEOUT_MS = 60000;
 
 async function resolveCompanyName(companyId: string | null): Promise<string> {
   if (!companyId) return 'Our Team';
@@ -604,27 +611,7 @@ export async function reEvaluateAttempt(req: AuthenticatedRequest, res: Response
 
     const attempt = await prisma.testAttempt.findUnique({
       where: { id: attemptId },
-      include: {
-        test: {
-          select: {
-            adminId: true,
-            negativeMarking: true
-          }
-        },
-        mcqAnswers: {
-          include: { question: true }
-        },
-        codingAnswers: {
-          include: {
-            question: {
-              include: { testCases: true }
-            }
-          }
-        },
-        behavioralAnswers: {
-          select: { marksObtained: true }
-        }
-      }
+      select: { testId: true, test: { select: { adminId: true } } },
     });
 
     if (!attempt) {
@@ -637,97 +624,30 @@ export async function reEvaluateAttempt(req: AuthenticatedRequest, res: Response
       return;
     }
 
-    let totalScore = 0;
-
-    // Re-evaluate MCQ answers
-    for (const mcqAnswer of attempt.mcqAnswers) {
-      const correctAnswers = JSON.parse(mcqAnswer.question.correctAnswers) as number[];
-      const selectedOptions = JSON.parse(mcqAnswer.selectedOptions) as number[];
-
-      const isCorrect =
-        correctAnswers.length === selectedOptions.length &&
-        correctAnswers.every((a: number) => selectedOptions.includes(a));
-
-      let marks = 0;
-      if (isCorrect) {
-        marks = mcqAnswer.question.marks;
-      } else if (selectedOptions.length > 0 && attempt.test.negativeMarking > 0) {
-        marks = -attempt.test.negativeMarking;
-      }
-
-      totalScore += marks;
-
-      await prisma.mCQAnswer.update({
-        where: { id: mcqAnswer.id },
-        data: {
-          isCorrect,
-          marksObtained: marks
-        }
-      });
-    }
-
-    // Re-evaluate coding answers
-    const { executeCode, compareOutput } = await import('../utils/codeExecutor.js');
-
-    for (const codingAnswer of attempt.codingAnswers) {
-      const question = codingAnswer.question;
-      const testResults = [];
-      let passedTests = 0;
-
-      for (const testCase of question.testCases) {
-        const result = await executeCode({
-          language: codingAnswer.language,
-          code: codingAnswer.code,
-          input: testCase.input,
-          timeLimit: question.timeLimit
-        });
-
-        const passed = result.success && compareOutput(testCase.expectedOutput, result.output || '');
-
-        testResults.push({
-          testCaseId: testCase.id,
-          passed,
-          executionTime: result.executionTime,
-          error: result.error
-        });
-
-        if (passed) passedTests++;
-      }
-
-      let marks = 0;
-      if (question.partialScoring) {
-        marks = (passedTests / question.testCases.length) * question.marks;
-      } else {
-        marks = passedTests === question.testCases.length ? question.marks : 0;
-      }
-
-      totalScore += marks;
-
-      await prisma.codingAnswer.update({
-        where: { id: codingAnswer.id },
-        data: {
-          testResults: JSON.stringify(testResults),
-          marksObtained: marks
-        }
-      });
-    }
-
-    // Fold in already-graded behavioral marks — this endpoint only re-runs MCQ/coding
-    // auto-grading and must not silently drop manually-graded behavioral scores.
-    for (const behavioralAnswer of attempt.behavioralAnswers) {
-      totalScore += behavioralAnswer.marksObtained ?? 0;
-    }
-
-    // Update attempt score
-    await prisma.testAttempt.update({
-      where: { id: attemptId },
-      data: { score: totalScore }
+    // Grading (including every coding answer's test cases) now runs through
+    // the same sandboxed, retry-protected code-execution queue as every
+    // other grading path in the app — see services/attemptGradingService.ts
+    // and workers/testGradingWorker.ts. Waiting on the job here (rather than
+    // running executeCode directly in this request, as before) keeps this
+    // endpoint's response contract identical for the admin UI while getting
+    // the safety benefits.
+    const job = await testGradingQueue.add('grade', {
+      attemptId,
+      testId: attempt.testId,
+      autoSubmit: false,
+      mode: 'reevaluate',
     });
 
-    res.json({
-      message: 'Re-evaluation completed',
-      newScore: totalScore
-    });
+    try {
+      const result = await job.waitUntilFinished(testGradingQueueEvents, REEVALUATE_WAIT_TIMEOUT_MS);
+      res.json({
+        message: 'Re-evaluation completed',
+        newScore: result.score,
+      });
+    } catch (waitError) {
+      console.error('Re-evaluate attempt timed out or failed:', waitError);
+      res.status(504).json({ error: 'Re-evaluation is taking longer than expected. Please check back shortly.' });
+    }
   } catch (error) {
     console.error('Re-evaluate attempt error:', error);
     res.status(500).json({ error: 'Internal server error' });

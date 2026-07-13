@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { generateCandidateToken } from '../utils/jwt.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import { sanitizeInput } from '../utils/sanitize.js';
-import { executeCode, compareOutput } from '../utils/codeExecutor.js';
+import { executeCodeWithRetry } from '../utils/codeExecutor.js';
 import prisma from '../utils/db.js';
 import { emitToAdminRoom, emitToTestProctorRoom, emitToProctorTargets } from '../services/socketService.js';
 import { Prisma } from '@prisma/client';
@@ -15,10 +15,8 @@ import {
 } from '../services/invitationService.js';
 import { uploadSnapshot } from '../services/fileStorageService.js';
 import { parseStoredCustomAIViolationEvents } from '../utils/proctoringConfig.js';
-import { sendCandidateScoreWebhook } from '../services/candidateScoreWebhookService.js';
-import { sendConfirmationEmail, sendResultEmail } from '../services/emailService.js';
 import { saveNotification, ensureNotificationTable } from './notifications.js';
-import { getTestGradingPreferences } from '../utils/testPreferences.js';
+import { testGradingQueue } from '../queues/testGradingQueue.js';
 
 export async function candidateLogin(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -1111,7 +1109,7 @@ export async function runCode(req: AuthenticatedRequest, res: Response): Promise
       return;
     }
 
-    const result = await executeCode({
+    const result = await executeCodeWithRetry({
       language,
       code,
       input: input || '',
@@ -1314,31 +1312,9 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
     const { attemptId, testId } = req.candidate!;
     const { autoSubmit } = req.body;
 
-    // Batch fetch: attempt with answers, test with questions - single DB round trip
     const [attempt, test] = await Promise.all([
-      prisma.testAttempt.findUnique({
-        where: { id: attemptId },
-        include: {
-          mcqAnswers: true,
-          codingAnswers: true,
-          behavioralAnswers: true,
-          candidate: { select: { name: true, email: true } }
-        }
-      }),
-      prisma.test.findUnique({
-        where: { id: testId },
-        include: {
-          questions: {
-            include: {
-              mcqQuestion: true,
-              codingQuestion: {
-                include: { testCases: true }
-              },
-              behavioralQuestion: true
-            }
-          }
-        }
-      })
+      prisma.testAttempt.findUnique({ where: { id: attemptId }, select: { status: true } }),
+      prisma.test.findUnique({ where: { id: testId }, select: { totalMarks: true } }),
     ]);
 
     if (!attempt) {
@@ -1356,308 +1332,41 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
       return;
     }
 
-    // Build lookup maps from already-fetched data (no additional queries)
-    const mcqQuestionsMap = new Map<string, { correctAnswers: string; marks: number }>();
-    const codingQuestionsMap = new Map<string, {
-      timeLimit: number;
-      marks: number;
-      partialScoring: boolean;
-      testCases: Array<{ id: string; input: string; expectedOutput: string }>;
-    }>();
-
-    for (const eq of test.questions) {
-      if (eq.mcqQuestion) {
-        mcqQuestionsMap.set(eq.mcqQuestion.id, {
-          correctAnswers: eq.mcqQuestion.correctAnswers,
-          marks: eq.mcqQuestion.marks
-        });
-      }
-      if (eq.codingQuestion) {
-        codingQuestionsMap.set(eq.codingQuestion.id, {
-          timeLimit: eq.codingQuestion.timeLimit,
-          marks: eq.codingQuestion.marks,
-          partialScoring: eq.codingQuestion.partialScoring,
-          testCases: eq.codingQuestion.testCases
-        });
-      }
-    }
-
-    // Evaluate MCQ answers and prepare batch updates
-    let totalScore = 0;
-    const mcqUpdates: Array<{ id: string; isCorrect: boolean; marksObtained: number }> = [];
-
-    for (const mcqAnswer of attempt.mcqAnswers) {
-      const question = mcqQuestionsMap.get(mcqAnswer.questionId);
-      if (question) {
-        const correctAnswers = JSON.parse(question.correctAnswers) as number[];
-        const selectedOptions = JSON.parse(mcqAnswer.selectedOptions) as number[];
-
-        const isCorrect =
-          correctAnswers.length === selectedOptions.length &&
-          correctAnswers.every((a: number) => selectedOptions.includes(a));
-
-        let marks = 0;
-        if (isCorrect) {
-          marks = question.marks;
-        } else if (selectedOptions.length > 0 && test.negativeMarking > 0) {
-          marks = -test.negativeMarking;
-        }
-
-        totalScore += marks;
-        mcqUpdates.push({ id: mcqAnswer.id, isCorrect, marksObtained: marks });
-      }
-    }
-
-    // Evaluate coding answers - execute tests in parallel per question
-    const codingUpdates: Array<{ id: string; testResults: string; marksObtained: number }> = [];
-
-    for (const codingAnswer of attempt.codingAnswers) {
-      const question = codingQuestionsMap.get(codingAnswer.questionId);
-      if (question && question.testCases.length > 0) {
-        // Run all test cases in parallel for this answer
-        const testPromises = question.testCases.map(async (testCase) => {
-          const result = await executeCode({
-            language: codingAnswer.language,
-            code: codingAnswer.code,
-            input: testCase.input,
-            timeLimit: question.timeLimit
-          });
-
-          const passed = result.success && compareOutput(testCase.expectedOutput, result.output || '');
-
-          return {
-            testCaseId: testCase.id,
-            passed,
-            executionTime: result.executionTime,
-            error: result.error
-          };
-        });
-
-        const testResults = await Promise.all(testPromises);
-        const passedTests = testResults.filter(r => r.passed).length;
-
-        // Calculate marks
-        let marks = 0;
-        if (question.partialScoring) {
-          // Round to 2 decimal places to avoid floating point issues
-          marks = Math.round((passedTests / question.testCases.length) * question.marks * 100) / 100;
-        } else {
-          marks = passedTests === question.testCases.length ? question.marks : 0;
-        }
-
-        totalScore += marks;
-        codingUpdates.push({
-          id: codingAnswer.id,
-          testResults: JSON.stringify(testResults),
-          marksObtained: marks
-        });
-      }
-    }
-
-    // Behavioral answers can't be auto-graded — fold in any marks already assigned
-    // (normally none yet at submission time) so the total score formula stays consistent
-    // with re-evaluation and manual grading.
-    for (const behavioralAnswer of attempt.behavioralAnswers) {
-      totalScore += behavioralAnswer.marksObtained ?? 0;
-    }
-
-    // Execute all database updates in a transaction for consistency
     const attemptStatus = autoSubmit ? 'auto_submitted' : 'submitted';
-    const webhookStatus = attemptStatus === 'submitted' || attemptStatus === 'auto_submitted'
-      ? 'completed'
-      : attemptStatus;
 
-    const gradingPreferences = await getTestGradingPreferences(testId);
-    const resultReleased = gradingPreferences.gradingMode !== 'Manual';
-    const passed = test.passingMarks != null ? totalScore >= test.passingMarks : null;
+    // Mark the attempt submitted and respond immediately. Actual grading
+    // (MCQ scoring plus running every coding answer against its test cases —
+    // which used to block this response for as long as code execution took)
+    // now happens asynchronously via the test-grading worker. `score` stays
+    // null until that job finishes; results.ts/analytics.ts already treat a
+    // null score as "not yet scored".
+    await prisma.testAttempt.update({
+      where: { id: attemptId },
+      data: {
+        status: attemptStatus,
+        endTime: new Date(),
+        submittedAt: new Date(),
+      },
+    });
 
-    await prisma.$transaction([
-      // Batch update MCQ answers
-      ...mcqUpdates.map(update =>
-        prisma.mCQAnswer.update({
-          where: { id: update.id },
-          data: { isCorrect: update.isCorrect, marksObtained: update.marksObtained }
-        })
-      ),
-      // Batch update coding answers
-      ...codingUpdates.map(update =>
-        prisma.codingAnswer.update({
-          where: { id: update.id },
-          data: { testResults: update.testResults, marksObtained: update.marksObtained }
-        })
-      ),
-      // Update attempt status
-      prisma.testAttempt.update({
-        where: { id: attemptId },
-        data: {
-          status: attemptStatus,
-          endTime: new Date(),
-          submittedAt: new Date(),
-          score: totalScore,
-          resultReleased
-        }
-      }),
-      // Log submission
-      prisma.activityLog.create({
-        data: {
-          attemptId,
-          eventType: autoSubmit ? 'auto_submit' : 'manual_submit',
-          eventData: JSON.stringify({
-            timestamp: new Date().toISOString(),
-            score: totalScore
-          })
-        }
-      })
-    ]);
+    await prisma.activityLog.create({
+      data: {
+        attemptId,
+        eventType: autoSubmit ? 'auto_submit' : 'manual_submit',
+        eventData: JSON.stringify({ timestamp: new Date().toISOString() }),
+      },
+    });
 
-    const showScore = resultReleased && gradingPreferences.showScoreToCandidate;
+    // Enqueue before responding so a crash between these two lines can't
+    // leave the attempt stuck "submitted" with no grading job ever created.
+    await testGradingQueue.add('grade', { attemptId, testId, autoSubmit: !!autoSubmit });
 
     res.json({
       message: 'Test submitted successfully',
       totalMarks: test.totalMarks,
-      resultReleased,
-      showScore,
-      ...(showScore ? { score: totalScore, passed } : {})
+      resultReleased: false,
+      gradingInProgress: true,
     });
-
-    const submissionPayload = {
-      testId,
-      testName: test.name,
-      attemptId,
-      candidateName: attempt.candidate?.name ?? 'Unknown',
-      candidateEmail: attempt.candidate?.email ?? '',
-      autoSubmit: !!autoSubmit,
-      timestamp: new Date().toISOString(),
-    };
-
-    emitToTestProctorRoom(testId, 'test-submitted', submissionPayload);
-    emitToAdminRoom(test.adminId, 'test-submitted', submissionPayload);
-
-    // Persist notification to DB
-    void ensureNotificationTable().then(() =>
-      saveNotification({
-        adminId: test.adminId,
-        type: 'completed',
-        attemptId,
-        testId,
-        testName: test.name,
-        candidateName: attempt.candidate?.name ?? 'Unknown',
-        autoSubmit: !!autoSubmit,
-      })
-    ).catch(err => console.error('Notification save error (submit):', err));
-
-    void sendCandidateScoreWebhook({
-      name: attempt.candidate?.name ?? 'Unknown',
-      emailid: attempt.candidate?.email ?? '',
-      score: totalScore,
-      testid: testId,
-      status: webhookStatus,
-    });
-
-    // Send confirmation email — fire-and-forget, never blocks or breaks submission
-    const candidateEmail = attempt.candidate?.email;
-    const candidateName  = attempt.candidate?.name ?? 'Candidate';
-    if (!candidateEmail) {
-      console.warn(`Confirmation email skipped: no email on candidate for attempt ${attemptId}`);
-    }
-    if (candidateEmail) {
-      void (async () => {
-        try {
-          // Fetch known fields via the generated Prisma client (always safe)
-          const testRow = await prisma.test.findUnique({
-            where: { id: testId },
-            select: { name: true, companyId: true },
-          });
-          if (!testRow) {
-            console.error(`Confirmation email: test ${testId} not found`);
-            return;
-          }
-
-          // Resolve company name
-          let companyName = 'Our Team';
-          if (testRow.companyId) {
-            try {
-              const company = await prisma.company.findUnique({
-                where: { id: testRow.companyId },
-                select: { name: true },
-              });
-              if (company?.name) companyName = company.name;
-            } catch { /* company name is optional */ }
-          }
-
-          // Try to read custom email templates via raw SQL.
-          // These columns may not exist if the migration hasn't been applied yet —
-          // in that case we fall back silently to the default templates.
-          let confirmEmailSubject: string | undefined;
-          let confirmEmailBody: string | undefined;
-          try {
-            const rows = await prisma.$queryRaw<Array<{
-              confirmEmailSubject: string | null;
-              confirmEmailBody: string | null;
-            }>>`SELECT "confirmEmailSubject", "confirmEmailBody" FROM "Test" WHERE id = ${testId}`;
-            if (rows.length > 0) {
-              confirmEmailSubject = rows[0].confirmEmailSubject ?? undefined;
-              confirmEmailBody    = rows[0].confirmEmailBody    ?? undefined;
-            }
-          } catch {
-            // columns not in DB yet — use default templates (safe to continue)
-          }
-
-          await sendConfirmationEmail({
-            to: candidateEmail,
-            candidateName,
-            testName: testRow.name,
-            companyName,
-            confirmEmailSubject,
-            confirmEmailBody,
-          });
-          console.log(`Confirmation email sent to ${candidateEmail} for test "${testRow.name}"`);
-        } catch (err) {
-          console.error('Confirmation email error:', err);
-        }
-      })();
-    }
-
-    // Send result email — fire-and-forget, gated by the test's grading-mode/email settings
-    if (resultReleased && gradingPreferences.sendResultEmail && candidateEmail) {
-      void (async () => {
-        try {
-          const testRow = await prisma.test.findUnique({
-            where: { id: testId },
-            select: { name: true, companyId: true },
-          });
-          if (!testRow) return;
-
-          let companyName = 'Our Team';
-          if (testRow.companyId) {
-            try {
-              const company = await prisma.company.findUnique({
-                where: { id: testRow.companyId },
-                select: { name: true },
-              });
-              if (company?.name) companyName = company.name;
-            } catch { /* company name is optional */ }
-          }
-
-          await sendResultEmail({
-            to: candidateEmail,
-            candidateName,
-            testName: testRow.name,
-            companyName,
-            score: totalScore,
-            totalMarks: test.totalMarks,
-            passed,
-          });
-          await prisma.testAttempt.update({
-            where: { id: attemptId },
-            data: { resultEmailSentAt: new Date() },
-          });
-          console.log(`Result email sent to ${candidateEmail} for test "${testRow.name}"`);
-        } catch (err) {
-          console.error('Result email error:', err);
-        }
-      })();
-    }
   } catch (error) {
     console.error('Submit test error:', error);
     res.status(500).json({ error: 'Internal server error' });
