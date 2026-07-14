@@ -215,6 +215,20 @@ async function ensureTempDir(): Promise<void> {
   } catch {
     // Directory might already exist
   }
+
+  if (SANDBOX_USER_CONFIGURED) {
+    // Self-heal on every execution: TEMP_DIR must stay traversable (o+x) so
+    // the sandbox uid can chdir into its own per-run subfolder (Node drops
+    // privileges before chdir'ing), but not listable (no o+r). If /tmp gets
+    // wiped and recreated (e.g. tmpfs reset on reboot), mkdir above silently
+    // reapplies default perms, which would otherwise wedge execution again -
+    // this makes that a non-issue instead of a manual chmod every reboot.
+    try {
+      await chmod(TEMP_DIR, 0o711);
+    } catch {
+      // best effort
+    }
+  }
 }
 
 function killProcessTree(proc: ChildProcess): void {
