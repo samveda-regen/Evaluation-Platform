@@ -43,11 +43,16 @@ find "$REPO_ROOT" -maxdepth 3 -iname ".env" -o -iname ".env.*" ! -iname "*.examp
   echo "chmod 600 $envfile"
 done
 
-# Make sure the code-execution temp dir exists and isn't group/world writable
-# beyond what's needed (codeExecutor.ts chowns each per-run subdirectory to
-# the sandbox user at execution time).
+# Make sure the code-execution temp dir exists. It must stay owner-root but
+# world-TRAVERSABLE (o+x, no o+r): child processes drop to the sandbox uid
+# before chdir'ing into their per-run subfolder, so they need +x on every
+# ancestor directory to reach it - but +x without +r means they can't list
+# this directory's contents (other runs' UUID-named subfolders are opaque).
+# Each per-run subfolder is separately chowned+chmod 700 to the sandbox user
+# at execution time (see codeExecutor.ts), so this is not group/world
+# writable, just traversable.
 mkdir -p /tmp/code_execution
-chmod 700 /tmp/code_execution
+chmod 711 /tmp/code_execution
 
 cat <<EOF
 
