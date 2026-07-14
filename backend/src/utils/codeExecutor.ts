@@ -1,5 +1,5 @@
 import { spawn, ChildProcess } from 'child_process';
-import { writeFile, mkdir, rm } from 'fs/promises';
+import { writeFile, mkdir, rm, chown, chmod } from 'fs/promises';
 import { join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { CodeExecutionResult } from '../types/index.js';
@@ -8,6 +8,28 @@ const TEMP_DIR = '/tmp/code_execution';
 const DEFAULT_TIMEOUT = 5000; // 5 seconds
 const MAX_OUTPUT_SIZE = 1024 * 1024; // 1MB
 const HARD_TIMEOUT_BUFFER = 5000; // Additional 5s buffer for hard kill
+
+// Candidate code must run as an unprivileged OS account, never as the
+// backend's own user (which can read backend/.env and every other app
+// file). Set CODE_EXEC_UID/CODE_EXEC_GID to the numeric uid/gid of a
+// dedicated low-privilege sandbox user (see ops docs for setup) - the
+// backend process itself needs root or CAP_SETUID/CAP_SETGID to drop into
+// it. Without this configured, code still runs as whatever user the
+// backend runs as, which is only acceptable in local dev.
+const SANDBOX_UID = process.env.CODE_EXEC_UID ? Number(process.env.CODE_EXEC_UID) : undefined;
+const SANDBOX_GID = process.env.CODE_EXEC_GID ? Number(process.env.CODE_EXEC_GID) : undefined;
+const SANDBOX_USER_CONFIGURED =
+  process.platform !== 'win32' &&
+  Number.isInteger(SANDBOX_UID) &&
+  Number.isInteger(SANDBOX_GID);
+
+if (!SANDBOX_USER_CONFIGURED && process.env.NODE_ENV === 'production') {
+  console.warn(
+    '[codeExecutor] CODE_EXEC_UID/CODE_EXEC_GID are not set - candidate code will run as the ' +
+    'backend process user, which can read application secrets and files. Configure a dedicated ' +
+    'unprivileged sandbox user before serving real candidates.'
+  );
+}
 
 // Code Execution Queue Configuration
 const MAX_CONCURRENT_EXECUTIONS = 10;
@@ -164,6 +186,29 @@ const LANGUAGE_CONFIG: Record<string, { extension: string; compile?: string[]; r
   }
 };
 
+// Env vars that are safe to expose to candidate-submitted code.
+// Everything else (DB creds, JWT/session secrets, API keys, webhook secrets,
+// SSH/session vars, etc.) lives in process.env and must NEVER reach a child
+// process spawned for untrusted code - do not add to this list without
+// confirming the value contains no secret.
+const SAFE_ENV_ALLOWLIST = ['PATH', 'LANG', 'LC_ALL', 'TZ'];
+
+function buildSandboxEnv(workDir: string): NodeJS.ProcessEnv {
+  const sandboxEnv: NodeJS.ProcessEnv = {};
+  for (const key of SAFE_ENV_ALLOWLIST) {
+    if (process.env[key] !== undefined) {
+      sandboxEnv[key] = process.env[key];
+    }
+  }
+  // Point HOME/TMPDIR at the disposable per-execution workDir so language
+  // runtimes/toolchains don't read or write outside the sandboxed directory.
+  sandboxEnv.HOME = workDir;
+  sandboxEnv.TMPDIR = workDir;
+  sandboxEnv.TMP = workDir;
+  sandboxEnv.TEMP = workDir;
+  return sandboxEnv;
+}
+
 async function ensureTempDir(): Promise<void> {
   try {
     await mkdir(TEMP_DIR, { recursive: true });
@@ -213,8 +258,10 @@ async function executeCommand(
 
     const proc = spawn(command, args, {
       cwd,
+      env: buildSandboxEnv(cwd),
       stdio: ['pipe', 'pipe', 'pipe'],
-      detached: true // Create new process group for easier cleanup
+      detached: true, // Create new process group for easier cleanup
+      ...(SANDBOX_USER_CONFIGURED ? { uid: SANDBOX_UID as number, gid: SANDBOX_GID as number } : {})
     });
 
     activeProcesses.add(proc);
@@ -331,6 +378,15 @@ async function executeCodeInternal(config: ExecutionConfig): Promise<CodeExecuti
 
   try {
     await writeFile(filePath, code);
+
+    // Hand the work directory over to the unprivileged sandbox user so the
+    // compile/run steps below (which execute as that user) can read/write
+    // within it, and so nothing else on the box is reachable from it.
+    if (SANDBOX_USER_CONFIGURED) {
+      await chmod(workDir, 0o700);
+      await chown(workDir, SANDBOX_UID as number, SANDBOX_GID as number);
+      await chown(filePath, SANDBOX_UID as number, SANDBOX_GID as number);
+    }
 
     const startTime = Date.now();
 
