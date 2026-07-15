@@ -226,7 +226,7 @@ export const adminApi = {
   deleteTestInvitation: (testId: string, invitationId: string) =>
     api.delete(`/admin/tests/${testId}/invitations/${invitationId}`),
 
-  addQuestionToTest: (testId: string, data: { questionId: string; questionType: string; orderIndex?: number; sectionId?: string | null }) =>
+  addQuestionToTest: (testId: string, data: { questionId: string; questionType: string; orderIndex?: number }) =>
     api.post(`/admin/tests/${testId}/questions`, data),
 
   addCustomQuestionToTest: (testId: string, data: Record<string, unknown>) =>
@@ -234,12 +234,6 @@ export const adminApi = {
 
   removeQuestionFromTest: (testId: string, questionId: string) =>
     api.delete(`/admin/tests/${testId}/questions/${questionId}`),
-
-  createTestSection: (testId: string, data: { name: string; orderIndex?: number; questionsPerCandidate?: number }) =>
-    api.post(`/admin/tests/${testId}/sections`, data),
-
-  deleteTestSection: (testId: string, sectionId: string) =>
-    api.delete(`/admin/tests/${testId}/sections/${sectionId}`),
 
   getEmailTemplates: (testId: string) =>
     api.get(`/admin/tests/${testId}/email-templates`),

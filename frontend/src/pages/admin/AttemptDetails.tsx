@@ -106,8 +106,8 @@ function ScoreRing({ pct, size = 120, score, label }: { pct: number; size?: numb
   );
 }
 
-/* -- Small donut for section breakdown -- */
-function SectionDonut({ pct, color, label, sub }: { pct: number; color: string; label: string; sub: string }) {
+/* -- Small donut for question-type breakdown -- */
+function QuestionDonut({ pct, color, label, sub }: { pct: number; color: string; label: string; sub: string }) {
   const size = 100, sw = 9;
   const r    = (size - sw) / 2;
   const circ = 2 * Math.PI * r;
@@ -297,7 +297,7 @@ export default function AttemptDetails() {
     ? `above ${Math.round((test.passingMarks / test.totalMarks) * 100)}%`
     : 'above 60%';
 
-  /* -- Section percentages -- */
+  /* -- Question-type percentages -- */
   const mcqTotal   = mcqAnswers.reduce((s, a) => s + a.marks, 0);
   const mcqObtained= mcqAnswers.reduce((s, a) => s + a.marksObtained, 0);
   const mcqPct     = safeDiv(mcqObtained, mcqTotal);
@@ -510,18 +510,18 @@ export default function AttemptDetails() {
         {/* -- RIGHT PANEL -- */}
         <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
 
-          {/* Section breakdown */}
+          {/* Question breakdown */}
           <div style={{ backgroundColor:'white', borderRadius:'14px', padding:'22px 24px', boxShadow:'0 1px 6px rgba(0,0,0,0.06)' }}>
-            <p style={{ fontSize:'15px', fontWeight:600, color:'var(--admin-text)', margin:'0 0 20px' }}>Section breakdown</p>
+            <p style={{ fontSize:'15px', fontWeight:600, color:'var(--admin-text)', margin:'0 0 20px' }}>Question breakdown</p>
             <div style={{ display:'flex', gap:'32px', justifyContent:'flex-start' }}>
               {mcqAnswers.length > 0 && (
-                <SectionDonut pct={mcqPct} color="var(--admin-accent)" label="MCQ" sub={`${mcqCorrect}/${mcqAnswers.length}`} />
+                <QuestionDonut pct={mcqPct} color="var(--admin-accent)" label="MCQ" sub={`${mcqCorrect}/${mcqAnswers.length}`} />
               )}
               {codingAnswers.length > 0 && (
-                <SectionDonut pct={codPct} color="var(--admin-accent)" label="Coding" sub={`${codPassed}/${codingAnswers.length}`} />
+                <QuestionDonut pct={codPct} color="var(--admin-accent)" label="Coding" sub={`${codPassed}/${codingAnswers.length}`} />
               )}
               {behavioralAnswers.length > 0 && (
-                <SectionDonut pct={behPct} color="var(--admin-data-blue)" label="Behavioral" sub={behRating} />
+                <QuestionDonut pct={behPct} color="var(--admin-data-blue)" label="Behavioral" sub={behRating} />
               )}
               {mcqAnswers.length === 0 && codingAnswers.length === 0 && behavioralAnswers.length === 0 && (
                 <p style={{ fontSize:'13px', color:'var(--admin-text-subtle)' }}>No answers recorded</p>

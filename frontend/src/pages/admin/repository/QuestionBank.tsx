@@ -148,7 +148,7 @@ export default function QuestionBank() {
     fromTestName?: string;
     fromTestQuestionIds?: string[];
     returnTo?: string;
-    activeSection?: SidebarCategory;
+    activeCategory?: SidebarCategory;
   } | null;
   const urlParams = new URLSearchParams(location.search);
   const fromTestId: string | undefined = routeState?.fromTestId ?? urlParams.get('fromTestId') ?? undefined;
@@ -156,7 +156,7 @@ export default function QuestionBank() {
   const fromTestQuestionIds = routeState?.fromTestQuestionIds ?? [];
   const fromTestQuestionIdsKey = fromTestQuestionIds.join('|');
   const returnTo = routeState?.returnTo ?? urlParams.get('returnTo') ?? (fromTestId ? `/admin/tests/${fromTestId}?tab=questions` : '/admin/repository/question-bank');
-  const initialSidebarItem = SIDEBAR_ITEMS.find(item => item.category === routeState?.activeSection) ?? SIDEBAR_ITEMS[0];
+  const initialSidebarItem = SIDEBAR_ITEMS.find(item => item.category === routeState?.activeCategory) ?? SIDEBAR_ITEMS[0];
 
   /* -- State -- */
   const [activeItem,   setActiveItem]   = useState<SidebarItem>(initialSidebarItem);
@@ -215,10 +215,7 @@ export default function QuestionBank() {
     adminApi.getTest(fromTestId)
       .then(({ data }) => {
         if (cancelled) return;
-        const testQuestions = [
-          ...(data.test?.questions ?? []),
-          ...((data.test?.sections ?? []).flatMap((section: { questions?: unknown[] }) => section.questions ?? [])),
-        ] as Array<{
+        const testQuestions = (data.test?.questions ?? []) as Array<{
           mcqQuestion?: { id?: string };
           codingQuestion?: { id?: string };
           behavioralQuestion?: { id?: string };
@@ -565,7 +562,7 @@ export default function QuestionBank() {
     const editState = {
       question: q,
       returnTo,
-      activeSection: activeItem.category,
+      activeCategory: activeItem.category,
     };
 
     if (isMCQ(q)) {

@@ -261,10 +261,10 @@ export default function TestPreview() {
             </div>
           </div>
 
-          {/* Sections */}
+          {/* Question mix */}
           {(mcqCount > 0 || codingCount > 0 || behavioralCount > 0) && (
             <div className="rounded-2xl p-6" style={{ backgroundColor: 'white', boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}>
-              <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--admin-text)' }}>Sections</h2>
+              <h2 className="text-base font-semibold mb-4" style={{ color: 'var(--admin-text)' }}>Question mix</h2>
               <div className="grid grid-cols-3 gap-4">
                 {[
                   { label: 'Multiple choice', count: mcqCount,        color: 'var(--admin-data-blue)', icon: <CheckSquare  width={20} height={20} stroke="var(--admin-data-blue)" strokeWidth={1.5} /> },

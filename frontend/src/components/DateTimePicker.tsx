@@ -102,6 +102,21 @@ function parseValue(v: string): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
+function startOfMinute(d: Date) {
+  const next = new Date(d);
+  next.setSeconds(0, 0);
+  return next;
+}
+
+function sameCalendarDate(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function clampToMinDateTime(d: Date, minDate: Date | null) {
+  if (!minDate || d.getTime() >= minDate.getTime()) return d;
+  return new Date(minDate);
+}
+
 export default function DateTimePicker({ value, onChange, placeholder, minDateTime, style }: Props) {
   const [open, setOpen] = useState(false);
   const [viewYear, setViewYear] = useState(new Date().getFullYear());
@@ -113,9 +128,10 @@ export default function DateTimePicker({ value, onChange, placeholder, minDateTi
 
   const selDate = parseValue(value);
   const explicitMinDate = parseValue(minDateTime || '');
-  const nowMinDate = new Date();
+  const nowMinDate = startOfMinute(new Date());
   const minDate = explicitMinDate && explicitMinDate > nowMinDate ? explicitMinDate : nowMinDate;
-  const effectiveDate = selDate ?? new Date();
+  const defaultDate = minDate ? new Date(minDate) : startOfMinute(new Date());
+  const effectiveDate = selDate ?? defaultDate;
 
   useEffect(() => {
     if (!selDate) return;
@@ -148,13 +164,15 @@ export default function DateTimePicker({ value, onChange, placeholder, minDateTi
   };
 
   const applyDate = (d: Date) => {
-    if (isBeforeMinDateTime(d)) return;
-    onChange(toLocalStr(d));
+    onChange(toLocalStr(clampToMinDateTime(d, minDate)));
   };
 
   const selectDay = (year: number, month: number, day: number) => {
-    const base = selDate ? new Date(selDate) : new Date();
+    const base = selDate ? new Date(selDate) : new Date(defaultDate);
     base.setFullYear(year, month, day);
+    if (minDate && sameCalendarDate(base, minDate) && base.getTime() < minDate.getTime()) {
+      base.setHours(minDate.getHours(), minDate.getMinutes(), 0, 0);
+    }
     setViewYear(year);
     setViewMonth(month);
     applyDate(base);
@@ -162,20 +180,20 @@ export default function DateTimePicker({ value, onChange, placeholder, minDateTi
 
   const selectHour = (hStr: string) => {
     const h = parseInt(hStr);
-    const base = selDate ? new Date(selDate) : new Date();
+    const base = selDate ? new Date(selDate) : new Date(defaultDate);
     const isPM = base.getHours() >= 12;
     base.setHours(isPM ? (h === 12 ? 12 : h + 12) : (h === 12 ? 0 : h));
     applyDate(base);
   };
 
   const selectMinute = (mStr: string) => {
-    const base = selDate ? new Date(selDate) : new Date();
+    const base = selDate ? new Date(selDate) : new Date(defaultDate);
     base.setMinutes(parseInt(mStr));
     applyDate(base);
   };
 
   const selectPeriod = (p: string) => {
-    const base = selDate ? new Date(selDate) : new Date();
+    const base = selDate ? new Date(selDate) : new Date(defaultDate);
     const h = base.getHours();
     if (p === 'AM' && h >= 12) base.setHours(h - 12);
     if (p === 'PM' && h < 12) base.setHours(h + 12);
@@ -331,7 +349,7 @@ export default function DateTimePicker({ value, onChange, placeholder, minDateTi
           type="button"
           disabled={quickNowDisabled}
           onClick={() => {
-            const now = new Date();
+            const now = startOfMinute(new Date());
             if (isBeforeMinDateTime(now)) return;
             setViewMonth(now.getMonth());
             setViewYear(now.getFullYear());

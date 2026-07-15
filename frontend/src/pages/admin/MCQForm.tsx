@@ -29,18 +29,18 @@ export default function MCQForm() {
   const routeState = location.state as {
     question?: Record<string, unknown>;
     returnTo?: string;
-    activeSection?: string;
+    activeCategory?: string;
     addToTestId?: string;
   } | null;
   const editQuestion = routeState?.question;
   const editSource = editQuestion?.source === 'QUESTION_BANK' ? 'QUESTION_BANK' : 'CUSTOM';
   const returnTo = routeState?.returnTo ?? '/admin/repository/question-bank';
-  const returnSection = routeState?.activeSection ?? (editSource === 'CUSTOM' ? 'CUSTOM' : 'all');
+  const returnCategory = routeState?.activeCategory ?? (editSource === 'CUSTOM' ? 'CUSTOM' : 'all');
   const addToTestId = routeState?.addToTestId;
   const finishNavigation = () => {
     navigate(returnTo, {
       state: returnTo.includes('/admin/repository/question-bank')
-        ? { activeSection: returnSection }
+        ? { activeCategory: returnCategory }
         : undefined,
     });
   };

@@ -159,13 +159,6 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
   const selScorePct = selAttempt?.score != null && test?.totalMarks
     ? Math.round((selAttempt.score / test.totalMarks) * 100) : null;
 
-  /* -- Section performance (proportional estimate) -- */
-  const sectionBars = selScorePct != null ? [
-    { label: 'MCQ',        pct: Math.min(100, selScorePct + 5) },
-    { label: 'Coding',     pct: Math.max(0,   selScorePct - 14) },
-    { label: 'Behavioral', pct: Math.min(100, selScorePct + 10) },
-  ] : [];
-
   /* -- Integrity flags (derive from violation count) -- */
   const viol = selAttempt?.violations ?? 0;
   const integrityFlags: string[] = viol > 0 ? [
@@ -404,29 +397,6 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
                   </div>
                 ))}
               </div>
-
-              {/* Section performance */}
-              {sectionBars.length > 0 && (
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color:'var(--admin-text-subtle)' }}>
-                    Section Performance
-                  </p>
-                  <div className="space-y-3">
-                    {sectionBars.map(({ label, pct }) => (
-                      <div key={label}>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm font-medium" style={{ color:'var(--admin-text-muted)' }}>{label}</span>
-                          <span className="text-sm font-semibold" style={{ color:'var(--admin-text)' }}>{pct}%</span>
-                        </div>
-                        <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor:'var(--admin-border)' }}>
-                          <div className="h-full rounded-full transition-all"
-                            style={{ width:`${pct}%`, backgroundColor:'var(--admin-accent)' }} />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {/* Integrity flags */}
               <div>
