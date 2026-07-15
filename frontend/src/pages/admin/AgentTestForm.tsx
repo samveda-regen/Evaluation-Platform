@@ -39,6 +39,34 @@ interface TestSettings {
 
 const MAX_TEST_VIOLATIONS = 150;
 
+function pad(n: number) {
+  return String(n).padStart(2, '0');
+}
+
+function toLocalDateTimeValue(date: Date): string {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function addMinutesToLocalDateTime(value: string, minutes: number): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  parsed.setMinutes(parsed.getMinutes() + minutes);
+  return toLocalDateTimeValue(parsed);
+}
+
+function toISOStringFromLocalDateTime(value: string): string | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
+function isAfterLocalDateTime(startTime: string, endTime: string): boolean {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+  return !Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && end.getTime() > start.getTime();
+}
+
 /* -- Baseline skill list for autocomplete (used as a seed before/if the library list loads) -- */
 const SKILL_SUGGESTIONS = [
   'JavaScript','TypeScript','Python','Java','C++','C#','Go','Rust','Ruby','PHP','Swift','Kotlin','Scala',
@@ -286,7 +314,7 @@ export default function AgentTestForm() {
           name:        sel.suggestedTestName    || `${jobProfile.title} Assessment`,
           description: sel.suggestedDescription || '',
           duration:    sel.suggestedDuration    || 60,
-          startTime:   p.startTime || new Date(Date.now() + 60_000).toISOString().slice(0, 16),
+          startTime:   p.startTime || toLocalDateTimeValue(new Date(Date.now() + 60_000)),
         }));
         const total = sel.mcqQuestionIds.length + sel.codingQuestionIds.length + sel.behavioralQuestionIds.length;
         if (total === 0) {
@@ -311,6 +339,13 @@ export default function AgentTestForm() {
     if (!selection)                  { toast.error('No test selection available'); return; }
     if (!testSettings.startTime)     { toast.error('Start time is required'); return; }
     if (!testSettings.name.trim())   { toast.error('Test name is required'); return; }
+    const startTimeIso = toISOStringFromLocalDateTime(testSettings.startTime);
+    if (!startTimeIso) { toast.error('Please select a valid start time'); return; }
+    const endTimeIso = testSettings.endTime ? toISOStringFromLocalDateTime(testSettings.endTime) : null;
+    if (testSettings.endTime && (!endTimeIso || !isAfterLocalDateTime(testSettings.startTime, testSettings.endTime))) {
+      toast.error('End time must be after start time');
+      return;
+    }
     if (!Number.isFinite(testSettings.duration) || testSettings.duration <= 0) { toast.error('Duration must be greater than 0 minutes'); return; }
     if (!Number.isFinite(testSettings.passingMarks) || testSettings.passingMarks < 0) { toast.error('Passing marks cannot be negative'); return; }
     if (!Number.isFinite(testSettings.negativeMarking) || testSettings.negativeMarking < 0) { toast.error('Negative marking cannot be negative'); return; }
@@ -324,8 +359,8 @@ export default function AgentTestForm() {
         selection,
         testSettings: {
           ...testSettings,
-          startTime: new Date(testSettings.startTime).toISOString(),
-          endTime:   testSettings.endTime ? new Date(testSettings.endTime).toISOString() : undefined,
+          startTime: startTimeIso,
+          endTime:   endTimeIso || undefined,
         },
       });
       if (data.success && data.data) {
@@ -378,6 +413,28 @@ export default function AgentTestForm() {
     const n = val === '' ? fallback : Number(val);
     return isNaN(n) ? fallback : Math.max(0, Math.floor(n));
   };
+
+  const handleStartTimeChange = (startTime: string) => {
+    setTestSettings(prev => {
+      const endTimeStillValid = !prev.endTime || isAfterLocalDateTime(startTime, prev.endTime);
+      if (!endTimeStillValid) toast.error('End time was cleared because it is before the start time');
+      return {
+        ...prev,
+        startTime,
+        endTime: endTimeStillValid ? prev.endTime : '',
+      };
+    });
+  };
+
+  const handleEndTimeChange = (endTime: string) => {
+    if (testSettings.startTime && !isAfterLocalDateTime(testSettings.startTime, endTime)) {
+      toast.error('End time must be after start time');
+      return;
+    }
+    setTestSettings(prev => ({ ...prev, endTime }));
+  };
+
+  const minEndTime = testSettings.startTime ? addMinutesToLocalDateTime(testSettings.startTime, 1) : '';
 
   return (
     <div style={{
@@ -732,7 +789,7 @@ export default function AgentTestForm() {
                     <label style={lbl}>Start Time <span style={{ color: '#EF4444' }}>*</span></label>
                     <DateTimePicker
                       value={testSettings.startTime}
-                      onChange={v => setTestSettings(p => ({ ...p, startTime: v }))}
+                      onChange={handleStartTimeChange}
                       placeholder="Select start date & time"
                     />
                   </div>
@@ -740,8 +797,8 @@ export default function AgentTestForm() {
                     <label style={lbl}>End Time <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--admin-text-subtle)' }}>(Optional)</span></label>
                     <DateTimePicker
                       value={testSettings.endTime}
-                      onChange={v => setTestSettings(p => ({ ...p, endTime: v }))}
-                      minDateTime={testSettings.startTime}
+                      onChange={handleEndTimeChange}
+                      minDateTime={minEndTime}
                       placeholder="Select end date & time"
                     />
                   </div>
