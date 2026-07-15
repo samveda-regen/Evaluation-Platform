@@ -42,7 +42,6 @@ interface FormState {
   /* Test behavior */
   shuffleQuestions: boolean;
   shuffleOptions: boolean;
-  allowBackNavigation: boolean;
   showTimer: boolean;
   autoSubmitOnTimeout: boolean;
   negativeMarkingEnabled: boolean;
@@ -121,7 +120,6 @@ function toFormState(t: Test): FormState {
     allowAccessCode:       booleanSetting(ext, settings, 'allowAccessCode', false),
     shuffleQuestions:      t.shuffleQuestions ?? false,
     shuffleOptions:        t.shuffleOptions ?? false,
-    allowBackNavigation:   booleanSetting(ext, settings, 'allowBackNavigation', false),
     showTimer:             booleanSetting(ext, settings, 'showTimer', true),
     autoSubmitOnTimeout:   booleanSetting(ext, settings, 'autoSubmitOnTimeout', true),
     negativeMarkingEnabled:(t.negativeMarking ?? 0) > 0,
@@ -309,7 +307,6 @@ export default function TestSettings() {
         allowAccessCode:       form.allowAccessCode,
         shuffleQuestions:      form.shuffleQuestions,
         shuffleOptions:        form.shuffleOptions,
-        allowBackNavigation:   form.allowBackNavigation,
         showTimer:             form.showTimer,
         autoSubmitOnTimeout:   form.autoSubmitOnTimeout,
         negativeMarking:       form.negativeMarkingEnabled ? 0.25 : 0,
@@ -518,7 +515,6 @@ export default function TestSettings() {
 
                 <ToggleRow label="Randomize question order"  desc="Shuffle per candidate"               on={form.shuffleQuestions}       onChange={() => patch({ shuffleQuestions: !form.shuffleQuestions })} />
                 <ToggleRow label="Randomize answer options"  desc="Shuffle MCQ choices"                 on={form.shuffleOptions}         onChange={() => patch({ shuffleOptions: !form.shuffleOptions })} />
-                <ToggleRow label="Allow back navigation"     desc="Revisit previous questions"          on={form.allowBackNavigation}    onChange={() => patch({ allowBackNavigation: !form.allowBackNavigation })} />
                 <ToggleRow label="Show timer"                desc="Visible countdown"                   on={form.showTimer}              onChange={() => patch({ showTimer: !form.showTimer })} />
                 <ToggleRow label="Auto-submit on timeout"    desc="Submit when time ends"               on={form.autoSubmitOnTimeout}    onChange={() => patch({ autoSubmitOnTimeout: !form.autoSubmitOnTimeout })} />
                 <ToggleRow label="Negative marking"          desc="Deduct points for wrong answers"     on={form.negativeMarkingEnabled} onChange={() => patch({ negativeMarkingEnabled: !form.negativeMarkingEnabled })} last />

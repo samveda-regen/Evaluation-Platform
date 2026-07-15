@@ -60,7 +60,6 @@ interface TestQuestion {
   id: string;
   questionType: 'mcq' | 'coding' | 'behavioral' | string;
   orderIndex: number;
-  sectionId?: string | null;
   mcqQuestion?: MCQQuestion;
   codingQuestion?: CodingQuestion;
   behavioralQuestion?: BehavioralQuestion;
@@ -70,14 +69,6 @@ type EditableQuestionPayload = Record<string, unknown> & {
   id?: string;
   source?: string;
 };
-
-interface TestSection {
-  id: string;
-  name: string;
-  orderIndex: number;
-  questionsPerCandidate: number;
-  questions: TestQuestion[];
-}
 
 interface CodingTestCaseForm {
   input: string;
@@ -204,7 +195,6 @@ export default function TestDetails() {
 
   const [test, setTest] = useState<Test | null>(null);
   const [questions, setQuestions] = useState<TestQuestion[]>([]);
-  const [sections, setSections] = useState<TestSection[]>([]);
   const [loading, setLoading] = useState(true);
   const [analytics, setAnalytics] = useState<TestAnalytics | null>(null);
 
@@ -239,11 +229,6 @@ export default function TestDetails() {
     (MCQQuestion | CodingQuestion | BehavioralQuestion)[]
   >([]);
   const [selectedQuestion, setSelectedQuestion] = useState('');
-  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
-
-  const [showSectionModal, setShowSectionModal] = useState(false);
-  const [newSectionName, setNewSectionName] = useState('');
-  const [creatingSection, setCreatingSection] = useState(false);
 
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [savingCustom, setSavingCustom] = useState(false);
@@ -285,7 +270,6 @@ export default function TestDetails() {
       const { data } = await adminApi.getTest(testId!);
       setTest(data.test);
       setQuestions(data.test.questions || []);
-      setSections(data.test.sections || []);
     } catch { toast.error('Failed to load test'); }
     finally { setLoading(false); }
   };
@@ -415,25 +399,12 @@ export default function TestDetails() {
     } catch { toast.error('Failed to load questions'); }
   };
 
-  const handleCreateSection = async () => {
-    if (!newSectionName.trim()) { toast.error('Section name is required'); return; }
-    setCreatingSection(true);
-    try {
-      await adminApi.createTestSection(testId!, { name: newSectionName.trim() });
-      toast.success('Section created'); setShowSectionModal(false); setNewSectionName('');
-      await loadTest();
-    } catch (error: unknown) {
-      const err = error as { response?: { data?: { error?: string } } };
-      toast.error(err.response?.data?.error || 'Failed to create section');
-    } finally { setCreatingSection(false); }
-  };
-
   const handleAddQuestion = async () => {
     if (!selectedQuestion) { toast.error('Please select a question'); return; }
     try {
-      await adminApi.addQuestionToTest(testId!, { questionId: selectedQuestion, questionType, sectionId: activeSectionId || undefined });
+      await adminApi.addQuestionToTest(testId!, { questionId: selectedQuestion, questionType });
       toast.success('Question added to test');
-      setShowAddModal(false); setSelectedQuestion(''); setActiveSectionId(null);
+      setShowAddModal(false); setSelectedQuestion('');
       loadTest();
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string } } };
@@ -513,8 +484,8 @@ export default function TestDetails() {
     setCustomBehavioral({ title: '', description: '', expectedAnswer: '' });
   };
 
-  const handleOpenCustomModal = (sectionId?: string | null, initialType: 'mcq' | 'coding' | 'behavioral' = 'mcq') => {
-    resetCustomForm(); setShowCustomModal(true); setActiveSectionId(sectionId ?? null);
+  const handleOpenCustomModal = (initialType: 'mcq' | 'coding' | 'behavioral' = 'mcq') => {
+    resetCustomForm(); setShowCustomModal(true);
     setCustomType(initialType);
   };
 
@@ -553,7 +524,7 @@ export default function TestDetails() {
     if (!Number.isFinite(customMarks) || customMarks <= 0) { toast.error('Marks must be greater than 0'); return; }
     setSavingCustom(true);
     try {
-      const common = { marks: customMarks, difficulty: customDifficulty, topic: customTopic.trim() || undefined, tags: parseTagInput(), sectionId: activeSectionId || undefined };
+      const common = { marks: customMarks, difficulty: customDifficulty, topic: customTopic.trim() || undefined, tags: parseTagInput() };
       if (customType === 'mcq') {
         if (!customMCQ.questionText.trim()) { toast.error('Question prompt is required'); setSavingCustom(false); return; }
         const cleanedOptions = customMCQ.options.map(o => o.trim()).filter(o => o.length > 0);
@@ -588,7 +559,7 @@ export default function TestDetails() {
         await adminApi.addCustomQuestionToTest(testId, { questionType: 'behavioral', title: customBehavioral.title, description: customBehavioral.description, expectedAnswer: customBehavioral.expectedAnswer.trim() || undefined, ...common });
       }
       toast.success('Custom question added to test');
-      setShowCustomModal(false); resetCustomForm(); setActiveSectionId(null);
+      setShowCustomModal(false); resetCustomForm();
       await loadTest();
     } catch (error: unknown) {
       const err = error as { response?: { data?: { error?: string; errors?: Array<{ msg?: string }> } } };
@@ -596,65 +567,9 @@ export default function TestDetails() {
     } finally { setSavingCustom(false); }
   };
 
-  const activeSection = activeSectionId ? sections.find(s => s.id === activeSectionId) || null : null;
-  const unsectionedQuestions = questions.filter(q => !q.sectionId);
-
-  const getQuestionKey = (q: TestQuestion) => {
-    if (q.questionType === 'mcq' && q.mcqQuestion?.id) return `mcq:${q.mcqQuestion.id}`;
-    if (q.questionType === 'coding' && q.codingQuestion?.id) return `coding:${q.codingQuestion.id}`;
-    if (q.questionType === 'behavioral' && q.behavioralQuestion?.id) return `behavioral:${q.behavioralQuestion.id}`;
-    return null;
-  };
-
-  const sectionUsageMap = sections.reduce((map, section, index) => {
-    (section.questions || []).forEach(q => {
-      const key = getQuestionKey(q);
-      if (!key) return;
-      const existing = map.get(key) || [];
-      if (!existing.includes(index + 1)) existing.push(index + 1);
-      map.set(key, existing);
-    });
-    return map;
-  }, new Map<string, number[]>());
-
-  const selectedQuestionUsage = selectedQuestion ? sectionUsageMap.get(`${questionType}:${selectedQuestion}`) || null : null;
-
-  const typeCoverageWarning = (() => {
-    if (sections.length === 0) return null;
-    const targetTypes = ['mcq', 'coding', 'behavioral'] as const;
-    type SectionType = typeof targetTypes[number];
-    const sectionTypeMap = sections.map(section => {
-      const typeSet = new Set<SectionType>();
-      (section.questions || []).forEach(q => { if (q.questionType === 'mcq' || q.questionType === 'coding' || q.questionType === 'behavioral') typeSet.add(q.questionType); });
-      return { id: section.id, typeSet };
-    });
-    const emptySections = sections.map((s, i) => ({ count: (s.questions || []).length, number: i + 1 })).filter(s => s.count === 0).map(s => s.number);
-    if (emptySections.length > 0) return `Warning: Section${emptySections.length > 1 ? 's' : ''} ${emptySections.join(', ')} have no questions.`;
-    const sectionsByType = new Map<SectionType, string[]>();
-    targetTypes.forEach(type => { sectionsByType.set(type, sectionTypeMap.filter(s => s.typeSet.has(type)).map(s => s.id)); });
-    const assignedTypeBySection = new Map<string, SectionType>();
-    const assignedSectionByType = new Map<SectionType, string>();
-    const typesByScarcity = [...targetTypes].sort((a, b) => (sectionsByType.get(a)?.length || 0) - (sectionsByType.get(b)?.length || 0));
-    const tryAssign = (type: SectionType, visited: Set<string>): boolean => {
-      for (const sectionId of sectionsByType.get(type) || []) {
-        if (visited.has(sectionId)) continue;
-        visited.add(sectionId);
-        const currentType = assignedTypeBySection.get(sectionId);
-        if (!currentType || tryAssign(currentType, visited)) {
-          assignedTypeBySection.set(sectionId, type); assignedSectionByType.set(type, sectionId); return true;
-        }
-      }
-      return false;
-    };
-    for (const type of typesByScarcity) tryAssign(type, new Set<string>());
-    if (assignedSectionByType.size === targetTypes.length) return null;
-    return 'Warning: Question types are unbalanced across sections.';
-  })();
-
   /* -- Questions-tab computed values -- */
-  const allFlatQuestions = [...unsectionedQuestions, ...sections.flatMap(s => s.questions || [])];
   const existingLibraryQuestionIds = Array.from(new Set(
-    allFlatQuestions
+    questions
       .map(q => q.mcqQuestion?.id || q.codingQuestion?.id || q.behavioralQuestion?.id)
       .filter((id): id is string => Boolean(id))
   ));
@@ -669,8 +584,8 @@ export default function TestDetails() {
       .filter(Boolean);
   const qMarksOf = (q: TestQuestion): number =>
     q.mcqQuestion?.marks || q.codingQuestion?.marks || q.behavioralQuestion?.marks || 0;
-  const qTagOptions = Array.from(new Set(allFlatQuestions.flatMap(qTagsOf))).sort((a, b) => a.localeCompare(b));
-  const filteredQs = allFlatQuestions.filter(q => {
+  const qTagOptions = Array.from(new Set(questions.flatMap(qTagsOf))).sort((a, b) => a.localeCompare(b));
+  const filteredQs = questions.filter(q => {
     const matchSearch = !qSearch || qTextOf(q).toLowerCase().includes(qSearch.toLowerCase());
     const matchType = qTypeFilter === 'all' || q.questionType === qTypeFilter;
     const matchDiff = qDiffFilter === 'all' || qDiffOf(q) === qDiffFilter;
@@ -817,11 +732,6 @@ export default function TestDetails() {
             >
               <Link2 size={14} />
               Invite link
-              {totalAttempts > 0 && (
-                <span className="text-xs font-bold" style={{ color: 'var(--admin-text-subtle)' }}>
-                  {Math.min(totalAttempts, 9)}
-                </span>
-              )}
             </button>
             <button
               onClick={handlePublish}
@@ -1010,12 +920,6 @@ export default function TestDetails() {
               style={{ width: '150px', minWidth: '150px' }}
             />
             <div className="flex-1" />
-            {/* Section manager */}
-            <button onClick={() => setShowSectionModal(true)}
-              className="btn btn-secondary">
-              <Plus size={13} />
-              Section
-            </button>
             {/* Add from Library */}
             <button onClick={() => {
               const returnTo = `/admin/tests/${testId}?tab=questions`;
@@ -1067,13 +971,6 @@ export default function TestDetails() {
             </div>
           </div>
 
-          {/* Type coverage warning */}
-          {typeCoverageWarning && (
-            <div className="mx-5 mt-4 rounded-xl border px-4 py-3 text-sm" style={{ borderColor: 'var(--admin-accent-disabled)', backgroundColor: 'var(--admin-accent-soft)', color: '#92400E' }}>
-              {typeCoverageWarning}
-            </div>
-          )}
-
           {/* Selection banner */}
           {selectedQIds.size > 0 && (
             <div className="mx-5 mt-4 flex items-center gap-3 rounded-xl px-4 py-3"
@@ -1091,7 +988,7 @@ export default function TestDetails() {
           )}
 
           {/* Empty state or table */}
-          {allFlatQuestions.length === 0 ? (
+          {questions.length === 0 ? (
             <div className="px-5 py-16 text-center">
               <div className="h-12 w-12 rounded-xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: 'var(--admin-border)' }}>
                 <FileQuestion size={22} color="var(--admin-text-subtle)" />
@@ -1165,11 +1062,6 @@ export default function TestDetails() {
                           })()
                         : 'Free text';
 
-                      const sectionName = (() => {
-                        const sec = sections.find(s => (s.questions || []).some(sq => sq.id === q.id));
-                        return sec ? sec.name : null;
-                      })();
-
                       return (
                         <tr key={q.id} className="hover:bg-gray-50 transition-colors"
                           style={{ borderBottom: '1px solid #F9FAFB', backgroundColor: isSelected ? 'var(--admin-accent-soft)' : undefined }}>
@@ -1197,7 +1089,7 @@ export default function TestDetails() {
                                   {text.length > 75 ? text.slice(0, 75) + '…' : text}
                                 </p>
                                 <p className="text-xs mt-0.5" style={{ color: 'var(--admin-text-subtle)' }}>
-                                  {subtitle}{sectionName ? ` · ${sectionName}` : ''}
+                                  {subtitle}
                                 </p>
                               </div>
                             </div>
@@ -1283,22 +1175,6 @@ export default function TestDetails() {
 
       {/* -- MODALS (all preserved) -- */}
 
-      {/* Add Section Modal */}
-      {showSectionModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="rounded-2xl p-6 w-full max-w-lg" style={{ backgroundColor: 'white' }}>
-            <h3 className="text-lg font-semibold mb-1" style={{ color: 'var(--admin-text)' }}>Add Section</h3>
-            <p className="text-sm mb-4" style={{ color: 'var(--admin-text-muted)' }}>Each section will randomly pick 1 question per candidate.</p>
-            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--admin-text-muted)' }}>Section Name</label>
-            <input type="text" value={newSectionName} onChange={e => setNewSectionName(e.target.value)} className="input mb-4" placeholder="e.g. Frontend Fundamentals" />
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => { setShowSectionModal(false); setNewSectionName(''); }} className="btn btn-secondary" disabled={creatingSection}>Cancel</button>
-              <button onClick={handleCreateSection} className="btn btn-primary" disabled={creatingSection}>{creatingSection ? 'Creating...' : 'Create Section'}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Add Existing Question Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -1306,25 +1182,18 @@ export default function TestDetails() {
             <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--admin-text)' }}>
               Add Existing {questionType === 'mcq' ? 'MCQ' : questionType === 'coding' ? 'Coding' : 'Behavioral'} Question
             </h3>
-            {activeSection && <p className="text-sm mb-4" style={{ color: 'var(--admin-text-muted)' }}>Adding to section: <strong style={{ color: 'var(--admin-text-muted)' }}>{activeSection.name}</strong></p>}
             <label className="block text-sm font-medium mb-2" style={{ color: 'var(--admin-text-muted)' }}>Select Question</label>
             <select value={selectedQuestion} onChange={e => setSelectedQuestion(e.target.value)} className="input mb-4">
               <option value="">Select a question...</option>
-              {availableQuestions.map(q => {
-                const usage = sectionUsageMap.get(`${questionType}:${q.id}`);
-                return (
-                  <option key={q.id} value={q.id}>
-                    {questionType === 'mcq' ? (q as MCQQuestion).questionText.substring(0, 100) : questionType === 'coding' ? (q as CodingQuestion).title : (q as BehavioralQuestion).title}
-                    {' '}({q.marks} marks){usage?.length ? ` • Section ${usage.join(', ')}` : ''}
-                  </option>
-                );
-              })}
+              {availableQuestions.map(q => (
+                <option key={q.id} value={q.id}>
+                  {questionType === 'mcq' ? (q as MCQQuestion).questionText.substring(0, 100) : questionType === 'coding' ? (q as CodingQuestion).title : (q as BehavioralQuestion).title}
+                  {' '}({q.marks} marks)
+                </option>
+              ))}
             </select>
-            {selectedQuestionUsage && selectedQuestionUsage.length > 0 && (
-              <p className="text-sm mb-4" style={{ color: 'var(--admin-accent)' }}>This question is already in section{selectedQuestionUsage.length > 1 ? 's' : ''} {selectedQuestionUsage.join(', ')}.</p>
-            )}
             <div className="flex gap-2 justify-end">
-              <button onClick={() => { setShowAddModal(false); setSelectedQuestion(''); setActiveSectionId(null); }} className="btn btn-secondary">Cancel</button>
+              <button onClick={() => { setShowAddModal(false); setSelectedQuestion(''); }} className="btn btn-secondary">Cancel</button>
               <button onClick={handleAddQuestion} className="btn btn-primary">Add Question</button>
             </div>
           </div>
@@ -1336,7 +1205,6 @@ export default function TestDetails() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="rounded-2xl p-6 w-full max-w-3xl max-h-[90vh] overflow-auto" style={{ backgroundColor: 'white' }}>
             <h3 className="text-lg font-semibold mb-4" style={{ color: 'var(--admin-text)' }}>Add Custom Question</h3>
-            {activeSection && <p className="text-sm mb-4" style={{ color: 'var(--admin-text-muted)' }}>Adding to: <strong>{activeSection.name}</strong></p>}
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium mb-1" style={{ color: 'var(--admin-text-muted)' }}>Question Type</label>
@@ -1458,7 +1326,7 @@ export default function TestDetails() {
               </div>
             )}
             <div className="flex gap-2 justify-end">
-              <button onClick={() => { setShowCustomModal(false); resetCustomForm(); setActiveSectionId(null); }} className="btn btn-secondary" disabled={savingCustom}>Cancel</button>
+              <button onClick={() => { setShowCustomModal(false); resetCustomForm(); }} className="btn btn-secondary" disabled={savingCustom}>Cancel</button>
               <button onClick={handleAddCustomQuestion} className="btn btn-primary" disabled={savingCustom}>{savingCustom ? 'Adding...' : 'Add Custom Question'}</button>
             </div>
           </div>

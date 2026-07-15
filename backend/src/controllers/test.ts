@@ -24,7 +24,6 @@ const TEST_PREFERENCE_KEYS = [
   'language',
   'requireInvitationLink',
   'allowAccessCode',
-  'allowBackNavigation',
   'showTimer',
   'autoSubmitOnTimeout',
   'gradingMode',

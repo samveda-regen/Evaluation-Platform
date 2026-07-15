@@ -34,6 +34,13 @@ function toISOStringFromLocalDateTime(value: string): string | null {
   return parsed.toISOString();
 }
 
+function addMinutesToLocalDateTime(value: string, minutes: number): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  parsed.setMinutes(parsed.getMinutes() + minutes);
+  return format(parsed, "yyyy-MM-dd'T'HH:mm");
+}
+
 function marksToPercent(passingMarks: number | null | undefined, totalMarks: number): number {
   if (passingMarks == null) return 0;
   return totalMarks > 0 ? Math.round((passingMarks / totalMarks) * 100) : passingMarks;
@@ -122,7 +129,7 @@ const ROLE_CATEGORY_OPTIONS = [
   { value: 'data', label: 'Data Scientist' },
 ];
 
-function SectionTitle({ children, sub }: { children: React.ReactNode; sub?: string }) {
+function FormGroupTitle({ children, sub }: { children: React.ReactNode; sub?: string }) {
   return (
     <div className="mb-4">
       <p className="text-sm font-semibold text-gray-800">{children}</p>
@@ -426,6 +433,7 @@ export default function TestForm() {
       : []),
     { value: CUSTOM_CATEGORY_VALUE, label: 'Custom' },
   ];
+  const minEndTime = addMinutesToLocalDateTime(formData.startTime, 1);
 
   const reviewRow = (label: string, value: string | number | boolean | null | undefined) => (
     <div className="flex items-start gap-3 py-2.5 border-b border-gray-100 last:border-0">
@@ -457,7 +465,7 @@ export default function TestForm() {
           {step === 0 && (
             <div className="space-y-7">
               <section>
-                <SectionTitle>Basic Information</SectionTitle>
+                <FormGroupTitle>Basic Information</FormGroupTitle>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="sm:col-span-2">
                     <label style={labelStyle}>Test title <span style={{ color: '#EF4444' }}>*</span></label>
@@ -553,7 +561,7 @@ export default function TestForm() {
               <hr className="border-gray-100" />
 
               <section>
-                <SectionTitle sub="Choose how questions will be added after the test is created">Question Sources</SectionTitle>
+                <FormGroupTitle sub="Choose how questions will be added after the test is created">Question Sources</FormGroupTitle>
                 <div className="border border-gray-200 rounded-xl px-4">
                   <SourceRow
                     checked={srcs.library}
@@ -575,7 +583,7 @@ export default function TestForm() {
           {step === 1 && (
             <div className="space-y-9">
               <section>
-                <SectionTitle>Format & Difficulty</SectionTitle>
+                <FormGroupTitle>Format & Difficulty</FormGroupTitle>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div>
                     <label style={labelStyle}>Duration (minutes) <span style={{ color: '#EF4444' }}>*</span></label>
@@ -618,7 +626,7 @@ export default function TestForm() {
               <hr className="border-gray-100" />
 
               <section style={{ paddingTop: '4px' }}>
-                <SectionTitle>Schedule</SectionTitle>
+                <FormGroupTitle>Schedule</FormGroupTitle>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                   <div>
                     <label style={labelStyle}>Start time <span style={{ color: '#EF4444' }}>*</span></label>
@@ -626,7 +634,7 @@ export default function TestForm() {
                   </div>
                   <div>
                     <label style={labelStyle}>End time <span style={{ color: 'var(--admin-text-subtle)', fontWeight: 400 }}>(optional)</span></label>
-                    <DateTimePicker value={formData.endTime} onChange={handleEndTimeChange} minDateTime={formData.startTime} placeholder="Select end date & time" style={{ width: '100%' }} />
+                    <DateTimePicker value={formData.endTime} onChange={handleEndTimeChange} minDateTime={minEndTime} placeholder="Select end date & time" style={{ width: '100%' }} />
                   </div>
                 </div>
               </section>
@@ -636,7 +644,7 @@ export default function TestForm() {
           {step === 2 && (
             <div className="space-y-7">
               <section>
-                <SectionTitle sub="Configure candidate monitoring and attempt behavior">AI Proctoring</SectionTitle>
+                <FormGroupTitle sub="Configure candidate monitoring and attempt behavior">AI Proctoring</FormGroupTitle>
                 <div className="space-y-3">
                   <CheckOption name="proctorEnabled" checked={formData.proctorEnabled} onChange={handleChange} label="Enable live AI proctoring" />
                   <CheckOption name="requireCamera" checked={formData.requireCamera} onChange={handleChange} label="Require camera access" disabled={!formData.proctorEnabled} />
@@ -649,7 +657,7 @@ export default function TestForm() {
               <hr className="border-gray-100" />
 
               <section>
-                <SectionTitle>Attempt Rules</SectionTitle>
+                <FormGroupTitle>Attempt Rules</FormGroupTitle>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label style={labelStyle}>Max violations <span style={{ color: '#EF4444' }}>*</span></label>
