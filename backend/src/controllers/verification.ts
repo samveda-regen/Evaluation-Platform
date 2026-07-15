@@ -214,10 +214,13 @@ export const uploadFaceReference = async (req: Request, res: Response): Promise<
  */
 export const getPendingVerifications = async (req: Request, res: Response): Promise<void> => {
   try {
+    const adminId = (req as any).admin?.id;
     const { status, page = 1, limit = 20 } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
-    const where: any = {};
+    const where: any = {
+      candidate: { testAttempts: { some: { test: { adminId } } } },
+    };
     if (status) {
       where.verificationStatus = status;
     }
@@ -259,9 +262,13 @@ export const getPendingVerifications = async (req: Request, res: Response): Prom
 export const getVerificationDetails = async (req: Request, res: Response): Promise<void> => {
   try {
     const { candidateId } = req.params;
+    const adminId = (req as any).admin?.id;
 
-    const identity = await prisma.candidateIdentity.findUnique({
-      where: { candidateId },
+    const identity = await prisma.candidateIdentity.findFirst({
+      where: {
+        candidateId,
+        candidate: { testAttempts: { some: { test: { adminId } } } },
+      },
       include: {
         candidate: {
           select: { id: true, name: true, email: true },
@@ -346,9 +353,10 @@ export const rejectVerification = async (req: Request, res: Response): Promise<v
 export const deleteVerificationImages = async (req: Request, res: Response): Promise<void> => {
   try {
     const { candidateId } = req.params;
-    const result = await adminDeleteImages(candidateId);
+    const adminId = (req as any).admin?.id;
+    const result = await adminDeleteImages(candidateId, adminId);
     if (!result.success) {
-      res.status(400).json({ error: result.error });
+      res.status(404).json({ error: result.error });
       return;
     }
     res.json({ success: true, message: 'Images deleted' });
@@ -364,9 +372,10 @@ export const deleteVerificationImages = async (req: Request, res: Response): Pro
 export const deleteVerificationRecord = async (req: Request, res: Response): Promise<void> => {
   try {
     const { candidateId } = req.params;
-    const result = await adminDeleteRecord(candidateId);
+    const adminId = (req as any).admin?.id;
+    const result = await adminDeleteRecord(candidateId, adminId);
     if (!result.success) {
-      res.status(400).json({ error: result.error });
+      res.status(404).json({ error: result.error });
       return;
     }
     res.json({ success: true, message: 'Verification record deleted' });
@@ -381,12 +390,15 @@ export const deleteVerificationRecord = async (req: Request, res: Response): Pro
  */
 export const getVerificationStats = async (req: Request, res: Response): Promise<void> => {
   try {
+    const adminId = (req as any).admin?.id;
+    const scope = { candidate: { testAttempts: { some: { test: { adminId } } } } };
+
     const [pending, verified, rejected, expired, total] = await Promise.all([
-      prisma.candidateIdentity.count({ where: { verificationStatus: 'pending' } }),
-      prisma.candidateIdentity.count({ where: { verificationStatus: 'verified' } }),
-      prisma.candidateIdentity.count({ where: { verificationStatus: 'rejected' } }),
-      prisma.candidateIdentity.count({ where: { verificationStatus: 'expired' } }),
-      prisma.candidateIdentity.count(),
+      prisma.candidateIdentity.count({ where: { ...scope, verificationStatus: 'pending' } }),
+      prisma.candidateIdentity.count({ where: { ...scope, verificationStatus: 'verified' } }),
+      prisma.candidateIdentity.count({ where: { ...scope, verificationStatus: 'rejected' } }),
+      prisma.candidateIdentity.count({ where: { ...scope, verificationStatus: 'expired' } }),
+      prisma.candidateIdentity.count({ where: scope }),
     ]);
 
     res.json({

@@ -131,6 +131,20 @@ export async function detectLiveness(images: Buffer[]): Promise<LivenessResult> 
   }
 }
 
+// ─── Access control ───────────────────────────────────────────────────────────
+// A candidate is only visible to an admin if they've attempted one of that
+// admin's tests. Candidate/CandidateIdentity rows have no adminId of their own
+// (a candidate can be shared across admins), so ownership must be checked via
+// this join on every admin-facing verification action.
+
+export async function candidateBelongsToAdmin(candidateId: string, adminId: string): Promise<boolean> {
+  const attempt = await prisma.testAttempt.findFirst({
+    where: { candidateId, test: { adminId } },
+    select: { id: true },
+  });
+  return !!attempt;
+}
+
 // ─── Image cleanup ────────────────────────────────────────────────────────────
 
 function extractFileId(url: string): string | null {
@@ -150,9 +164,14 @@ async function deleteVerificationImages(
 
 // Admin-triggered image deletion — removes files from storage and clears DB URLs
 export async function adminDeleteImages(
-  candidateId: string
+  candidateId: string,
+  adminId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    if (!(await candidateBelongsToAdmin(candidateId, adminId))) {
+      return { success: false, error: 'No verification record found' };
+    }
+
     const identity = await prisma.candidateIdentity.findUnique({ where: { candidateId } });
     if (!identity) return { success: false, error: 'No verification record found' };
 
@@ -172,9 +191,14 @@ export async function adminDeleteImages(
 
 // Admin-triggered full record deletion — removes images + the verification record entirely
 export async function adminDeleteRecord(
-  candidateId: string
+  candidateId: string,
+  adminId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    if (!(await candidateBelongsToAdmin(candidateId, adminId))) {
+      return { success: false, error: 'No verification record found' };
+    }
+
     const identity = await prisma.candidateIdentity.findUnique({ where: { candidateId } });
     if (!identity) return { success: false, error: 'No verification record found' };
 
@@ -335,6 +359,10 @@ export async function adminVerify(
   reason?:     string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    if (!(await candidateBelongsToAdmin(candidateId, adminId))) {
+      return { success: false, error: 'No verification record found' };
+    }
+
     const identity = await prisma.candidateIdentity.findUnique({ where: { candidateId } });
 
     if (!identity) return { success: false, error: 'No verification record found' };
