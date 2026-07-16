@@ -804,7 +804,7 @@ export default function QuestionBank() {
         {/* -- MAIN CONTENT -- */}
         <main style={{ minWidth:0 }}>
           <div
-            className="flex items-center gap-9 overflow-x-auto"
+            className="flex items-center gap-9 overflow-x-auto overflow-y-hidden"
             style={{
               borderBottom:'1px solid var(--admin-border-soft)',
               marginBottom:'14px',

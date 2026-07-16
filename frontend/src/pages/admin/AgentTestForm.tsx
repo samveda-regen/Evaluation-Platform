@@ -39,6 +39,15 @@ interface TestSettings {
 
 const MAX_TEST_VIOLATIONS = 150;
 
+// Timed guesses shown while "Generate Test" is in flight — purely cosmetic, not tied to real
+// backend progress (the request is a single blocking call), just to make the wait feel shorter.
+const GENERATE_PROGRESS_STEPS = [
+  'Matching questions to your required skills…',
+  'Scoring relevance across the question library…',
+  'Selecting the best fit for this role…',
+  'Finalizing the test…',
+];
+
 function pad(n: number) {
   return String(n).padStart(2, '0');
 }
@@ -201,6 +210,16 @@ export default function AgentTestForm() {
 
   /* Step 3 state */
   const [selection, setSelection] = useState<QuestionSelection | null>(null);
+  const [progressStep, setProgressStep] = useState(0);
+
+  // `loading` is shared with the Create Test action (step 4), so only cycle this text while
+  // step 2's Generate Test call is actually the one in flight.
+  const generatingTest = loading && step === 2;
+  useEffect(() => {
+    if (!generatingTest) { setProgressStep(0); return; }
+    const id = setInterval(() => setProgressStep(i => (i + 1) % GENERATE_PROGRESS_STEPS.length), 1800);
+    return () => clearInterval(id);
+  }, [generatingTest]);
 
   /* Step 4 state */
   const [testSettings, setTestSettings] = useState<TestSettings>({
@@ -649,6 +668,11 @@ export default function AgentTestForm() {
                     {loading ? 'Generating...' : 'Generate Test'}
                   </button>
                 </div>
+                {generatingTest && (
+                  <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '10px 0 0', textAlign: 'center' }}>
+                    {GENERATE_PROGRESS_STEPS[progressStep]}
+                  </p>
+                )}
               </div>
             </div>
           )}

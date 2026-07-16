@@ -3,6 +3,7 @@ import { AuthenticatedRequest } from '../types/index.js';
 import prisma from '../utils/db.js';
 import { sendResultEmail } from '../services/emailService.js';
 import { getTestGradingPreferences } from '../utils/testPreferences.js';
+import { scoreBehavioralAnswer } from '../services/behavioralScoringService.js';
 
 async function resolveCompanyName(companyId: string | null): Promise<string> {
   if (!companyId) return 'Our Team';
@@ -462,8 +463,29 @@ export async function sendAttemptResultEmail(req: AuthenticatedRequest, res: Res
   }
 }
 
-// Admin manually assigns marks to a free-text behavioral answer, since these can't be
-// auto-graded like MCQ/coding. Recalculates the attempt's total score afterwards.
+// Recomputes a TestAttempt's total score from its current mcq/coding/behavioral marksObtained
+// values and persists it. Shared by manual and AI behavioral grading so both stay in sync.
+async function recalculateAttemptScore(attemptId: string): Promise<number> {
+  const attempt = await prisma.testAttempt.findUnique({
+    where: { id: attemptId },
+    select: {
+      mcqAnswers: { select: { marksObtained: true } },
+      codingAnswers: { select: { marksObtained: true } },
+      behavioralAnswers: { select: { marksObtained: true } }
+    }
+  });
+
+  const mcqTotal = attempt?.mcqAnswers.reduce((sum, a) => sum + (a.marksObtained ?? 0), 0) ?? 0;
+  const codingTotal = attempt?.codingAnswers.reduce((sum, a) => sum + (a.marksObtained ?? 0), 0) ?? 0;
+  const behavioralTotal = attempt?.behavioralAnswers.reduce((sum, a) => sum + (a.marksObtained ?? 0), 0) ?? 0;
+  const newScore = mcqTotal + codingTotal + behavioralTotal;
+
+  await prisma.testAttempt.update({ where: { id: attemptId }, data: { score: newScore } });
+  return newScore;
+}
+
+// Admin manually assigns/overrides marks for a free-text behavioral answer. This is the backup
+// path used when the AI auto-score (below) is missing, failed, or needs correcting.
 export async function gradeBehavioralAnswer(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { attemptId, questionId } = req.params;
@@ -478,9 +500,7 @@ export async function gradeBehavioralAnswer(req: AuthenticatedRequest, res: Resp
       where: { id: attemptId },
       include: {
         test: { select: { adminId: true } },
-        mcqAnswers: { select: { marksObtained: true } },
-        codingAnswers: { select: { marksObtained: true } },
-        behavioralAnswers: { select: { id: true, questionId: true, marksObtained: true, question: { select: { marks: true } } } }
+        behavioralAnswers: { select: { id: true, questionId: true, question: { select: { marks: true } } } }
       }
     });
 
@@ -508,18 +528,7 @@ export async function gradeBehavioralAnswer(req: AuthenticatedRequest, res: Resp
       data: { marksObtained: clampedMarks }
     });
 
-    const mcqTotal = attempt.mcqAnswers.reduce((sum, a) => sum + (a.marksObtained ?? 0), 0);
-    const codingTotal = attempt.codingAnswers.reduce((sum, a) => sum + (a.marksObtained ?? 0), 0);
-    const behavioralTotal = attempt.behavioralAnswers.reduce(
-      (sum, a) => sum + (a.questionId === questionId ? clampedMarks : (a.marksObtained ?? 0)),
-      0
-    );
-    const newScore = mcqTotal + codingTotal + behavioralTotal;
-
-    await prisma.testAttempt.update({
-      where: { id: attemptId },
-      data: { score: newScore }
-    });
+    const newScore = await recalculateAttemptScore(attemptId);
 
     res.json({
       message: 'Behavioral answer graded',
@@ -530,6 +539,74 @@ export async function gradeBehavioralAnswer(req: AuthenticatedRequest, res: Resp
   } catch (error) {
     console.error('Grade behavioral answer error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// Auto-grades a free-text behavioral answer via the LLM, using the question library's
+// title/description/expectedAnswer/marks as the grading benchmark, and PERSISTS the result as
+// the default score (called automatically by the frontend as soon as an ungraded answer is
+// viewed, no admin click required). Manual grading (gradeBehavioralAnswer above) remains fully
+// available as a backup — an admin can always overwrite this score if the AI gets it wrong.
+export async function autoGradeBehavioralAnswer(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { attemptId, questionId } = req.params;
+
+    const attempt = await prisma.testAttempt.findUnique({
+      where: { id: attemptId },
+      include: {
+        test: { select: { adminId: true } },
+        behavioralAnswers: {
+          where: { questionId },
+          select: {
+            id: true,
+            answerText: true,
+            question: { select: { title: true, description: true, expectedAnswer: true, marks: true } }
+          }
+        }
+      }
+    });
+
+    if (!attempt) {
+      res.status(404).json({ error: 'Attempt not found' });
+      return;
+    }
+
+    if (attempt.test.adminId !== req.admin!.id) {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    const behavioralAnswer = attempt.behavioralAnswers[0];
+    if (!behavioralAnswer) {
+      res.status(404).json({ error: 'Behavioral answer not found' });
+      return;
+    }
+
+    const result = await scoreBehavioralAnswer({
+      title: behavioralAnswer.question.title,
+      description: behavioralAnswer.question.description,
+      expectedAnswer: behavioralAnswer.question.expectedAnswer,
+      maxMarks: behavioralAnswer.question.marks,
+      answerText: behavioralAnswer.answerText
+    });
+
+    await prisma.behavioralAnswer.update({
+      where: { id: behavioralAnswer.id },
+      data: { marksObtained: result.marksObtained }
+    });
+
+    const newScore = await recalculateAttemptScore(attemptId);
+
+    res.json({
+      questionId,
+      marksObtained: result.marksObtained,
+      maxMarks: behavioralAnswer.question.marks,
+      reasoning: result.reasoning,
+      score: newScore
+    });
+  } catch (error) {
+    console.error('Auto grade behavioral answer error:', error);
+    res.status(500).json({ error: 'Failed to generate AI score. Please grade manually.' });
   }
 }
 

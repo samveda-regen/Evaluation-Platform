@@ -745,7 +745,7 @@ export default function TestDetails() {
 
         {/* Tabs */}
         <div
-          className="flex items-center gap-6 mt-5 overflow-x-auto"
+          className="flex items-center gap-6 mt-5 overflow-x-auto overflow-y-hidden"
           style={{ borderBottom: '1px solid var(--admin-border-soft)' }}
         >
           {TABS.map(tab => {

@@ -57,7 +57,7 @@ export async function getInvitationDetails(req: AuthenticatedRequest, res: Respo
     });
   } catch (error) {
     if (error instanceof InvitationServiceError) {
-      res.status(error.statusCode).json({ error: error.message });
+      res.status(error.statusCode).json({ error: error.message, candidateName: error.candidateName || null });
       return;
     }
 

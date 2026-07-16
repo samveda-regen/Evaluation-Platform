@@ -60,6 +60,7 @@ import {
   releaseAttemptResult,
   sendAttemptResultEmail,
   gradeBehavioralAnswer,
+  autoGradeBehavioralAnswer,
   deleteAttempt,
   reEvaluateAttempt,
   exportResults,
@@ -170,6 +171,7 @@ router.post('/attempts/:attemptId/review', adminAuth, reviewAttempt);
 router.post('/attempts/:attemptId/release', adminAuth, releaseAttemptResult);
 router.post('/attempts/:attemptId/send-result-email', adminAuth, sendAttemptResultEmail);
 router.post('/attempts/:attemptId/behavioral/:questionId/grade', adminAuth, gradeBehavioralAnswer);
+router.post('/attempts/:attemptId/behavioral/:questionId/auto-grade', adminAuth, autoGradeBehavioralAnswer);
 router.delete('/attempts/:attemptId', adminAuth, deleteAttempt);
 router.post('/attempts/:attemptId/reevaluate', adminAuth, reEvaluateAttempt);
 router.get('/tests/:testId/export', adminAuth, exportResults);

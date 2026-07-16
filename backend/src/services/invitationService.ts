@@ -87,11 +87,13 @@ export interface StructuredInvitationSummary extends SendInvitationSummary {
 
 export class InvitationServiceError extends Error {
   statusCode: number;
+  candidateName?: string;
 
-  constructor(message: string, statusCode = 400) {
+  constructor(message: string, statusCode = 400, candidateName?: string) {
     super(message);
     this.name = 'InvitationServiceError';
     this.statusCode = statusCode;
+    this.candidateName = candidateName || undefined;
   }
 }
 
@@ -318,7 +320,7 @@ async function fetchInvitationByToken(token: string): Promise<InvitationDetails>
   }
 
   if (invitation.consumedAt) {
-    throw new InvitationServiceError('This invitation link has already been used.', 400);
+    throw new InvitationServiceError('This invitation link has already been used.', 400, invitation.name);
   }
 
   return {
@@ -735,8 +737,11 @@ export async function consumeInvitation(invitationId: string, testId: string): P
     throw new InvitationServiceError('Invalid invitation context.', 400);
   }
 
+  // Idempotent: the caller (startTest) is guarded by the candidate's own in_progress
+  // attempt, so a repeat call here (page refresh, retried request after a dropped
+  // connection) is the same candidate resuming, not a second person reusing the link.
   if (invitation.consumedAt) {
-    throw new InvitationServiceError('This invitation link has already been used.', 400);
+    return;
   }
 
   const lifecycleDetails: InvitationDetails = {

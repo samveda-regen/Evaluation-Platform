@@ -402,6 +402,11 @@ export const adminApi = {
       { marksObtained }
     ),
 
+  autoGradeBehavioralAnswer: (attemptId: string, questionId: string) =>
+    api.post<{ questionId: string; marksObtained: number; maxMarks: number; reasoning: string; score: number }>(
+      `/admin/attempts/${attemptId}/behavioral/${questionId}/auto-grade`
+    ),
+
   reEvaluateAttempt: (attemptId: string) =>
     api.post(`/admin/attempts/${attemptId}/reevaluate`),
 

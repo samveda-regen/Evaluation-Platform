@@ -30,6 +30,8 @@ export default function CandidateLogin() {
   const [loading,     setLoading]     = useState(false);
   const [fetchingInfo,setFetchingInfo]= useState(!!invitationToken);
   const [testInfo,    setTestInfo]    = useState<TestInfo | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteErrorName, setInviteErrorName] = useState<string | null>(null);
 
   /* fetch test details from token */
   useEffect(() => {
@@ -49,8 +51,10 @@ export default function CandidateLogin() {
         });
         if (data.invitation?.name)  setName(data.invitation.name);
         if (data.invitation?.email) setEmail(data.invitation.email);
-      } catch {
-        /* silent — show generic form */
+      } catch (err: unknown) {
+        const typedError = err as { response?: { data?: { error?: string; candidateName?: string } } };
+        setInviteError(typedError.response?.data?.error || 'This invitation link is invalid or no longer available.');
+        setInviteErrorName(typedError.response?.data?.candidateName || null);
       } finally {
         setFetchingInfo(false);
       }
@@ -94,6 +98,35 @@ export default function CandidateLogin() {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: 'var(--admin-border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div className="animate-spin rounded-full h-10 w-10 border-b-2" style={{ borderColor: 'var(--admin-accent)' }} />
+      </div>
+    );
+  }
+
+  /* invite link is unusable for a reason other than "already started/completed" — e.g.
+     invalid token, or the test isn't active / hasn't started / has ended */
+  if (invitationToken && inviteError) {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: 'var(--admin-border)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+        <div style={{ marginBottom: '24px' }}>
+          <img src={talentstaQLogoDark} alt="TalentstaQ" style={{ height: '60px', width: 'auto' }} />
+        </div>
+        <div style={{
+          backgroundColor: 'white', borderRadius: '18px', padding: '32px',
+          width: '100%', maxWidth: '480px', textAlign: 'center',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.08)', border: '1px solid var(--admin-border)',
+        }}>
+          <h1 style={{ fontSize: '20px', fontWeight: 700, color: '#111827', margin: '0 0 10px' }}>
+            Invitation Unavailable
+          </h1>
+          <p style={{ fontSize: '14px', color: '#6B7280', margin: '0 0 20px' }}>
+            {inviteError === 'This invitation link has already been used.'
+              ? `${inviteErrorName ? `Hello ${inviteErrorName}, ` : ''}this invitation link is no longer valid because it has already been used.`
+              : inviteError}
+          </p>
+          <p style={{ fontSize: '13px', color: '#9CA3AF' }}>
+            Trouble signing in? Contact <span style={{ color: 'var(--admin-accent)', fontWeight: 500 }}>support@talentstaq.io</span>
+          </p>
+        </div>
       </div>
     );
   }

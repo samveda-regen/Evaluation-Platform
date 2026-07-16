@@ -151,6 +151,22 @@ function analyzeJobLocal(jobTitle: string, jobDescription?: string, experienceHi
   };
 }
 
+// Counts how many distinct skill keywords actually appear in a question's topic/tags/text. This
+// is the single source of truth for "is this question relevant to the requested skills" — used
+// both by the local keyword-matching selector and as a hard filter on whatever the LLM picks, so
+// a question is never included in a generated test unless it genuinely matches a requested skill.
+function skillMatchCount(q: QuestionSummary, skills: string[]): number {
+  const hay = `${q.topic || ''} ${q.tags.join(' ')} ${q.text}`.toLowerCase();
+  let matches = 0;
+  for (const skill of skills) {
+    const kw = skill.toLowerCase().replace(/[^a-z0-9]/g, ' ').trim();
+    for (const word of kw.split(/\s+/)) {
+      if (word.length > 2 && hay.includes(word)) matches++;
+    }
+  }
+  return matches;
+}
+
 function selectQuestionsLocally(
   mcqSummaries: QuestionSummary[],
   codingSummaries: QuestionSummary[],
@@ -163,22 +179,30 @@ function selectQuestionsLocally(
   jobTitle: string,
   duration?: number
 ): QuestionSelection {
-  const score = (q: QuestionSummary): number => {
-    const hay = `${q.topic || ''} ${q.tags.join(' ')} ${q.text}`.toLowerCase();
-    let s = 0;
-    for (const skill of skills) {
-      const kw = skill.toLowerCase().replace(/[^a-z0-9]/g, ' ').trim();
-      for (const word of kw.split(/\s+/)) {
-        if (word.length > 2 && hay.includes(word)) s++;
-      }
-    }
-    if (difficulty === 'mixed' || q.difficulty === difficulty) s += 0.5;
-    return s;
-  };
+  // Only ever consider questions with at least one real skill-keyword match — difficulty is used
+  // purely to break ties among those matches, never to pull in an otherwise-irrelevant question.
+  // If fewer matching questions exist in the library than requested, the picked list is simply
+  // shorter than mcqCount/codingCount/behavioralCount — it is never padded with weak matches.
+  const rank = (pool: QuestionSummary[], count: number): QuestionSummary[] =>
+    pool
+      .map(q => ({ q, matches: skillMatchCount(q, skills) }))
+      .filter(({ matches }) => matches > 0)
+      .sort((a, b) => {
+        if (b.matches !== a.matches) return b.matches - a.matches;
+        const bonus = (x: QuestionSummary) => (difficulty === 'mixed' || x.difficulty === difficulty) ? 1 : 0;
+        return bonus(b.q) - bonus(a.q);
+      })
+      .slice(0, count)
+      .map(({ q }) => q);
 
-  const pickedMcq = [...mcqSummaries].sort((a, b) => score(b) - score(a)).slice(0, mcqCount);
-  const pickedCoding = [...codingSummaries].sort((a, b) => score(b) - score(a)).slice(0, codingCount);
-  const pickedBehavioral = [...behavioralSummaries].sort((a, b) => score(b) - score(a)).slice(0, behavioralCount);
+  const pickedMcq = rank(mcqSummaries, mcqCount);
+  const pickedCoding = rank(codingSummaries, codingCount);
+  const pickedBehavioral = rank(behavioralSummaries, behavioralCount);
+
+  const shortfalls: string[] = [];
+  if (pickedMcq.length < mcqCount) shortfalls.push(`${pickedMcq.length}/${mcqCount} MCQ`);
+  if (pickedCoding.length < codingCount) shortfalls.push(`${pickedCoding.length}/${codingCount} coding`);
+  if (pickedBehavioral.length < behavioralCount) shortfalls.push(`${pickedBehavioral.length}/${behavioralCount} behavioral`);
 
   return {
     mcqQuestionIds: pickedMcq.map(q => q.id),
@@ -187,7 +211,8 @@ function selectQuestionsLocally(
     mcqPreviews: pickedMcq.map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic })),
     codingPreviews: pickedCoding.map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic })),
     behavioralPreviews: pickedBehavioral.map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic })),
-    reasoning: `Selected ${pickedMcq.length} MCQ, ${pickedCoding.length} coding, and ${pickedBehavioral.length} behavioral questions matched against: ${skills.join(', ')}.`,
+    reasoning: `Selected ${pickedMcq.length} MCQ, ${pickedCoding.length} coding, and ${pickedBehavioral.length} behavioral questions that genuinely match: ${skills.join(', ')}.`
+      + (shortfalls.length ? ` No filler questions were added — the library only had ${shortfalls.join(', ')} matching these skills.` : ''),
     suggestedDuration: duration || pickedMcq.length * 2 + pickedCoding.length * 20 + pickedBehavioral.length * 5,
     suggestedTestName: `${jobTitle} Assessment`,
     suggestedDescription: `Assessment for ${jobTitle} covering ${skills.slice(0, 3).join(', ')} and related topics.`,
@@ -313,10 +338,19 @@ export async function generateTestFromJobProfile(
     marks: q.marks
   }));
 
+  // Narrow the candidate pool down to genuinely skill-relevant questions BEFORE building the LLM
+  // prompt (and before local keyword ranking) — keeps the prompt small and the round trip fast
+  // regardless of how large the question library grows, since it no longer scales 1:1 with total
+  // library size. This also guarantees the model can only ever pick from candidates that already
+  // pass the same skill-relevance bar enforced as a hard filter afterward.
+  const relevantMcq = mcqSummaries.filter(q => skillMatchCount(q, request.skills) > 0);
+  const relevantCoding = codingSummaries.filter(q => skillMatchCount(q, request.skills) > 0);
+  const relevantBehavioral = behavioralSummaries.filter(q => skillMatchCount(q, request.skills) > 0);
+
   // Use local fallback when no LLM key is configured
   if (!hasLLMKey()) {
     return selectQuestionsLocally(
-      mcqSummaries, codingSummaries, behavioralSummaries,
+      relevantMcq, relevantCoding, relevantBehavioral,
       request.skills, request.difficulty,
       request.mcqCount, request.codingCount, request.behavioralCount,
       request.jobProfile.title, request.duration
@@ -338,16 +372,18 @@ ${request.jobProfile.description ? `**Job Description:** ${request.jobProfile.de
 **Coding Questions Needed:** ${request.codingCount}
 **Behavioral Questions Needed:** ${request.behavioralCount}
 
-## Available MCQ Questions (${mcqSummaries.length} total):
-${mcqSummaries.map(q => `- ID: ${q.id} | Difficulty: ${q.difficulty} | Topic: ${q.topic || 'General'} | Tags: [${q.tags.join(', ')}] | Marks: ${q.marks}\n  Question: ${q.text}`).join('\n')}
+## Available MCQ Questions (${relevantMcq.length} that match the required skills, out of ${mcqSummaries.length} in the library):
+${relevantMcq.map(q => `- ID: ${q.id} | Difficulty: ${q.difficulty} | Topic: ${q.topic || 'General'} | Tags: [${q.tags.join(', ')}] | Marks: ${q.marks}\n  Question: ${q.text}`).join('\n') || '(none)'}
 
-## Available Coding Questions (${codingSummaries.length} total):
-${codingSummaries.map(q => `- ID: ${q.id} | Difficulty: ${q.difficulty} | Topic: ${q.topic || 'General'} | Tags: [${q.tags.join(', ')}] | Marks: ${q.marks}\n  ${q.text}`).join('\n')}
+## Available Coding Questions (${relevantCoding.length} that match the required skills, out of ${codingSummaries.length} in the library):
+${relevantCoding.map(q => `- ID: ${q.id} | Difficulty: ${q.difficulty} | Topic: ${q.topic || 'General'} | Tags: [${q.tags.join(', ')}] | Marks: ${q.marks}\n  ${q.text}`).join('\n') || '(none)'}
 
-## Available Behavioral Questions (${behavioralSummaries.length} total):
-${behavioralSummaries.map(q => `- ID: ${q.id} | Difficulty: ${q.difficulty} | Topic: ${q.topic || 'General'} | Tags: [${q.tags.join(', ')}] | Marks: ${q.marks}\n  ${q.text}`).join('\n')}
+## Available Behavioral Questions (${relevantBehavioral.length} that match the required skills, out of ${behavioralSummaries.length} in the library):
+${relevantBehavioral.map(q => `- ID: ${q.id} | Difficulty: ${q.difficulty} | Topic: ${q.topic || 'General'} | Tags: [${q.tags.join(', ')}] | Marks: ${q.marks}\n  ${q.text}`).join('\n') || '(none)'}
 
 Pick behavioral questions whose tags/topic best match the role's soft-skill needs (e.g. seniority-appropriate leadership/ownership for senior roles, collaboration/learning for junior roles) — not just generic picks.
+
+Only select a question if it genuinely tests one of the **Required Skills** listed above (via its topic, tags, or content) — never select a question just to reach the requested count. If the library doesn't contain enough genuinely relevant questions for a category, return fewer than the requested count for that category rather than padding it with unrelated questions.
 
 Respond with JSON:
 {
@@ -367,13 +403,15 @@ Respond with JSON:
 
     const selection = parseJSONFromLLM(response.content) as QuestionSelection;
 
-    // Validate IDs against known pool
-    const validMcqIds  = new Set(mcqSummaries.map(q => q.id));
-    const validCodingIds = new Set(codingSummaries.map(q => q.id));
-    const validBehavioralIds = new Set(behavioralSummaries.map(q => q.id));
-    selection.mcqQuestionIds    = selection.mcqQuestionIds.filter(id => validMcqIds.has(id));
-    selection.codingQuestionIds = selection.codingQuestionIds.filter(id => validCodingIds.has(id));
-    selection.behavioralQuestionIds = (selection.behavioralQuestionIds || []).filter(id => validBehavioralIds.has(id));
+    // Validate IDs against the pool actually offered to the model (the pre-filtered,
+    // skill-relevant subset) — this alone is enough to guarantee the model couldn't have picked
+    // an irrelevant question, since irrelevant ones were never in the prompt to begin with.
+    const mcqById = new Map(relevantMcq.map(q => [q.id, q]));
+    const codingById = new Map(relevantCoding.map(q => [q.id, q]));
+    const behavioralById = new Map(relevantBehavioral.map(q => [q.id, q]));
+    selection.mcqQuestionIds    = selection.mcqQuestionIds.filter(id => mcqById.has(id));
+    selection.codingQuestionIds = selection.codingQuestionIds.filter(id => codingById.has(id));
+    selection.behavioralQuestionIds = (selection.behavioralQuestionIds || []).filter(id => behavioralById.has(id));
 
     if (!selection.suggestedDuration || selection.suggestedDuration < 10) {
       selection.suggestedDuration = request.duration ||
@@ -384,15 +422,15 @@ Respond with JSON:
     const mcqIdSet    = new Set(selection.mcqQuestionIds);
     const codingIdSet = new Set(selection.codingQuestionIds);
     const behavioralIdSet = new Set(selection.behavioralQuestionIds);
-    selection.mcqPreviews    = mcqSummaries.filter(q => mcqIdSet.has(q.id)).map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic }));
-    selection.codingPreviews = codingSummaries.filter(q => codingIdSet.has(q.id)).map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic }));
-    selection.behavioralPreviews = behavioralSummaries.filter(q => behavioralIdSet.has(q.id)).map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic }));
+    selection.mcqPreviews    = relevantMcq.filter(q => mcqIdSet.has(q.id)).map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic }));
+    selection.codingPreviews = relevantCoding.filter(q => codingIdSet.has(q.id)).map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic }));
+    selection.behavioralPreviews = relevantBehavioral.filter(q => behavioralIdSet.has(q.id)).map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic }));
 
     return selection;
   } catch {
     // LLM call failed — fall back to keyword matching
     return selectQuestionsLocally(
-      mcqSummaries, codingSummaries, behavioralSummaries,
+      relevantMcq, relevantCoding, relevantBehavioral,
       request.skills, request.difficulty,
       request.mcqCount, request.codingCount, request.behavioralCount,
       request.jobProfile.title, request.duration

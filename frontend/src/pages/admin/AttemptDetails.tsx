@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
@@ -13,6 +13,7 @@ import {
   Mail,
   CheckCheck,
   ShieldCheck,
+  Sparkles,
 } from 'lucide-react';
 
 /* -- Types -- */
@@ -154,8 +155,27 @@ export default function AttemptDetails() {
   const [emailingResult,setEmailingResult]= useState(false);
   const [behavioralDrafts, setBehavioralDrafts] = useState<Record<string, string>>({});
   const [gradingQuestionId, setGradingQuestionId] = useState<string | null>(null);
+  const [aiScoringQuestionIds, setAiScoringQuestionIds] = useState<Set<string>>(new Set());
+  const [aiSuggestions, setAiSuggestions] = useState<Record<string, { marksObtained: number; reasoning: string }>>({});
+  const autoGradedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => { void loadAttempt(); }, [attemptId]);
+
+  // AI scoring is the default: as soon as an attempt's behavioral answers load, any answer that
+  // hasn't been graded yet (marksObtained is null) and actually has candidate text gets auto-scored
+  // and saved automatically — no button click needed. Manual "Save marks" remains available to
+  // correct/override any answer afterwards.
+  useEffect(() => {
+    if (!data) return;
+    data.behavioralAnswers.forEach(a => {
+      const needsScore = (a.marksObtained === null || a.marksObtained === undefined) && a.answerText?.trim();
+      if (needsScore && !autoGradedRef.current.has(a.questionId)) {
+        autoGradedRef.current.add(a.questionId);
+        void handleAutoGradeBehavioral(a.questionId);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.attempt.id, data?.behavioralAnswers]);
 
   const loadAttempt = async () => {
     try {
@@ -248,11 +268,36 @@ export default function AttemptDetails() {
         ),
       } : prev);
       setBehavioralDrafts(prev => { const next = { ...prev }; delete next[questionId]; return next; });
+      setAiSuggestions(prev => { const next = { ...prev }; delete next[questionId]; return next; });
       toast.success('Marks saved');
     } catch {
       toast.error('Failed to save marks');
     } finally {
       setGradingQuestionId(null);
+    }
+  };
+
+  // Auto-grades and saves a behavioral answer's score via AI. Runs by default (see effect above)
+  // so admins see marks immediately without clicking anything; can also be re-run manually (e.g.
+  // after a failure) via the "Re-score with AI" link. The saved score can always be overridden
+  // through the manual "Grade this answer" input + Save marks, which stays the source of truth.
+  const handleAutoGradeBehavioral = async (questionId: string) => {
+    setAiScoringQuestionIds(prev => new Set(prev).add(questionId));
+    try {
+      const { data: aiData } = await adminApi.autoGradeBehavioralAnswer(attemptId!, questionId);
+      setData(prev => prev ? {
+        ...prev,
+        attempt: { ...prev.attempt, score: aiData.score },
+        behavioralAnswers: prev.behavioralAnswers.map(a =>
+          a.questionId === questionId ? { ...a, marksObtained: aiData.marksObtained } : a
+        ),
+      } : prev);
+      setAiSuggestions(prev => ({ ...prev, [questionId]: { marksObtained: aiData.marksObtained, reasoning: aiData.reasoning } }));
+    } catch (err: unknown) {
+      const message = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      toast.error(message || 'AI scoring failed for a behavioral answer. Please grade it manually.');
+    } finally {
+      setAiScoringQuestionIds(prev => { const next = new Set(prev); next.delete(questionId); return next; });
     }
   };
 
@@ -684,6 +729,9 @@ export default function AttemptDetails() {
                   const score = ans.marksObtained ?? 0;
                   const draft = behavioralDrafts[ans.questionId];
                   const isGrading = gradingQuestionId === ans.questionId;
+                  const isAiScoring = aiScoringQuestionIds.has(ans.questionId);
+                  const aiSuggestion = aiSuggestions[ans.questionId];
+                  const isUngraded = ans.marksObtained === null || ans.marksObtained === undefined;
                   return (
                     <div key={ans.questionId} style={{ borderRadius:'12px', border:'1.5px solid var(--admin-accent-disabled)', overflow:'hidden' }}>
                       {/* Behavioral header */}
@@ -696,10 +744,22 @@ export default function AttemptDetails() {
                           {ans.description && <p style={{ fontSize:'12px', color:'var(--admin-text-muted)', margin:0 }}>{ans.description}</p>}
                         </div>
                         <div style={{ flexShrink:0, textAlign:'right' }}>
-                          <span style={{ fontSize:'13px', fontWeight:700, color: score > 0 ? 'var(--admin-accent-hover)' : '#DC2626' }}>
-                            {score} / {ans.marks}
-                          </span>
-                          <p style={{ fontSize:'10px', color:'var(--admin-text-subtle)', margin:'1px 0 0' }}>marks</p>
+                          {isAiScoring && isUngraded ? (
+                            <span style={{ display:'flex', alignItems:'center', gap:'5px', fontSize:'12px', fontWeight:600, color:'var(--admin-accent-hover)' }}>
+                              <Sparkles size={13} /> AI scoring…
+                            </span>
+                          ) : isUngraded ? (
+                            <span style={{ fontSize:'12px', fontWeight:600, color:'var(--admin-text-subtle)', fontStyle:'italic' }}>
+                              Not graded yet
+                            </span>
+                          ) : (
+                            <>
+                              <span style={{ fontSize:'13px', fontWeight:700, color: score > 0 ? 'var(--admin-accent-hover)' : '#DC2626' }}>
+                                {score} / {ans.marks}
+                              </span>
+                              <p style={{ fontSize:'10px', color:'var(--admin-text-subtle)', margin:'1px 0 0' }}>marks</p>
+                            </>
+                          )}
                         </div>
                       </div>
                       {/* Answer text */}
@@ -710,13 +770,24 @@ export default function AttemptDetails() {
                         <p style={{ fontSize:'13px', color:'var(--admin-text-muted)', margin:'0 0 14px', lineHeight:'1.7', whiteSpace:'pre-wrap' }}>
                           {ans.answerText || '(No answer provided)'}
                         </p>
-                        <div style={{ display:'flex', alignItems:'center', gap:'8px', paddingTop:'12px', borderTop:'1px solid var(--admin-border)' }}>
+                        {aiSuggestion && (
+                          <div style={{ display:'flex', gap:'8px', padding:'10px 12px', marginBottom:'12px', borderRadius:'8px', backgroundColor:'var(--admin-accent-soft)', border:'1px solid var(--admin-accent-disabled)' }}>
+                            <Sparkles size={14} color="var(--admin-accent-hover)" style={{ flexShrink:0, marginTop:'2px' }} />
+                            <div>
+                              <p style={{ fontSize:'11px', fontWeight:700, color:'var(--admin-accent-hover)', margin:'0 0 3px' }}>
+                                AI scored {aiSuggestion.marksObtained} / {ans.marks} — override below if needed
+                              </p>
+                              <p style={{ fontSize:'12px', color:'var(--admin-text-muted)', margin:0, lineHeight:'1.5' }}>{aiSuggestion.reasoning}</p>
+                            </div>
+                          </div>
+                        )}
+                        <div style={{ display:'flex', alignItems:'center', gap:'8px', paddingTop:'12px', borderTop:'1px solid var(--admin-border)', flexWrap:'wrap' }}>
                           <p style={{ fontSize:'11px', fontWeight:600, color:'var(--admin-text-subtle)', margin:0 }}>Grade this answer:</p>
                           <input
                             type="number"
                             min={0}
                             max={ans.marks}
-                            step="0.5"
+                            step="0.1"
                             placeholder={String(score)}
                             value={draft ?? ''}
                             onChange={e => setBehavioralDrafts(prev => ({ ...prev, [ans.questionId]: e.target.value }))}
@@ -729,6 +800,15 @@ export default function AttemptDetails() {
                             style={{ padding:'6px 12px', borderRadius:'6px', border:'none', backgroundColor:'var(--admin-accent)', color:'#fff', fontSize:'12px', fontWeight:600, cursor: isGrading || draft === undefined ? 'not-allowed' : 'pointer', opacity: isGrading || draft === undefined ? 0.6 : 1 }}
                           >
                             {isGrading ? 'Saving…' : 'Save marks'}
+                          </button>
+                          <button
+                            onClick={() => handleAutoGradeBehavioral(ans.questionId)}
+                            disabled={isAiScoring || !ans.answerText}
+                            title={!ans.answerText ? 'No candidate answer to score' : 'Re-run AI scoring for this answer'}
+                            style={{ display:'flex', alignItems:'center', gap:'4px', padding:'6px 10px', borderRadius:'6px', border:'none', backgroundColor:'transparent', color:'var(--admin-text-subtle)', fontSize:'11px', fontWeight:600, cursor: isAiScoring || !ans.answerText ? 'not-allowed' : 'pointer', opacity: isAiScoring || !ans.answerText ? 0.5 : 1, textDecoration: 'underline' }}
+                          >
+                            <Sparkles size={12} />
+                            {isAiScoring ? 'Scoring…' : aiSuggestion ? 'Re-score with AI' : 'Score with AI'}
                           </button>
                         </div>
                       </div>
