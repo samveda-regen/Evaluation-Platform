@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { format } from 'date-fns';
-import { Sparkles, ClipboardCheck, Activity, Users, Database, ChevronRight, CheckCheck } from 'lucide-react';
+import { Sparkles, ClipboardCheck, Activity, Users, Database, ChevronRight, CheckCheck, Trash2 } from 'lucide-react';
 import Icon from '../../components/Icon';
 
 interface DashboardStats {
@@ -221,6 +221,8 @@ export default function AdminDashboard() {
   const [weeklyData, setWeeklyData] = useState<{ label: string; value: number }[]>(DEFAULT_WEEK);
   const [integrity, setIntegrity] = useState({ flagged: 0, clean: 0, avgTrustScore: 0 });
   const [reviewFilter, setReviewFilter] = useState<'all' | 'reviewed' | 'pending'>('all');
+  const [selectedAttemptIds, setSelectedAttemptIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => { loadDashboard(); }, []);
@@ -231,6 +233,10 @@ export default function AdminDashboard() {
       setStats(data.stats);
       const attempts: RecentAttempt[] = data.recentAttempts ?? [];
       setRecentAttempts(attempts);
+      setSelectedAttemptIds(prev => {
+        const availableIds = new Set(attempts.map(attempt => attempt.id));
+        return new Set([...prev].filter(id => availableIds.has(id)));
+      });
 
       if (data.weeklyAttempts?.length) {
         setWeeklyData(data.weeklyAttempts);
@@ -268,6 +274,56 @@ export default function AdminDashboard() {
     if (reviewFilter === 'pending') return !attempt.reviewed;
     return true;
   });
+  const visibleAttemptIds = visibleRecentAttempts.map(attempt => attempt.id);
+  const allVisibleSelected = visibleAttemptIds.length > 0 && visibleAttemptIds.every(id => selectedAttemptIds.has(id));
+
+  const toggleSelectAttempt = (attemptId: string) => {
+    setSelectedAttemptIds(prev => {
+      const next = new Set(prev);
+      next.has(attemptId) ? next.delete(attemptId) : next.add(attemptId);
+      return next;
+    });
+  };
+
+  const toggleSelectVisibleAttempts = () => {
+    setSelectedAttemptIds(prev => {
+      if (allVisibleSelected) {
+        const next = new Set(prev);
+        visibleAttemptIds.forEach(id => next.delete(id));
+        return next;
+      }
+      return new Set([...prev, ...visibleAttemptIds]);
+    });
+  };
+
+  const handleDeleteSelectedAttempts = async () => {
+    if (!selectedAttemptIds.size) return;
+    if (!window.confirm(`Delete ${selectedAttemptIds.size} selected attempt${selectedAttemptIds.size > 1 ? 's' : ''}? This cannot be undone.`)) return;
+    setBulkDeleting(true);
+    const ids = Array.from(selectedAttemptIds);
+    try {
+      const results = await Promise.allSettled(ids.map(id => adminApi.deleteAttempt(id)));
+      const successIds = ids.filter((_, i) => results[i].status === 'fulfilled');
+      const failedCount = ids.length - successIds.length;
+      if (successIds.length) {
+        const successSet = new Set(successIds);
+        setRecentAttempts(prev => prev.filter(attempt => !successSet.has(attempt.id)));
+        setSelectedAttemptIds(prev => {
+          const next = new Set(prev);
+          successIds.forEach(id => next.delete(id));
+          return next;
+        });
+      }
+      if (failedCount === 0) toast.success(`Deleted ${successIds.length} attempt${successIds.length > 1 ? 's' : ''}`);
+      else if (!successIds.length) toast.error('Unable to delete selected attempt(s).');
+      else toast.success(`Deleted ${successIds.length} attempt(s). ${failedCount} could not be deleted.`);
+      await loadDashboard();
+    } catch {
+      toast.error('Failed to delete selected attempt(s)');
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -431,6 +487,18 @@ export default function AdminDashboard() {
             <p className="text-xs mt-0.5" style={{ color: 'var(--admin-text-subtle)' }}>Latest candidate submissions across all tests</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {selectedAttemptIds.size > 0 && (
+              <button
+                type="button"
+                onClick={handleDeleteSelectedAttempts}
+                disabled={bulkDeleting}
+                className="btn btn-danger"
+                style={{ minHeight: '32px', padding: '6px 12px', fontSize: '12px' }}
+              >
+                <Trash2 size={13} />
+                {bulkDeleting ? 'Deleting...' : `Delete (${selectedAttemptIds.size})`}
+              </button>
+            )}
             {([
               { value: 'all', label: `All ${recentAttempts.length}` },
               { value: 'pending', label: `Pending ${pendingRecentCount}` },
@@ -463,6 +531,20 @@ export default function AdminDashboard() {
             <table className="w-full">
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--admin-border)' }}>
+                  <th
+                    className="pb-3 pr-3 text-left text-xs font-semibold tracking-wider"
+                    style={{ color: 'var(--admin-text-subtle)' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      disabled={!visibleRecentAttempts.length}
+                      onChange={toggleSelectVisibleAttempts}
+                      className="h-4 w-4 rounded"
+                      style={{ accentColor: 'var(--admin-button-primary)', margin: 0 }}
+                      title={allVisibleSelected ? 'Clear selected attempts' : 'Select visible attempts'}
+                    />
+                  </th>
                   {['CANDIDATE', 'TEST', 'WHEN', 'STATUS', 'REVIEW', 'SCORE', ''].map((h, i) => (
                     <th
                       key={i}
@@ -477,6 +559,15 @@ export default function AdminDashboard() {
               <tbody>
                 {visibleRecentAttempts.map((attempt) => (
                   <tr key={attempt.id} style={{ borderBottom: '1px solid #F9FAFB' }}>
+                    <td className="py-3 pr-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedAttemptIds.has(attempt.id)}
+                        onChange={() => toggleSelectAttempt(attempt.id)}
+                        className="h-4 w-4 rounded"
+                        style={{ accentColor: 'var(--admin-button-primary)', margin: 0 }}
+                      />
+                    </td>
                     <td className="py-3 pr-4">
                       <div className="flex items-center gap-3">
                         <div
