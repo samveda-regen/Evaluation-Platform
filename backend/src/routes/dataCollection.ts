@@ -5,6 +5,7 @@ import {
   listRecordings,
   deleteRecording,
   listCandidateRecordings,
+  deleteCandidateRecording,
   uploadCandidateChunk,
   finalizeCandidateRecording,
 } from '../controllers/dataCollection';
@@ -16,8 +17,9 @@ router.post('/upload', adminAuth, uploadRecording);
 router.get('/', adminAuth, listRecordings);
 router.delete('/:fileId', adminAuth, deleteRecording);
 
-// Admin - view candidate-session (start-test -> submit-test) recordings
+// Admin - view/manage candidate-session (start-test -> submit-test) recordings
 router.get('/candidate-recordings', adminAuth, listCandidateRecordings);
+router.delete('/candidate-recordings/:fileId', adminAuth, deleteCandidateRecording);
 
 // Candidate - auto webcam recording for the active test attempt
 router.post('/candidate/chunk', candidateAuth, uploadCandidateChunk);

@@ -183,17 +183,40 @@ export const uploadCandidateChunk = async (req: Request, res: Response): Promise
   }
 };
 
+// Attempts currently being finalized - guards against a second/duplicate
+// finalize request (double-submit, retry, or a race between manual and
+// auto-submit) reading the same chunks and producing a duplicate file.
+const attemptsBeingFinalized = new Set<string>();
+
 /**
  * Stitch all chunks uploaded for this attempt into a single MP4 (falling
  * back to the raw WebM if transcoding fails - the recording must never be
  * lost just because encoding failed) and store it under DATA COLLECTION.
  * Called once, right before the candidate's test submission completes.
+ *
+ * Idempotent per attempt: if a recording already exists for this attempt
+ * (e.g. a duplicate/retried finalize call), it's returned as-is instead of
+ * creating a second file, and any leftover chunks are discarded.
  */
 export const finalizeCandidateRecording = async (req: Request, res: Response): Promise<void> => {
+  const attemptId = (req as any).candidate?.attemptId as string | undefined;
+  if (!attemptId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  if (attemptsBeingFinalized.has(attemptId)) {
+    res.json({ success: true, skipped: true, reason: 'already_finalizing' });
+    return;
+  }
+  attemptsBeingFinalized.add(attemptId);
+
   try {
-    const attemptId = (req as any).candidate?.attemptId as string | undefined;
-    if (!attemptId) {
-      res.status(401).json({ error: 'Unauthorized' });
+    const existing = await getFilesByReference('candidate_data_collection', { attemptId });
+    if (existing.length > 0) {
+      await cleanupCandidateRecordingChunks(attemptId);
+      const first = existing[0];
+      res.json({ success: true, fileId: first.id, url: `/api/files/${first.id}`, alreadyFinalized: true });
       return;
     }
 
@@ -226,5 +249,41 @@ export const finalizeCandidateRecording = async (req: Request, res: Response): P
   } catch (error) {
     console.error('Error finalizing candidate recording:', error);
     res.status(500).json({ error: 'Failed to finalize recording' });
+  } finally {
+    attemptsBeingFinalized.delete(attemptId);
+  }
+};
+
+/**
+ * Delete a candidate-session recording (admin only, scoped to the admin's
+ * own tests) - e.g. to clean up duplicates from before the finalize
+ * idempotency guard existed.
+ */
+export const deleteCandidateRecording = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const adminId = (req as any).admin?.id as string | undefined;
+    const { fileId } = req.params;
+    if (!adminId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const items = await listCandidateDataCollectionAdmin(adminId);
+    const owned = items.find((item) => item.fileId === fileId);
+    if (!owned) {
+      res.status(404).json({ error: 'Recording not found' });
+      return;
+    }
+
+    const result = await deleteFile(fileId);
+    if (!result.success) {
+      res.status(400).json({ error: result.error || 'Failed to delete recording' });
+      return;
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting candidate data collection recording:', error);
+    res.status(500).json({ error: 'Failed to delete recording' });
   }
 };

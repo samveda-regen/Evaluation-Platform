@@ -30,6 +30,7 @@ export function useCandidateWebcamRecording(
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunkIndexRef = useRef(0);
   const startedRef = useRef(false);
+  const finalizedRef = useRef(false);
   const pendingUploadsRef = useRef<Promise<void>[]>([]);
 
   useEffect(() => {
@@ -74,6 +75,9 @@ export function useCandidateWebcamRecording(
   }, [cameraStream, micStream]);
 
   const stopAndFinalize = useCallback(async () => {
+    if (finalizedRef.current) return;
+    finalizedRef.current = true;
+
     const recorder = recorderRef.current;
     if (!recorder) return;
 

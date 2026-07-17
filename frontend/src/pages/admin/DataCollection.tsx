@@ -166,6 +166,17 @@ export default function DataCollection() {
     }
   }, []);
 
+  const handleDeleteCandidateRecording = useCallback(async (fileId: string) => {
+    if (!window.confirm('Delete this recording? This cannot be undone.')) return;
+    try {
+      await adminApi.deleteCandidateDataCollectionRecording(fileId);
+      setCandidateItems((prev) => prev.filter((item) => item.fileId !== fileId));
+      toast.success('Recording deleted');
+    } catch {
+      toast.error('Failed to delete recording');
+    }
+  }, []);
+
   return (
     <div style={{ padding: 0, backgroundColor: '#F9FAFB', minHeight: '100%' }}>
       {/* Header */}
@@ -306,13 +317,22 @@ export default function DataCollection() {
                   <p className="text-[11px] mt-0.5" style={{ color: 'var(--admin-text-subtle)' }}>
                     {formatBytes(item.fileSize)} · {new Date(item.createdAt).toLocaleString()}
                   </p>
-                  <a
-                    href={`${item.url}/download`}
-                    className="mt-2 flex items-center justify-center gap-1 text-xs py-1.5 rounded-md"
-                    style={{ border: '1px solid var(--admin-border)', color: 'var(--admin-text-muted)' }}
-                  >
-                    <Download size={12} /> Download
-                  </a>
+                  <div className="flex gap-2 mt-2">
+                    <a
+                      href={`${item.url}/download`}
+                      className="flex-1 flex items-center justify-center gap-1 text-xs py-1.5 rounded-md"
+                      style={{ border: '1px solid var(--admin-border)', color: 'var(--admin-text-muted)' }}
+                    >
+                      <Download size={12} /> Download
+                    </a>
+                    <button
+                      onClick={() => handleDeleteCandidateRecording(item.fileId)}
+                      className="flex items-center justify-center px-2 rounded-md"
+                      style={{ border: '1px solid var(--admin-border)', color: '#DC2626' }}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

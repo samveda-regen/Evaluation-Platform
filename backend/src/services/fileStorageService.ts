@@ -608,7 +608,7 @@ export async function uploadCandidateDataCollectionRecording(
     filename,
     mimeType,
     'candidate_data_collection',
-    {},
+    { attemptId },
     {
       attemptId,
       candidateName: candidateContext?.candidateName,

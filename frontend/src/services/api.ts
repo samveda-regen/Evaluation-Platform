@@ -605,6 +605,9 @@ export const adminApi = {
     api.get<{ success: boolean; items: CandidateDataCollectionRecording[]; total: number }>(
       '/data-collection/candidate-recordings'
     ),
+
+  deleteCandidateDataCollectionRecording: (fileId: string) =>
+    api.delete(`/data-collection/candidate-recordings/${fileId}`),
 };
 
 // Candidate API
