@@ -5,6 +5,7 @@ import Editor from '@monaco-editor/react';
 import { candidateApi } from '../../services/api';
 import { useTestStore } from '../../context/testStore';
 import { useProctoring } from '../../hooks/useProctoring';
+import { useCandidateWebcamRecording } from '../../hooks/useCandidateWebcamRecording';
 import {
   getRealtimeSocket,
   disconnectRealtimeSocket,
@@ -199,7 +200,7 @@ export default function TestInterface() {
   const {
     status: proctorStatus, endSession: endProctoringSession,
     error: proctorError, capturePreviewFrame, captureEvidenceFrame,
-    cameraStream,
+    cameraStream, micStream,
   } = useProctoring(attemptId || '', {
     enabled: proctorEnabled,
     enableCamera: requireCamera,
@@ -221,6 +222,11 @@ export default function TestInterface() {
     },
     onTerminate: () => { handleAutoSubmit(); },
   });
+
+  // Standalone webcam-only recording, separate from proctoring - starts once the
+  // camera stream is live (i.e. right after the candidate starts the test) and is
+  // stopped/finalized to MP4 in the submit handlers below.
+  const { stopAndFinalize: stopDataCollectionRecording } = useCandidateWebcamRecording(cameraStream, micStream);
 
   const proctorStatusRef = useRef(proctorStatus);
   const hiddenAtRef = useRef<number | null>(null);
@@ -615,6 +621,7 @@ export default function TestInterface() {
     await saveCurrentAnswer();
     try {
       await endProctoringSession();
+      await stopDataCollectionRecording();
       const { data: submitResult } = await candidateApi.submitTest({ autoSubmit: true });
       setSubmitted(submitResult);
       toast.success('Test auto-submitted');
@@ -630,6 +637,7 @@ export default function TestInterface() {
     await saveCurrentAnswer();
     try {
       await endProctoringSession();
+      await stopDataCollectionRecording();
       const { data: submitResult } = await candidateApi.submitTest({ autoSubmit: false });
       setSubmitted(submitResult);
       toast.success('Test submitted successfully');

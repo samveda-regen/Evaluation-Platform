@@ -4,7 +4,7 @@ import { useAuthStore } from '../context/authStore';
 import { adminApi } from '../services/api';
 import { getRealtimeSocket } from '../services/realtimeService';
 import {
-  ChevronRight, ChevronLeft, CheckCircle2, PlayCircle, UserCheck,
+  ChevronRight, ChevronLeft, CheckCircle2, PlayCircle, UserCheck, Video,
 } from 'lucide-react';
 import Icon from './Icon';
 import talentstaQLogo from '../assets/assessment-icons/icons/Talentstaq logo dark.svg';
@@ -28,6 +28,7 @@ const STATIC_PAGES = [
   { id: 'trust-integrity',   name: 'Trust & Integrity',      path: '/admin/trust-reports' },
   { id: 'id-verification',   name: 'ID Verification',        path: '/admin/id-verification-data' },
   { id: 'live-proctoring',   name: 'Live Proctoring',        path: '/admin/live-proctoring' },
+  { id: 'data-collection',   name: 'Data Collection',        path: '/admin/data-collection' },
   { id: 'create-test',       name: 'Create Test',            path: '/admin/tests/new' },
   { id: 'ai-generator',      name: 'AI Test Generator',      path: '/admin/tests/agent' },
 ];
@@ -68,6 +69,12 @@ const navItems = [
     label: 'Live Proctoring',
     matchPrefix: '/admin/live-proctoring',
     icon: <Icon name="live" size={20} />,
+  },
+  {
+    path: '/admin/data-collection',
+    label: 'Data Collection',
+    matchPrefix: '/admin/data-collection',
+    icon: <Video size={20} />,
   },
 ];
 

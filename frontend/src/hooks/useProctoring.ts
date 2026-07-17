@@ -1332,6 +1332,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     reportViolation: reportManualViolation,
     endSession,
     cameraStream: cameraStreamRef.current,
+    micStream: micStreamRef.current,
     aiProctorReady, // Indicates if YOLO/COCO-SSD AI detection is active
     runAudioAnalysis,
     capturePreviewFrame,

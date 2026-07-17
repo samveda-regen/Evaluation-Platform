@@ -25,6 +25,7 @@ import TrustReports from './pages/admin/TrustReports';
 import AdminProfile from './pages/admin/AdminProfile';
 import BehavioralForm from './pages/admin/BehavioralForm';
 import AllAttempts from './pages/admin/AllAttempts';
+import DataCollection from './pages/admin/DataCollection';
 
 // Public pages
 import PhoneCapture from './pages/PhoneCapture';
@@ -123,6 +124,7 @@ export default function App() {
         <Route path="id-verification-data" element={<IDVerificationData />} />
         <Route path="trust-reports" element={<TrustReports />} />
         <Route path="all-attempts" element={<AllAttempts />} />
+        <Route path="data-collection" element={<DataCollection />} />
         <Route path="tests/:testId/invitations" element={<TestInvitationsRedirect />} />
       </Route>
 

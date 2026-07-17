@@ -158,6 +158,55 @@ function getQuestionBankRootDirName(): string {
   return process.env.QUESTION_BANK_DIR_NAME || 'Question Bank';
 }
 
+function getDataCollectionRootDirName(): string {
+  return process.env.DATA_COLLECTION_DIR_NAME || 'DATA COLLECTION';
+}
+
+function getCandidateRecordingTmpRoot(): string {
+  return path.join(getStorageRoot(), 'tmp', 'candidate-recording');
+}
+
+function getCandidateRecordingChunkDir(attemptId: string): string {
+  return path.join(getCandidateRecordingTmpRoot(), sanitizePathSegment(attemptId));
+}
+
+/**
+ * Persist one MediaRecorder chunk for an in-progress candidate webcam
+ * recording to a temp directory on disk (not held in memory), so an
+ * in-progress exam's recording survives a backend restart until finalized.
+ */
+export async function saveCandidateRecordingChunk(
+  attemptId: string,
+  chunkIndex: number,
+  buffer: Buffer
+): Promise<void> {
+  const dir = getCandidateRecordingChunkDir(attemptId);
+  await fs.mkdir(dir, { recursive: true });
+  const padded = String(chunkIndex).padStart(6, '0');
+  await fs.writeFile(path.join(dir, `chunk-${padded}.webm`), buffer);
+}
+
+/**
+ * Read back all saved chunks for an attempt, in recording order.
+ */
+export async function listCandidateRecordingChunkBuffers(attemptId: string): Promise<Buffer[]> {
+  const dir = getCandidateRecordingChunkDir(attemptId);
+  try {
+    const entries = (await fs.readdir(dir)).filter((f) => f.endsWith('.webm')).sort();
+    const buffers: Buffer[] = [];
+    for (const entry of entries) {
+      buffers.push(await fs.readFile(path.join(dir, entry)));
+    }
+    return buffers;
+  } catch {
+    return [];
+  }
+}
+
+export async function cleanupCandidateRecordingChunks(attemptId: string): Promise<void> {
+  await fs.rm(getCandidateRecordingChunkDir(attemptId), { recursive: true, force: true });
+}
+
 async function getAttemptCandidateContext(attemptId: string): Promise<AttemptCandidateContext | null> {
   if (attemptCandidateCache.has(attemptId)) {
     return attemptCandidateCache.get(attemptId)!;
@@ -499,6 +548,118 @@ export async function uploadSnapshot(
       storageMode: isFilesystemMode() ? 'filesystem' : 'database',
     }
   );
+}
+
+/**
+ * Upload a standalone webcam recording captured outside the exam/proctoring
+ * flow (admin-triggered data collection), stored under the "DATA COLLECTION"
+ * root folder instead of "Candidate Data".
+ */
+export async function uploadDataCollectionRecording(
+  buffer: Buffer,
+  mimeType: string,
+  adminId: string,
+  label?: string
+): Promise<UploadResult> {
+  const ext = mimeType.includes('video') ? '.webm' : '.wav';
+  const timestamp = Date.now();
+  const labelFolder = sanitizePathSegment(label || 'uncategorized');
+  const filename = `${labelFolder}-${timestamp}${ext}`;
+  const relativePath = path.join(getDataCollectionRootDirName(), labelFolder, filename);
+
+  return storeFile(
+    buffer,
+    filename,
+    filename,
+    mimeType,
+    'data_collection',
+    {},
+    {
+      adminId,
+      label: label || null,
+      timestamp,
+      relativePath: isFilesystemMode() ? relativePath : undefined,
+      storageMode: isFilesystemMode() ? 'filesystem' : 'database',
+    }
+  );
+}
+
+/**
+ * Upload the finalized candidate webcam recording for one test attempt
+ * (started when the candidate clicks "Start Test", stopped/finalized on
+ * submit). Stored under "DATA COLLECTION", separate from proctoring's own
+ * "Candidate Data" recordings.
+ */
+export async function uploadCandidateDataCollectionRecording(
+  buffer: Buffer,
+  mimeType: string,
+  attemptId: string
+): Promise<UploadResult> {
+  const ext = mimeType.includes('mp4') ? '.mp4' : '.webm';
+  const timestamp = Date.now();
+  const candidateContext = await getAttemptCandidateContext(attemptId);
+  const candidateFolder = candidateContext?.candidateName || `attempt-${attemptId.slice(0, 8)}`;
+  const filename = `${candidateFolder}-${timestamp}${ext}`;
+  const relativePath = path.join(getDataCollectionRootDirName(), candidateFolder, filename);
+
+  return storeFile(
+    buffer,
+    filename,
+    filename,
+    mimeType,
+    'candidate_data_collection',
+    {},
+    {
+      attemptId,
+      candidateName: candidateContext?.candidateName,
+      candidateId: candidateContext?.candidateId,
+      timestamp,
+      source: 'candidate_test_session',
+      relativePath: isFilesystemMode() ? relativePath : undefined,
+      storageMode: isFilesystemMode() ? 'filesystem' : 'database',
+    }
+  );
+}
+
+/**
+ * List candidate-session data collection recordings visible to this admin
+ * (scoped to attempts belonging to the admin's own tests).
+ */
+export async function listCandidateDataCollectionAdmin(adminId: string): Promise<Array<{
+  fileId: string;
+  originalName: string;
+  mimeType: string;
+  fileSize: number;
+  candidateName: string;
+  attemptId: string;
+  createdAt: string;
+  url: string;
+}>> {
+  const files = await getFilesByReference('candidate_data_collection', {});
+  const attemptIds = Array.from(
+    new Set(files.map((file) => String(file.metadata?.attemptId || '')).filter(Boolean))
+  );
+  if (attemptIds.length === 0) return [];
+
+  const attempts = await prisma.testAttempt.findMany({
+    where: { id: { in: attemptIds }, test: { adminId } },
+    select: { id: true },
+  });
+  const allowedAttemptIds = new Set(attempts.map((attempt) => attempt.id));
+
+  return files
+    .filter((file) => allowedAttemptIds.has(String(file.metadata?.attemptId || '')))
+    .map((file) => ({
+      fileId: file.id,
+      originalName: file.originalName,
+      mimeType: file.mimeType,
+      fileSize: file.fileSize,
+      candidateName: String(file.metadata?.candidateName || 'Unknown candidate'),
+      attemptId: String(file.metadata?.attemptId || ''),
+      createdAt: file.createdAt.toISOString(),
+      url: `/api/files/${file.id}`,
+    }))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
 
 /**
@@ -1033,6 +1194,12 @@ export default {
   storeFile,
   uploadRecording,
   uploadSnapshot,
+  uploadDataCollectionRecording,
+  uploadCandidateDataCollectionRecording,
+  listCandidateDataCollectionAdmin,
+  saveCandidateRecordingChunk,
+  listCandidateRecordingChunkBuffers,
+  cleanupCandidateRecordingChunks,
   uploadMCQMedia,
   uploadIdDocument,
   getFile,

@@ -17,6 +17,7 @@ import analyticsRoutes from './routes/analytics.js';
 import filesRoutes from './routes/files.js';
 import invitationRoutes from './routes/invitations.js';
 import integrationRoutes from './routes/integration.js';
+import dataCollectionRoutes from './routes/dataCollection.js';
 import { setSocketServer } from './services/socketService.js';
 import prisma from './utils/db.js';
 import { ensureNotificationTable } from './controllers/notifications.js';
@@ -220,6 +221,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/files', filesRoutes);
 app.use('/api/invitations', invitationRoutes);
 app.use('/api/integration', integrationRoutes);
+app.use('/api/data-collection', dataCollectionRoutes);
 
 // WebSocket
 io.on('connection', (socket) => {

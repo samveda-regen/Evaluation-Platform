@@ -8,6 +8,27 @@ import type {
   SubmissionResult
 } from '../types';
 
+export interface DataCollectionRecording {
+  fileId: string;
+  originalName: string;
+  mimeType: string;
+  fileSize: number;
+  label: string | null;
+  createdAt: string;
+  url: string;
+}
+
+export interface CandidateDataCollectionRecording {
+  fileId: string;
+  originalName: string;
+  mimeType: string;
+  fileSize: number;
+  candidateName: string;
+  attemptId: string;
+  createdAt: string;
+  url: string;
+}
+
 const viteEnv = (import.meta as unknown as { env?: Record<string, unknown> }).env || {};
 
 const isLocalBrowser =
@@ -52,7 +73,8 @@ api.interceptors.request.use((config) => {
     url.startsWith('/media') ||
     url.startsWith('/files/admin') ||
     url.startsWith('/proctoring/admin') ||
-    url.startsWith('/verification/admin');
+    url.startsWith('/verification/admin') ||
+    (url.startsWith('/data-collection') && !url.startsWith('/data-collection/candidate/'));
 
   const token = isAdminRoute ? adminToken : candidateToken;
 
@@ -88,7 +110,8 @@ api.interceptors.response.use(
         url.startsWith('/media') ||
         url.startsWith('/files/admin') ||
         url.startsWith('/proctoring/admin') ||
-        url.startsWith('/verification/admin');
+        url.startsWith('/verification/admin') ||
+        (url.startsWith('/data-collection') && !url.startsWith('/data-collection/candidate/'));
       const isPublicAdminAuthRoute = ADMIN_PUBLIC_AUTH_PATHS.some((path) => url.startsWith(path));
       const hadAdminToken = !!localStorage.getItem('adminToken');
 
@@ -566,7 +589,22 @@ export const adminApi = {
     api.get(`/analytics/test/${testId}/leaderboard`, { params: { limit } }),
 
   regenerateAnalytics: (testId: string) =>
-    api.post(`/analytics/test/${testId}/regenerate`)
+    api.post(`/analytics/test/${testId}/regenerate`),
+
+  // Data Collection - Admin (standalone webcam recordings)
+  uploadDataCollectionRecording: (data: { videoData: string; mimeType: string; label?: string }) =>
+    api.post<{ success: boolean; fileId: string; url: string }>('/data-collection/upload', data),
+
+  getDataCollectionRecordings: () =>
+    api.get<{ success: boolean; items: DataCollectionRecording[]; total: number }>('/data-collection'),
+
+  deleteDataCollectionRecording: (fileId: string) =>
+    api.delete(`/data-collection/${fileId}`),
+
+  getCandidateDataCollectionRecordings: () =>
+    api.get<{ success: boolean; items: CandidateDataCollectionRecording[]; total: number }>(
+      '/data-collection/candidate-recordings'
+    ),
 };
 
 // Candidate API
@@ -626,6 +664,13 @@ export const candidateApi = {
 
   cancelMyPendingVerification: () =>
     api.delete('/verification/my-submission'),
+
+  // Data Collection - Candidate (auto webcam recording, start-test -> submit-test)
+  uploadDataCollectionChunk: (data: { chunkIndex: number; chunkData: string }) =>
+    api.post('/data-collection/candidate/chunk', data),
+
+  finalizeDataCollectionRecording: () =>
+    api.post('/data-collection/candidate/finalize'),
 };
 
 export default api;
