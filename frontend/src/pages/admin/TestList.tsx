@@ -207,7 +207,13 @@ export default function TestList() {
     } catch { toast.error('Failed to export'); } finally { setExporting(false); }
   };
 
-  const openInvite = (test: Test) => { setSelectedTestForInvites(test); setInvitationFile(null); setCustomMessage(''); setInvitationSummary(null); };
+  const openInvite = (test: Test) => {
+    if ((test._count?.questions ?? 0) === 0) {
+      toast.error('Add at least one question before inviting candidates');
+      return;
+    }
+    setSelectedTestForInvites(test); setInvitationFile(null); setCustomMessage(''); setInvitationSummary(null);
+  };
   const closeInvite = () => { if (sendingInvitations) return; setSelectedTestForInvites(null); setInvitationFile(null); setCustomMessage(''); setInvitationSummary(null); };
 
   const handleSendInvitations = async () => {

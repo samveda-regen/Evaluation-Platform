@@ -195,7 +195,13 @@ export default function TestForm() {
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard' | 'mixed'>('mixed');
   const [srcs, setSrcs] = useState({ library: true, write: true });
   const [isCustomCategory, setIsCustomCategory] = useState(false);
+  const [customCategoryOpen, setCustomCategoryOpen] = useState(false);
   const [customCategoryInput, setCustomCategoryInput] = useState('');
+  const customCategoryInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (customCategoryOpen) customCategoryInputRef.current?.focus();
+  }, [customCategoryOpen]);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -343,6 +349,7 @@ export default function TestForm() {
         requireIdVerification: test.requireIdVerification || false,
       });
       setIsCustomCategory(loadedCategoryIsCustom);
+      setCustomCategoryOpen(false);
       setCustomCategoryInput(loadedCategoryIsCustom ? loadedCategory : '');
     } catch {
       toast.error('Failed to load test');
@@ -423,7 +430,7 @@ export default function TestForm() {
     e.target.style.borderColor = 'var(--admin-border)';
   };
 
-  const categorySelectValue = isCustomCategory && !customCategoryInput.trim()
+  const categorySelectValue = isCustomCategory && customCategoryOpen
     ? CUSTOM_CATEGORY_VALUE
     : formData.category;
   const categorySelectOptions = [
@@ -486,8 +493,33 @@ export default function TestForm() {
                   </div>
                   <div>
                     <label style={labelStyle}>Role / category</label>
-                    {isCustomCategory ? (
+                    <CustomSelect
+                      value={categorySelectValue}
+                      onChange={category => {
+                        if (category === CUSTOM_CATEGORY_VALUE) {
+                          setIsCustomCategory(true);
+                          setCustomCategoryOpen(true);
+                          setCustomCategoryInput('');
+                          setFormData(prev => ({ ...prev, category: '' }));
+                          return;
+                        }
+                        const isPreset = ROLE_CATEGORY_OPTIONS.some(option => option.value === category);
+                        if (!isPreset && isCustomCategory) {
+                          // Re-opened their own already-typed custom entry — let them edit it, not re-pick it.
+                          setCustomCategoryOpen(true);
+                          return;
+                        }
+                        setIsCustomCategory(false);
+                        setCustomCategoryOpen(false);
+                        setCustomCategoryInput('');
+                        setFormData(prev => ({ ...prev, category }));
+                      }}
+                      options={categorySelectOptions}
+                      style={{ width: '100%', minWidth: 0 }}
+                    />
+                    {isCustomCategory && customCategoryOpen && (
                       <input
+                        ref={customCategoryInputRef}
                         type="text"
                         value={customCategoryInput}
                         onChange={e => {
@@ -495,27 +527,16 @@ export default function TestForm() {
                           setCustomCategoryInput(category);
                           setFormData(prev => ({ ...prev, category }));
                         }}
-                        placeholder="Type custom role/category"
-                        style={inputStyle}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (customCategoryInput.trim()) setCustomCategoryOpen(false);
+                          }
+                        }}
+                        placeholder="Type custom role/category, then press Enter"
+                        style={{ ...inputStyle, marginTop: '8px' }}
                         onFocus={focusGreen}
                         onBlur={blurGray}
-                      />
-                    ) : (
-                      <CustomSelect
-                        value={categorySelectValue}
-                        onChange={category => {
-                          if (category === CUSTOM_CATEGORY_VALUE) {
-                            setIsCustomCategory(true);
-                            setCustomCategoryInput('');
-                            setFormData(prev => ({ ...prev, category: '' }));
-                            return;
-                          }
-                          setIsCustomCategory(false);
-                          setCustomCategoryInput('');
-                          setFormData(prev => ({ ...prev, category }));
-                        }}
-                        options={categorySelectOptions}
-                        style={{ width: '100%', minWidth: 0 }}
                       />
                     )}
                   </div>

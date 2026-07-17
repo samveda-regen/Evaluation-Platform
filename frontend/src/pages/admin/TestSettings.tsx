@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
@@ -224,7 +224,13 @@ export default function TestSettings() {
   const [form,              setForm]               = useState<FormState | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm]  = useState(false);
   const [isCustomCategory,  setIsCustomCategory]   = useState(false);
+  const [customCategoryOpen, setCustomCategoryOpen] = useState(false);
   const [customCategoryInput, setCustomCategoryInput] = useState('');
+  const customCategoryInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (customCategoryOpen) customCategoryInputRef.current?.focus();
+  }, [customCategoryOpen]);
 
   // Email template state
   const [emailTab,          setEmailTab]           = useState<EmailTab>('invite');
@@ -245,6 +251,7 @@ export default function TestSettings() {
       const loadedCategoryIsCustom = !CATEGORIES.includes(fs.category);
       setOriginal(fs); setForm(fs);
       setIsCustomCategory(loadedCategoryIsCustom);
+      setCustomCategoryOpen(false);
       setCustomCategoryInput(loadedCategoryIsCustom ? fs.category : '');
       setEmailTemplates(emailRes.data as EmailTemplates);
     } catch { toast.error('Failed to load settings'); }
@@ -281,7 +288,7 @@ export default function TestSettings() {
 
   const patch = (p: Partial<FormState>) => setForm(prev => prev ? { ...prev, ...p } : prev);
 
-  const categorySelectValue = isCustomCategory && !customCategoryInput.trim()
+  const categorySelectValue = isCustomCategory && customCategoryOpen
     ? CUSTOM_CATEGORY_VALUE
     : form?.category ?? CUSTOM_CATEGORY_VALUE;
   const categorySelectOptions = [
@@ -437,8 +444,33 @@ export default function TestSettings() {
                   {/* Category custom dropdown */}
                   <div>
                     <label style={labelSx}>Category</label>
-                    {isCustomCategory ? (
+                    <CustomSelect
+                      value={categorySelectValue}
+                      onChange={category => {
+                        if (category === CUSTOM_CATEGORY_VALUE) {
+                          setIsCustomCategory(true);
+                          setCustomCategoryOpen(true);
+                          setCustomCategoryInput('');
+                          patch({ category: '' });
+                          return;
+                        }
+                        const isPreset = CATEGORIES.includes(category);
+                        if (!isPreset && isCustomCategory) {
+                          // Re-opened their own already-typed custom entry — let them edit it, not re-pick it.
+                          setCustomCategoryOpen(true);
+                          return;
+                        }
+                        setIsCustomCategory(false);
+                        setCustomCategoryOpen(false);
+                        setCustomCategoryInput('');
+                        patch({ category });
+                      }}
+                      options={categorySelectOptions}
+                      style={{ width:'100%', minWidth:0 }}
+                    />
+                    {isCustomCategory && customCategoryOpen && (
                       <input
+                        ref={customCategoryInputRef}
                         type="text"
                         value={customCategoryInput}
                         onChange={e => {
@@ -446,25 +478,14 @@ export default function TestSettings() {
                           setCustomCategoryInput(category);
                           patch({ category });
                         }}
-                        placeholder="Type custom role/category"
-                        style={inputSx}
-                      />
-                    ) : (
-                      <CustomSelect
-                        value={categorySelectValue}
-                        onChange={category => {
-                          if (category === CUSTOM_CATEGORY_VALUE) {
-                            setIsCustomCategory(true);
-                            setCustomCategoryInput('');
-                            patch({ category: '' });
-                            return;
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (customCategoryInput.trim()) setCustomCategoryOpen(false);
                           }
-                          setIsCustomCategory(false);
-                          setCustomCategoryInput('');
-                          patch({ category });
                         }}
-                        options={categorySelectOptions}
-                        style={{ width:'100%', minWidth:0 }}
+                        placeholder="Type custom role/category, then press Enter"
+                        style={{ ...inputSx, marginTop: '8px' }}
                       />
                     )}
                   </div>

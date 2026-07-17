@@ -295,6 +295,10 @@ export default function TestDetails() {
   };
 
   const openInviteModal = () => {
+    if ((test?._count?.questions ?? questions.length) === 0) {
+      toast.error('Add at least one question before inviting candidates');
+      return;
+    }
     setShowInviteModal(true); setInvitationFile(null);
     setCustomMessage(''); setInvitationSummary(null);
     setManualCandidates([]); setManualName(''); setManualEmail(''); setPasteText('');

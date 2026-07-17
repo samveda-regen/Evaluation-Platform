@@ -112,7 +112,12 @@ function IntegrityDonut({ percentage, clean, flagged }: { percentage: number; cl
   return (
     <div
       className="relative inline-flex items-center justify-center"
-      style={{ cursor: 'default' }}
+      style={{
+        cursor: 'default',
+        width: 'clamp(5.5rem, 28cqi, 8rem)',
+        aspectRatio: '1 / 1',
+        containerType: 'inline-size',
+      }}
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
     >
@@ -148,7 +153,7 @@ function IntegrityDonut({ percentage, clean, flagged }: { percentage: number; cl
           }} />
         </div>
       )}
-      <svg width="100" height="100" viewBox="0 0 100 100">
+      <svg width="100%" height="100%" viewBox="0 0 100 100" style={{ display: 'block' }}>
         <circle cx="50" cy="50" r={r} fill="none" stroke={trackColor} strokeWidth="9" strokeLinecap="butt"/>
         <circle
           cx="50" cy="50" r={r}
@@ -160,9 +165,9 @@ function IntegrityDonut({ percentage, clean, flagged }: { percentage: number; cl
           transform="rotate(-90 50 50)"
         />
       </svg>
-      <div className="absolute text-center">
-        <div className="text-xl font-bold" style={{ color: 'var(--admin-text)' }}>{percentage}%</div>
-        <div className="text-[9px] font-medium" style={{ color: 'var(--admin-text-subtle)' }}>AVG TRUST</div>
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-center" style={{ containerType: 'inline-size' }}>
+        <div className="font-bold leading-tight" style={{ color: 'var(--admin-text)', fontSize: 'clamp(0.95rem, 22cqi, 1.5rem)' }}>{percentage}%</div>
+        <div className="font-medium leading-tight tracking-wide" style={{ color: 'var(--admin-text-subtle)', fontSize: 'clamp(0.5rem, 9cqi, 0.75rem)' }}>AVG TRUST</div>
       </div>
     </div>
   );
@@ -446,7 +451,7 @@ export default function AdminDashboard() {
         {/* Integrity Health */}
         <div
           className="rounded-xl p-5 flex flex-col"
-          style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)' }}
+          style={{ backgroundColor: 'white', boxShadow: '0 1px 4px rgba(0,0,0,0.07)', containerType: 'inline-size' }}
         >
           <div className="flex items-center justify-between mb-3">
             <p style={{ fontSize: '16px', fontWeight: 600, color: 'var(--admin-text)', margin: 0 }}>Integrity health</p>

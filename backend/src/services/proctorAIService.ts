@@ -39,24 +39,26 @@ const LOW_PRIORITY_EVENTS = new Set([
 ]);
 // Phone detection carries a 1.5× trust-score deduction multiplier on top of its critical severity
 const PHONE_DEDUCTION_MULTIPLIER = 1.5;
+// PROCTOR_REPORT_EVENTS is additive to the defaults (not a replacement) so that this
+// list stays a superset match with trustReports.ts's REPORT_EVENT_TYPES — otherwise the
+// "Trust Score Report" page and the Trust & Integrity list/side panel score different
+// event sets and disagree on the same attempt.
+const DEFAULT_REPORT_EVENTS =
+  'tab_switch,window_blur,fullscreen_exit,copy_paste_attempt,devtools_open,camera_blocked,multiple_faces,phone_detected,face_not_detected,looking_away,voice_detected,secondary_monitor_detected';
 const REPORT_EVENT_TYPES = new Set(
   [
-    ...(
-      process.env.PROCTOR_REPORT_EVENTS ||
-      'tab_switch,window_blur,fullscreen_exit,copy_paste_attempt,camera_blocked,multiple_faces,phone_detected,face_not_detected,looking_away,voice_detected,secondary_monitor_detected'
-    )
-      .split(',')
-      .map(v => v.trim().toLowerCase())
-      .filter(Boolean),
-    // Keep no-face violations in trust math even if env list is missing it.
-    'face_not_detected',
+    ...DEFAULT_REPORT_EVENTS.split(','),
+    ...(process.env.PROCTOR_REPORT_EVENTS || '').split(','),
   ]
+    .map(v => v.trim().toLowerCase())
+    .filter(Boolean)
 );
 const TRUST_EVENT_WEIGHT_MAP: Record<string, number> = {
   tab_switch: 3,
   window_blur: 3,
   fullscreen_exit: 2,
   copy_paste_attempt: 5,
+  devtools_open: 8,
   camera_blocked: 20,
   multiple_faces: 15,
   phone_detected: 20,
@@ -64,6 +66,8 @@ const TRUST_EVENT_WEIGHT_MAP: Record<string, number> = {
   looking_away: 1,
   voice_detected: 15,
   secondary_monitor_detected: 20,
+  suspicious_audio: 10,
+  unauthorized_object_detected: 10,
 };
 
 // Violation types and their base severity

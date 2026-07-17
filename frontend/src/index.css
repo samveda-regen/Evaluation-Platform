@@ -92,9 +92,19 @@ body {
   padding: 0 !important;
 }
 
+/* .create-test-page fills the height its flex ancestors (.admin-shell > main) already
+   compute for it. It used to re-derive that height itself via `100vh - 52px - padding*2`,
+   which drifted from the real available space whenever OS/browser zoom or scrollbar width
+   changed the actual pixel math — leaving a compact card with dead space below it on some
+   laptop screens. Percentage sizing through the chain removes that hardcoded guess. */
+.admin-page:has(> .create-test-page) {
+  height: 100%;
+  box-sizing: border-box;
+}
+
 .create-test-page {
-  height: calc(100vh - 52px - (var(--admin-page-padding) * 2));
-  min-height: 560px;
+  height: 100%;
+  min-height: 420px;
   box-sizing: border-box;
   padding-left: 8px !important;
 }
