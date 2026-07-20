@@ -32,6 +32,7 @@ const REPORT_EVENT_TYPES = new Set([
   'looking_away',
   'voice_detected',
   'secondary_monitor_detected',
+  'screen_share_stopped',
 ]);
 
 interface ProctorSession {

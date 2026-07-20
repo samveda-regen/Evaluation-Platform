@@ -243,11 +243,11 @@ export default function TestComplete() {
         You may now safely close this window.{' '}
         Questions?{' '}
         <a
-          href="mailto:support@talentstaq.io"
+          href="mailto:connect@hria.io"
           className="font-medium"
           style={{ color: 'var(--admin-accent)' }}
         >
-          support@talentstaq.io
+          connect@hria.io
         </a>
       </p>
     </div>

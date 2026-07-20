@@ -51,6 +51,11 @@ export const CUSTOM_AI_VIOLATION_OPTIONS: CustomAIViolationOption[] = [
     description: 'Detects exiting fullscreen mode during the exam.',
   },
   {
+    eventType: 'screen_share_stopped',
+    label: 'Screen Share Stopped',
+    description: 'Detects the candidate stopping screen sharing mid-exam.',
+  },
+  {
     eventType: 'copy_paste_attempt',
     label: 'Copy/Paste Attempt',
     description: 'Detects copy or paste attempts during the exam.',

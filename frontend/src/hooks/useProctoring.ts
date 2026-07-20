@@ -37,6 +37,7 @@ export interface ProctorStatus {
   cameraEnabled: boolean;
   microphoneEnabled: boolean;
   screenShareEnabled: boolean;
+  screenShareLost: boolean;
   faceDetected: boolean;
   lookingAtScreen: boolean;
   cameraBlocked: boolean;
@@ -109,6 +110,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     cameraEnabled: false,
     microphoneEnabled: false,
     screenShareEnabled: false,
+    screenShareLost: false,
     faceDetected: true,
     lookingAtScreen: true,
     cameraBlocked: false,
@@ -146,6 +148,10 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
   const recordingUploadDisabledRef = useRef<Record<string, boolean>>({});
   const clientViolationSeenRef = useRef<Record<string, number>>({});
   const latestScreenEvidenceFrameRef = useRef<string | null>(null);
+  // Holds the latest "screen share track ended" handler so the native track 'ended'
+  // listener (attached once per stream, outside React's render cycle) always calls
+  // into fresh state/callbacks instead of whatever closure existed when it was attached.
+  const handleScreenShareEndedRef = useRef<() => void>(() => {});
 
   // Interval refs
   const faceDetectionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -194,6 +200,66 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     }
     return result;
   }, [session, finalConfig]);
+
+  // Fires when the candidate stops screen sharing from the browser's native "Stop
+  // sharing" control (or closes the shared window/tab) — getDisplayMedia gives no other
+  // signal for this, so the video track's 'ended' event is the only hook available.
+  useEffect(() => {
+    handleScreenShareEndedRef.current = () => {
+      screenStreamRef.current = null;
+      setStatus(prev => ({ ...prev, screenShareEnabled: false, screenShareLost: true }));
+      const violation: ViolationData = {
+        eventType: 'screen_share_stopped',
+        severity: 'critical',
+        confidence: 100,
+        description: 'Candidate stopped screen sharing',
+      };
+      void reportViolationAndHandleTermination(violation).then(() => {
+        setStatus(prev => ({ ...prev, violations: [...prev.violations, violation] }));
+        if (finalConfig.onViolation) finalConfig.onViolation(violation);
+      });
+    };
+  }, [reportViolationAndHandleTermination, finalConfig]);
+
+  // Re-prompts for screen share after the candidate stopped it mid-test. Must be called
+  // from a real click (getDisplayMedia requires a user gesture) — see the "Resume Screen
+  // Sharing" button wired to this in TestInterface.tsx.
+  const resumeScreenShare = useCallback(async (): Promise<boolean> => {
+    try {
+      const newStream = await requestScreenShare();
+      if (!newStream) {
+        toast.error('Screen sharing is required to continue the test.', { duration: 6000 });
+        return false;
+      }
+
+      if (screenProcessingVideoRef.current) {
+        screenProcessingVideoRef.current.srcObject = newStream;
+        screenProcessingVideoRef.current.play().catch(console.error);
+      } else {
+        const screenProcessingVideo = document.createElement('video');
+        screenProcessingVideo.autoplay = true;
+        screenProcessingVideo.muted = true;
+        screenProcessingVideo.playsInline = true;
+        screenProcessingVideo.setAttribute('aria-hidden', 'true');
+        screenProcessingVideo.style.cssText =
+          'position:fixed;width:1px;height:1px;top:-9999px;left:-9999px;opacity:0;pointer-events:none;';
+        document.body.appendChild(screenProcessingVideo);
+        screenProcessingVideo.srcObject = newStream;
+        screenProcessingVideo.play().catch(console.error);
+        screenProcessingVideoRef.current = screenProcessingVideo;
+      }
+
+      screenStreamRef.current = newStream;
+      newStream.getVideoTracks()[0].addEventListener('ended', () => handleScreenShareEndedRef.current());
+      setStatus(prev => ({ ...prev, screenShareEnabled: true, screenShareLost: false }));
+      return true;
+    } catch (err) {
+      if (err instanceof ScreenShareSurfaceError) {
+        toast.error(err.message, { duration: 8000 });
+      }
+      return false;
+    }
+  }, []);
 
   const canEmitClientViolation = useCallback((key: string, cooldownMs = 12000): boolean => {
     const now = Date.now();
@@ -437,8 +503,9 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
           screenProcessingVideo.srcObject = screenStream;
           screenProcessingVideo.play().catch(console.error);
           screenProcessingVideoRef.current = screenProcessingVideo;
+          screenStream.getVideoTracks()[0].addEventListener('ended', () => handleScreenShareEndedRef.current());
           screenShareEnabled = true;
-          setStatus(prev => ({ ...prev, screenShareEnabled: true }));
+          setStatus(prev => ({ ...prev, screenShareEnabled: true, screenShareLost: false }));
         } else {
           latestScreenEvidenceFrameRef.current = null;
           // Surface as hook error; UI decides how to present and route.
@@ -1345,6 +1412,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     runAudioAnalysis,
     capturePreviewFrame,
     captureEvidenceFrame,
+    resumeScreenShare,
   };
 }
 

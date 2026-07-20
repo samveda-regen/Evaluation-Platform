@@ -27,7 +27,7 @@ const TEMP_DISABLE_AUDIO_PROCTORING = true;
 const PROCTOR_ALLOWED_EVENTS = new Set(
   (
     process.env.PROCTOR_ALLOWED_EVENTS ||
-    'multiple_faces,phone_detected,face_not_detected,tab_switch,fullscreen_exit,window_blur,copy_paste_attempt,devtools_open,camera_blocked,looking_away,suspicious_audio,unauthorized_object_detected,secondary_monitor_detected'
+    'multiple_faces,phone_detected,face_not_detected,tab_switch,fullscreen_exit,window_blur,copy_paste_attempt,devtools_open,camera_blocked,looking_away,suspicious_audio,unauthorized_object_detected,secondary_monitor_detected,screen_share_stopped'
   )
     .split(',')
     .map(v => v.trim().toLowerCase())
@@ -111,6 +111,7 @@ const MATRIX_EVENT_SEVERITY: Record<string, ViolationEvent['severity']> = {
   looking_away: 'high',
   voice_detected: 'critical',
   secondary_monitor_detected: 'critical',
+  screen_share_stopped: 'critical',
 };
 const NO_SNAPSHOT_EVENT_TYPES = new Set(['voice_detected', 'secondary_monitor_detected']);
 

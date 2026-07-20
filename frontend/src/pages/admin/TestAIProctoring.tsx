@@ -27,6 +27,7 @@ const VIOLATION_META: Record<string, { label: string; desc: string; severity: Se
   secondary_monitor_detected:    { label: 'Secondary monitor',      desc: 'Additional external screen detected',       severity: 'High'   },
   window_blur:                   { label: 'Window focus lost',      desc: 'Browser window lost focus',                 severity: 'Medium' },
   devtools_open:                 { label: 'DevTools open',          desc: 'Developer tools detected',                  severity: 'High'   },
+  screen_share_stopped:          { label: 'Screen share stopped',   desc: 'Candidate stopped screen sharing',          severity: 'High'   },
 };
 
 const SEV_COLOR: Record<Severity, string> = {
@@ -73,6 +74,9 @@ export default function TestAIProctoring() {
   const [warnOnViolation,   setWarnOnViolation]   = useState(true);
   const [captureSnapshot,   setCaptureSnapshot]   = useState(true);
   const [autoSubmit,        setAutoSubmit]         = useState(false);
+  const [maxViolations,     setMaxViolations]      = useState(3);
+
+  const MAX_TEST_VIOLATIONS = 150;
 
   useEffect(() => { if (testId) void loadTest(); }, [testId]);
 
@@ -84,6 +88,7 @@ export default function TestAIProctoring() {
       setTest(loaded);
       setProctorEnabled(Boolean(loaded.proctorEnabled));
       setSelectedEvents(normalizeCustomAIViolationSelection(loaded.customAIViolations || DEFAULT_CUSTOM_AI_VIOLATIONS));
+      setMaxViolations(typeof loaded.maxViolations === 'number' ? loaded.maxViolations : 3);
 
       /* restore extended proctoring settings */
       const isEnabled = Boolean(loaded.proctorEnabled);
@@ -140,6 +145,9 @@ export default function TestAIProctoring() {
         requireMicrophone: proctorEnabled && micOn,
         requireScreenShare: proctorEnabled && screenOn,
         customAIViolations: selectedEvents,
+        // "Auto-submit after 3 warnings" is a fixed built-in cutoff; ignore the
+        // custom max-violations count while it's on so the two can't disagree.
+        maxViolations: autoSubmit ? 3 : maxViolations,
         proctoringSettings: {
           autoFlagThreshold, warnOnViolation, captureSnapshot, autoSubmit,
           webcamOn, micOn, screenOn, fullscreenOn,
@@ -320,6 +328,33 @@ export default function TestAIProctoring() {
                   </label>
                 ))}
               </div>
+
+              <div style={{ borderTop: '1px solid var(--admin-border)', margin: '14px 0' }} />
+
+              {/* Max violations */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '14px', fontWeight: 700, color: 'var(--admin-text)' }}>Max violations</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={MAX_TEST_VIOLATIONS}
+                  value={maxViolations}
+                  disabled={autoSubmit}
+                  onChange={e => setMaxViolations(Math.max(1, Math.min(MAX_TEST_VIOLATIONS, Number(e.target.value) || 1)))}
+                  style={{
+                    width: '64px', padding: '6px 8px', borderRadius: '8px',
+                    border: '1.5px solid var(--admin-border)', fontSize: '13px', textAlign: 'center',
+                    color: 'var(--admin-text)', outline: 'none',
+                    backgroundColor: autoSubmit ? 'var(--admin-surface-soft)' : 'white',
+                    cursor: autoSubmit ? 'not-allowed' : 'text',
+                  }}
+                />
+              </div>
+              <p style={{ fontSize: '11px', color: autoSubmit ? '#DC2626' : 'var(--admin-text-subtle)', margin: 0 }}>
+                {autoSubmit
+                  ? 'Disabled — "Auto-submit after 3 warnings" already ends the attempt at 3.'
+                  : 'The attempt is auto-submitted once violations reach this count.'}
+              </p>
             </div>
 
             {/* Candidate consent card */}

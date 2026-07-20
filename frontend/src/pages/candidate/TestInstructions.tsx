@@ -302,6 +302,11 @@ export default function TestInstructions() {
     (!verificationRequired || verificationComplete) &&
     (!test.proctorEnabled || deviceReady);
 
+  const allChecksOk =
+    (!test.requireCamera || deviceStatus.camera) &&
+    (!microphoneRequired || deviceStatus.microphone) &&
+    (!test.requireScreenShare || deviceStatus.screenShare);
+
   return (
     <div className="min-h-screen" style={{ background: 'var(--admin-border)' }}>
       {/* -- Header -- */}
@@ -636,7 +641,14 @@ export default function TestInstructions() {
                   type="button"
                   onClick={checkDevicePermissions}
                   disabled={checkingDevices}
-                  className="mt-4 w-full text-sm font-medium py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                  className="mt-4 w-full text-sm font-medium py-2 rounded-lg border transition-colors disabled:opacity-50"
+                  style={
+                    checkingDevices
+                      ? { borderColor: '#E5E7EB', color: '#6B7280', background: 'white' }
+                      : allChecksOk
+                        ? { borderColor: '#A7F3D0', color: '#065F46', background: '#ECFDF5' }
+                        : { borderColor: '#FECACA', color: '#991B1B', background: '#FEF2F2' }
+                  }
                 >
                   {checkingDevices ? 'Checking devices…' : 'Run System Check'}
                 </button>
@@ -773,7 +785,7 @@ function SystemCheckRow({
         ) : (
           <span
             className="text-xs font-medium"
-            style={{ color: isOk ? 'var(--admin-accent)' : '#9CA3AF' }}
+            style={{ color: isOk ? '#059669' : '#DC2626' }}
           >
             {isOk ? okLabel : pendingLabel}
           </span>
@@ -781,13 +793,13 @@ function SystemCheckRow({
         {(isOk || isNotRequired) && (
           <span
             className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
-            style={{ background: isOk ? 'var(--admin-accent-disabled)' : 'var(--admin-border)' }}
+            style={{ background: isOk ? '#A7F3D0' : '#D1D5DB' }}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="w-3 h-3"
               viewBox="0 0 20 20"
-              fill={isOk ? 'var(--admin-accent)' : '#9CA3AF'}
+              fill={isOk ? '#047857' : '#6B7280'}
             >
               <path
                 fillRule="evenodd"
@@ -799,9 +811,17 @@ function SystemCheckRow({
         )}
         {!isOk && !isNotRequired && !isChecking && (
           <span
-            className="w-5 h-5 rounded-full border-2 flex-shrink-0"
-            style={{ borderColor: 'var(--admin-border)' }}
-          />
+            className="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ background: '#FCA5A5' }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 20 20" fill="#B91C1C">
+              <path
+                fillRule="evenodd"
+                d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </span>
         )}
       </div>
     </div>

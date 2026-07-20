@@ -124,7 +124,7 @@ export default function CandidateLogin() {
               : inviteError}
           </p>
           <p style={{ fontSize: '13px', color: '#9CA3AF' }}>
-            Trouble signing in? Contact <span style={{ color: 'var(--admin-accent)', fontWeight: 500 }}>support@talentstaq.io</span>
+            Trouble signing in? Contact <span style={{ color: 'var(--admin-accent)', fontWeight: 500 }}>connect@hria.io</span>
           </p>
         </div>
       </div>
@@ -367,7 +367,7 @@ export default function CandidateLogin() {
       {/* -- Footer -- */}
       <p style={{ fontSize: '13px', color: '#9CA3AF', marginTop: '24px', textAlign: 'center' }}>
         Trouble signing in? Contact{' '}
-        <span style={{ color: 'var(--admin-accent)', fontWeight: 500 }}>support@talentstaq.io</span>
+        <span style={{ color: 'var(--admin-accent)', fontWeight: 500 }}>connect@hria.io</span>
       </p>
     </div>
   );

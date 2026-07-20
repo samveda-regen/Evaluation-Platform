@@ -11,6 +11,7 @@ const VIOLATION_LABELS: Record<string, string> = {
   copy_paste_attempt: 'Copy/Paste Attempt',
   devtools_open: 'DevTools Opened',
   secondary_monitor_detected: 'Secondary Monitor Detected',
+  screen_share_stopped: 'Screen Sharing Stopped',
   external_monitor: 'External Monitor Detected',
   suspicious_audio: 'Suspicious Audio',
 };

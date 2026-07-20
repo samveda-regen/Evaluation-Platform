@@ -199,7 +199,7 @@ export default function TestInterface() {
   const {
     status: proctorStatus, endSession: endProctoringSession,
     error: proctorError, capturePreviewFrame, captureEvidenceFrame,
-    cameraStream,
+    cameraStream, resumeScreenShare,
   } = useProctoring(attemptId || '', {
     enabled: proctorEnabled,
     enableCamera: requireCamera,
@@ -507,6 +507,17 @@ export default function TestInterface() {
       isFullscreenRef.current = true;
       setShowFullscreenPrompt(false);
     } catch { toast.error('Please enable fullscreen to continue the test'); }
+  };
+
+  const [resumingScreenShare, setResumingScreenShare] = useState(false);
+  const handleResumeScreenShare = async () => {
+    setResumingScreenShare(true);
+    try {
+      const resumed = await resumeScreenShare();
+      if (resumed) toast.success('Screen sharing resumed');
+    } finally {
+      setResumingScreenShare(false);
+    }
   };
 
   const saveCurrentAnswer = async (silent = false) => {
@@ -870,6 +881,29 @@ export default function TestInterface() {
             <p className="text-sm text-gray-500 mb-6">You exited fullscreen. Click below to continue your test.</p>
             <button onClick={handleReenterFullscreen} className="w-full py-3 rounded-xl font-semibold text-white text-sm" style={{ background: 'var(--admin-accent)' }}>
               Continue in Fullscreen
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Screen share stopped prompt */}
+      {proctorStatus.screenShareLost && (
+        <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl">
+            <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: '#FEF2F2' }}>
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h2 className="text-lg font-bold text-gray-900 mb-2">Screen Sharing Stopped</h2>
+            <p className="text-sm text-gray-500 mb-6">You stopped sharing your screen. Share your entire screen again to continue the test.</p>
+            <button
+              onClick={handleResumeScreenShare}
+              disabled={resumingScreenShare}
+              className="w-full py-3 rounded-xl font-semibold text-white text-sm disabled:opacity-60"
+              style={{ background: 'var(--admin-accent)' }}
+            >
+              {resumingScreenShare ? 'Requesting…' : 'Resume Screen Sharing'}
             </button>
           </div>
         </div>

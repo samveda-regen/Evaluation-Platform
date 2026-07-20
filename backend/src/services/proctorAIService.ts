@@ -44,7 +44,7 @@ const PHONE_DEDUCTION_MULTIPLIER = 1.5;
 // "Trust Score Report" page and the Trust & Integrity list/side panel score different
 // event sets and disagree on the same attempt.
 const DEFAULT_REPORT_EVENTS =
-  'tab_switch,window_blur,fullscreen_exit,copy_paste_attempt,devtools_open,camera_blocked,multiple_faces,phone_detected,face_not_detected,looking_away,voice_detected,secondary_monitor_detected';
+  'tab_switch,window_blur,fullscreen_exit,copy_paste_attempt,devtools_open,camera_blocked,multiple_faces,phone_detected,face_not_detected,looking_away,voice_detected,secondary_monitor_detected,screen_share_stopped';
 const REPORT_EVENT_TYPES = new Set(
   [
     ...DEFAULT_REPORT_EVENTS.split(','),
@@ -66,6 +66,7 @@ const TRUST_EVENT_WEIGHT_MAP: Record<string, number> = {
   looking_away: 1,
   voice_detected: 15,
   secondary_monitor_detected: 20,
+  screen_share_stopped: 20,
   suspicious_audio: 10,
   unauthorized_object_detected: 10,
 };

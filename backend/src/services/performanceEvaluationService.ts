@@ -608,7 +608,12 @@ export async function generateTestAnalytics(testId: string): Promise<void> {
     ];
     const distribution: Record<string, number> = {};
     for (const score of scores) {
-      const pct = totalMarks > 0 ? (score / totalMarks) * 100 : 0;
+      const rawPct = totalMarks > 0 ? (score / totalMarks) * 100 : 0;
+      // Clamp into [0, 100] before matching a band. Negative marking can push a raw
+      // score below zero, and an unclamped negative pct matches none of the bands
+      // (all mins are >= 0), so `.find()` returned undefined and the `?? BANDS[last]`
+      // fallback silently dumped rock-bottom scores into the 85-100 "top scorers" band.
+      const pct = Math.max(0, Math.min(100, rawPct));
       const band = BANDS.find(b => pct >= b.min && pct < b.max) ?? BANDS[BANDS.length - 1];
       distribution[band.label] = (distribution[band.label] || 0) + 1;
     }

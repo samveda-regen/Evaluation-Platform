@@ -14,7 +14,7 @@ const AI_PROCTOR_EVENT_TYPES = new Set([
 ]);
 
 const DEFAULT_TRUST_REPORT_EVENTS =
-  'tab_switch,window_blur,fullscreen_exit,copy_paste_attempt,devtools_open,camera_blocked,secondary_monitor_detected,multiple_faces,phone_detected,face_not_detected,looking_away,voice_detected,suspicious_audio,unauthorized_object_detected';
+  'tab_switch,window_blur,fullscreen_exit,copy_paste_attempt,devtools_open,camera_blocked,secondary_monitor_detected,screen_share_stopped,multiple_faces,phone_detected,face_not_detected,looking_away,voice_detected,suspicious_audio,unauthorized_object_detected';
 
 const REPORT_EVENT_TYPES = Array.from(
   new Set(
@@ -86,6 +86,7 @@ const TRUST_EVENT_WEIGHT_MAP: Record<string, number> = {
   devtools_open: 8,
   camera_blocked: 20,
   secondary_monitor_detected: 20,
+  screen_share_stopped: 20,
   multiple_faces: 15,
   phone_detected: 20,
   face_not_detected: 15,

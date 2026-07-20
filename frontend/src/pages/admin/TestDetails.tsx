@@ -622,6 +622,14 @@ export default function TestDetails() {
   const avgScore = analytics?.averageScore != null && test.totalMarks
     ? Math.round((analytics.averageScore / test.totalMarks) * 100)
     : null;
+  // Highest/median/lowest are stored as raw marks (out of totalMarks), not percentages —
+  // convert to the same percentage scale as avgScore so the four sit consistently side by
+  // side instead of mixing raw-marks and percentage numbers with no unit to tell them apart.
+  const toScorePct = (raw: number | null | undefined) =>
+    raw != null && test.totalMarks ? Math.round((raw / test.totalMarks) * 1000) / 10 : null;
+  const highestScorePct = toScorePct(analytics?.highestScore);
+  const medianScorePct  = toScorePct(analytics?.medianScore);
+  const lowestScorePct  = toScorePct(analytics?.lowestScore);
   const avgTrust      = analytics?.averageTrustScore != null ? Math.round(analytics.averageTrustScore) : null;
   const passRatePct   = analytics?.passRate != null ? Math.round(analytics.passRate) : null;
   const passingPct    = test.passingMarks && test.totalMarks ? Math.round((test.passingMarks / test.totalMarks) * 100) : 60;
@@ -803,10 +811,10 @@ export default function TestDetails() {
                 <h3 className="text-base font-semibold mb-5" style={{ color: 'var(--admin-text)' }}>Score Statistics</h3>
                 <div style={{ display: 'flex', justifyContent: 'space-around', textAlign: 'center' }}>
                   {[
-                    { label: 'Highest', value: analytics.highestScore != null ? analytics.highestScore.toFixed(1) : '—', color: 'var(--admin-accent)' },
-                    { label: 'Median',  value: analytics.medianScore  != null ? analytics.medianScore.toFixed(1)  : '—', color: 'var(--admin-text)' },
-                    { label: 'Average', value: avgScore != null ? `${avgScore}` : '—',                                    color: 'var(--admin-accent)' },
-                    { label: 'Lowest',  value: analytics.lowestScore  != null ? analytics.lowestScore.toFixed(1)  : '—', color: '#EF4444' },
+                    { label: 'Highest', value: highestScorePct != null ? `${highestScorePct}%` : '—', color: 'var(--admin-accent)' },
+                    { label: 'Median',  value: medianScorePct  != null ? `${medianScorePct}%`  : '—', color: 'var(--admin-text)' },
+                    { label: 'Average', value: avgScore != null ? `${avgScore}%` : '—',                color: 'var(--admin-accent)' },
+                    { label: 'Lowest',  value: lowestScorePct  != null ? `${lowestScorePct}%`  : '—', color: '#EF4444' },
                     { label: 'Flagged', value: analytics.flaggedAttempts != null ? String(analytics.flaggedAttempts) : '—', color: '#F97316' },
                   ].map(stat => (
                     <div key={stat.label}>
