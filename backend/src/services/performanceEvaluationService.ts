@@ -145,8 +145,11 @@ async function analyzeMCQAnswers(attemptId: string): Promise<{
       topicMap[topic].correct++;
     }
 
-    // Skill/tag analysis
+    // Skill/tag analysis. Skips internal test-ownership markers ("__test_scoped__",
+    // "__test:<testId>") that test.ts/mcqQuestion.ts stamp onto a question's tags to
+    // scope it to one test — those aren't real skills and shouldn't surface as one.
     for (const tag of tags) {
+      if (!tag || tag.startsWith('__test')) continue;
       if (!skillMap[tag]) {
         skillMap[tag] = { correct: 0, total: 0 };
       }

@@ -316,7 +316,9 @@ export const getSkillAnalysis = async (req: Request, res: Response): Promise<voi
       if (q.tags) {
         try {
           const tags: string[] = JSON.parse(q.tags);
-          for (const t of tags) { if (t?.trim()) tagFreq[t.trim()] = (tagFreq[t.trim()] || 0) + 1; }
+          // Skip internal test-ownership markers ("__test_scoped__", "__test:<testId>") —
+          // not real skills, shouldn't be shown as one.
+          for (const t of tags) { if (t?.trim() && !t.startsWith('__test')) tagFreq[t.trim()] = (tagFreq[t.trim()] || 0) + 1; }
         } catch { /* skip */ }
       }
       if (q.topic?.trim()) tagFreq[q.topic.trim()] = (tagFreq[q.topic.trim()] || 0) + 1;
@@ -553,7 +555,9 @@ export const getAdminOverview = async (req: Request, res: Response): Promise<voi
       if (q.tags) {
         try {
           const tags: string[] = JSON.parse(q.tags);
-          for (const t of tags) { if (t?.trim()) tagFreq[t.trim()] = (tagFreq[t.trim()] || 0) + 1; }
+          // Skip internal test-ownership markers ("__test_scoped__", "__test:<testId>") —
+          // not real skills, shouldn't be shown as one.
+          for (const t of tags) { if (t?.trim() && !t.startsWith('__test')) tagFreq[t.trim()] = (tagFreq[t.trim()] || 0) + 1; }
         } catch { /* skip malformed */ }
       }
       if (q.topic?.trim()) {
