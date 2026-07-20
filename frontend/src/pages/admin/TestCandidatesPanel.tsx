@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { TestAttempt } from '../../types';
-import { FileDown, Mail, ChevronRight, XCircle, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react';
+import { FileDown, Mail, ChevronLeft, ChevronRight, XCircle, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react';
 import Icon from '../../components/Icon';
 import CustomSelect from '../../components/CustomSelect';
 
@@ -80,6 +80,8 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const CANDIDATES_PAGE_SIZE = 10;
 
   const [invData, setInvData] = useState<InvitationDashboardResponse | null>(null);
   const [invLoading, setInvLoading] = useState(true);
@@ -90,6 +92,7 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => { load(); }, [testId, refreshKey]);
+  useEffect(() => { setPage(1); }, [search, statusFilter]);
 
   const load = async () => {
     setInvLoading(true); setResLoading(true);
@@ -156,6 +159,10 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
     if (statusFilter === 'all') return true;
     return statusFilterValue(getCandStatus(inv, attempt)) === statusFilter;
   });
+
+  /* -- Pagination -- */
+  const totalPages = Math.max(1, Math.ceil(filtered.length / CANDIDATES_PAGE_SIZE));
+  const pagedRows = filtered.slice((page - 1) * CANDIDATES_PAGE_SIZE, page * CANDIDATES_PAGE_SIZE);
 
   /* -- Selected candidate -- */
   const selectedRow = selectedId ? rows.find(r => r.inv.id === selectedId) : null;
@@ -266,7 +273,7 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
           </div>
         ) : (
           <div>
-            {filtered.map(({ inv, attempt }) => {
+            {pagedRows.map(({ inv, attempt }) => {
               const status = getCandStatus(inv, attempt);
               const sc = STATUS_CFG[status];
               const scorePct = attempt?.score != null && test?.totalMarks
@@ -355,6 +362,34 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Pagination footer */}
+        {!isLoading && filtered.length > 0 && (
+          <div className="flex items-center justify-between px-5 py-4" style={{ borderTop:'1px solid var(--admin-border)' }}>
+            <p className="text-sm" style={{ color:'var(--admin-text-muted)' }}>
+              Showing {(page - 1) * CANDIDATES_PAGE_SIZE + 1}–{Math.min(page * CANDIDATES_PAGE_SIZE, filtered.length)} of {filtered.length} candidates
+            </p>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                  className="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-40 transition-colors">
+                  <ChevronLeft size={14} color="var(--admin-text-muted)" />
+                </button>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                  <button key={p} onClick={() => setPage(p)}
+                    className="h-8 w-8 rounded-lg text-sm font-medium transition-colors"
+                    style={{ backgroundColor: page === p ? 'var(--admin-accent)' : 'transparent', color: page === p ? 'white' : 'var(--admin-text-muted)' }}>
+                    {p}
+                  </button>
+                ))}
+                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                  className="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-40 transition-colors">
+                  <ChevronRight size={14} color="var(--admin-text-muted)" />
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
