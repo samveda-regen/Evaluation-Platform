@@ -325,8 +325,14 @@ export default function TestInterface() {
 
   useEffect(() => {
     const handleFullscreenChange = () => {
-      if (!document.fullscreenElement && isFullscreenRef.current && !isSubmitted)
+      if (!document.fullscreenElement && isFullscreenRef.current && !isSubmitted) {
+        // Show the "Continue in Fullscreen" prompt immediately from the local browser
+        // event — don't wait on handleViolation's network round trip (which includes a
+        // synchronous snapshot upload on the backend and can take several seconds) just
+        // to reflect state we already know locally.
+        setShowFullscreenPrompt(true);
         handleViolation('fullscreen_exit', 'You exited full-screen mode');
+      }
       isFullscreenRef.current = !!document.fullscreenElement;
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);

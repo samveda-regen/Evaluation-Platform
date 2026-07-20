@@ -167,38 +167,42 @@ export class AIProctor {
         gazeDirection: 'center',
       };
 
-      // Estimate gaze direction based on face position
-      if (landmarks) {
-        const faceCenter = {
-          x: (topLeft[0] + bottomRight[0]) / 2,
-          y: (topLeft[1] + bottomRight[1]) / 2,
-        };
-        const videoCenter = {
-          x: video.videoWidth / 2,
-          y: video.videoHeight / 2,
-        };
+      // Estimate head pose (proxy for gaze direction) from the nose's position relative
+      // to the eye line, normalized by inter-eye distance. This is scale-invariant — it
+      // works the same regardless of distance from the camera or where the face happens
+      // to sit in the video frame. Looking straight ahead keeps the nose roughly midway
+      // between the eyes horizontally, and a fixed ratio below the eye line vertically;
+      // turning the head to either side or tilting up/down shifts the nose off that
+      // baseline. (Previously this checked where the face's bounding box sat within the
+      // whole video frame, which only caught someone leaning their entire head far enough
+      // to shift the box by 20%+ of the frame — it never caught a normal head turn/glance
+      // to the side while staying centered on camera, which is why it rarely fired.)
+      if (landmarks && landmarks.length >= 3) {
+        const [rightEye, leftEye, nose] = landmarks;
+        const eyeMidX = (leftEye[0] + rightEye[0]) / 2;
+        const eyeMidY = (leftEye[1] + rightEye[1]) / 2;
+        const eyeDistance = Math.hypot(rightEye[0] - leftEye[0], rightEye[1] - leftEye[1]) || 1;
 
-        const xOffset = (faceCenter.x - videoCenter.x) / video.videoWidth;
-        const yOffset = (faceCenter.y - videoCenter.y) / video.videoHeight;
+        const horizontalRatio = (nose[0] - eyeMidX) / eyeDistance;
+        const verticalRatio = (nose[1] - eyeMidY) / eyeDistance;
 
-        // Determine gaze direction
-        if (Math.abs(xOffset) < 0.15 && Math.abs(yOffset) < 0.15) {
-          faceResult.gazeDirection = 'center';
-          faceResult.isLookingAtScreen = true;
-        } else if (xOffset < -0.2) {
-          faceResult.gazeDirection = 'left';
+        const H_THRESHOLD = 0.25;
+        const V_NEUTRAL = 0.5;
+        const V_THRESHOLD = 0.28;
+
+        if (Math.abs(horizontalRatio) > H_THRESHOLD) {
+          faceResult.gazeDirection = horizontalRatio > 0 ? 'left' : 'right';
           faceResult.isLookingAtScreen = false;
-        } else if (xOffset > 0.2) {
-          faceResult.gazeDirection = 'right';
-          faceResult.isLookingAtScreen = false;
-        } else if (yOffset < -0.2) {
+        } else if (verticalRatio < V_NEUTRAL - V_THRESHOLD) {
           faceResult.gazeDirection = 'up';
           faceResult.isLookingAtScreen = false;
-        } else if (yOffset > 0.2) {
+        } else if (verticalRatio > V_NEUTRAL + V_THRESHOLD) {
           faceResult.gazeDirection = 'down';
           faceResult.isLookingAtScreen = false;
+        } else {
+          faceResult.gazeDirection = 'center';
+          faceResult.isLookingAtScreen = true;
         }
-
       }
 
       faces.push(faceResult);
