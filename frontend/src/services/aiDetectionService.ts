@@ -177,7 +177,10 @@ export class AIProctor {
       // whole video frame, which only caught someone leaning their entire head far enough
       // to shift the box by 20%+ of the frame — it never caught a normal head turn/glance
       // to the side while staying centered on camera, which is why it rarely fired.)
-      if (landmarks && landmarks.length >= 3) {
+      // Only trust the landmark geometry on a reasonably confident face detection —
+      // low-confidence frames (motion blur, poor lighting, partial occlusion) give noisy
+      // landmark positions that would otherwise produce false left/right/up triggers.
+      if (landmarks && landmarks.length >= 3 && faceResult.confidence >= 60) {
         const [rightEye, leftEye, nose] = landmarks;
         const eyeMidX = (leftEye[0] + rightEye[0]) / 2;
         const eyeMidY = (leftEye[1] + rightEye[1]) / 2;
@@ -190,17 +193,18 @@ export class AIProctor {
         const V_NEUTRAL = 0.5;
         const V_THRESHOLD = 0.28;
 
+        // Looking down (e.g. at the keyboard or notes on the desk) is normal exam
+        // behavior and isn't flagged — only left/right/up count as "looking away",
+        // since those are the directions someone would look at another screen,
+        // a person, or something posted above their monitor.
         if (Math.abs(horizontalRatio) > H_THRESHOLD) {
           faceResult.gazeDirection = horizontalRatio > 0 ? 'left' : 'right';
           faceResult.isLookingAtScreen = false;
         } else if (verticalRatio < V_NEUTRAL - V_THRESHOLD) {
           faceResult.gazeDirection = 'up';
           faceResult.isLookingAtScreen = false;
-        } else if (verticalRatio > V_NEUTRAL + V_THRESHOLD) {
-          faceResult.gazeDirection = 'down';
-          faceResult.isLookingAtScreen = false;
         } else {
-          faceResult.gazeDirection = 'center';
+          faceResult.gazeDirection = verticalRatio > V_NEUTRAL + V_THRESHOLD ? 'down' : 'center';
           faceResult.isLookingAtScreen = true;
         }
       }
