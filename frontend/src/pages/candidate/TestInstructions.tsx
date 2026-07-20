@@ -7,6 +7,7 @@ import { useTestStore } from '../../context/testStore';
 import { useAuthStore } from '../../context/authStore';
 import IDVerification from '../../components/IDVerification';
 import { clearCachedStreams, getCachedStreams, setCachedStreams } from '../../services/devicePermissionService';
+import { requestScreenShare, ScreenShareSurfaceError } from '../../services/proctorService';
 import { DEFAULT_CUSTOM_AI_VIOLATIONS, normalizeCustomAIViolationSelection } from '../../constants/customAIViolations';
 import talentstaQLogo from '../../assets/assessment-icons/icons/Talentstaq logo dark.svg';
 
@@ -229,6 +230,7 @@ export default function TestInstructions() {
     let cameraStream: MediaStream | null = null;
     let micStream: MediaStream | null = null;
     let screenStream: MediaStream | null = null;
+    let screenShareErrorMessage: string | null = null;
 
     try {
       if (required.requireCamera || microphoneRequired) {
@@ -248,14 +250,12 @@ export default function TestInstructions() {
 
     if (required.requireScreenShare) {
       try {
-        const displayStream = await navigator.mediaDevices.getDisplayMedia({
-          video: true,
-          audio: false,
-        });
-        screenOk = displayStream.getVideoTracks().length > 0;
+        const displayStream = await requestScreenShare();
+        screenOk = !!displayStream && displayStream.getVideoTracks().length > 0;
         screenStream = screenOk ? displayStream : null;
-      } catch {
+      } catch (err) {
         screenOk = false;
+        screenShareErrorMessage = err instanceof ScreenShareSurfaceError ? err.message : null;
       }
     }
 
@@ -272,7 +272,7 @@ export default function TestInstructions() {
     }
 
     if (ready) toast.success('Device permission checks passed');
-    else toast.error('Required device permissions are not granted');
+    else toast.error(screenShareErrorMessage || 'Required device permissions are not granted', { duration: 8000 });
 
     setCheckingDevices(false);
   };

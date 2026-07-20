@@ -298,18 +298,41 @@ export async function requestMicrophonePermission(): Promise<MediaStream | null>
   }
 }
 
+export const SCREEN_SHARE_WRONG_SURFACE_MESSAGE =
+  'Please share your Entire Screen, not a specific window or browser tab, to continue.';
+
+// Thrown when the candidate picks "Window" or "Chrome Tab" in the getDisplayMedia picker
+// instead of "Entire screen" — those surfaces let other windows/tabs stay hidden from
+// proctoring, which defeats the point of the screen-share requirement.
+export class ScreenShareSurfaceError extends Error {
+  constructor() {
+    super(SCREEN_SHARE_WRONG_SURFACE_MESSAGE);
+    this.name = 'ScreenShareSurfaceError';
+  }
+}
+
+function isEntireScreenCapture(stream: MediaStream): boolean {
+  const track = stream.getVideoTracks()[0];
+  const settings = track?.getSettings() as MediaTrackSettings & { displaySurface?: string };
+  return settings?.displaySurface === 'monitor';
+}
+
 // Request screen share
 export async function requestScreenShare(): Promise<MediaStream | null> {
-  try {
-    const stream = await navigator.mediaDevices.getDisplayMedia({
-      video: true,
-      audio: false,
-    });
-    return stream;
-  } catch (error) {
+  const stream = await navigator.mediaDevices.getDisplayMedia({
+    video: true,
+    audio: false,
+  }).catch(error => {
     console.error('Screen share denied:', error);
     return null;
+  });
+  if (!stream) return null;
+
+  if (!isEntireScreenCapture(stream)) {
+    stream.getTracks().forEach(track => track.stop());
+    throw new ScreenShareSurfaceError();
   }
+  return stream;
 }
 
 // Capture frame from video stream

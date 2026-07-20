@@ -28,6 +28,7 @@ interface AttemptData {
     violations: number;
     isFlagged: boolean;
     flagReason?: string;
+    trustScore?: number;
     reviewed?: boolean;
     reviewedAt?: string | null;
     reviewNotes?: string | null;
@@ -383,7 +384,7 @@ export default function AttemptDetails() {
       violationCounts[log.eventType] = (violationCounts[log.eventType] || 0) + 1;
     }
   });
-  const trustScore = Math.max(20, 100 - attempt.violations * 8);
+  const trustScore = typeof attempt.trustScore === 'number' ? Math.round(attempt.trustScore) : 100;
 
   /* -- integrity tags -- */
   const integrityTags: Array<{ label: string; positive: boolean }> = [];
@@ -515,6 +516,7 @@ export default function AttemptDetails() {
           <div style={{ width:'100%' }}>
             <p style={{ fontSize:'13px', fontWeight:600, color:'var(--admin-text)', margin:'0 0 12px' }}>Attempt details</p>
             {[
+              { k: 'Date',         v: format(new Date(attempt.startTime), 'MMM d, yyyy') },
               { k: 'Started',      v: format(new Date(attempt.startTime), 'hh:mm a') },
               { k: 'Submitted',    v: attempt.submittedAt ? format(new Date(attempt.submittedAt), 'hh:mm a') : '-' },
               { k: 'Duration',     v: duration },

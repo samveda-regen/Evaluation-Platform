@@ -592,8 +592,12 @@ export default function QuestionBank() {
     setAddingTestId(testId);
     try {
       const questionType = q.repositoryCategory.toLowerCase(); // 'mcq' | 'coding' | 'behavioral'
-      await adminApi.addQuestionToTest(testId, { questionId: q.id, questionType });
-      toast.success('Added to test');
+      const { data } = await adminApi.addQuestionToTest(testId, { questionId: q.id, questionType });
+      if (data.alreadyAdded) {
+        toast.error('Question is already added to this test', { icon: null });
+      } else {
+        toast.success('Added to test');
+      }
       setAddModal(null);
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
@@ -606,8 +610,12 @@ export default function QuestionBank() {
     setAddingTestId(targetTestId + q.id);
     try {
       const questionType = q.repositoryCategory.toLowerCase();
-      await adminApi.addQuestionToTest(targetTestId, { questionId: q.id, questionType });
-      toast.success('Added to test');
+      const { data } = await adminApi.addQuestionToTest(targetTestId, { questionId: q.id, questionType });
+      if (data.alreadyAdded) {
+        toast.error('Question is already added to this test', { icon: null });
+      } else {
+        toast.success('Added to test');
+      }
       setAddedQuestionIds(prev => {
         const next = new Set(prev);
         next.add(q.id);

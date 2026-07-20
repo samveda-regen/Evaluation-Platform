@@ -5,6 +5,7 @@ import Editor from '@monaco-editor/react';
 import { candidateApi } from '../../services/api';
 import { useTestStore } from '../../context/testStore';
 import { useProctoring } from '../../hooks/useProctoring';
+import { SCREEN_SHARE_WRONG_SURFACE_MESSAGE } from '../../services/proctorService';
 import {
   getRealtimeSocket,
   disconnectRealtimeSocket,
@@ -252,7 +253,11 @@ export default function TestInterface() {
   useEffect(() => {
     if (!proctorError || proctorInitHandledRef.current || !proctorEnabled) return;
     const lowered = proctorError.toLowerCase();
-    if (lowered.includes('camera permission denied') || lowered.includes('microphone permission denied') || lowered.includes('screen share permission denied')) {
+    if (proctorError === SCREEN_SHARE_WRONG_SURFACE_MESSAGE) {
+      proctorInitHandledRef.current = true;
+      toast.error(SCREEN_SHARE_WRONG_SURFACE_MESSAGE, { duration: 8000 });
+      navigate('/test/instructions');
+    } else if (lowered.includes('camera permission denied') || lowered.includes('microphone permission denied') || lowered.includes('screen share permission denied')) {
       proctorInitHandledRef.current = true;
       toast.error('Required proctoring permission missing. Complete Device Check once, then start test.');
       navigate('/test/instructions');

@@ -223,6 +223,13 @@ let activeAnalysisRequests = 0;
 let activeRecordingUploads = 0;
 const PROCTOR_EVENT_COOLDOWN_MS: Record<string, number> = {
   voice_detected: Number(process.env.PROCTOR_VOICE_VIOLATION_COOLDOWN_MS || 120000),
+  // fullscreen_exit/tab_switch are also reported instantly by the candidate's browser
+  // (see candidate.ts's logActivity) the moment the event fires. Without a cooldown here,
+  // the periodic AI-analysis tick (this file, analyzeProctoring) re-detects the same
+  // still-not-fullscreen/still-hidden-tab state on every subsequent request and stores a
+  // second (or third, ...) violation for what is really one continuous incident.
+  fullscreen_exit: Number(process.env.PROCTOR_FULLSCREEN_VIOLATION_COOLDOWN_MS || 15000),
+  tab_switch: Number(process.env.PROCTOR_TAB_SWITCH_VIOLATION_COOLDOWN_MS || 15000),
 };
 
 // Per-session analysis rate limiter.
@@ -268,7 +275,11 @@ function getViolationCooldownMs(eventType: string): number {
   return Math.max(0, PROCTOR_EVENT_COOLDOWN_MS[normalized] || 0);
 }
 
-function canStoreViolationNow(sessionId: string, eventType: string): boolean {
+// Exported so candidate.ts's logActivity (the candidate's instant browser-event report)
+// shares the same per-session/per-event-type cooldown as this file's periodic
+// AI-analysis pipeline — otherwise the two independent reporters of the same event
+// (e.g. fullscreen_exit) can each store their own violation within moments of each other.
+export function canStoreViolationNow(sessionId: string, eventType: string): boolean {
   const cooldownMs = getViolationCooldownMs(eventType);
   if (cooldownMs <= 0) return true;
   const normalized = normalizeViolationEventType(eventType);

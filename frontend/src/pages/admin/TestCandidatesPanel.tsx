@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { format } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { TestAttempt } from '../../types';
@@ -48,6 +49,10 @@ function fmtDuration(start?: string | null, end?: string | null) {
   if (mins <= 0) return '—';
   if (mins < 60) return `${mins}m`;
   return `${Math.floor(mins/60)}h ${String(mins%60).padStart(2,'0')}m`;
+}
+function fmtAttemptDate(start?: string | null) {
+  if (!start) return '—';
+  return format(new Date(start), 'MMM d, yyyy');
 }
 
 type CandStatus = 'Submitted' | 'In progress' | 'Invited' | 'Expired' | 'Failed';
@@ -240,10 +245,10 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
       <div className="rounded-2xl overflow-hidden" style={{ backgroundColor:'white', boxShadow:'0 1px 4px rgba(0,0,0,0.07)' }}>
         {/* Table header */}
         <div className="grid px-5 py-3" style={{
-          gridTemplateColumns:'minmax(220px,1fr) 140px 90px 90px 100px 130px 36px',
+          gridTemplateColumns:'minmax(220px,1fr) 140px 130px 90px 90px 100px 130px 36px',
           borderBottom:'1px solid var(--admin-border)',
         }}>
-          {['CANDIDATE','STATUS','SCORE','TRUST','TIME','INTEGRITY',''].map(col => (
+          {['CANDIDATE','STATUS','ATTEMPTED ON','SCORE','TRUST','TIME','INTEGRITY',''].map(col => (
             <span key={col} className="text-xs font-semibold uppercase tracking-wide" style={{ color:'var(--admin-text-subtle)' }}>{col}</span>
           ))}
         </div>
@@ -283,7 +288,7 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
                 <div key={inv.id}
                   className="grid px-5 py-4 cursor-pointer transition-colors hover:bg-gray-50"
                   style={{
-                    gridTemplateColumns:'minmax(220px,1fr) 140px 90px 90px 100px 130px 36px',
+                    gridTemplateColumns:'minmax(220px,1fr) 140px 130px 90px 90px 100px 130px 36px',
                     borderBottom:'1px solid #F9FAFB',
                     alignItems:'center',
                     backgroundColor: isSelected ? 'var(--admin-accent-soft)' : undefined,
@@ -310,6 +315,11 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
                       {sc.label}
                     </span>
                   </div>
+
+                  {/* Date */}
+                  <span className="text-sm" style={{ color:'var(--admin-text-muted)' }}>
+                    {fmtAttemptDate(attempt?.startTime)}
+                  </span>
 
                   {/* Score */}
                   <span className="text-sm font-semibold" style={{ color: scoreCol }}>

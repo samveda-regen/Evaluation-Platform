@@ -19,6 +19,7 @@ import { sendCandidateScoreWebhook } from '../services/candidateScoreWebhookServ
 import { sendConfirmationEmail, sendResultEmail } from '../services/emailService.js';
 import { saveNotification, ensureNotificationTable } from './notifications.js';
 import { getTestGradingPreferences } from '../utils/testPreferences.js';
+import { canStoreViolationNow } from './proctoring.js';
 
 export async function candidateLogin(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -1202,17 +1203,30 @@ export async function logActivity(req: AuthenticatedRequest, res: Response): Pro
         return;
       }
 
+      const session = await prisma.proctorSession.findUnique({
+        where: { attemptId },
+        select: { id: true },
+      });
+
+      // Shares the cooldown state proctoring.ts's periodic AI-analysis pipeline uses, so a
+      // single fullscreen/tab-switch incident doesn't get double-counted: once from this
+      // instant client-side report, and again moments later from that periodic re-check.
+      if (session && !canStoreViolationNow(session.id, mappedType)) {
+        res.json({
+          message: 'Activity logged',
+          ignored: true,
+          reason: 'violation_cooldown',
+          mappedEventType: mappedType,
+        });
+        return;
+      }
+
       const updatedAttempt = await prisma.testAttempt.update({
         where: { id: attemptId },
         data: { violations: { increment: 1 } },
         select: { violations: true, testId: true },
       });
       const newViolations = updatedAttempt.violations;
-
-      const session = await prisma.proctorSession.findUnique({
-        where: { attemptId },
-        select: { id: true },
-      });
 
       if (session) {
         let snapshotUrl: string | undefined;

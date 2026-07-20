@@ -21,6 +21,7 @@ import {
   requestCameraPermission,
   requestMicrophonePermission,
   requestScreenShare,
+  ScreenShareSurfaceError,
   uploadRecordingChunk,
   captureFrame,
   AudioAnalyzer,
@@ -406,7 +407,15 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
       let screenShareEnabled = false;
       if (finalConfig.enableScreenShare) {
         const cached = getCachedStreams();
-        const screenStream = cached.screenStream || (allowRuntimeScreenPrompt ? await requestScreenShare() : null);
+        let screenShareErrorMessage: string | null = null;
+        let screenStream: MediaStream | null = cached.screenStream || null;
+        if (!screenStream && allowRuntimeScreenPrompt) {
+          try {
+            screenStream = await requestScreenShare();
+          } catch (err) {
+            screenShareErrorMessage = err instanceof ScreenShareSurfaceError ? err.message : null;
+          }
+        }
         if (screenStream) {
           screenStreamRef.current = screenStream;
           if (screenProcessingVideoRef.current) {
@@ -433,7 +442,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
         } else {
           latestScreenEvidenceFrameRef.current = null;
           // Surface as hook error; UI decides how to present and route.
-          setError('Screen share permission denied');
+          setError(screenShareErrorMessage || 'Screen share permission denied');
         }
       } else {
         latestScreenEvidenceFrameRef.current = null;

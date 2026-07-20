@@ -205,6 +205,9 @@ export async function getAttemptDetails(req: AuthenticatedRequest, res: Response
         },
         activityLogs: {
           orderBy: { timestamp: 'asc' }
+        },
+        analytics: {
+          select: { trustScore: true }
         }
       }
     });
@@ -265,6 +268,7 @@ export async function getAttemptDetails(req: AuthenticatedRequest, res: Response
         violations: attempt.violations,
         isFlagged: attempt.isFlagged,
         flagReason: attempt.flagReason,
+        trustScore: typeof attempt.analytics?.trustScore === 'number' ? attempt.analytics.trustScore : 100,
         reviewed: reviewState.reviewed,
         reviewedAt: reviewState.reviewedAt,
         reviewedBy: reviewState.reviewedBy,
