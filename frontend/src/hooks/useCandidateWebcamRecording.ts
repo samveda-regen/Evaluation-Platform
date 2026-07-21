@@ -12,6 +12,16 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(undefined), ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      () => { clearTimeout(timer); resolve(undefined); }
+    );
+  });
+}
+
 /**
  * Standalone webcam-only recording of the candidate, running independently
  * of the proctoring MediaRecorder(s) in useProctoring. It reuses the same
@@ -74,6 +84,10 @@ export function useCandidateWebcamRecording(
     }
   }, [cameraStream, micStream]);
 
+  // Recording is strictly best-effort with respect to exam submission: this
+  // must NEVER block/delay submitTest(), which runs immediately after it.
+  // Each stage is time-boxed so a stuck 'stop' event, a slow chunk upload,
+  // or a slow finalize call can't stall the actual submission.
   const stopAndFinalize = useCallback(async () => {
     if (finalizedRef.current) return;
     finalizedRef.current = true;
@@ -85,17 +99,17 @@ export function useCandidateWebcamRecording(
       const stopped = new Promise<void>((resolve) => {
         recorder.onstop = () => resolve();
       });
-      recorder.stop();
-      await stopped;
+      try {
+        recorder.stop();
+      } catch {
+        // Already stopped (e.g. its tracks ended when proctoring's session
+        // ended) - nothing to wait for.
+      }
+      await withTimeout(stopped, 3000);
     }
 
-    await Promise.allSettled(pendingUploadsRef.current);
-
-    try {
-      await candidateApi.finalizeDataCollectionRecording();
-    } catch {
-      // Best-effort - do not block exam submission on this.
-    }
+    await withTimeout(Promise.allSettled(pendingUploadsRef.current), 5000);
+    await withTimeout(candidateApi.finalizeDataCollectionRecording(), 5000);
   }, []);
 
   return { stopAndFinalize };
