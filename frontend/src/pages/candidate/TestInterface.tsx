@@ -621,7 +621,10 @@ export default function TestInterface() {
     await saveCurrentAnswer();
     try {
       await endProctoringSession();
-      await stopDataCollectionRecording();
+      // Fire-and-forget: stopping the recorder, uploading the last chunk, and
+      // transcoding server-side can take several seconds - none of that
+      // should delay the actual exam submission.
+      void stopDataCollectionRecording().catch(() => {});
       const { data: submitResult } = await candidateApi.submitTest({ autoSubmit: true });
       setSubmitted(submitResult);
       toast.success('Test auto-submitted');
@@ -637,7 +640,10 @@ export default function TestInterface() {
     await saveCurrentAnswer();
     try {
       await endProctoringSession();
-      await stopDataCollectionRecording();
+      // Fire-and-forget: stopping the recorder, uploading the last chunk, and
+      // transcoding server-side can take several seconds - none of that
+      // should delay the actual exam submission.
+      void stopDataCollectionRecording().catch(() => {});
       const { data: submitResult } = await candidateApi.submitTest({ autoSubmit: false });
       setSubmitted(submitResult);
       toast.success('Test submitted successfully');
