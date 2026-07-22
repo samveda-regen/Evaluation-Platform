@@ -23,8 +23,11 @@ const AVAILABLE_VARS = [
   { key: '{{test_name}}',      desc: 'Name of the test' },
   { key: '{{company_name}}',   desc: 'Your company name' },
   { key: '{{estimated_time}}', desc: 'Test duration' },
+  { key: '{{exam_date}}',      desc: 'Scheduled exam date & time (invite email only)' },
   { key: '{{test_link}}',      desc: 'Invite URL (invite email only)' },
+  { key: '{{access_code}}',    desc: 'Access code (invite email only)' },
 ];
+const INVITE_ONLY_VAR_KEYS = new Set(['{{test_link}}', '{{exam_date}}', '{{access_code}}']);
 
 interface FormState {
   /* General */
@@ -643,7 +646,7 @@ export default function TestSettings() {
                               Click a variable to insert it
                             </p>
                             <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
-                              {AVAILABLE_VARS.filter(v => isInvite || v.key !== '{{test_link}}').map(v => (
+                              {AVAILABLE_VARS.filter(v => isInvite || !INVITE_ONLY_VAR_KEYS.has(v.key)).map(v => (
                                 <button key={v.key} type="button" title={v.desc}
                                   onClick={() => setEmailDraft(d => ({ ...d, body: d.body + v.key }))}
                                   style={{
@@ -686,7 +689,7 @@ export default function TestSettings() {
                           <div style={{ marginBottom:'16px' }}>
                             <p style={{ fontSize:'11px', fontWeight:600, color:'var(--admin-text-subtle)', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Available variables</p>
                             <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
-                              {AVAILABLE_VARS.filter(v => isInvite || v.key !== '{{test_link}}').map(v => (
+                              {AVAILABLE_VARS.filter(v => isInvite || !INVITE_ONLY_VAR_KEYS.has(v.key)).map(v => (
                                 <span key={v.key} title={v.desc} style={{
                                   fontSize:'11px', fontWeight:600, color:'var(--admin-accent-hover)',
                                   backgroundColor:'var(--admin-accent-disabled)', padding:'2px 8px', borderRadius:'20px',
