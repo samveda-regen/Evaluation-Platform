@@ -167,7 +167,8 @@ const LANGUAGE_CONFIG: Record<string, { extension: string; compile?: string[]; r
   },
   python: {
     extension: 'py',
-    run: ['python3', '-u'] // -u for unbuffered output
+    // Windows installs of Python don't provide a `python3` executable on PATH.
+    run: [process.platform === 'win32' ? 'python' : 'python3', '-u'] // -u for unbuffered output
   },
   java: {
     extension: 'java',
