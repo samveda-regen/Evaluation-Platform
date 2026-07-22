@@ -15,7 +15,7 @@ import {
 } from '../services/invitationService.js';
 import { uploadSnapshot } from '../services/fileStorageService.js';
 import { parseStoredCustomAIViolationEvents } from '../utils/proctoringConfig.js';
-import { sendCandidateScoreWebhook, dispatchCompanyWebhookEvent } from '../services/candidateScoreWebhookService.js';
+import { dispatchCompanyWebhookEvent } from '../services/candidateScoreWebhookService.js';
 import { sendConfirmationEmail, sendResultEmail } from '../services/emailService.js';
 import { saveNotification, ensureNotificationTable } from './notifications.js';
 import { getTestGradingPreferences } from '../utils/testPreferences.js';
@@ -1568,16 +1568,6 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
     ).catch(err => console.error('Notification save error (submit):', err));
 
     const webhookResult: 'passed' | 'failed' | null = passed === null ? null : (passed ? 'passed' : 'failed');
-
-    void sendCandidateScoreWebhook({
-      name: attempt.candidate?.name ?? 'Unknown',
-      emailid: attempt.candidate?.email ?? '',
-      score: totalScore,
-      testid: testId,
-      status: webhookStatus,
-      passingMarks: test.passingMarks ?? null,
-      result: webhookResult,
-    });
 
     void dispatchCompanyWebhookEvent((test as any).companyId, 'test.completed', {
       testId,
