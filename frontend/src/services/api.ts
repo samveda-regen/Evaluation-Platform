@@ -259,6 +259,9 @@ export const adminApi = {
   getCodings: (page = 1, limit = 20, search = '') =>
     api.get(`/admin/coding?page=${page}&limit=${limit}${search ? `&search=${search}` : ''}`),
 
+  getCodingById: (questionId: string) =>
+    api.get(`/admin/coding/${questionId}`),
+
   // Behavioral Questions
   getBehaviorals: (page = 1, limit = 20, search = '') =>
     api.get(`/admin/behavioral?page=${page}&limit=${limit}${search ? `&search=${search}` : ''}`),

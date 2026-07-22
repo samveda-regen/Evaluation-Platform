@@ -38,57 +38,84 @@ export default function CodingForm() {
   };
 
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    title: '',
-    description: '',
-    inputFormat: '',
-    outputFormat: '',
-    constraints: '',
-    sampleInput: '',
-    sampleOutput: '',
-    marks: 20,
-    timeLimit: 2000,
-    memoryLimit: 256,
-    supportedLanguages: ['python', 'javascript'],
-    codeTemplates: {} as Record<string, string>,
-    partialScoring: false,
-    testCases: [{ input: '', expectedOutput: '', isHidden: false, marks: 10 }] as TestCase[],
-    difficulty: 'medium',
-    topic: '',
-    tags: [] as string[]
-  });
+  const [loadingQuestion, setLoadingQuestion] = useState(isEditing);
+
+  function buildFormDataFromRecord(record: Record<string, unknown>) {
+    return {
+      title: typeof record.title === 'string' ? record.title : '',
+      description: typeof record.description === 'string' ? record.description : '',
+      inputFormat: typeof record.inputFormat === 'string' ? record.inputFormat : '',
+      outputFormat: typeof record.outputFormat === 'string' ? record.outputFormat : '',
+      constraints: typeof record.constraints === 'string' ? record.constraints : '',
+      sampleInput: typeof record.sampleInput === 'string' ? record.sampleInput : '',
+      sampleOutput: typeof record.sampleOutput === 'string' ? record.sampleOutput : '',
+      marks: typeof record.marks === 'number' ? record.marks : 20,
+      timeLimit: typeof record.timeLimit === 'number' ? record.timeLimit : 2000,
+      memoryLimit: typeof record.memoryLimit === 'number' ? record.memoryLimit : 256,
+      supportedLanguages: Array.isArray(record.supportedLanguages)
+        ? record.supportedLanguages.filter((language): language is string => typeof language === 'string')
+        : ['python', 'javascript'],
+      codeTemplates: record.codeTemplates && typeof record.codeTemplates === 'object' && !Array.isArray(record.codeTemplates)
+        ? record.codeTemplates as Record<string, string>
+        : {},
+      partialScoring: typeof record.partialScoring === 'boolean' ? record.partialScoring : false,
+      testCases: Array.isArray(record.testCases) && record.testCases.length
+        ? record.testCases as TestCase[]
+        : [{ input: '', expectedOutput: '', isHidden: false, marks: 10 }],
+      difficulty: typeof record.difficulty === 'string' ? record.difficulty : 'medium',
+      topic: typeof record.topic === 'string' ? record.topic : '',
+      tags: Array.isArray(record.tags) ? record.tags.filter((tag): tag is string => typeof tag === 'string') : [],
+    };
+  }
+
+  const [formData, setFormData] = useState(() =>
+    isEditing && editQuestion
+      ? buildFormDataFromRecord(editQuestion)
+      : {
+        title: '',
+        description: '',
+        inputFormat: '',
+        outputFormat: '',
+        constraints: '',
+        sampleInput: '',
+        sampleOutput: '',
+        marks: 20,
+        timeLimit: 2000,
+        memoryLimit: 256,
+        supportedLanguages: ['python', 'javascript'],
+        codeTemplates: {} as Record<string, string>,
+        partialScoring: false,
+        testCases: [{ input: '', expectedOutput: '', isHidden: false, marks: 10 }] as TestCase[],
+        difficulty: 'medium',
+        topic: '',
+        tags: [] as string[]
+      }
+  );
   const [tagInput, setTagInput] = useState('');
 
+  // The router-state question (passed by whichever list navigated here) is only used for
+  // an instant, non-blank first paint — some callers (the Question Library list view) only
+  // have a summary of the question with a test case *count*, not the actual test cases, so
+  // relying on it alone silently showed an empty test-case form. Always re-fetch the full
+  // question by id here so edits are correct regardless of what the caller happened to pass.
   useEffect(() => {
-    if (isEditing && editQuestion) {
-      setFormData({
-        title: typeof editQuestion.title === 'string' ? editQuestion.title : '',
-        description: typeof editQuestion.description === 'string' ? editQuestion.description : '',
-        inputFormat: typeof editQuestion.inputFormat === 'string' ? editQuestion.inputFormat : '',
-        outputFormat: typeof editQuestion.outputFormat === 'string' ? editQuestion.outputFormat : '',
-        constraints: typeof editQuestion.constraints === 'string' ? editQuestion.constraints : '',
-        sampleInput: typeof editQuestion.sampleInput === 'string' ? editQuestion.sampleInput : '',
-        sampleOutput: typeof editQuestion.sampleOutput === 'string' ? editQuestion.sampleOutput : '',
-        marks: typeof editQuestion.marks === 'number' ? editQuestion.marks : 20,
-        timeLimit: typeof editQuestion.timeLimit === 'number' ? editQuestion.timeLimit : 2000,
-        memoryLimit: typeof editQuestion.memoryLimit === 'number' ? editQuestion.memoryLimit : 256,
-        supportedLanguages: Array.isArray(editQuestion.supportedLanguages)
-          ? editQuestion.supportedLanguages.filter((language): language is string => typeof language === 'string')
-          : ['python', 'javascript'],
-        codeTemplates: editQuestion.codeTemplates && typeof editQuestion.codeTemplates === 'object' && !Array.isArray(editQuestion.codeTemplates)
-          ? editQuestion.codeTemplates as Record<string, string>
-          : {},
-        partialScoring: typeof editQuestion.partialScoring === 'boolean' ? editQuestion.partialScoring : false,
-        testCases: Array.isArray(editQuestion.testCases) && editQuestion.testCases.length
-          ? editQuestion.testCases as TestCase[]
-          : [{ input: '', expectedOutput: '', isHidden: false, marks: 10 }],
-        difficulty: typeof editQuestion.difficulty === 'string' ? editQuestion.difficulty : 'medium',
-        topic: typeof editQuestion.topic === 'string' ? editQuestion.topic : '',
-        tags: Array.isArray(editQuestion.tags) ? editQuestion.tags.filter((tag): tag is string => typeof tag === 'string') : [],
-      });
-    }
+    if (!isEditing || !questionId) { setLoadingQuestion(false); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await adminApi.getCodingById(questionId);
+        if (!cancelled && data?.question) {
+          setFormData(buildFormDataFromRecord(data.question));
+        }
+      } catch {
+        if (!editQuestion) toast.error('Failed to load question details');
+      } finally {
+        if (!cancelled) setLoadingQuestion(false);
+      }
+    })();
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [isEditing, questionId]);
 
   const addTag = () => {
     const tag = tagInput.trim().toLowerCase();
@@ -201,6 +228,14 @@ export default function CodingForm() {
     newTestCases[index] = { ...newTestCases[index], [field]: value };
     setFormData({ ...formData, testCases: newTestCases });
   };
+
+  if (loadingQuestion && !editQuestion) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: 'var(--admin-accent)' }} />
+      </div>
+    );
+  }
 
   return (
     <div>

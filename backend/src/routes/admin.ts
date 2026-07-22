@@ -49,6 +49,7 @@ import {
 import {
   createCodingQuestion,
   getCodingQuestions,
+  getCodingQuestionById,
   deleteCodingQuestion
 } from '../controllers/codingQuestion.js';
 import { getBehavioralQuestions } from '../controllers/behavioralQuestion.js';
@@ -157,6 +158,7 @@ router.delete('/mcq/:questionId', adminAuth, deleteMCQQuestion);
 // Coding question routes
 router.post('/coding', adminAuth, createCodingValidation, handleValidationErrors, createCodingQuestion);
 router.get('/coding', adminAuth, paginationValidation, handleValidationErrors, getCodingQuestions);
+router.get('/coding/:questionId', adminAuth, getCodingQuestionById);
 router.delete('/coding/:questionId', adminAuth, deleteCodingQuestion);
 
 // Behavioral question routes
