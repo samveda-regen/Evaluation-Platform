@@ -15,7 +15,7 @@ import {
 } from '../services/invitationService.js';
 import { uploadSnapshot } from '../services/fileStorageService.js';
 import { parseStoredCustomAIViolationEvents } from '../utils/proctoringConfig.js';
-import { sendCandidateScoreWebhook } from '../services/candidateScoreWebhookService.js';
+import { sendCandidateScoreWebhook, dispatchCompanyWebhookEvent } from '../services/candidateScoreWebhookService.js';
 import { sendConfirmationEmail, sendResultEmail } from '../services/emailService.js';
 import { saveNotification, ensureNotificationTable } from './notifications.js';
 import { getTestGradingPreferences } from '../utils/testPreferences.js';
@@ -144,7 +144,8 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
           data: {
             email: sanitizedEmail,
             name: sanitizedName,
-            password: hashedPassword
+            password: hashedPassword,
+            companyId: test?.companyId ?? undefined
           }
         });
         createdCandidate = true;
@@ -154,7 +155,8 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
         candidate = await prisma.candidate.create({
           data: {
             email: sanitizedEmail,
-            name: sanitizedName.length >= 2 ? sanitizedName : sanitizedEmail
+            name: sanitizedName.length >= 2 ? sanitizedName : sanitizedEmail,
+            companyId: test?.companyId ?? undefined
           }
         });
         createdCandidate = true;
@@ -941,6 +943,14 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
         autoSubmit: false,
       })
     ).catch(err => console.error('Notification save error (start):', err));
+
+    void dispatchCompanyWebhookEvent((test as any).companyId, 'test.started', {
+      testId,
+      testName: test.name,
+      attemptId,
+      candidateName: (attempt as any).candidate?.name ?? 'Unknown',
+      candidateEmail: (attempt as any).candidate?.email ?? '',
+    });
   } catch (error) {
     console.error('Start test error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1557,12 +1567,28 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
       })
     ).catch(err => console.error('Notification save error (submit):', err));
 
+    const webhookResult: 'passed' | 'failed' | null = passed === null ? null : (passed ? 'passed' : 'failed');
+
     void sendCandidateScoreWebhook({
       name: attempt.candidate?.name ?? 'Unknown',
       emailid: attempt.candidate?.email ?? '',
       score: totalScore,
       testid: testId,
       status: webhookStatus,
+      passingMarks: test.passingMarks ?? null,
+      result: webhookResult,
+    });
+
+    void dispatchCompanyWebhookEvent((test as any).companyId, 'test.completed', {
+      testId,
+      testName: test.name,
+      attemptId,
+      candidateName: attempt.candidate?.name ?? 'Unknown',
+      candidateEmail: attempt.candidate?.email ?? '',
+      score: totalScore,
+      status: webhookStatus,
+      passingMarks: test.passingMarks ?? null,
+      result: webhookResult,
     });
 
     // Send confirmation email — fire-and-forget, never blocks or breaks submission

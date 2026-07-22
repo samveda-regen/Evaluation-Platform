@@ -7,8 +7,10 @@ import type { AuthenticatedRequest } from '../types/index.js';
 import prisma from '../utils/db.js';
 import { sanitizeInput } from '../utils/sanitize.js';
 import { generateIntegrationToken } from '../utils/jwt.js';
-import { InvitationServiceError, sendStructuredTestInvitations } from '../services/invitationService.js';
+import { InvitationServiceError, sendStructuredTestInvitations, createSilentInvitationForCandidate } from '../services/invitationService.js';
 import { generateTestFromJobProfile, createTestFromSelection } from '../services/testAgentService.js';
+import { resolvePartnerForToken } from '../services/integrationPartnerService.js';
+import { dispatchCompanyWebhookEvent } from '../services/candidateScoreWebhookService.js';
 
 type RecruiterClaims = {
   sub: string;
@@ -22,9 +24,6 @@ type RecruiterClaims = {
   aud?: string | string[];
 };
 
-const RECRUITER_JWT_SECRET = process.env.RECRUITER_JWT_SECRET || '';
-const RECRUITER_JWT_ISSUER = process.env.RECRUITER_JWT_ISSUER || '';
-const RECRUITER_JWT_AUDIENCE = process.env.RECRUITER_JWT_AUDIENCE || '';
 const INTEGRATION_PROVIDER = process.env.INTEGRATION_PROVIDER || 'recruit_portal';
 const REFRESH_TOKEN_EXPIRY_DAYS = Number.parseInt(process.env.INTEGRATION_REFRESH_TOKEN_EXPIRY_DAYS || '30', 10);
 
@@ -60,14 +59,15 @@ function parseStoredScopes(scopes: string): string[] {
   }
 }
 
-function verifyRecruiterJwt(token: string): RecruiterClaims {
-  if (!RECRUITER_JWT_SECRET) {
-    throw new Error('RECRUITER_JWT_SECRET is not configured');
+async function verifyRecruiterJwt(token: string): Promise<RecruiterClaims> {
+  const partner = await resolvePartnerForToken(token);
+  if (!partner) {
+    throw new Error('No integration partner configured for this token');
   }
 
-  const payload = jwt.verify(token, RECRUITER_JWT_SECRET, {
-    issuer: RECRUITER_JWT_ISSUER || undefined,
-    audience: RECRUITER_JWT_AUDIENCE || undefined,
+  const payload = jwt.verify(token, partner.secret, {
+    issuer: partner.issuer || undefined,
+    audience: partner.audience || undefined,
   }) as RecruiterClaims;
 
   const companyClaim = typeof payload.companyId === 'string' ? payload.companyId.trim() : payload.company_id;
@@ -173,7 +173,7 @@ async function findCompanyScopedTest(testId: string, companyId: string) {
   });
 }
 
-async function resolveInternalCompanyId(claimCompanyId: string): Promise<string | null> {
+export async function resolveInternalCompanyId(claimCompanyId: string): Promise<string | null> {
   const normalizedClaim = claimCompanyId.trim();
   if (!normalizedClaim) {
     return null;
@@ -203,7 +203,7 @@ export async function exchangeRecruiterToken(req: AuthenticatedRequest, res: Res
       return;
     }
 
-    const claims = verifyRecruiterJwt(recruiterJwt);
+    const claims = await verifyRecruiterJwt(recruiterJwt);
     const scopes = parseIntegrationScopes(claims.role);
     const { admin, company } = await upsertIntegrationAdmin(claims);
 
@@ -328,6 +328,25 @@ export async function refreshIntegrationToken(req: AuthenticatedRequest, res: Re
     });
   } catch (error) {
     console.error('Integration token refresh error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// Revokes every active refresh-token session for the calling recruiter admin.
+// Only meaningful for tokens minted via /auth/exchange (where req.integration.id
+// is our internal Admin.id, backed by AuthSession rows) — for a partner calling
+// the API directly with its own JWT, this is a harmless no-op (0 revoked).
+export async function revokeIntegrationSessions(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const adminId = req.integration!.id;
+    const result = await prisma.authSession.updateMany({
+      where: { adminId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+
+    res.json({ revoked: result.count });
+  } catch (error) {
+    console.error('Revoke integration sessions error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }
@@ -465,6 +484,14 @@ export async function inviteCandidatesFromIntegration(req: AuthenticatedRequest,
       customMessage,
     });
 
+    void dispatchCompanyWebhookEvent(companyId, 'invitation.sent', {
+      testId,
+      testName: scopedTest.name,
+      total: summary.total,
+      sent: summary.sent,
+      failed: summary.failed,
+    });
+
     res.json({
       testId,
       ...summary,
@@ -476,6 +503,55 @@ export async function inviteCandidatesFromIntegration(req: AuthenticatedRequest,
     }
 
     console.error('Integration invite candidates error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function createCandidateSessionFromIntegration(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { testId } = req.params;
+    const companyId = await resolveInternalCompanyId(req.integration!.companyId);
+    if (!companyId) {
+      res.status(403).json({ error: 'forbidden_company_scope', message: 'Unknown company scope' });
+      return;
+    }
+
+    const scopedTest = await findCompanyScopedTest(testId, companyId);
+    if (!scopedTest) {
+      res.status(403).json({ error: 'forbidden_company_scope', message: 'You cannot access this test' });
+      return;
+    }
+
+    const payload = req.body.candidate && typeof req.body.candidate === 'object' ? req.body.candidate : {};
+    const name = typeof payload.name === 'string' ? sanitizeInput(payload.name).trim() : '';
+    const email = typeof payload.email === 'string' ? sanitizeInput(payload.email).toLowerCase().trim() : '';
+    const phone = typeof payload.phone === 'string' ? sanitizeInput(payload.phone).trim() : undefined;
+
+    if (!name || !email) {
+      res.status(400).json({ error: 'candidate.name and candidate.email are required' });
+      return;
+    }
+
+    const session = await createSilentInvitationForCandidate({
+      testId,
+      candidate: { name, email, ...(phone ? { phone } : {}) },
+    });
+
+    res.json({
+      testId,
+      invitationId: session.invitationId,
+      redirectUrl: session.redirectUrl,
+      accessCode: session.accessCode,
+      isNew: session.isNew,
+      consumed: session.consumed,
+    });
+  } catch (error) {
+    if (error instanceof InvitationServiceError) {
+      res.status(error.statusCode).json({ error: error.message });
+      return;
+    }
+
+    console.error('Integration create candidate session error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }
@@ -522,7 +598,10 @@ export async function getTestCandidateResultsForIntegration(req: AuthenticatedRe
       : await prisma.testAttempt.findMany({
         where: {
           testId,
-          candidate: { email: { in: emails } },
+          candidate: {
+            email: { in: emails },
+            OR: [{ companyId }, { companyId: null }],
+          },
         },
         select: {
           id: true,

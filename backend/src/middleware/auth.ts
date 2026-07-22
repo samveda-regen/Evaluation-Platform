@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { verifyToken } from '../utils/jwt.js';
 import { AuthenticatedRequest, AdminPayload, CandidatePayload, IntegrationPayload } from '../types/index.js';
+import { resolvePartnerForToken } from '../services/integrationPartnerService.js';
 
 type RecruiterJwtPayload = jwt.JwtPayload & {
   sub?: string;
@@ -11,10 +12,6 @@ type RecruiterJwtPayload = jwt.JwtPayload & {
   company_id?: string;
   scopes?: string[];
 };
-
-const RECRUITER_JWT_SECRET = process.env.RECRUITER_JWT_SECRET || '';
-const RECRUITER_JWT_ISSUER = process.env.RECRUITER_JWT_ISSUER || '';
-const RECRUITER_JWT_AUDIENCE = process.env.RECRUITER_JWT_AUDIENCE || '';
 
 function getCompanyClaim(payload: RecruiterJwtPayload): string {
   const companyId = typeof payload.companyId === 'string' ? payload.companyId.trim() : '';
@@ -39,15 +36,16 @@ function parseScopesFromRecruiterPayload(payload: RecruiterJwtPayload): string[]
   return [];
 }
 
-function verifyRecruiterAccessToken(token: string): IntegrationPayload | null {
-  if (!RECRUITER_JWT_SECRET) {
+async function verifyRecruiterAccessToken(token: string): Promise<IntegrationPayload | null> {
+  const partner = await resolvePartnerForToken(token);
+  if (!partner) {
     return null;
   }
 
   try {
-    const payload = jwt.verify(token, RECRUITER_JWT_SECRET, {
-      issuer: RECRUITER_JWT_ISSUER || undefined,
-      audience: RECRUITER_JWT_AUDIENCE || undefined,
+    const payload = jwt.verify(token, partner.secret, {
+      issuer: partner.issuer || undefined,
+      audience: partner.audience || undefined,
     }) as RecruiterJwtPayload;
 
     const subject = typeof payload.sub === 'string' ? payload.sub.trim() : '';
@@ -111,7 +109,7 @@ export function candidateAuth(req: AuthenticatedRequest, res: Response, next: Ne
   next();
 }
 
-export function optionalAuth(req: AuthenticatedRequest, _res: Response, next: NextFunction): void {
+export async function optionalAuth(req: AuthenticatedRequest, _res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers.authorization;
 
   if (authHeader && authHeader.startsWith('Bearer ')) {
@@ -127,7 +125,7 @@ export function optionalAuth(req: AuthenticatedRequest, _res: Response, next: Ne
         req.integration = payload as IntegrationPayload;
       }
     } else {
-      const recruiterPayload = verifyRecruiterAccessToken(token);
+      const recruiterPayload = await verifyRecruiterAccessToken(token);
       if (recruiterPayload) {
         req.integration = recruiterPayload;
       }
@@ -137,7 +135,7 @@ export function optionalAuth(req: AuthenticatedRequest, _res: Response, next: Ne
   next();
 }
 
-export function integrationAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+export async function integrationAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -154,7 +152,7 @@ export function integrationAuth(req: AuthenticatedRequest, res: Response, next: 
     return;
   }
 
-  const recruiterPayload = verifyRecruiterAccessToken(token);
+  const recruiterPayload = await verifyRecruiterAccessToken(token);
   if (recruiterPayload) {
     req.integration = recruiterPayload;
     next();

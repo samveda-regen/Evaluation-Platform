@@ -52,11 +52,47 @@ model Company {
   id                String   @id @default(uuid())
   externalCompanyId String   @unique
   name              String
+  webhookUrl        String?
+  webhookSecret     String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  admins Admin[]
-  tests  Test[]
+  admins     Admin[]
+  tests      Test[]
+  candidates Candidate[]
+}
+
+// One row per recruitment-platform partner integrated via /api/integration.
+// Lets each partner sign recruiter JWTs with its own secret/issuer instead of
+// sharing a single set of RECRUITER_JWT_* env vars across every client.
+model IntegrationPartner {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  jwtSecret String
+  jwtIssuer String?
+  jwtAudience String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([jwtIssuer])
+}
+
+model IntegrationAuditLog {
+  id           String   @id @default(uuid())
+  companyId    String?
+  actorId      String
+  actorEmail   String?
+  action       String
+  method       String
+  path         String
+  statusCode   Int?
+  metadata     String?
+  createdAt    DateTime @default(now())
+
+  @@index([companyId])
+  @@index([createdAt])
 }
 
 model AuthSession {
@@ -81,11 +117,14 @@ model Candidate {
   email        String
   name         String
   password     String?
+  companyId    String?
   createdAt    DateTime           @default(now())
   testAttempts TestAttempt[]
   identity     CandidateIdentity?
+  company      Company?           @relation(fields: [companyId], references: [id])
 
   @@unique([email])
+  @@index([companyId])
 }
 
 model Test {

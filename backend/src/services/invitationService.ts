@@ -14,6 +14,14 @@ const EMAIL_SEND_MAX_ATTEMPTS = 3;
 const EMAIL_SEND_RETRY_DELAY_MS = 1500;
 const CANDIDATE_LOGIN_PATH = '/test/login';
 
+function formatExamDate(startTime: Date | null | undefined): string | undefined {
+  if (!startTime) return undefined;
+  return new Intl.DateTimeFormat('en-US', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(startTime);
+}
+
 // Excludes visually-confusing characters (I, O) so codes are easy to read/type by hand.
 const ACCESS_CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const ACCESS_CODE_DIGITS = '0123456789';
@@ -412,6 +420,7 @@ export async function sendBulkTestInvitations(input: {
       id: true,
       name: true,
       isActive: true,
+      startTime: true,
       endTime: true,
       duration: true,
       inviteEmailSubject: true,
@@ -432,6 +441,7 @@ export async function sendBulkTestInvitations(input: {
     throw new InvitationServiceError('Cannot send invitations because this test has already ended.', 400);
   }
 
+  const examDate = formatExamDate((test as any).startTime);
   const { rows, invalidRows } = await parseInvitationFile(input.file);
 
   let sent = 0;
@@ -484,6 +494,7 @@ export async function sendBulkTestInvitations(input: {
           accessCode: invitation.accessCode ?? accessCode,
           companyName: (test as any).admin?.company?.name ?? undefined,
           estimatedTime: `${(test as any).duration ?? ''} minutes`,
+          examDate,
           inviteEmailSubject: (test as any).inviteEmailSubject ?? undefined,
           inviteEmailBody: (test as any).inviteEmailBody ?? undefined,
         }, row.email);
@@ -572,6 +583,7 @@ export async function sendStructuredTestInvitations(input: {
       id: true,
       name: true,
       isActive: true,
+      startTime: true,
       endTime: true,
       duration: true,
       inviteEmailSubject: true,
@@ -592,6 +604,7 @@ export async function sendStructuredTestInvitations(input: {
     throw new InvitationServiceError('Cannot send invitations because this test has already ended.', 400);
   }
 
+  const examDate = formatExamDate((test as any).startTime);
   const dedupedCandidates = new Map<string, StructuredInvitationCandidate>();
   for (const candidate of input.candidates) {
     const email = sanitizeInput(candidate.email).toLowerCase().trim();
@@ -656,6 +669,7 @@ export async function sendStructuredTestInvitations(input: {
         accessCode: invitation.accessCode ?? accessCode,
         companyName: (test as any).admin?.company?.name ?? undefined,
         estimatedTime: `${(test as any).duration ?? ''} minutes`,
+        examDate,
         inviteEmailSubject: (test as any).inviteEmailSubject ?? undefined,
         inviteEmailBody: (test as any).inviteEmailBody ?? undefined,
       }, row.email);
@@ -700,6 +714,84 @@ export async function sendStructuredTestInvitations(input: {
     sent,
     failed,
     results
+  };
+}
+
+export interface SilentInvitationResult {
+  invitationId: string;
+  token: string;
+  accessCode: string;
+  redirectUrl: string;
+  isNew: boolean;
+  consumed: boolean;
+}
+
+// Creates (or reuses) a TestInvitation without sending an email — for recruiter
+// platforms that want to redirect a candidate straight into TalentStaq (deep-link
+// SSO) rather than have TalentStaq's own invite email be the delivery mechanism.
+export async function createSilentInvitationForCandidate(input: {
+  testId: string;
+  candidate: StructuredInvitationCandidate;
+}): Promise<SilentInvitationResult> {
+  const test = await prisma.test.findUnique({
+    where: { id: input.testId },
+    select: { id: true, isActive: true, endTime: true },
+  });
+
+  if (!test) {
+    throw new InvitationServiceError('Test not found.', 404);
+  }
+  if (!test.isActive) {
+    throw new InvitationServiceError('Cannot create a session for an inactive test.', 400);
+  }
+  if (test.endTime && new Date() > test.endTime) {
+    throw new InvitationServiceError('Cannot create a session because this test has already ended.', 400);
+  }
+
+  const email = sanitizeInput(input.candidate.email).toLowerCase().trim();
+  const name = sanitizeInput(input.candidate.name).trim();
+  if (!email || !name || !isValidEmail(email)) {
+    throw new InvitationServiceError('A valid candidate name and email are required.', 400);
+  }
+  const phone = input.candidate.phone ? sanitizeInput(input.candidate.phone).trim() : undefined;
+
+  const existing = await prisma.testInvitation.findUnique({
+    where: { testId_email: { testId: test.id, email } },
+  });
+
+  if (existing) {
+    return {
+      invitationId: existing.id,
+      token: existing.token,
+      accessCode: existing.accessCode ?? '',
+      redirectUrl: buildInviteLink(existing.token),
+      isNew: false,
+      consumed: !!existing.consumedAt,
+    };
+  }
+
+  const token = randomBytes(32).toString('hex');
+  const accessCode = await generateUniqueAccessCode();
+
+  const invitation = await prisma.testInvitation.create({
+    data: {
+      testId: test.id,
+      name,
+      email,
+      phone: phone ?? null,
+      token,
+      accessCode,
+      status: 'PENDING',
+    },
+  });
+
+  return {
+    invitationId: invitation.id,
+    token: invitation.token,
+    accessCode: invitation.accessCode ?? accessCode,
+    redirectUrl: buildInviteLink(invitation.token),
+    isNew: true,
+    consumed: false,
   };
 }
 

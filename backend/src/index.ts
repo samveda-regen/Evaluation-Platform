@@ -201,6 +201,18 @@ const submissionLimiter = rateLimit({
   message: { error: 'Too many submissions, please slow down' }
 });
 
+const integrationAuthLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 100,
+  message: { error: 'Too many integration auth attempts, please try again later' }
+});
+
+const integrationApiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  message: { error: 'Too many integration API requests, please slow down' }
+});
+
 app.use(generalLimiter);
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -214,6 +226,10 @@ app.use('/api/candidate/login', authLimiter);
 
 app.use('/api/candidate/answer', submissionLimiter);
 app.use('/api/candidate/test/submit', submissionLimiter);
+
+app.use('/api/integration/auth/exchange', integrationAuthLimiter);
+app.use('/api/integration/auth/refresh', integrationAuthLimiter);
+app.use('/api/integration', integrationApiLimiter);
 
 // Health check
 app.get('/api/health', async (_req, res) => {
@@ -376,6 +392,62 @@ async function startServer(): Promise<void> {
     await prisma.$executeRaw`ALTER TABLE "Test" ADD COLUMN IF NOT EXISTS "inviteEmailSubject" TEXT`;
     await prisma.$executeRaw`ALTER TABLE "Test" ADD COLUMN IF NOT EXISTS "inviteEmailBody" TEXT`;
     console.log('Test extended columns: ready');
+
+    // Recruiter-platform integration: company-scoped candidates, multi-partner
+    // JWT config, per-company result webhooks, and an audit trail. Added via
+    // idempotent raw SQL (like the Test columns above) instead of `prisma db push`,
+    // since this database has tables/columns outside schema.prisma that a full
+    // push would otherwise try to drop.
+    await prisma.$executeRaw`ALTER TABLE "Candidate" ADD COLUMN IF NOT EXISTS "companyId" TEXT`;
+    await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "Candidate_companyId_idx" ON "Candidate"("companyId")`;
+    await prisma.$executeRaw`ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "webhookUrl" TEXT`;
+    await prisma.$executeRaw`ALTER TABLE "Company" ADD COLUMN IF NOT EXISTS "webhookSecret" TEXT`;
+    await prisma.$executeRaw`
+      CREATE TABLE IF NOT EXISTS "IntegrationPartner" (
+        "id" TEXT PRIMARY KEY,
+        "name" TEXT NOT NULL,
+        "slug" TEXT NOT NULL UNIQUE,
+        "jwtSecret" TEXT NOT NULL,
+        "jwtIssuer" TEXT,
+        "jwtAudience" TEXT,
+        "isActive" BOOLEAN NOT NULL DEFAULT true,
+        "createdAt" TIMESTAMP NOT NULL DEFAULT now(),
+        "updatedAt" TIMESTAMP NOT NULL DEFAULT now()
+      )
+    `;
+    await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "IntegrationPartner_jwtIssuer_idx" ON "IntegrationPartner"("jwtIssuer")`;
+    await prisma.$executeRaw`
+      CREATE TABLE IF NOT EXISTS "IntegrationAuditLog" (
+        "id" TEXT PRIMARY KEY,
+        "companyId" TEXT,
+        "actorId" TEXT NOT NULL,
+        "actorEmail" TEXT,
+        "action" TEXT NOT NULL,
+        "method" TEXT NOT NULL,
+        "path" TEXT NOT NULL,
+        "statusCode" INTEGER,
+        "metadata" TEXT,
+        "createdAt" TIMESTAMP NOT NULL DEFAULT now()
+      )
+    `;
+    await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "IntegrationAuditLog_companyId_idx" ON "IntegrationAuditLog"("companyId")`;
+    await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "IntegrationAuditLog_createdAt_idx" ON "IntegrationAuditLog"("createdAt")`;
+
+    // One-time (per-candidate) backfill: tag existing candidates with the company of
+    // their earliest test attempt. No-op once a candidate has a companyId.
+    await prisma.$executeRaw`
+      UPDATE "Candidate" c
+      SET "companyId" = sub."companyId"
+      FROM (
+        SELECT DISTINCT ON (ta."candidateId") ta."candidateId", t."companyId"
+        FROM "TestAttempt" ta
+        JOIN "Test" t ON t.id = ta."testId"
+        WHERE t."companyId" IS NOT NULL
+        ORDER BY ta."candidateId", ta."startTime" ASC
+      ) sub
+      WHERE c.id = sub."candidateId" AND c."companyId" IS NULL
+    `;
+    console.log('Integration extended tables/columns: ready');
   } catch (error) {
     console.error('Database connectivity check failed. Verify PostgreSQL and DATABASE_URL.', error);
     process.exit(1);
