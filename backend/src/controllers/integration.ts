@@ -11,6 +11,7 @@ import { InvitationServiceError, sendStructuredTestInvitations, createSilentInvi
 import { generateTestFromJobProfile, createTestFromSelection } from '../services/testAgentService.js';
 import { resolvePartnerForToken } from '../services/integrationPartnerService.js';
 import { dispatchCompanyWebhookEvent } from '../services/candidateScoreWebhookService.js';
+import { sendAdminWelcomeEmail } from '../services/emailService.js';
 
 type RecruiterClaims = {
   sub: string;
@@ -152,6 +153,19 @@ async function upsertIntegrationAdmin(claims: RecruiterClaims) {
       externalUserId,
     },
   });
+
+  const frontendUrl = process.env.FRONTEND_URL || 'https://humint.talentsatq.ai';
+  try {
+    await sendAdminWelcomeEmail({
+      to: sanitizedEmail,
+      name: sanitizedName,
+      password: generatedPassword,
+      loginUrl: `${frontendUrl}/admin/login`,
+      companyName: company.name,
+    });
+  } catch (emailError) {
+    console.error('Integration admin welcome email failed (account still created):', emailError);
+  }
 
   return { admin, company };
 }
