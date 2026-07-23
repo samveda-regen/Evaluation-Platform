@@ -7,11 +7,13 @@
  *   3. Liveness      — multi-frame pixel-variance check (no external service)
  *
  * Decision logic (tri-state):
- *   face >= AUTO_APPROVE_FACE_MATCH_THRESHOLD + doc OK + liveness OK  →  verified (auto, exam starts)
- *   anything else                                                    →  pending  (admin reviews images)
+ *   face >= AUTO_APPROVE_FACE_MATCH_THRESHOLD  →  verified (auto, exam starts)
+ *   anything else                              →  pending  (admin reviews images)
  *
- * Nothing is auto-rejected — a failed/low-confidence check always falls through
- * to the manual admin queue rather than blocking the candidate outright.
+ * Document/liveness scores are still recorded for the admin to see either way,
+ * but only face match gates the auto-approve decision. Nothing is auto-rejected
+ * — a low face-match score always falls through to the manual admin queue
+ * rather than blocking the candidate outright.
  *
  * Option B storage:
  *   ID images are kept ONLY while status is pending/in_progress.
@@ -272,14 +274,12 @@ export async function submitVerification(
       detectLiveness(livenessBuffers.length >= 2 ? livenessBuffers : [selfieBuffer]),
     ]);
 
-    // ── Auto-approve high-confidence matches, otherwise route to the admin queue ──
-    // Below AUTO_APPROVE_FACE_MATCH_THRESHOLD (or if the document/liveness checks
-    // didn't pass), the candidate still lands in 'pending' for manual review exactly
-    // as before — this only shortcuts the clear-cut, high-confidence cases.
-    const autoApprove =
-      faceResult.similarity >= AUTO_APPROVE_FACE_MATCH_THRESHOLD &&
-      docAnalysis.isValid &&
-      livenessResult.isLive;
+    // ── Auto-approve on face match alone, otherwise route to the admin queue ──
+    // Below AUTO_APPROVE_FACE_MATCH_THRESHOLD, the candidate still lands in 'pending'
+    // for manual review exactly as before — this only shortcuts the high-confidence
+    // face-match cases. Document/liveness scores are still recorded either way for
+    // the admin to see, they just no longer gate the auto-approve decision.
+    const autoApprove = faceResult.similarity >= AUTO_APPROVE_FACE_MATCH_THRESHOLD;
 
     const status: VerificationStatus = autoApprove ? 'verified' : 'pending';
     const verifiedAt = autoApprove ? new Date() : null;
