@@ -4,7 +4,7 @@ import { useAuthStore } from '../context/authStore';
 import { adminApi } from '../services/api';
 import { getRealtimeSocket } from '../services/realtimeService';
 import {
-  ChevronRight, ChevronLeft, CheckCircle2, PlayCircle, UserCheck,
+  ChevronRight, ChevronLeft, CheckCircle2, PlayCircle, UserCheck, ShieldCheck,
 } from 'lucide-react';
 import Icon from './Icon';
 import talentstaQLogo from '../assets/assessment-icons/icons/Talentstaq logo dark.svg';
@@ -88,7 +88,7 @@ interface CompletionNotification {
   testId: string;
   autoSubmit: boolean;
   timestamp: string;
-  type?: 'started' | 'completed' | 'verification_pending';
+  type?: 'started' | 'completed' | 'verification_pending' | 'verification_auto_verified';
 }
 
 export default function AdminLayout() {
@@ -225,7 +225,7 @@ export default function AdminLayout() {
           candidateName: n.candidateName,
           candidateId: n.candidateId ?? undefined,
           autoSubmit: n.autoSubmit,
-          type: (n.type === 'started' || n.type === 'verification_pending' ? n.type : 'completed') as 'started' | 'completed' | 'verification_pending',
+          type: (n.type === 'started' || n.type === 'verification_pending' || n.type === 'verification_auto_verified' ? n.type : 'completed') as 'started' | 'completed' | 'verification_pending' | 'verification_auto_verified',
           timestamp: n.timestamp,
         }));
         setNotificationHistory(rows);
@@ -300,14 +300,32 @@ export default function AdminLayout() {
       });
     };
 
+    const handleVerificationAutoVerified = (payload: {
+      candidateId: string; candidateName: string; attemptId: string; timestamp: string;
+    }) => {
+      showCompletionPopup({
+        id: `verification_auto_verified-${payload.attemptId}`,
+        attemptId: payload.attemptId,
+        candidateId: payload.candidateId,
+        candidateName: payload.candidateName,
+        testName: '',
+        testId: '',
+        autoSubmit: false,
+        timestamp: payload.timestamp,
+        type: 'verification_auto_verified',
+      });
+    };
+
     socket.on('test-submitted', handleTestSubmitted);
     socket.on('test-started', handleTestStarted);
     socket.on('verification-pending', handleVerificationPending);
+    socket.on('verification-auto-verified', handleVerificationAutoVerified);
     return () => {
       cancelled = true;
       socket.off('test-submitted', handleTestSubmitted);
       socket.off('test-started', handleTestStarted);
       socket.off('verification-pending', handleVerificationPending);
+      socket.off('verification-auto-verified', handleVerificationAutoVerified);
     };
   }, [admin?.id]);
 
@@ -920,36 +938,41 @@ export default function AdminLayout() {
                       notificationHistory.map(n => {
                         const isStarted = n.type === 'started';
                         const isVerificationPending = n.type === 'verification_pending';
+                        const isAutoVerified = n.type === 'verification_auto_verified';
                         return (
                           <div key={n.id}
                             onClick={() => {
-                              if (!isVerificationPending) return;
+                              if (!isVerificationPending && !isAutoVerified) return;
                               setNotifOpen(false);
                               navigate(`/admin/id-verification-data?candidateId=${n.candidateId ?? ''}`);
                             }}
                             style={{
                               display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '12px 16px',
-                              borderBottom: '1px solid #F9FAFB', cursor: isVerificationPending ? 'pointer' : 'default',
+                              borderBottom: '1px solid #F9FAFB', cursor: (isVerificationPending || isAutoVerified) ? 'pointer' : 'default',
                             }}
                           >
                             <div style={{ height: '32px', width: '32px', borderRadius: '50%', flexShrink: 0, backgroundColor: isStarted ? 'var(--admin-accent-disabled)' : 'var(--admin-accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               {isVerificationPending
                                 ? <UserCheck size={14} color="var(--admin-accent-hover)" />
-                                : isStarted
-                                  ? <PlayCircle size={14} color="var(--admin-accent)" />
-                                  : <CheckCircle2 size={14} color="var(--admin-accent-hover)" />
+                                : isAutoVerified
+                                  ? <ShieldCheck size={14} color="#059669" />
+                                  : isStarted
+                                    ? <PlayCircle size={14} color="var(--admin-accent)" />
+                                    : <CheckCircle2 size={14} color="var(--admin-accent-hover)" />
                               }
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--admin-text)', margin: 0 }}>
-                                {isVerificationPending ? 'ID Verification' : isStarted ? 'Exam Started' : (n.autoSubmit ? 'Test Auto-submitted' : 'Test Completed')}
+                                {isVerificationPending ? 'ID Verification' : isAutoVerified ? 'ID Auto-Verified' : isStarted ? 'Exam Started' : (n.autoSubmit ? 'Test Auto-submitted' : 'Test Completed')}
                               </p>
                               <p style={{ fontSize: '12px', color: 'var(--admin-text-muted)', margin: '2px 0 0' }}>
                                 <span style={{ fontWeight: 500 }}>{n.candidateName}</span>
                                 {isVerificationPending
                                   ? ' waiting for approval of ID Verification'
-                                  : isStarted ? ' started ' : (n.autoSubmit ? ' was auto-submitted for ' : ' completed ')}
-                                {!isVerificationPending && <span style={{ fontWeight: 500 }}>{n.testName}</span>}
+                                  : isAutoVerified
+                                    ? ' was automatically ID-verified — no action needed'
+                                    : isStarted ? ' started ' : (n.autoSubmit ? ' was auto-submitted for ' : ' completed ')}
+                                {!isVerificationPending && !isAutoVerified && <span style={{ fontWeight: 500 }}>{n.testName}</span>}
                               </p>
                               <p style={{ fontSize: '11px', color: 'var(--admin-text-subtle)', margin: '3px 0 0' }}>{relativeTime(n.timestamp)}</p>
                             </div>
@@ -1001,18 +1024,19 @@ export default function AdminLayout() {
           {completionPopups.map((notification) => {
             const isStarted = notification.type === 'started';
             const isVerificationPending = notification.type === 'verification_pending';
+            const isAutoVerified = notification.type === 'verification_auto_verified';
             return (
               <div
                 key={notification.id}
                 onClick={() => {
-                  if (!isVerificationPending) return;
+                  if (!isVerificationPending && !isAutoVerified) return;
                   dismissCompletionPopup(notification.id);
                   navigate(`/admin/id-verification-data?candidateId=${notification.candidateId ?? ''}`);
                 }}
                 className="flex items-start gap-3 rounded-lg p-4 shadow-lg"
                 style={{
                   backgroundColor: 'white', border: '1px solid var(--admin-accent-disabled)',
-                  cursor: isVerificationPending ? 'pointer' : 'default',
+                  cursor: (isVerificationPending || isAutoVerified) ? 'pointer' : 'default',
                 }}
               >
                 <div
@@ -1021,21 +1045,25 @@ export default function AdminLayout() {
                 >
                   {isVerificationPending
                     ? <UserCheck size={16} color="var(--admin-accent-hover)" />
-                    : isStarted
-                      ? <PlayCircle size={16} color="var(--admin-accent)" />
-                      : <CheckCircle2 size={16} color="var(--admin-accent-hover)" />
+                    : isAutoVerified
+                      ? <ShieldCheck size={16} color="#059669" />
+                      : isStarted
+                        ? <PlayCircle size={16} color="var(--admin-accent)" />
+                        : <CheckCircle2 size={16} color="var(--admin-accent-hover)" />
                   }
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold" style={{ color: 'var(--admin-text)' }}>
-                    {isVerificationPending ? 'ID Verification' : isStarted ? 'Exam Started' : (notification.autoSubmit ? 'Test Auto-submitted' : 'Test Completed')}
+                    {isVerificationPending ? 'ID Verification' : isAutoVerified ? 'ID Auto-Verified' : isStarted ? 'Exam Started' : (notification.autoSubmit ? 'Test Auto-submitted' : 'Test Completed')}
                   </p>
                   <p className="mt-0.5 text-sm" style={{ color: 'var(--admin-text-muted)' }}>
                     <span className="font-medium">{notification.candidateName}</span>
                     {isVerificationPending
                       ? ' waiting for approval of ID Verification'
-                      : isStarted ? ' started ' : (notification.autoSubmit ? ' was auto-submitted for ' : ' completed ')}
-                    {!isVerificationPending && <span className="font-medium">{notification.testName}</span>}
+                      : isAutoVerified
+                        ? ' was automatically ID-verified — no action needed'
+                        : isStarted ? ' started ' : (notification.autoSubmit ? ' was auto-submitted for ' : ' completed ')}
+                    {!isVerificationPending && !isAutoVerified && <span className="font-medium">{notification.testName}</span>}
                   </p>
                 </div>
                 <button

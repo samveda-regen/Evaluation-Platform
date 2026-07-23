@@ -42,7 +42,7 @@ export async function ensureNotificationTable(): Promise<void> {
 
 export async function saveNotification(payload: {
   adminId: string;
-  type: 'started' | 'completed' | 'verification_pending';
+  type: 'started' | 'completed' | 'verification_pending' | 'verification_auto_verified';
   attemptId: string;
   testId: string;
   testName: string;

@@ -318,7 +318,9 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
       setResult(response.data);
       setStep('result');
 
-      if (response.data.status === 'pending') {
+      if (response.data.status === 'verified') {
+        toast.success('Your ID has been automatically verified!');
+      } else if (response.data.status === 'pending') {
         toast('Your ID has been submitted — waiting for admin review', { icon: '⏳' });
         startStatusPolling();
       } else if (!response.data.success) {
@@ -662,8 +664,9 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
   );
 
   const renderResult = () => {
-    // ── Admin approved ──────────────────────────────────────────────────────
-    if (pendingPollState === 'verified') {
+    // ── Verified — either auto-approved on submit, or by an admin after polling ──
+    if (pendingPollState === 'verified' || result?.status === 'verified') {
+      const wasAutoVerified = result?.status === 'verified' && pendingPollState !== 'verified';
       return (
         <div className="text-center space-y-6">
           <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto">
@@ -671,7 +674,11 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
           </div>
           <div>
             <h2 className="text-2xl font-bold text-green-600">Identity Verified!</h2>
-            <p className="text-gray-600 mt-2">Admin has approved your identity. You may now begin the test.</p>
+            <p className="text-gray-600 mt-2">
+              {wasAutoVerified
+                ? 'Your identity was automatically verified. You may now begin the test.'
+                : 'Admin has approved your identity. You may now begin the test.'}
+            </p>
           </div>
           {result?.scores && (
             <div className="bg-gray-50 rounded-lg p-4 grid grid-cols-3 gap-4 text-sm">
