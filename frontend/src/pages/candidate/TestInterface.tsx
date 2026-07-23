@@ -624,6 +624,12 @@ export default function TestInterface() {
     saveBehavioralAnswer(currentQuestion!.questionId, value);
   };
 
+  // The server also auto-submits attempts whose time has run out (a safety net that
+  // fires even if this tab is closed/inactive), so it can beat this client to the
+  // punch. Treat "already submitted" as success rather than an error in that race.
+  const isAlreadySubmittedError = (err: unknown) =>
+    (err as { response?: { status?: number } })?.response?.status === 400;
+
   const handleAutoSubmit = async () => {
     if (isSubmitted || submitting) return;
     setSubmitting(true);
@@ -636,7 +642,10 @@ export default function TestInterface() {
       const previewId = localStorage.getItem('previewMode');
       if (previewId) { localStorage.removeItem('previewMode'); navigate(`/admin/tests/${previewId}`); }
       else navigate('/test/complete');
-    } catch { toast.error('Failed to submit test'); setSubmitting(false); }
+    } catch (err) {
+      if (isAlreadySubmittedError(err)) { navigate('/test/complete'); return; }
+      toast.error('Failed to submit test'); setSubmitting(false);
+    }
   };
 
   const handleManualSubmit = async () => {
@@ -651,7 +660,10 @@ export default function TestInterface() {
       const previewId = localStorage.getItem('previewMode');
       if (previewId) { localStorage.removeItem('previewMode'); navigate(`/admin/tests/${previewId}`); }
       else navigate('/test/complete');
-    } catch { toast.error('Failed to submit test'); setSubmitting(false); }
+    } catch (err) {
+      if (isAlreadySubmittedError(err)) { navigate('/test/complete'); return; }
+      toast.error('Failed to submit test'); setSubmitting(false);
+    }
   };
 
   const formatTime = (ms: number) => {

@@ -20,6 +20,7 @@ import integrationRoutes from './routes/integration.js';
 import { setSocketServer } from './services/socketService.js';
 import prisma from './utils/db.js';
 import { ensureNotificationTable } from './controllers/notifications.js';
+import { startTestExpirySweep } from './services/testExpiryService.js';
 
 function applyEnvFile(envPath: string): boolean {
   if (!fs.existsSync(envPath)) return false;
@@ -452,6 +453,9 @@ async function startServer(): Promise<void> {
     console.error('Database connectivity check failed. Verify PostgreSQL and DATABASE_URL.', error);
     process.exit(1);
   }
+
+  startTestExpirySweep();
+  console.log('Test expiry sweep: started');
 
   httpServer.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
