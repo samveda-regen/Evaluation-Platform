@@ -31,10 +31,19 @@ def _load_dotenv() -> None:
 _load_dotenv()
 
 import cv2
+cv2.setNumThreads(1)
+
 import numpy as np
 from fastapi import FastAPI  # type: ignore
 from pydantic import BaseModel
 import mediapipe as mp
+
+try:
+    import torch
+    torch.set_num_threads(1)
+    torch.backends.nnpack.enabled = False
+except Exception:
+    pass
 
 try:
     from ultralytics import YOLO
@@ -187,7 +196,9 @@ _face_detector = mp.solutions.face_detection.FaceDetection(
 _face_mesh = mp.solutions.face_mesh.FaceMesh(
     static_image_mode=False,
     max_num_faces=3,
-    refine_landmarks=True,
+    # Gaze estimation only reads landmarks 33/263/1 (eye corners + nose), not iris
+    # detail, so the extra iris-refinement pass is disabled to save inference time.
+    refine_landmarks=False,
     min_detection_confidence=max(FACE_MIN_CONF, 0.65),
     min_tracking_confidence=max(FACE_MIN_CONF, 0.65),
 )
@@ -416,11 +427,19 @@ def analyze_request(req: AnalyzeRequest) -> Dict[str, Any]:
     violations: List[Dict[str, Any]] = []
     objects: List[Dict[str, Any]] = []
 
-    # FaceMesh is computed once here and reused by _gaze_signal to eliminate duplicate inference.
-    face_count, face_details, mesh_result = _face_count_with_details(img)
-    looking_at_screen, gaze_direction, gaze_confidence = _gaze_signal(img, mesh_result)
+    # Camera-blocked check is cheap (grayscale mean/stddev only) and runs first so a
+    # dark/uniform frame skips the three expensive model calls below entirely — none
+    # of them can produce anything meaningful on a blocked frame anyway.
     camera_blocked, blocked_reason, blocked_confidence = _camera_blocked_signal(img)
-    phone_objects = _phone_detections(img)
+    if camera_blocked:
+        face_count, face_details, mesh_result = 0, {"mediapipeFaceDetection": 0, "mediapipeFaceMesh": 0}, None
+        looking_at_screen, gaze_direction, gaze_confidence = True, "unknown", 0.0
+        phone_objects: List[Dict[str, Any]] = []
+    else:
+        # FaceMesh is computed once here and reused by _gaze_signal to eliminate duplicate inference.
+        face_count, face_details, mesh_result = _face_count_with_details(img)
+        looking_at_screen, gaze_direction, gaze_confidence = _gaze_signal(img, mesh_result)
+        phone_objects = _phone_detections(img)
     phone_count = len(phone_objects)
     objects.extend(phone_objects)
 
