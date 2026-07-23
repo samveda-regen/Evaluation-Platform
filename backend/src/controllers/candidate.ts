@@ -1330,11 +1330,14 @@ export async function logActivity(req: AuthenticatedRequest, res: Response): Pro
   }
 }
 
-export async function submitTest(req: AuthenticatedRequest, res: Response): Promise<void> {
-  try {
-    const { attemptId, testId } = req.candidate!;
-    const { autoSubmit } = req.body;
+type SubmissionOutcome =
+  | { ok: true; payload: Record<string, unknown> }
+  | { ok: false; statusCode: number; error: string };
 
+// Shared by the candidate-facing HTTP endpoint and the server-side expiry sweep
+// (see autoSubmitExpiredAttempts in services/testExpiryService.ts) so both paths
+// grade and finalize an attempt identically, regardless of who triggered the submit.
+async function performSubmission(attemptId: string, testId: string, autoSubmit: boolean): Promise<SubmissionOutcome> {
     // Batch fetch: attempt with answers, test with questions - single DB round trip
     const [attempt, test] = await Promise.all([
       prisma.testAttempt.findUnique({
@@ -1363,18 +1366,15 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
     ]);
 
     if (!attempt) {
-      res.status(404).json({ error: 'Attempt not found' });
-      return;
+      return { ok: false, statusCode: 404, error: 'Attempt not found' };
     }
 
     if (attempt.status !== 'in_progress') {
-      res.status(400).json({ error: 'Test already submitted' });
-      return;
+      return { ok: false, statusCode: 400, error: 'Test already submitted' };
     }
 
     if (!test) {
-      res.status(404).json({ error: 'Test not found' });
-      return;
+      return { ok: false, statusCode: 404, error: 'Test not found' };
     }
 
     // Build lookup maps from already-fetched data (no additional queries)
@@ -1533,13 +1533,13 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
 
     const showScore = resultReleased && gradingPreferences.showScoreToCandidate;
 
-    res.json({
+    const payload: Record<string, unknown> = {
       message: 'Test submitted successfully',
       totalMarks: test.totalMarks,
       resultReleased,
       showScore,
       ...(showScore ? { score: totalScore, passed } : {})
-    });
+    };
 
     const submissionPayload = {
       testId,
@@ -1695,9 +1695,38 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
         }
       })();
     }
+
+    return { ok: true, payload };
+}
+
+export async function submitTest(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { attemptId, testId } = req.candidate!;
+    const { autoSubmit } = req.body;
+
+    const outcome = await performSubmission(attemptId, testId, !!autoSubmit);
+    if (!outcome.ok) {
+      res.status(outcome.statusCode).json({ error: outcome.error });
+      return;
+    }
+    res.json(outcome.payload);
   } catch (error) {
     console.error('Submit test error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// Called by the background expiry sweep (services/testExpiryService.ts) to finalize
+// an attempt whose time is up without relying on any client request ever arriving —
+// covers a closed tab/browser or a dead network, not just an idle-but-open one.
+export async function autoSubmitExpiredAttempt(attemptId: string, testId: string): Promise<void> {
+  try {
+    const outcome = await performSubmission(attemptId, testId, true);
+    if (!outcome.ok) {
+      console.error(`Auto-submit sweep: attempt ${attemptId} not finalized — ${outcome.error}`);
+    }
+  } catch (error) {
+    console.error(`Auto-submit sweep: attempt ${attemptId} threw`, error);
   }
 }
 
