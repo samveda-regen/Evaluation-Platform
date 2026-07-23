@@ -7,9 +7,11 @@
  *   3. Liveness      — multi-frame pixel-variance check (no external service)
  *
  * Decision logic (tri-state):
- *   face >= AUTO_PASS + doc OK + liveness OK  →  verified   (exam starts)
- *   face in PENDING zone + doc OK + liveness  →  pending    (admin reviews images)
- *   anything else                             →  rejected   (candidate retries)
+ *   face >= AUTO_APPROVE_FACE_MATCH_THRESHOLD + doc OK + liveness OK  →  verified (auto, exam starts)
+ *   anything else                                                    →  pending  (admin reviews images)
+ *
+ * Nothing is auto-rejected — a failed/low-confidence check always falls through
+ * to the manual admin queue rather than blocking the candidate outright.
  *
  * Option B storage:
  *   ID images are kept ONLY while status is pending/in_progress.
@@ -20,6 +22,10 @@ import prisma from '../utils/db';
 import { uploadIdDocument, deleteFile } from './fileStorageService';
 import { compareFacesViaCompreFace } from './faceVerificationService';
 import { analyzeDocumentOCR }       from './ocrService';
+
+// Face-match score at/above which a submission is auto-approved (skipping the
+// manual admin queue), provided the document and liveness checks also passed.
+const AUTO_APPROVE_FACE_MATCH_THRESHOLD = parseFloat(process.env.ID_VERIFICATION_AUTO_APPROVE_THRESHOLD || '75');
 
 export type VerificationStatus = 'pending' | 'in_progress' | 'verified' | 'rejected' | 'expired';
 export type DocumentType       = 'national_id' | 'passport' | 'drivers_license' | 'student_id';
@@ -266,9 +272,19 @@ export async function submitVerification(
       detectLiveness(livenessBuffers.length >= 2 ? livenessBuffers : [selfieBuffer]),
     ]);
 
-    // ── Always route to pending — admin makes the final decision ──
-    // AI scores are stored for the admin to review but never auto-approve or auto-reject.
-    const status: VerificationStatus = 'pending';
+    // ── Auto-approve high-confidence matches, otherwise route to the admin queue ──
+    // Below AUTO_APPROVE_FACE_MATCH_THRESHOLD (or if the document/liveness checks
+    // didn't pass), the candidate still lands in 'pending' for manual review exactly
+    // as before — this only shortcuts the clear-cut, high-confidence cases.
+    const autoApprove =
+      faceResult.similarity >= AUTO_APPROVE_FACE_MATCH_THRESHOLD &&
+      docAnalysis.isValid &&
+      livenessResult.isLive;
+
+    const status: VerificationStatus = autoApprove ? 'verified' : 'pending';
+    const verifiedAt = autoApprove ? new Date() : null;
+    const verifiedBy = autoApprove ? 'ai_auto_verified' : null;
+    const expiresAt  = autoApprove ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) : null;
 
     await prisma.candidateIdentity.upsert({
       where:  { candidateId },
@@ -278,30 +294,30 @@ export async function submitVerification(
         idDocumentUrl:      docUpload.cdnUrl  || docUpload.url,
         faceReferenceUrl:   selfieUpload.cdnUrl || selfieUpload.url,
         verificationStatus: status,
-        verifiedAt:         null,
-        verifiedBy:         null,
+        verifiedAt,
+        verifiedBy,
         rejectionReason:    null,
         documentAuthScore:  docAnalysis.confidence,
         faceMatchScore:     faceResult.similarity,
         livenessScore:      livenessResult.confidence,
         verificationAttempts: 1,
         lastAttemptAt:      new Date(),
-        expiresAt:          null,
+        expiresAt,
       },
       update: {
         idDocumentType:     data.documentType,
         idDocumentUrl:      docUpload.cdnUrl  || docUpload.url,
         faceReferenceUrl:   selfieUpload.cdnUrl || selfieUpload.url,
         verificationStatus: status,
-        verifiedAt:         null,
-        verifiedBy:         null,
+        verifiedAt,
+        verifiedBy,
         rejectionReason:    null,
         documentAuthScore:  docAnalysis.confidence,
         faceMatchScore:     faceResult.similarity,
         livenessScore:      livenessResult.confidence,
         verificationAttempts: { increment: 1 },
         lastAttemptAt:      new Date(),
-        expiresAt:          null,
+        expiresAt,
       },
     });
 
