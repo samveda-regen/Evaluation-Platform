@@ -6,6 +6,7 @@ type CandidateScoreWebhookPayload = {
   name: string;
   emailid: string;
   score: number;
+  totalMarks: number;
   testid: string;
   status: string;
   passingMarks: number | null;
