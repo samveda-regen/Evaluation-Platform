@@ -53,10 +53,13 @@ export const submitVerificationDocuments = async (req: Request, res: Response): 
       error: result.error,
     });
 
-    // Notify the test's admin that a candidate is waiting on ID verification — fire-and-forget
+    // Notify the test's admin about the verification outcome — fire-and-forget.
+    // Auto-verified submissions still get a notification, just an FYI one rather
+    // than the "needs your review" one, since no admin action is required.
     if (result.success) {
       const testId = (req as any).candidate?.testId;
       const attemptId = (req as any).candidate?.attemptId;
+      const isAutoVerified = result.status === 'verified';
       void (async () => {
         try {
           const [candidate, test] = await Promise.all([
@@ -65,17 +68,19 @@ export const submitVerificationDocuments = async (req: Request, res: Response): 
           ]);
           if (test?.adminId) {
             const candidateName = candidate?.name || candidate?.email || 'A candidate';
+            const type = isAutoVerified ? 'verification_auto_verified' : 'verification_pending';
+            const socketEvent = isAutoVerified ? 'verification-auto-verified' : 'verification-pending';
             await ensureNotificationTable();
             await saveNotification({
               adminId: test.adminId,
-              type: 'verification_pending',
+              type,
               candidateId,
               candidateName,
               attemptId: attemptId || '',
               testId: testId || '',
               testName: '',
             });
-            emitToAdminRoom(test.adminId, 'verification-pending', {
+            emitToAdminRoom(test.adminId, socketEvent, {
               candidateId,
               candidateName,
               attemptId: attemptId || '',
@@ -393,12 +398,13 @@ export const getVerificationStats = async (req: Request, res: Response): Promise
     const adminId = (req as any).admin?.id;
     const scope = { candidate: { testAttempts: { some: { test: { adminId } } } } };
 
-    const [pending, verified, rejected, expired, total] = await Promise.all([
+    const [pending, verified, rejected, expired, total, confidenceAgg] = await Promise.all([
       prisma.candidateIdentity.count({ where: { ...scope, verificationStatus: 'pending' } }),
       prisma.candidateIdentity.count({ where: { ...scope, verificationStatus: 'verified' } }),
       prisma.candidateIdentity.count({ where: { ...scope, verificationStatus: 'rejected' } }),
       prisma.candidateIdentity.count({ where: { ...scope, verificationStatus: 'expired' } }),
       prisma.candidateIdentity.count({ where: scope }),
+      prisma.candidateIdentity.aggregate({ where: scope, _avg: { faceMatchScore: true } }),
     ]);
 
     res.json({
@@ -410,6 +416,7 @@ export const getVerificationStats = async (req: Request, res: Response): Promise
         expired,
         total,
         verificationRate: total > 0 ? ((verified / total) * 100).toFixed(1) : 0,
+        avgConfidence: Math.round(confidenceAgg._avg.faceMatchScore ?? 0),
       },
     });
   } catch (error) {
