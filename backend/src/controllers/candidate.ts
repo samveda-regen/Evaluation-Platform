@@ -645,6 +645,23 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
       }
     }
 
+    // The attempt's startTime is stamped at login (before ID verification / instructions),
+    // so it does not reflect the moment the candidate actually clicks "Start assessment".
+    // Only correct it the first time this attempt genuinely starts — a prior test_start log
+    // means the candidate is resuming (e.g. page refresh) and the clock must keep running.
+    const priorStart = await prisma.activityLog.findFirst({
+      where: { attemptId, eventType: 'test_start' }
+    });
+
+    let effectiveStartTime = attempt.startTime;
+    if (!priorStart) {
+      const startedAttempt = await prisma.testAttempt.update({
+        where: { id: attemptId },
+        data: { startTime: new Date() }
+      });
+      effectiveStartTime = startedAttempt.startTime;
+    }
+
     // Log test start
     await prisma.activityLog.create({
       data: {
@@ -918,7 +935,7 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
         autoSubmitOnTimeout: startAutoSubmitOnTimeout,
       },
       questions,
-      startTime: attempt.startTime
+      startTime: effectiveStartTime
     });
 
     // Notify admin that a candidate has started the exam
