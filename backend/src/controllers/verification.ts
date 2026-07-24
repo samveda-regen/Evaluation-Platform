@@ -39,7 +39,9 @@ export const submitVerificationDocuments = async (req: Request, res: Response): 
       return;
     }
 
-    const result = await submitVerification(candidateId, {
+    const testId = (req as any).candidate?.testId;
+
+    const result = await submitVerification(candidateId, testId, {
       documentType,
       documentImageData,
       selfieImageData,
@@ -57,7 +59,6 @@ export const submitVerificationDocuments = async (req: Request, res: Response): 
     // Auto-verified submissions still get a notification, just an FYI one rather
     // than the "needs your review" one, since no admin action is required.
     if (result.success) {
-      const testId = (req as any).candidate?.testId;
       const attemptId = (req as any).candidate?.attemptId;
       const isAutoVerified = result.status === 'verified';
       void (async () => {

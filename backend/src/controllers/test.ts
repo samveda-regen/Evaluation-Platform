@@ -10,6 +10,8 @@ import {
   DEFAULT_INVITE_BODY,
   DEFAULT_CONFIRM_SUBJECT,
   DEFAULT_CONFIRM_BODY,
+  DEFAULT_REMINDER_SUBJECT,
+  DEFAULT_REMINDER_BODY,
 } from '../services/emailService.js';
 import {
   DEFAULT_CUSTOM_AI_VIOLATION_EVENTS,
@@ -661,6 +663,13 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
     if (updates.requireMicrophone !== undefined) sanitizedUpdates.requireMicrophone = updates.requireMicrophone;
     if (updates.requireScreenShare !== undefined) sanitizedUpdates.requireScreenShare = updates.requireScreenShare;
     if (updates.requireIdVerification !== undefined) sanitizedUpdates.requireIdVerification = updates.requireIdVerification;
+    if (updates.autoApproveId !== undefined) sanitizedUpdates.autoApproveId = updates.autoApproveId;
+    if (updates.idVerificationAutoApproveThreshold !== undefined) {
+      const parsedThreshold = Number(updates.idVerificationAutoApproveThreshold);
+      sanitizedUpdates.idVerificationAutoApproveThreshold = Number.isFinite(parsedThreshold)
+        ? Math.min(100, Math.max(0, parsedThreshold))
+        : null;
+    }
 
     // When proctoringSettings is sent (from the AI Proctoring tab), extract the
     // device-require flags so they're reflected on the candidate instructions page.
@@ -1569,6 +1578,9 @@ type EmailTemplateRow = {
   inviteEmailBody: string | null;
   confirmEmailSubject: string | null;
   confirmEmailBody: string | null;
+  reminderEmailSubject: string | null;
+  reminderEmailBody: string | null;
+  reminderHoursBeforeClose: number;
 };
 
 export async function getEmailTemplates(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -1582,6 +1594,9 @@ export async function getEmailTemplates(req: AuthenticatedRequest, res: Response
         inviteEmailBody: true,
         confirmEmailSubject: true,
         confirmEmailBody: true,
+        reminderEmailSubject: true,
+        reminderEmailBody: true,
+        reminderHoursBeforeClose: true,
       }
     }) as EmailTemplateRow | null;
 
@@ -1591,10 +1606,13 @@ export async function getEmailTemplates(req: AuthenticatedRequest, res: Response
     }
 
     res.json({
-      inviteEmailSubject:  test.inviteEmailSubject  ?? DEFAULT_INVITE_SUBJECT,
-      inviteEmailBody:     test.inviteEmailBody     ?? DEFAULT_INVITE_BODY,
-      confirmEmailSubject: test.confirmEmailSubject ?? DEFAULT_CONFIRM_SUBJECT,
-      confirmEmailBody:    test.confirmEmailBody    ?? DEFAULT_CONFIRM_BODY,
+      inviteEmailSubject:   test.inviteEmailSubject   ?? DEFAULT_INVITE_SUBJECT,
+      inviteEmailBody:      test.inviteEmailBody      ?? DEFAULT_INVITE_BODY,
+      confirmEmailSubject:  test.confirmEmailSubject  ?? DEFAULT_CONFIRM_SUBJECT,
+      confirmEmailBody:     test.confirmEmailBody     ?? DEFAULT_CONFIRM_BODY,
+      reminderEmailSubject: test.reminderEmailSubject ?? DEFAULT_REMINDER_SUBJECT,
+      reminderEmailBody:    test.reminderEmailBody    ?? DEFAULT_REMINDER_BODY,
+      reminderHoursBeforeClose: test.reminderHoursBeforeClose,
     });
   } catch (error) {
     console.error('Get email templates error:', error);
@@ -1605,12 +1623,26 @@ export async function getEmailTemplates(req: AuthenticatedRequest, res: Response
 export async function updateEmailTemplates(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { testId } = req.params;
-    const { inviteEmailSubject, inviteEmailBody, confirmEmailSubject, confirmEmailBody } = req.body as {
+    const {
+      inviteEmailSubject, inviteEmailBody,
+      confirmEmailSubject, confirmEmailBody,
+      reminderEmailSubject, reminderEmailBody,
+      reminderHoursBeforeClose,
+    } = req.body as {
       inviteEmailSubject?: string;
       inviteEmailBody?: string;
       confirmEmailSubject?: string;
       confirmEmailBody?: string;
+      reminderEmailSubject?: string;
+      reminderEmailBody?: string;
+      reminderHoursBeforeClose?: number;
     };
+
+    if (reminderHoursBeforeClose !== undefined
+      && (!Number.isFinite(reminderHoursBeforeClose) || reminderHoursBeforeClose <= 0)) {
+      res.status(400).json({ error: 'reminderHoursBeforeClose must be a positive number' });
+      return;
+    }
 
     const exists = await prisma.test.findFirst({
       where: { id: testId, adminId: req.admin!.id },
@@ -1622,11 +1654,14 @@ export async function updateEmailTemplates(req: AuthenticatedRequest, res: Respo
       return;
     }
 
-    const data: Record<string, string> = {};
-    if (inviteEmailSubject  !== undefined) data.inviteEmailSubject  = sanitizeInput(inviteEmailSubject);
-    if (inviteEmailBody     !== undefined) data.inviteEmailBody     = sanitizeInput(inviteEmailBody);
-    if (confirmEmailSubject !== undefined) data.confirmEmailSubject = sanitizeInput(confirmEmailSubject);
-    if (confirmEmailBody    !== undefined) data.confirmEmailBody    = sanitizeInput(confirmEmailBody);
+    const data: Record<string, string | number> = {};
+    if (inviteEmailSubject   !== undefined) data.inviteEmailSubject   = sanitizeInput(inviteEmailSubject);
+    if (inviteEmailBody      !== undefined) data.inviteEmailBody      = sanitizeInput(inviteEmailBody);
+    if (confirmEmailSubject  !== undefined) data.confirmEmailSubject  = sanitizeInput(confirmEmailSubject);
+    if (confirmEmailBody     !== undefined) data.confirmEmailBody     = sanitizeInput(confirmEmailBody);
+    if (reminderEmailSubject !== undefined) data.reminderEmailSubject = sanitizeInput(reminderEmailSubject);
+    if (reminderEmailBody    !== undefined) data.reminderEmailBody    = sanitizeInput(reminderEmailBody);
+    if (reminderHoursBeforeClose !== undefined) data.reminderHoursBeforeClose = Math.round(reminderHoursBeforeClose);
 
     await (prisma.test as any).update({ where: { id: testId }, data });
 

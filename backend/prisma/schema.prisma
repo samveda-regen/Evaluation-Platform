@@ -158,14 +158,22 @@ model Test {
   requireMicrophone     Boolean @default(false)
   requireScreenShare    Boolean @default(false)
   requireIdVerification Boolean @default(false)
+  // Per-test auto-approve gate: when on, a face-match score at/above the threshold
+  // below auto-verifies the candidate instead of routing to the admin queue.
+  autoApproveId          Boolean @default(false)
+  idVerificationAutoApproveThreshold Float?
   allowMobileProctoring Boolean @default(false)
   customAIViolations    String? // JSON array of enabled proctoring violation event types
 
   // Email templates ({{candidate_name}}, {{test_name}}, {{company_name}}, {{estimated_time}}, {{test_link}})
-  inviteEmailSubject  String?
-  inviteEmailBody     String?
-  confirmEmailSubject String?
-  confirmEmailBody    String?
+  inviteEmailSubject    String?
+  inviteEmailBody       String?
+  confirmEmailSubject   String?
+  confirmEmailBody      String?
+  reminderEmailSubject  String?
+  reminderEmailBody     String?
+  // Hours before endTime the reminder sweep emails candidates who haven't started yet
+  reminderHoursBeforeClose Int @default(24)
 
   questions TestQuestion[]
   sections  TestSection[]
@@ -188,6 +196,7 @@ model TestInvitation {
   sentAt    DateTime?
   error     String?
   consumedAt DateTime?
+  reminderSentAt DateTime?
   createdAt DateTime         @default(now())
 
   test Test @relation(fields: [testId], references: [id], onDelete: Cascade)

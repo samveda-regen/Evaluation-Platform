@@ -21,6 +21,7 @@ import { setSocketServer } from './services/socketService.js';
 import prisma from './utils/db.js';
 import { ensureNotificationTable } from './controllers/notifications.js';
 import { startTestExpirySweep } from './services/testExpiryService.js';
+import { startInvitationReminderSweep } from './services/testReminderService.js';
 
 function applyEnvFile(envPath: string): boolean {
   if (!fs.existsSync(envPath)) return false;
@@ -456,6 +457,9 @@ async function startServer(): Promise<void> {
 
   startTestExpirySweep();
   console.log('Test expiry sweep: started');
+
+  startInvitationReminderSweep();
+  console.log('Invitation reminder sweep: started');
 
   httpServer.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);

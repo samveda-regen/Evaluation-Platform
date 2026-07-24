@@ -244,6 +244,7 @@ export async function cancelPendingVerification(
 
 export async function submitVerification(
   candidateId: string,
+  testId: string | undefined,
   data: {
     documentType:      DocumentType;
     documentImageData: string;   // base64
@@ -275,11 +276,19 @@ export async function submitVerification(
     ]);
 
     // ── Auto-approve on face match alone, otherwise route to the admin queue ──
-    // Below AUTO_APPROVE_FACE_MATCH_THRESHOLD, the candidate still lands in 'pending'
-    // for manual review exactly as before — this only shortcuts the high-confidence
-    // face-match cases. Document/liveness scores are still recorded either way for
-    // the admin to see, they just no longer gate the auto-approve decision.
-    const autoApprove = faceResult.similarity >= AUTO_APPROVE_FACE_MATCH_THRESHOLD;
+    // Gated by the test's "Auto approve ID" toggle — when off, every submission
+    // lands in 'pending' for manual review regardless of face-match score. When on,
+    // a score at/above the test's threshold (or the env default if unset) shortcuts
+    // the high-confidence cases. Document/liveness scores are still recorded either
+    // way for the admin to see, they just don't gate the auto-approve decision.
+    const test = testId
+      ? await prisma.test.findUnique({
+          where:  { id: testId },
+          select: { autoApproveId: true, idVerificationAutoApproveThreshold: true },
+        })
+      : null;
+    const threshold = test?.idVerificationAutoApproveThreshold ?? AUTO_APPROVE_FACE_MATCH_THRESHOLD;
+    const autoApprove = !!test?.autoApproveId && faceResult.similarity >= threshold;
 
     const status: VerificationStatus = autoApprove ? 'verified' : 'pending';
     const verifiedAt = autoApprove ? new Date() : null;

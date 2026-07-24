@@ -243,6 +243,9 @@ export const adminApi = {
     inviteEmailBody?: string;
     confirmEmailSubject?: string;
     confirmEmailBody?: string;
+    reminderEmailSubject?: string;
+    reminderEmailBody?: string;
+    reminderHoursBeforeClose?: number;
   }) => api.put(`/admin/tests/${testId}/email-templates`, data),
 
   // MCQ Questions

@@ -34,6 +34,8 @@ export interface Test {
   requireMicrophone?: boolean;
   requireScreenShare?: boolean;
   requireIdVerification?: boolean;
+  autoApproveId?: boolean;
+  idVerificationAutoApproveThreshold?: number;
   customAIViolations?: string[];
   proctoringSettings?: Record<string, unknown>;
   violationPopupSettings?: Record<string, unknown>;

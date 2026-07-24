@@ -22,6 +22,25 @@ If you have any questions, feel free to reach out to us.
 Best regards,
 {{company_name}} Team`;
 
+export const DEFAULT_REMINDER_SUBJECT = "Reminder: {{test_name}} closes soon";
+export const DEFAULT_REMINDER_BODY = `Hello {{candidate_name}},
+
+This is a reminder that you haven't started your test yet: {{test_name}}.
+
+Your access to this test closes on {{closes_at}}. Please make sure to complete it before then.
+
+Click the button below to get started:
+
+{{test_link}}
+
+Or go to the login page and enter your access code: {{access_code}}
+
+The test will take approximately {{estimated_time}} to complete.
+If you have any questions, feel free to reach out to us.
+
+Best regards,
+{{company_name}} Team`;
+
 export const DEFAULT_CONFIRM_SUBJECT = "Thanks for completing {{test_name}}";
 export const DEFAULT_CONFIRM_BODY = `Hello {{candidate_name}},
 
@@ -41,6 +60,7 @@ interface TemplateVars {
   test_link: string;
   access_code: string;
   exam_date: string;
+  closes_at: string;
 }
 
 function applyTemplate(template: string, vars: TemplateVars): string {
@@ -51,7 +71,8 @@ function applyTemplate(template: string, vars: TemplateVars): string {
     .replace(/\{\{estimated_time\}\}/g, vars.estimated_time)
     .replace(/\{\{test_link\}\}/g,      vars.test_link)
     .replace(/\{\{access_code\}\}/g,    vars.access_code)
-    .replace(/\{\{exam_date\}\}/g,      vars.exam_date);
+    .replace(/\{\{exam_date\}\}/g,      vars.exam_date)
+    .replace(/\{\{closes_at\}\}/g,      vars.closes_at);
 }
 
 function textToHtml(text: string): string {
@@ -80,6 +101,20 @@ interface InvitationEmailPayload {
   // custom templates (if set on the test)
   inviteEmailSubject?: string | null;
   inviteEmailBody?: string | null;
+}
+
+interface ReminderEmailPayload {
+  to: string;
+  candidateName: string;
+  testName: string;
+  testLink: string;
+  accessCode: string;
+  closesAt: string;
+  companyName?: string;
+  estimatedTime?: string;
+  // custom templates (if set on the test)
+  reminderEmailSubject?: string | null;
+  reminderEmailBody?: string | null;
 }
 
 interface ConfirmationEmailPayload {
@@ -358,6 +393,7 @@ function buildInviteText(payload: InvitationEmailPayload): string {
     test_link:      payload.testLink,
     access_code:    payload.accessCode,
     exam_date:      payload.examDate || 'To be announced',
+    closes_at:      '',
   });
 }
 
@@ -371,11 +407,48 @@ function buildInviteSubject(payload: InvitationEmailPayload): string {
     test_link:      payload.testLink,
     access_code:    payload.accessCode,
     exam_date:      payload.examDate || 'To be announced',
+    closes_at:      '',
   });
 }
 
 function buildInviteHtml(payload: InvitationEmailPayload): string {
   const text = buildInviteText(payload);
+  return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#374151;max-width:600px">
+${textToHtml(text)}
+</div>`;
+}
+
+// ── Build reminder email from template ────────────────────────────────────────
+function buildReminderText(payload: ReminderEmailPayload): string {
+  const templateBody = payload.reminderEmailBody || DEFAULT_REMINDER_BODY;
+  return applyTemplate(templateBody, {
+    candidate_name: payload.candidateName,
+    test_name:      payload.testName,
+    company_name:   payload.companyName || 'Our Team',
+    estimated_time: payload.estimatedTime || 'some time',
+    test_link:      payload.testLink,
+    access_code:    payload.accessCode,
+    exam_date:      '',
+    closes_at:      payload.closesAt,
+  });
+}
+
+function buildReminderSubject(payload: ReminderEmailPayload): string {
+  const templateSubject = payload.reminderEmailSubject || DEFAULT_REMINDER_SUBJECT;
+  return applyTemplate(templateSubject, {
+    candidate_name: payload.candidateName,
+    test_name:      payload.testName,
+    company_name:   payload.companyName || 'Our Team',
+    estimated_time: payload.estimatedTime || 'some time',
+    test_link:      payload.testLink,
+    access_code:    payload.accessCode,
+    exam_date:      '',
+    closes_at:      payload.closesAt,
+  });
+}
+
+function buildReminderHtml(payload: ReminderEmailPayload): string {
+  const text = buildReminderText(payload);
   return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#374151;max-width:600px">
 ${textToHtml(text)}
 </div>`;
@@ -392,6 +465,7 @@ function buildConfirmText(payload: ConfirmationEmailPayload): string {
     test_link:      '',
     access_code:    '',
     exam_date:      '',
+    closes_at:      '',
   });
 }
 
@@ -405,6 +479,7 @@ function buildConfirmSubject(payload: ConfirmationEmailPayload): string {
     test_link:      '',
     access_code:    '',
     exam_date:      '',
+    closes_at:      '',
   });
 }
 
@@ -643,6 +718,20 @@ export async function sendInvitationEmail(payload: InvitationEmailPayload): Prom
     );
   } catch (error) {
     console.error('Failed to send invitation email:', { error });
+    throw error;
+  }
+}
+
+export async function sendTestReminderEmail(payload: ReminderEmailPayload): Promise<void> {
+  try {
+    await sendMail(
+      buildReminderSubject(payload),
+      buildReminderText(payload),
+      buildReminderHtml(payload),
+      payload.to
+    );
+  } catch (error) {
+    console.error('Failed to send test reminder email:', { error });
     throw error;
   }
 }

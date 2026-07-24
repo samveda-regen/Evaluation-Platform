@@ -14,7 +14,7 @@ const EMAIL_SEND_MAX_ATTEMPTS = 3;
 const EMAIL_SEND_RETRY_DELAY_MS = 1500;
 const CANDIDATE_LOGIN_PATH = '/test/login';
 
-function formatExamDate(startTime: Date | null | undefined): string | undefined {
+export function formatExamDate(startTime: Date | null | undefined): string | undefined {
   if (!startTime) return undefined;
   return new Intl.DateTimeFormat('en-US', {
     dateStyle: 'medium',
@@ -153,7 +153,7 @@ function getFrontendInviteBaseUrl(): string {
   return configured || 'http://localhost:5173';
 }
 
-function buildInviteLink(token: string): string {
+export function buildInviteLink(token: string): string {
   return `${normalizeBaseUrl(getFrontendInviteBaseUrl())}${CANDIDATE_LOGIN_PATH}?token=${encodeURIComponent(token)}`;
 }
 

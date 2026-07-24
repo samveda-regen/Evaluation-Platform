@@ -9,14 +9,29 @@ import CustomSelect from '../../components/CustomSelect';
 
 type Panel = 'general' | 'access' | 'behavior' | 'grading' | 'email' | 'danger';
 
-type EmailTab = 'invite' | 'confirm';
+type EmailTab = 'invite' | 'confirm' | 'reminder';
 
 interface EmailTemplates {
   inviteEmailSubject: string;
   inviteEmailBody: string;
   confirmEmailSubject: string;
   confirmEmailBody: string;
+  reminderEmailSubject: string;
+  reminderEmailBody: string;
+  reminderHoursBeforeClose: number;
 }
+
+const EMAIL_TAB_LABELS: Record<EmailTab, string> = {
+  invite: 'Invite Email',
+  confirm: 'Confirmation Email',
+  reminder: 'Reminder Email',
+};
+
+const EMAIL_TAB_DESCRIPTIONS: Record<EmailTab, string> = {
+  invite: 'This email is sent to candidates when you invite them to take the test.',
+  confirm: 'This email is sent to candidates when they complete the test.',
+  reminder: "This email is sent to candidates who haven't started the test yet, as their access window is closing. It reuses the exact same invite link and access code originally sent to them — no new link is generated.",
+};
 
 const AVAILABLE_VARS = [
   { key: '{{candidate_name}}', desc: 'Candidate full name' },
@@ -24,10 +39,13 @@ const AVAILABLE_VARS = [
   { key: '{{company_name}}',   desc: 'Your company name' },
   { key: '{{estimated_time}}', desc: 'Test duration' },
   { key: '{{exam_date}}',      desc: 'Scheduled exam date & time (invite email only)' },
-  { key: '{{test_link}}',      desc: 'Invite URL (invite email only)' },
-  { key: '{{access_code}}',    desc: 'Access code (invite email only)' },
+  { key: '{{test_link}}',      desc: 'Invite URL — same link originally sent (invite & reminder emails)' },
+  { key: '{{access_code}}',    desc: 'Access code (invite & reminder emails)' },
+  { key: '{{closes_at}}',      desc: 'When the access window closes (reminder email only)' },
 ];
-const INVITE_ONLY_VAR_KEYS = new Set(['{{test_link}}', '{{exam_date}}', '{{access_code}}']);
+const INVITE_ONLY_VAR_KEYS = new Set(['{{exam_date}}']);
+const REMINDER_ONLY_VAR_KEYS = new Set(['{{closes_at}}']);
+const INVITE_AND_REMINDER_VAR_KEYS = new Set(['{{test_link}}', '{{access_code}}']);
 
 interface FormState {
   /* General */
@@ -41,6 +59,8 @@ interface FormState {
   requireInvitationLink: boolean;
   limitToOneAttempt: boolean;
   requireIdVerification: boolean;
+  autoApproveId: boolean;
+  idVerificationAutoApproveThreshold: number;
   allowAccessCode: boolean;
   /* Test behavior */
   shuffleQuestions: boolean;
@@ -120,6 +140,8 @@ function toFormState(t: Test): FormState {
     requireInvitationLink: booleanSetting(ext, settings, 'requireInvitationLink', true),
     limitToOneAttempt:     !(t.allowMultipleAttempts ?? false),
     requireIdVerification: t.requireIdVerification ?? false,
+    autoApproveId:         t.autoApproveId ?? false,
+    idVerificationAutoApproveThreshold: t.idVerificationAutoApproveThreshold ?? 75,
     allowAccessCode:       booleanSetting(ext, settings, 'allowAccessCode', false),
     shuffleQuestions:      t.shuffleQuestions ?? false,
     shuffleOptions:        t.shuffleOptions ?? false,
@@ -241,6 +263,8 @@ export default function TestSettings() {
   const [emailEditing,      setEmailEditing]       = useState<EmailTab | null>(null);
   const [emailDraft,        setEmailDraft]         = useState<{ subject: string; body: string }>({ subject: '', body: '' });
   const [emailSaving,       setEmailSaving]        = useState(false);
+  const [reminderHoursDraft, setReminderHoursDraft] = useState<number>(24);
+  const [reminderHoursSaving, setReminderHoursSaving] = useState(false);
   useEffect(() => { if (testId) void load(); }, [testId]);
 
   const load = async () => {
@@ -256,16 +280,22 @@ export default function TestSettings() {
       setIsCustomCategory(loadedCategoryIsCustom);
       setCustomCategoryOpen(false);
       setCustomCategoryInput(loadedCategoryIsCustom ? fs.category : '');
-      setEmailTemplates(emailRes.data as EmailTemplates);
+      const templates = emailRes.data as EmailTemplates;
+      setEmailTemplates(templates);
+      setReminderHoursDraft(templates.reminderHoursBeforeClose);
     } catch { toast.error('Failed to load settings'); }
     finally { setLoading(false); }
   };
 
   const openEmailEdit = (tab: EmailTab) => {
     if (!emailTemplates) return;
-    setEmailDraft(tab === 'invite'
-      ? { subject: emailTemplates.inviteEmailSubject, body: emailTemplates.inviteEmailBody }
-      : { subject: emailTemplates.confirmEmailSubject, body: emailTemplates.confirmEmailBody });
+    setEmailDraft(
+      tab === 'invite'
+        ? { subject: emailTemplates.inviteEmailSubject, body: emailTemplates.inviteEmailBody }
+        : tab === 'reminder'
+          ? { subject: emailTemplates.reminderEmailSubject, body: emailTemplates.reminderEmailBody }
+          : { subject: emailTemplates.confirmEmailSubject, body: emailTemplates.confirmEmailBody }
+    );
     setEmailEditing(tab);
   };
 
@@ -275,18 +305,26 @@ export default function TestSettings() {
     try {
       const patch = emailEditing === 'invite'
         ? { inviteEmailSubject: emailDraft.subject, inviteEmailBody: emailDraft.body }
-        : { confirmEmailSubject: emailDraft.subject, confirmEmailBody: emailDraft.body };
+        : emailEditing === 'reminder'
+          ? { reminderEmailSubject: emailDraft.subject, reminderEmailBody: emailDraft.body }
+          : { confirmEmailSubject: emailDraft.subject, confirmEmailBody: emailDraft.body };
       await adminApi.updateEmailTemplates(testId, patch);
-      setEmailTemplates(prev => prev ? {
-        ...prev,
-        ...(emailEditing === 'invite'
-          ? { inviteEmailSubject: emailDraft.subject, inviteEmailBody: emailDraft.body }
-          : { confirmEmailSubject: emailDraft.subject, confirmEmailBody: emailDraft.body }),
-      } : prev);
+      setEmailTemplates(prev => prev ? { ...prev, ...patch } : prev);
       setEmailEditing(null);
       toast.success('Email template saved');
     } catch { toast.error('Failed to save email template'); }
     finally { setEmailSaving(false); }
+  };
+
+  const handleReminderHoursSave = async () => {
+    if (!testId || !emailTemplates) return;
+    setReminderHoursSaving(true);
+    try {
+      await adminApi.updateEmailTemplates(testId, { reminderHoursBeforeClose: reminderHoursDraft });
+      setEmailTemplates(prev => prev ? { ...prev, reminderHoursBeforeClose: reminderHoursDraft } : prev);
+      toast.success('Reminder timing saved');
+    } catch { toast.error('Failed to save reminder timing'); }
+    finally { setReminderHoursSaving(false); }
   };
 
   const patch = (p: Partial<FormState>) => setForm(prev => prev ? { ...prev, ...p } : prev);
@@ -314,6 +352,8 @@ export default function TestSettings() {
         requireInvitationLink: form.requireInvitationLink,
         allowMultipleAttempts: !form.limitToOneAttempt,
         requireIdVerification: form.requireIdVerification,
+        autoApproveId:         form.autoApproveId,
+        idVerificationAutoApproveThreshold: form.idVerificationAutoApproveThreshold,
         allowAccessCode:       form.allowAccessCode,
         shuffleQuestions:      form.shuffleQuestions,
         shuffleOptions:        form.shuffleOptions,
@@ -528,6 +568,36 @@ export default function TestSettings() {
                 <ToggleRow label="Require invitation link"    desc="Only invited emails can start"          on={form.requireInvitationLink} onChange={() => patch({ requireInvitationLink: !form.requireInvitationLink })} />
                 <ToggleRow label="Limit to one attempt"       desc="Candidate can take the test once"       on={form.limitToOneAttempt}     onChange={() => patch({ limitToOneAttempt: !form.limitToOneAttempt })} />
                 <ToggleRow label="Require ID verification"    desc="Photo ID check before start"            on={form.requireIdVerification} onChange={() => patch({ requireIdVerification: !form.requireIdVerification })} />
+
+                {form.requireIdVerification && (
+                  <div style={{
+                    margin:'-4px 0 18px', padding:'16px', backgroundColor:'#F9FAFB',
+                    borderRadius:'10px', border:'1px solid var(--admin-border)',
+                  }}>
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'16px' }}>
+                      <div>
+                        <p style={{ fontSize:'14px', fontWeight:500, color:'var(--admin-text)', margin:'0 0 3px' }}>Auto approve ID</p>
+                        <p style={{ fontSize:'12px', color:'var(--admin-text-subtle)', margin:0 }}>Skip the admin queue when face match is confident enough</p>
+                      </div>
+                      <Toggle on={form.autoApproveId} onChange={() => patch({ autoApproveId: !form.autoApproveId })} />
+                    </div>
+
+                    <div style={{ marginTop:'14px' }}>
+                      <label style={labelSx}>Auto-approve threshold (% face match)</label>
+                      <input
+                        type="number" min={0} max={100}
+                        value={form.idVerificationAutoApproveThreshold}
+                        onChange={e => patch({ idVerificationAutoApproveThreshold: Math.min(100, Math.max(0, Number(e.target.value) || 0)) })}
+                        disabled={!form.autoApproveId}
+                        style={{ ...inputSx, width:'140px', opacity: form.autoApproveId ? 1 : 0.5 }}
+                      />
+                      <p style={{ fontSize:'11px', color:'var(--admin-text-subtle)', margin:'6px 0 0' }}>
+                        Candidates scoring at or above this face-match score are verified automatically. Only takes effect when Auto approve ID is on.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <ToggleRow label="Allow access code"          desc="Candidates enter a code to join"        on={form.allowAccessCode}       onChange={() => patch({ allowAccessCode: !form.allowAccessCode })} last />
               </div>
             )}
@@ -588,7 +658,7 @@ export default function TestSettings() {
 
                 {/* Tabs */}
                 <div style={{ display:'flex', borderBottom:'2px solid var(--admin-border)', marginBottom:'24px' }}>
-                  {(['invite','confirm'] as EmailTab[]).map(tab => (
+                  {(['invite','confirm','reminder'] as EmailTab[]).map(tab => (
                     <button key={tab} type="button"
                       onClick={() => setEmailTab(tab)}
                       style={{
@@ -598,24 +668,69 @@ export default function TestSettings() {
                         borderBottom: emailTab === tab ? '2px solid var(--admin-accent)' : '2px solid transparent',
                         marginBottom:'-2px', transition:'color 0.15s',
                       }}>
-                      {tab === 'invite' ? 'Invite Email' : 'Confirmation Email'}
+                      {EMAIL_TAB_LABELS[tab]}
                     </button>
                   ))}
                 </div>
 
                 {emailTemplates && (() => {
                   const isInvite = emailTab === 'invite';
-                  const subject = isInvite ? emailTemplates.inviteEmailSubject : emailTemplates.confirmEmailSubject;
-                  const body    = isInvite ? emailTemplates.inviteEmailBody    : emailTemplates.confirmEmailBody;
+                  const isReminder = emailTab === 'reminder';
+                  const subject = isInvite ? emailTemplates.inviteEmailSubject
+                    : isReminder ? emailTemplates.reminderEmailSubject
+                    : emailTemplates.confirmEmailSubject;
+                  const body = isInvite ? emailTemplates.inviteEmailBody
+                    : isReminder ? emailTemplates.reminderEmailBody
+                    : emailTemplates.confirmEmailBody;
                   const editKey = emailTab;
+                  const isVarApplicable = (key: string) => {
+                    if (INVITE_ONLY_VAR_KEYS.has(key)) return isInvite;
+                    if (REMINDER_ONLY_VAR_KEYS.has(key)) return isReminder;
+                    if (INVITE_AND_REMINDER_VAR_KEYS.has(key)) return isInvite || isReminder;
+                    return true;
+                  };
                   return (
                     <div>
                       {/* Description */}
                       <p style={{ fontSize:'12px', color:'var(--admin-text-subtle)', margin:'0 0 16px' }}>
-                        {isInvite
-                          ? 'This email is sent to candidates when you invite them to take the test.'
-                          : 'This email is sent to candidates when they complete the test.'}
+                        {EMAIL_TAB_DESCRIPTIONS[emailTab]}
                       </p>
+
+                      {isReminder && (
+                        <div style={{
+                          display:'flex', alignItems:'center', gap:'10px', marginBottom:'20px',
+                          padding:'12px 16px', backgroundColor:'#F9FAFB', borderRadius:'10px',
+                          border:'1px solid var(--admin-border)', flexWrap:'wrap',
+                        }}>
+                          <label style={{ fontSize:'12px', fontWeight:600, color:'var(--admin-text-muted)', display:'flex', alignItems:'center', gap:'5px', whiteSpace:'nowrap' }}>
+                            Send reminder
+                            <span
+                              title="How many hours before the test's access window closes we'll email candidates who haven't started yet. Only applies to tests with a fixed end date/time — open-ended tests never trigger this reminder."
+                              style={{ display:'inline-flex', cursor:'help', color:'var(--admin-text-subtle)' }}
+                            >
+                              <Info size={13} />
+                            </span>
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={reminderHoursDraft}
+                            onChange={e => setReminderHoursDraft(Math.max(1, Math.round(Number(e.target.value)) || 1))}
+                            className="input"
+                            style={{ width:'70px', fontSize:'13px', padding:'6px 8px' }}
+                          />
+                          <span style={{ fontSize:'12px', color:'var(--admin-text-muted)' }}>hours before the test closes</span>
+                          {reminderHoursDraft !== emailTemplates.reminderHoursBeforeClose && (
+                            <button type="button"
+                              onClick={handleReminderHoursSave}
+                              disabled={reminderHoursSaving}
+                              className="btn btn-primary"
+                              style={{ marginLeft:'auto', padding:'4px 14px', fontSize:'12px' }}>
+                              {reminderHoursSaving ? 'Saving…' : 'Save'}
+                            </button>
+                          )}
+                        </div>
+                      )}
 
                       {emailEditing === editKey ? (
                         /* -- Edit mode -- */
@@ -646,7 +761,7 @@ export default function TestSettings() {
                               Click a variable to insert it
                             </p>
                             <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
-                              {AVAILABLE_VARS.filter(v => isInvite || !INVITE_ONLY_VAR_KEYS.has(v.key)).map(v => (
+                              {AVAILABLE_VARS.filter(v => isVarApplicable(v.key)).map(v => (
                                 <button key={v.key} type="button" title={v.desc}
                                   onClick={() => setEmailDraft(d => ({ ...d, body: d.body + v.key }))}
                                   style={{
@@ -689,7 +804,7 @@ export default function TestSettings() {
                           <div style={{ marginBottom:'16px' }}>
                             <p style={{ fontSize:'11px', fontWeight:600, color:'var(--admin-text-subtle)', margin:'0 0 8px', textTransform:'uppercase', letterSpacing:'0.05em' }}>Available variables</p>
                             <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
-                              {AVAILABLE_VARS.filter(v => isInvite || !INVITE_ONLY_VAR_KEYS.has(v.key)).map(v => (
+                              {AVAILABLE_VARS.filter(v => isVarApplicable(v.key)).map(v => (
                                 <span key={v.key} title={v.desc} style={{
                                   fontSize:'11px', fontWeight:600, color:'var(--admin-accent-hover)',
                                   backgroundColor:'var(--admin-accent-disabled)', padding:'2px 8px', borderRadius:'20px',
@@ -704,7 +819,7 @@ export default function TestSettings() {
                               onClick={() => openEmailEdit(editKey)}
                               className="btn btn-secondary">
                               <Pencil size={13} />
-                              Edit {isInvite ? 'Invite' : 'Confirmation'} Email
+                              Edit {EMAIL_TAB_LABELS[emailTab]}
                             </button>
                           </div>
                         </div>
