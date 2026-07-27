@@ -1,8 +1,16 @@
-"""Single-vCPU, single-frame benchmark: YOLO (ONNX Runtime) + MediaPipe run in parallel.
+"""Single-vCPU, single-frame benchmark: YOLO (ONNX Runtime) + MediaPipe, sequential.
 
-Measures how long ONE frame takes to evaluate when both models run
-concurrently on a process pinned to a single CPU core, simulating a
-1-vCPU server instance.
+Measures how long ONE frame takes to evaluate on a process pinned to a
+single CPU core, simulating a 1-vCPU server instance.
+
+Runs MediaPipe then YOLO sequentially in the same thread, matching how
+app.py's analyze_request() actually processes a frame today (MediaPipe
+face/gaze, then YOLO phone detection, one after another inside a single
+worker thread — app.py's concurrency comes from its ThreadPoolExecutor
+handling multiple different frames at once, not from parallelizing a
+single frame's own model calls). Running the two concurrently in earlier
+versions of this script added artificial thread-contention overhead on
+the pinned core that doesn't reflect production behavior.
 
 YOLO runs through ONNX Runtime rather than raw PyTorch. PyTorch's CPU wheels
 link against Intel MKL, which detects non-"GenuineIntel" CPUs and silently
@@ -10,11 +18,10 @@ falls back to an unoptimized codepath — on AMD droplets this alone can cause
 a 5-10x slowdown. ONNX Runtime's CPU execution provider (MLAS) does not have
 this penalty, so it gives a realistic cross-vendor CPU timing.
 
+- MediaPipe: FaceDetection + FaceMesh for face count and gaze-away detection.
 - YOLO (.onnx): full 80-class COCO detection. Its returned JSON is fed
   through a rule-based classifier (phone / laptop / book / extra person /
   extra display / other electronics).
-- MediaPipe: FaceDetection + FaceMesh for face count and gaze-away
-  detection, run in the same wall-clock window as YOLO (separate thread).
 
 Export a .pt model to ONNX once before running this script:
     yolo export model=yolov8n.pt format=onnx imgsz=640
@@ -31,9 +38,7 @@ import ctypes
 import json
 import os
 import statistics
-import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Tuple
 
 # Must be set before numpy/torch/opencv/mediapipe import to actually take effect —
@@ -267,7 +272,7 @@ def load_frame(args: argparse.Namespace) -> np.ndarray:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Single-vCPU, single-frame YOLO (ONNX Runtime) + MediaPipe parallel benchmark")
+    parser = argparse.ArgumentParser(description="Single-vCPU, single-frame YOLO (ONNX Runtime) + MediaPipe sequential benchmark")
     parser.add_argument("--image", default="test.jpg", help="path to a still image to benchmark against")
     parser.add_argument("--camera", type=int, default=None, help="use a live camera index instead of --image")
     parser.add_argument(
@@ -309,47 +314,38 @@ def main() -> None:
 
     print(f"[SETUP] warming up ({args.warmup} iterations)...")
     for _ in range(args.warmup):
-        with ThreadPoolExecutor(max_workers=2) as ex:
-            fy = ex.submit(evaluate_yolo, frame, model, args.conf)
-            fm = ex.submit(evaluate_mediapipe, frame)
-            fy.result()
-            fm.result()
+        evaluate_mediapipe(frame)
+        evaluate_yolo(frame, model, args.conf)
 
     if args.yolo_model.endswith(".onnx"):
         session = getattr(getattr(model.predictor, "model", None), "session", None)
         if session is not None:
             print(f"[SETUP] onnxruntime active providers: {session.get_providers()}")
 
-    parallel_ms: List[float] = []
+    frame_ms: List[float] = []
     yolo_ms: List[float] = []
     mp_ms: List[float] = []
     last_yolo_res: Dict[str, Any] = {}
     last_mp_res: Dict[str, Any] = {}
 
-    print(f"\n[RUN] {args.iterations} timed iterations ({args.yolo_model} + MediaPipe in parallel per frame)\n")
+    print(f"\n[RUN] {args.iterations} timed iterations ({args.yolo_model} then MediaPipe, sequential per frame)\n")
     for i in range(1, args.iterations + 1):
         t0 = time.perf_counter()
-        with ThreadPoolExecutor(max_workers=2) as ex:
-            fy = ex.submit(evaluate_yolo, frame, model, args.conf)
-            fm = ex.submit(evaluate_mediapipe, frame)
-            yolo_res = fy.result()
-            mp_res = fm.result()
+        mp_res = evaluate_mediapipe(frame)
+        yolo_res = evaluate_yolo(frame, model, args.conf)
         wall_ms = (time.perf_counter() - t0) * 1000.0
 
-        parallel_ms.append(wall_ms)
+        frame_ms.append(wall_ms)
         yolo_ms.append(yolo_res["elapsedMs"])
         mp_ms.append(mp_res["elapsedMs"])
         last_yolo_res, last_mp_res = yolo_res, mp_res
 
         print(
             f"  iter={i:02d}  frame_total={wall_ms:7.2f}ms  "
-            f"(yolo={yolo_res['elapsedMs']:7.2f}ms  mediapipe={mp_res['elapsedMs']:7.2f}ms)  "
+            f"(mediapipe={mp_res['elapsedMs']:7.2f}ms  yolo={yolo_res['elapsedMs']:7.2f}ms)  "
             f"faces={mp_res['faceCount']}  gaze={mp_res['gazeDirection']}  "
             f"yolo_violations={[v['eventType'] for v in yolo_res['violations']]}"
         )
-
-    seq_sum_avg = statistics.mean(yolo_ms) + statistics.mean(mp_ms)
-    par_avg = statistics.mean(parallel_ms)
 
     print("\n" + "=" * 72)
     print("SUMMARY — time to evaluate ONE frame on this (pinned) vCPU")
@@ -357,10 +353,8 @@ def main() -> None:
     model_label = args.yolo_model.ljust(14)
     print(f"{model_label} avg={statistics.mean(yolo_ms):7.2f}ms  min={min(yolo_ms):7.2f}ms  max={max(yolo_ms):7.2f}ms  median={statistics.median(yolo_ms):7.2f}ms")
     print(f"MediaPipe      avg={statistics.mean(mp_ms):7.2f}ms  min={min(mp_ms):7.2f}ms  max={max(mp_ms):7.2f}ms  median={statistics.median(mp_ms):7.2f}ms")
-    print(f"Sequential sum avg={seq_sum_avg:7.2f}ms  (if run one after another, not in parallel)")
-    print(f"Parallel wall  avg={par_avg:7.2f}ms  min={min(parallel_ms):7.2f}ms  max={max(parallel_ms):7.2f}ms  median={statistics.median(parallel_ms):7.2f}ms")
-    print(f"Speedup from parallelism: {seq_sum_avg / par_avg:.2f}x")
-    print(f"Effective max single-frame throughput: {1000.0 / par_avg:.2f} frames/sec on this vCPU")
+    print(f"Frame total    avg={statistics.mean(frame_ms):7.2f}ms  min={min(frame_ms):7.2f}ms  max={max(frame_ms):7.2f}ms  median={statistics.median(frame_ms):7.2f}ms")
+    print(f"Effective max single-frame throughput: {1000.0 / statistics.mean(frame_ms):.2f} frames/sec on this vCPU")
 
     print("\n" + "-" * 72)
     print(f"Last frame — {args.yolo_model} rule-based classification (from returned JSON):")
