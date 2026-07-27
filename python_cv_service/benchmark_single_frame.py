@@ -213,7 +213,11 @@ def evaluate_mediapipe(img_bgr: np.ndarray) -> Dict[str, Any]:
 def evaluate_yolo(img_bgr: np.ndarray, model: YOLO, conf_threshold: float) -> Dict[str, Any]:
     t0 = time.perf_counter()
     results = model.predict(img_bgr, verbose=False, conf=conf_threshold, iou=0.45, max_det=50)
-    detections_json = results[0].tojson() if results else "[]"
+    if results:
+        result = results[0]
+        detections_json = result.to_json() if hasattr(result, "to_json") else result.tojson()
+    else:
+        detections_json = "[]"
     counts, violations = classify_from_json(detections_json, conf_threshold)
     elapsed_ms = (time.perf_counter() - t0) * 1000.0
     return {
