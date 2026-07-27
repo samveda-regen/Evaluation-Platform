@@ -1,10 +1,10 @@
-"""Single-vCPU, single-frame benchmark: YOLO26n + MediaPipe run in parallel.
+"""Single-vCPU, single-frame benchmark: YOLOv8n + MediaPipe run in parallel.
 
 Measures how long ONE frame takes to evaluate when both models run
 concurrently on a process pinned to a single CPU core, simulating a
 1-vCPU server instance.
 
-- YOLO26n: full 80-class COCO detection. Its `.tojson()` output is fed
+- YOLOv8n: full 80-class COCO detection. Its returned JSON is fed
   through a rule-based classifier (phone / laptop / book / extra person /
   extra display / other electronics).
 - MediaPipe: FaceDetection + FaceMesh for face count and gaze-away
@@ -13,7 +13,7 @@ concurrently on a process pinned to a single CPU core, simulating a
 Usage:
     python benchmark_single_frame.py --image test.jpg
     python benchmark_single_frame.py --camera 0 --iterations 30
-    python benchmark_single_frame.py --image test.jpg --core 0 --yolo-model yolo26n.pt
+    python benchmark_single_frame.py --image test.jpg --core 0 --yolo-model yolov8n.pt
 """
 
 import argparse
@@ -208,7 +208,7 @@ def evaluate_mediapipe(img_bgr: np.ndarray) -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------------
-# YOLO26n: full detection + rule-based classification of the returned JSON.
+# YOLOv8n: full detection + rule-based classification of the returned JSON.
 # --------------------------------------------------------------------------
 def evaluate_yolo(img_bgr: np.ndarray, model: YOLO, conf_threshold: float) -> Dict[str, Any]:
     t0 = time.perf_counter()
@@ -250,10 +250,10 @@ def load_frame(args: argparse.Namespace) -> np.ndarray:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Single-vCPU, single-frame YOLO26n + MediaPipe parallel benchmark")
+    parser = argparse.ArgumentParser(description="Single-vCPU, single-frame YOLOv8n + MediaPipe parallel benchmark")
     parser.add_argument("--image", default="test.jpg", help="path to a still image to benchmark against")
     parser.add_argument("--camera", type=int, default=None, help="use a live camera index instead of --image")
-    parser.add_argument("--yolo-model", default="yolo26n.pt", help="ultralytics weights file (YOLO26 nano)")
+    parser.add_argument("--yolo-model", default="yolov8n.pt", help="ultralytics weights file (YOLOv8 nano)")
     parser.add_argument("--conf", type=float, default=0.35, help="confidence threshold for detections")
     parser.add_argument("--max-width", type=int, default=640, help="resize frame to this width before inference")
     parser.add_argument("--iterations", type=int, default=20, help="timed iterations")
@@ -290,7 +290,7 @@ def main() -> None:
     last_yolo_res: Dict[str, Any] = {}
     last_mp_res: Dict[str, Any] = {}
 
-    print(f"\n[RUN] {args.iterations} timed iterations (YOLO26n + MediaPipe in parallel per frame)\n")
+    print(f"\n[RUN] {args.iterations} timed iterations (YOLOv8n + MediaPipe in parallel per frame)\n")
     for i in range(1, args.iterations + 1):
         t0 = time.perf_counter()
         with ThreadPoolExecutor(max_workers=2) as ex:
@@ -318,7 +318,7 @@ def main() -> None:
     print("\n" + "=" * 72)
     print("SUMMARY — time to evaluate ONE frame on this (pinned) vCPU")
     print("=" * 72)
-    print(f"YOLO26n        avg={statistics.mean(yolo_ms):7.2f}ms  min={min(yolo_ms):7.2f}ms  max={max(yolo_ms):7.2f}ms  median={statistics.median(yolo_ms):7.2f}ms")
+    print(f"YOLOv8n        avg={statistics.mean(yolo_ms):7.2f}ms  min={min(yolo_ms):7.2f}ms  max={max(yolo_ms):7.2f}ms  median={statistics.median(yolo_ms):7.2f}ms")
     print(f"MediaPipe      avg={statistics.mean(mp_ms):7.2f}ms  min={min(mp_ms):7.2f}ms  max={max(mp_ms):7.2f}ms  median={statistics.median(mp_ms):7.2f}ms")
     print(f"Sequential sum avg={seq_sum_avg:7.2f}ms  (if run one after another, not in parallel)")
     print(f"Parallel wall  avg={par_avg:7.2f}ms  min={min(parallel_ms):7.2f}ms  max={max(parallel_ms):7.2f}ms  median={statistics.median(parallel_ms):7.2f}ms")
@@ -326,7 +326,7 @@ def main() -> None:
     print(f"Effective max single-frame throughput: {1000.0 / par_avg:.2f} frames/sec on this vCPU")
 
     print("\n" + "-" * 72)
-    print("Last frame — YOLO26n rule-based classification (from returned JSON):")
+    print("Last frame — YOLOv8n rule-based classification (from returned JSON):")
     print(json.dumps({"counts": last_yolo_res.get("counts"), "violations": last_yolo_res.get("violations")}, indent=2))
     print("\nLast frame — MediaPipe face/gaze evaluation:")
     print(json.dumps(
