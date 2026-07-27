@@ -1,19 +1,29 @@
-"""Single-vCPU, single-frame benchmark: YOLOv8n + MediaPipe run in parallel.
+"""Single-vCPU, single-frame benchmark: YOLO (ONNX Runtime) + MediaPipe run in parallel.
 
 Measures how long ONE frame takes to evaluate when both models run
 concurrently on a process pinned to a single CPU core, simulating a
 1-vCPU server instance.
 
-- YOLOv8n: full 80-class COCO detection. Its returned JSON is fed
+YOLO runs through ONNX Runtime rather than raw PyTorch. PyTorch's CPU wheels
+link against Intel MKL, which detects non-"GenuineIntel" CPUs and silently
+falls back to an unoptimized codepath — on AMD droplets this alone can cause
+a 5-10x slowdown. ONNX Runtime's CPU execution provider (MLAS) does not have
+this penalty, so it gives a realistic cross-vendor CPU timing.
+
+- YOLO (.onnx): full 80-class COCO detection. Its returned JSON is fed
   through a rule-based classifier (phone / laptop / book / extra person /
   extra display / other electronics).
 - MediaPipe: FaceDetection + FaceMesh for face count and gaze-away
   detection, run in the same wall-clock window as YOLO (separate thread).
 
+Export a .pt model to ONNX once before running this script:
+    yolo export model=yolov8n.pt format=onnx imgsz=640
+    yolo export model=yolo26n.pt format=onnx imgsz=640
+
 Usage:
     python benchmark_single_frame.py --image test.jpg
     python benchmark_single_frame.py --camera 0 --iterations 30
-    python benchmark_single_frame.py --image test.jpg --core 0 --yolo-model yolov8n.pt
+    python benchmark_single_frame.py --image test.jpg --core 0 --yolo-model yolov8n.onnx
 """
 
 import argparse
@@ -49,6 +59,11 @@ except Exception:
     torch = None
 
 from ultralytics import YOLO  # noqa: E402
+
+try:
+    import onnxruntime as ort  # noqa: E402
+except ImportError:
+    ort = None
 
 
 # --------------------------------------------------------------------------
@@ -104,7 +119,7 @@ MAX_ALLOWED = {
 
 
 def classify_from_json(detections_json: str, conf_threshold: float) -> Tuple[Dict[str, int], List[Dict[str, Any]]]:
-    """Parse YOLO's .tojson() detections and apply rule-based classification."""
+    """Parse YOLO's returned detections JSON and apply rule-based classification."""
     try:
         detections = json.loads(detections_json)
     except Exception:
@@ -208,11 +223,13 @@ def evaluate_mediapipe(img_bgr: np.ndarray) -> Dict[str, Any]:
 
 
 # --------------------------------------------------------------------------
-# YOLOv8n: full detection + rule-based classification of the returned JSON.
+# YOLO (ONNX Runtime): full detection + rule-based classification of the returned JSON.
 # --------------------------------------------------------------------------
 def evaluate_yolo(img_bgr: np.ndarray, model: YOLO, conf_threshold: float) -> Dict[str, Any]:
     t0 = time.perf_counter()
-    results = model.predict(img_bgr, verbose=False, conf=conf_threshold, iou=0.45, max_det=50)
+    # device="cpu" forces CPU execution even if a GPU-capable onnxruntime/torch
+    # build happens to be installed — this benchmark is measuring CPU-only timing.
+    results = model.predict(img_bgr, verbose=False, conf=conf_threshold, iou=0.45, max_det=50, device="cpu")
     if results:
         result = results[0]
         detections_json = result.to_json() if hasattr(result, "to_json") else result.tojson()
@@ -250,10 +267,14 @@ def load_frame(args: argparse.Namespace) -> np.ndarray:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Single-vCPU, single-frame YOLOv8n + MediaPipe parallel benchmark")
+    parser = argparse.ArgumentParser(description="Single-vCPU, single-frame YOLO (ONNX Runtime) + MediaPipe parallel benchmark")
     parser.add_argument("--image", default="test.jpg", help="path to a still image to benchmark against")
     parser.add_argument("--camera", type=int, default=None, help="use a live camera index instead of --image")
-    parser.add_argument("--yolo-model", default="yolov8n.pt", help="ultralytics weights file (YOLOv8 nano)")
+    parser.add_argument(
+        "--yolo-model",
+        default="yolov8n.onnx",
+        help="ONNX weights file, e.g. yolov8n.onnx or yolo26n.onnx (export with: yolo export model=<x>.pt format=onnx)",
+    )
     parser.add_argument("--conf", type=float, default=0.35, help="confidence threshold for detections")
     parser.add_argument("--max-width", type=int, default=640, help="resize frame to this width before inference")
     parser.add_argument("--iterations", type=int, default=20, help="timed iterations")
@@ -270,8 +291,18 @@ def main() -> None:
     else:
         print(f"[SETUP] {pin_to_single_cpu(args.core)}")
 
+    if args.yolo_model.endswith(".onnx"):
+        if ort is None:
+            raise RuntimeError("onnxruntime is not installed. Run: pip install onnxruntime")
+        if not os.path.exists(args.yolo_model):
+            raise FileNotFoundError(
+                f"{args.yolo_model} not found. Export it first, e.g.:\n"
+                f"  yolo export model={args.yolo_model[:-5]}.pt format=onnx imgsz={args.max_width}"
+            )
+        print(f"[SETUP] onnxruntime available providers: {ort.get_available_providers()}")
+
     print(f"[SETUP] loading YOLO model: {args.yolo_model}")
-    model = YOLO(args.yolo_model)
+    model = YOLO(args.yolo_model, task="detect")
 
     frame = load_frame(args)
     print(f"[SETUP] frame size: {frame.shape[1]}x{frame.shape[0]}")
@@ -284,13 +315,18 @@ def main() -> None:
             fy.result()
             fm.result()
 
+    if args.yolo_model.endswith(".onnx"):
+        session = getattr(getattr(model.predictor, "model", None), "session", None)
+        if session is not None:
+            print(f"[SETUP] onnxruntime active providers: {session.get_providers()}")
+
     parallel_ms: List[float] = []
     yolo_ms: List[float] = []
     mp_ms: List[float] = []
     last_yolo_res: Dict[str, Any] = {}
     last_mp_res: Dict[str, Any] = {}
 
-    print(f"\n[RUN] {args.iterations} timed iterations (YOLOv8n + MediaPipe in parallel per frame)\n")
+    print(f"\n[RUN] {args.iterations} timed iterations ({args.yolo_model} + MediaPipe in parallel per frame)\n")
     for i in range(1, args.iterations + 1):
         t0 = time.perf_counter()
         with ThreadPoolExecutor(max_workers=2) as ex:
@@ -318,7 +354,8 @@ def main() -> None:
     print("\n" + "=" * 72)
     print("SUMMARY — time to evaluate ONE frame on this (pinned) vCPU")
     print("=" * 72)
-    print(f"YOLOv8n        avg={statistics.mean(yolo_ms):7.2f}ms  min={min(yolo_ms):7.2f}ms  max={max(yolo_ms):7.2f}ms  median={statistics.median(yolo_ms):7.2f}ms")
+    model_label = args.yolo_model.ljust(14)
+    print(f"{model_label} avg={statistics.mean(yolo_ms):7.2f}ms  min={min(yolo_ms):7.2f}ms  max={max(yolo_ms):7.2f}ms  median={statistics.median(yolo_ms):7.2f}ms")
     print(f"MediaPipe      avg={statistics.mean(mp_ms):7.2f}ms  min={min(mp_ms):7.2f}ms  max={max(mp_ms):7.2f}ms  median={statistics.median(mp_ms):7.2f}ms")
     print(f"Sequential sum avg={seq_sum_avg:7.2f}ms  (if run one after another, not in parallel)")
     print(f"Parallel wall  avg={par_avg:7.2f}ms  min={min(parallel_ms):7.2f}ms  max={max(parallel_ms):7.2f}ms  median={statistics.median(parallel_ms):7.2f}ms")
@@ -326,7 +363,7 @@ def main() -> None:
     print(f"Effective max single-frame throughput: {1000.0 / par_avg:.2f} frames/sec on this vCPU")
 
     print("\n" + "-" * 72)
-    print("Last frame — YOLOv8n rule-based classification (from returned JSON):")
+    print(f"Last frame — {args.yolo_model} rule-based classification (from returned JSON):")
     print(json.dumps({"counts": last_yolo_res.get("counts"), "violations": last_yolo_res.get("violations")}, indent=2))
     print("\nLast frame — MediaPipe face/gaze evaluation:")
     print(json.dumps(
