@@ -331,6 +331,19 @@ class MultiClassDetectorONNX:
         print(f"[SETUP] {model_path} input shape={in_shape}  outputs=" + ", ".join(f"{o.name}:{o.shape}" for o in outputs))
         if len(outputs) != 1:
             print(f"[WARN] {model_path} has {len(outputs)} output tensors — detect() only reads outputs[0], results may be wrong")
+
+        # Two known export shapes:
+        #   grid    (1, 4+nc, num_boxes) e.g. (1, 84, 8400) -- YOLOv8-style raw
+        #           per-anchor scores, needs manual per-class threshold + NMS.
+        #   end2end (1, num_dets, 6) e.g. (1, 300, 6) -- NMS-free/end-to-end
+        #           head (YOLO26-style), rows are already [x1,y1,x2,y2,score,cls],
+        #           already NMS'd, no per-class score scan needed at all.
+        # Confirmed via [SETUP] print: yolo26n.onnx is (1, 300, 6) -- the grid
+        # decoder was silently misreading its score/class_id columns as if
+        # they were per-class score channels, producing bogus "bicycle" boxes.
+        out_shape = outputs[0].shape
+        self.end2end = len(out_shape) == 3 and isinstance(out_shape[-1], int) and out_shape[-1] == 6
+        print(f"[SETUP] {model_path} decode format: {'end2end (pre-decoded)' if self.end2end else 'grid (raw anchors)'}")
         self.model_path = model_path
 
     @staticmethod
@@ -356,42 +369,26 @@ class MultiClassDetectorONNX:
         blob = np.ascontiguousarray(blob)
         return blob, ratio, dw, dh
 
-    def detect(self, img_bgr: np.ndarray, iou_thres: float = PHONE_IOU) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, List[Dict[str, Any]]]]:
-        """
-        Scans ALL classes the model was trained on (all 80 for stock COCO
-        weights) — the forward pass already produced scores for every class
-        in one tensor, so this adds no meaningful cost over checking a
-        handful of classes. Per-class thresholding/NMS only runs for classes
-        that actually have a candidate box in this frame.
+    def _class_config(self, class_id: int) -> Tuple[float, float, str, Optional[Dict[str, Any]]]:
+        cfg = self.violation_classes.get(class_id)
+        if cfg is not None:
+            return cfg["conf"], cfg["min_area_ratio"], cfg["label"], cfg
+        label = COCO_CLASS_NAMES[class_id] if 0 <= class_id < len(COCO_CLASS_NAMES) else f"class_{class_id}"
+        return GENERIC_OBJECT_CONF, GENERIC_OBJECT_MIN_AREA_RATIO, label, None
 
-        Returns (violation_detections, all_detections):
-          - violation_detections: event_type -> list of detections, for the
-            classes configured in VIOLATION_CLASSES (drives the state machine)
-          - all_detections: class_name -> list of detections, for EVERY class
-            found in frame (audit/logging; includes the violation classes too)
-        """
-        blob, ratio, dw, dh = self._preprocess(img_bgr)
-        raw = self.session.run(None, {self.input_name: blob})[0]
+    def _decode_grid(self, raw: np.ndarray, ratio: float, dw: float, dh: float, frame_area: float, iou_thres: float):
+        """YOLOv8-style raw anchor grid: (4+nc, num_boxes), needs per-class
+        threshold + manual NMS. Boxes are (cx, cy, w, h) in letterboxed space."""
         preds = raw[0]  # expected (4+nc, num_boxes), e.g. (84, 8400)
         if preds.shape[0] > preds.shape[1]:
             preds = preds.T  # normalize to (attrs, num_boxes)
-
         nc = preds.shape[0] - 4
-        frame_area = float(max(1, img_bgr.shape[0] * img_bgr.shape[1]))
 
         violation_detections: Dict[str, List[Dict[str, Any]]] = {cfg["event_type"]: [] for cfg in self.violation_classes.values()}
         all_detections: Dict[str, List[Dict[str, Any]]] = {}
 
         for class_id in range(nc):
-            cfg = self.violation_classes.get(class_id)
-            if cfg is not None:
-                conf_thres = cfg["conf"]
-                min_area_ratio = cfg["min_area_ratio"]
-                label = cfg["label"]
-            else:
-                conf_thres = GENERIC_OBJECT_CONF
-                min_area_ratio = GENERIC_OBJECT_MIN_AREA_RATIO
-                label = COCO_CLASS_NAMES[class_id] if class_id < len(COCO_CLASS_NAMES) else f"class_{class_id}"
+            conf_thres, min_area_ratio, label, cfg = self._class_config(class_id)
 
             scores = preds[4 + class_id]  # (num_boxes,)
             mask = scores >= conf_thres
@@ -431,6 +428,66 @@ class MultiClassDetectorONNX:
                 violation_detections[cfg["event_type"]] = dets_for_class
 
         return violation_detections, all_detections
+
+    def _decode_end2end(self, raw: np.ndarray, ratio: float, dw: float, dh: float, frame_area: float):
+        """NMS-free/end-to-end head (e.g. YOLO26): (num_dets, 6) rows of
+        [x1, y1, x2, y2, score, class_id], already NMS'd, boxes already xyxy
+        in letterboxed space. No manual NMS or per-class score scan needed --
+        just un-letterbox the coordinates and apply per-class thresholds."""
+        dets = raw[0]  # (num_dets, 6)
+
+        violation_detections: Dict[str, List[Dict[str, Any]]] = {cfg["event_type"]: [] for cfg in self.violation_classes.values()}
+        all_detections: Dict[str, List[Dict[str, Any]]] = {}
+
+        for x1, y1, x2, y2, score, cls in dets:
+            score = float(score)
+            if score <= 0.0:
+                continue  # padded/empty slot
+            class_id = int(round(float(cls)))
+            conf_thres, min_area_ratio, label, cfg = self._class_config(class_id)
+            if score < conf_thres:
+                continue
+
+            ux1 = (float(x1) - dw) / ratio
+            uy1 = (float(y1) - dh) / ratio
+            ux2 = (float(x2) - dw) / ratio
+            uy2 = (float(y2) - dh) / ratio
+            area_ratio = max(0.0, (ux2 - ux1) * (uy2 - uy1)) / frame_area
+            if area_ratio < min_area_ratio:
+                continue
+
+            det = {"label": label, "confidence": score * 100.0, "areaRatio": area_ratio, "source": "onnxruntime"}
+            all_detections.setdefault(label, []).append(det)
+            if cfg is not None:
+                violation_detections[cfg["event_type"]].append(det)
+
+        return violation_detections, all_detections
+
+    def detect(self, img_bgr: np.ndarray, iou_thres: float = PHONE_IOU) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, List[Dict[str, Any]]]]:
+        """
+        Scans ALL classes the model was trained on (all 80 for stock COCO
+        weights) — the forward pass already produced scores for every class
+        in one tensor, so this adds no meaningful cost over checking a
+        handful of classes. Per-class thresholding/NMS only runs for classes
+        that actually have a candidate box in this frame.
+
+        Dispatches to _decode_grid (raw anchor grid, e.g. YOLOv8) or
+        _decode_end2end (pre-decoded, e.g. YOLO26) based on self.end2end,
+        determined once from the model's actual output shape at load time.
+
+        Returns (violation_detections, all_detections):
+          - violation_detections: event_type -> list of detections, for the
+            classes configured in VIOLATION_CLASSES (drives the state machine)
+          - all_detections: class_name -> list of detections, for EVERY class
+            found in frame (audit/logging; includes the violation classes too)
+        """
+        blob, ratio, dw, dh = self._preprocess(img_bgr)
+        raw = self.session.run(None, {self.input_name: blob})[0]
+        frame_area = float(max(1, img_bgr.shape[0] * img_bgr.shape[1]))
+
+        if self.end2end:
+            return self._decode_end2end(raw, ratio, dw, dh, frame_area)
+        return self._decode_grid(raw, ratio, dw, dh, frame_area, iou_thres)
 
 
 # --------------------------------------------------------------------------
