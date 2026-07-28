@@ -318,6 +318,19 @@ class MultiClassDetectorONNX:
         w = in_shape[3] if isinstance(in_shape[3], int) else CV_INFERENCE_MAX_WIDTH
         self.imgsz = max(h, w)
         self.violation_classes = violation_classes
+
+        # Diagnostic: the decode logic in detect() assumes a single output
+        # tensor shaped (1, 4+nc, num_boxes) -- YOLOv8's classic raw-anchor
+        # grid format. Models with a different export shape (e.g. an
+        # NMS-free/end-to-end head that outputs already-decoded detections
+        # as (1, num_dets, 6)) will silently produce garbage under that
+        # assumption instead of erroring, since the decode just reads
+        # whatever is at each tensor position. Print it so a shape mismatch
+        # is visible immediately instead of showing up as bogus detections.
+        outputs = self.session.get_outputs()
+        print(f"[SETUP] {model_path} input shape={in_shape}  outputs=" + ", ".join(f"{o.name}:{o.shape}" for o in outputs))
+        if len(outputs) != 1:
+            print(f"[WARN] {model_path} has {len(outputs)} output tensors — detect() only reads outputs[0], results may be wrong")
         self.model_path = model_path
 
     @staticmethod
