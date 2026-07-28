@@ -180,7 +180,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
   const analysisIntervalMs = Number((import.meta as any).env?.VITE_PROCTOR_ANALYSIS_INTERVAL_MS || 2500);
   const recordingChunkMs = Number((import.meta as any).env?.VITE_PROCTOR_RECORDING_CHUNK_MS || 30000);
   const analysisFrameQuality = Number((import.meta as any).env?.VITE_PROCTOR_ANALYSIS_FRAME_QUALITY || 0.9);
-  const analysisFrameMaxWidth = Number((import.meta as any).env?.VITE_PROCTOR_ANALYSIS_FRAME_MAX_WIDTH || 1280);
+  const analysisFrameMaxWidth = Number((import.meta as any).env?.VITE_PROCTOR_ANALYSIS_FRAME_MAX_WIDTH || 640);
   const snapshotFrameQuality = Number((import.meta as any).env?.VITE_PROCTOR_SNAPSHOT_QUALITY || 0.85);
   const snapshotFrameMaxWidth = Number((import.meta as any).env?.VITE_PROCTOR_SNAPSHOT_MAX_WIDTH || 1024);
   const enableWebcamRecording = ((import.meta as any).env?.VITE_ENABLE_WEBCAM_RECORDING || 'false') === 'true';

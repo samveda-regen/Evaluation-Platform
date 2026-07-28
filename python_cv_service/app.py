@@ -50,6 +50,11 @@ try:
 except Exception:
     YOLO = None
 
+try:
+    import onnxruntime as ort  # noqa: F401  (imported to report active providers below)
+except Exception:
+    ort = None
+
 
 app = FastAPI(title="Proctoring CV Service", version="2.0.0")
 logger = logging.getLogger("proctor_cv")
@@ -94,7 +99,7 @@ FACE_MIN_CONF = _env_float("FACE_MIN_CONF", 0.45)
 GAZE_LEFT_RIGHT_THRESHOLD = _env_float("GAZE_LEFT_RIGHT_THRESHOLD", 0.35)
 CAMERA_BLOCKED_DARK_THRESHOLD = _env_float("CAMERA_BLOCKED_DARK_THRESHOLD", 18.0)
 CAMERA_BLOCKED_UNIFORM_THRESHOLD = _env_float("CAMERA_BLOCKED_UNIFORM_THRESHOLD", 8.0)
-YOLO_MODEL_PATH = os.getenv("YOLO_MODEL", "yolov8n.pt").strip() or "yolov8n.pt"
+YOLO_MODEL_PATH = os.getenv("YOLO_MODEL", "yolo26n.onnx").strip() or "yolo26n.onnx"
 CV_ENABLED_EVENTS = {
     x.strip()
     for x in os.getenv(
@@ -185,7 +190,13 @@ def _add_violation(
 _model = None
 if YOLO is not None:
     try:
-        _model = YOLO(YOLO_MODEL_PATH)
+        _model = YOLO(YOLO_MODEL_PATH, task="detect")
+        if YOLO_MODEL_PATH.endswith(".onnx") and ort is not None:
+            # ONNX Runtime's CPU execution provider (MLAS) doesn't carry PyTorch's
+            # MKL-on-non-Intel-CPU penalty -- see benchmark_single_frame.py findings.
+            # Logged so a provider mismatch (e.g. falling back to a slow default)
+            # is visible in production logs instead of only showing up as latency.
+            logger.info("[PROCTOR_CV] onnxruntime available providers: %s", ort.get_available_providers())
     except Exception:
         _model = None
 
@@ -299,7 +310,9 @@ def _phone_detections(img_bgr: np.ndarray) -> List[Dict[str, Any]]:
         return []
     out: List[Dict[str, Any]] = []
     try:
-        results = _model.predict(img_bgr, verbose=False, conf=PHONE_CONF, iou=0.45, max_det=20)
+        # device="cpu" forces CPU execution even if a GPU-capable onnxruntime/torch
+        # build happens to be installed on this box.
+        results = _model.predict(img_bgr, verbose=False, conf=PHONE_CONF, iou=0.45, max_det=20, device="cpu")
         h, w = img_bgr.shape[:2]
         frame_area = float(max(1, h * w))
         model_names = getattr(_model, "names", {}) or {}
