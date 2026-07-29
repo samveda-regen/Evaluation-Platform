@@ -58,6 +58,15 @@ except Exception:
 
 app = FastAPI(title="Proctoring CV Service", version="2.0.0")
 logger = logging.getLogger("proctor_cv")
+# Attached directly to this logger (not via logging.basicConfig on root) so
+# these logs are visible regardless of whether uvicorn/pm2 configured a root
+# handler -- without this, .info() calls are silently dropped by Python's
+# default lastResort handler, which only prints WARNING and above.
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    logger.addHandler(_handler)
 CV_DEBUG = os.getenv("CV_DEBUG", "false").strip().lower() == "true"
 
 class AnalyzeRequest(BaseModel):
@@ -444,15 +453,27 @@ def analyze_request(req: AnalyzeRequest) -> Dict[str, Any]:
     # dark/uniform frame skips the three expensive model calls below entirely — none
     # of them can produce anything meaningful on a blocked frame anyway.
     camera_blocked, blocked_reason, blocked_confidence = _camera_blocked_signal(img)
+    mediapipe_ms = 0.0
+    yolo_ms = 0.0
     if camera_blocked:
         face_count, face_details, mesh_result = 0, {"mediapipeFaceDetection": 0, "mediapipeFaceMesh": 0}, None
         looking_at_screen, gaze_direction, gaze_confidence = True, "unknown", 0.0
         phone_objects: List[Dict[str, Any]] = []
     else:
         # FaceMesh is computed once here and reused by _gaze_signal to eliminate duplicate inference.
+        t0 = time.perf_counter()
         face_count, face_details, mesh_result = _face_count_with_details(img)
         looking_at_screen, gaze_direction, gaze_confidence = _gaze_signal(img, mesh_result)
+        mediapipe_ms = (time.perf_counter() - t0) * 1000.0
+
+        t0 = time.perf_counter()
         phone_objects = _phone_detections(img)
+        yolo_ms = (time.perf_counter() - t0) * 1000.0
+
+        logger.info(
+            "[PROCTOR_CV][timing] session=%s mediapipeMs=%.2f yoloMs=%.2f totalMs=%.2f",
+            sid, mediapipe_ms, yolo_ms, mediapipe_ms + yolo_ms,
+        )
     phone_count = len(phone_objects)
     objects.extend(phone_objects)
 

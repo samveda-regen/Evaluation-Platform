@@ -181,7 +181,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     clearStreak: 0,
   });
 
-  const analysisIntervalMs = Number((import.meta as any).env?.VITE_PROCTOR_ANALYSIS_INTERVAL_MS || 2500);
+  const analysisIntervalMs = Number((import.meta as any).env?.VITE_PROCTOR_ANALYSIS_INTERVAL_MS || 1000);
   const recordingChunkMs = Number((import.meta as any).env?.VITE_PROCTOR_RECORDING_CHUNK_MS || 30000);
   const analysisFrameQuality = Number((import.meta as any).env?.VITE_PROCTOR_ANALYSIS_FRAME_QUALITY || 0.9);
   const analysisFrameMaxWidth = Number((import.meta as any).env?.VITE_PROCTOR_ANALYSIS_FRAME_MAX_WIDTH || 640);
