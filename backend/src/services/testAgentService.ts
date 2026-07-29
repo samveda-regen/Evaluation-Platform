@@ -502,6 +502,7 @@ export async function createTestFromSelection(
         maxViolations: normalizeMaxViolations(testSettings.maxViolations),
         customAIViolations: JSON.stringify(DEFAULT_CUSTOM_AI_VIOLATION_EVENTS),
         adminId,
+        isAiGenerated: true,
         ...(testSettings.companyId ? { companyId: testSettings.companyId } : {})
       }
     });

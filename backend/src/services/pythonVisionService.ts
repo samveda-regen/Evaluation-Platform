@@ -1,3 +1,5 @@
+import { recordCvLatencySample } from './telemetryRingBuffer.js';
+
 export interface PythonVisionViolation {
   eventType: string;
   severity: 'low' | 'medium' | 'high' | 'critical';
@@ -39,6 +41,11 @@ export interface PythonVisionResult {
     latencyMs?: number;
     stale?: boolean;
   };
+  // Real Node-measured round-trip time for this /analyze call. The Python
+  // service does not report its own timing (`aiMeta.latencyMs` above is not
+  // actually populated by the running service), so this is the only source
+  // of truth for CV engine latency — see telemetryRingBuffer.ts.
+  nodeMeasuredLatencyMs?: number;
 }
 
 type VisionPayload = { frame: string; sessionId?: string; capturedAt?: number };
@@ -56,7 +63,7 @@ function normalizeSeverity(severity: unknown): PythonVisionViolation['severity']
   return 'medium';
 }
 
-function normalizePythonVisionResult(raw: unknown): PythonVisionResult {
+function normalizePythonVisionResult(raw: unknown, nodeMeasuredLatencyMs?: number): PythonVisionResult {
   const obj = (raw && typeof raw === 'object' ? raw : {}) as Record<string, any>;
 
   const rawViolations: any[] = Array.isArray(obj.violations)
@@ -119,6 +126,7 @@ function normalizePythonVisionResult(raw: unknown): PythonVisionResult {
     objects,
     stats,
     aiMeta,
+    nodeMeasuredLatencyMs,
   };
 }
 
@@ -156,6 +164,7 @@ async function callPythonAnalyze(baseUrl: string, payload: VisionPayload): Promi
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), effectiveTimeoutMs);
+    const requestStartedAt = Date.now();
     try {
       const response = await fetch(`${baseUrl}/analyze`, {
         method: 'POST',
@@ -179,8 +188,10 @@ async function callPythonAnalyze(baseUrl: string, payload: VisionPayload): Promi
       }
       // Success — reset failure count.
       _cvFailureCount = 0;
+      const nodeMeasuredLatencyMs = Date.now() - requestStartedAt;
+      recordCvLatencySample(nodeMeasuredLatencyMs);
       const data = await response.json();
-      return normalizePythonVisionResult(data);
+      return normalizePythonVisionResult(data, nodeMeasuredLatencyMs);
     } catch (error) {
       clearTimeout(timeout);
       if (attempt < attempts) {

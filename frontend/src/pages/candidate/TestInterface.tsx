@@ -6,6 +6,7 @@ import { candidateApi } from '../../services/api';
 import { useTestStore } from '../../context/testStore';
 import { useProctoring } from '../../hooks/useProctoring';
 import { SCREEN_SHARE_WRONG_SURFACE_MESSAGE } from '../../services/proctorService';
+import { useLiveProctoringPublisher } from '../../hooks/useLiveProctoringPublisher';
 import {
   getRealtimeSocket,
   disconnectRealtimeSocket,
@@ -199,7 +200,7 @@ export default function TestInterface() {
   const {
     status: proctorStatus, endSession: endProctoringSession,
     error: proctorError, capturePreviewFrame, captureEvidenceFrame,
-    cameraStream, resumeScreenShare,
+    cameraStream, resumeScreenShare, screenStream,
   } = useProctoring(attemptId || '', {
     enabled: proctorEnabled,
     enableCamera: requireCamera,
@@ -220,6 +221,17 @@ export default function TestInterface() {
       }
     },
     onTerminate: () => { handleAutoSubmit(); },
+  });
+
+  const {
+    disconnect: disconnectLiveProctoring,
+    error: liveProctoringError,
+  } = useLiveProctoringPublisher({
+    enabled: proctorEnabled && proctorStatus.isInitialized,
+    attemptId: attemptId || '',
+    publishMicrophone: requireMicrophone,
+    cameraStream,
+    screenStream,
   });
 
   const proctorStatusRef = useRef(proctorStatus);
@@ -263,6 +275,12 @@ export default function TestInterface() {
       navigate('/test/instructions');
     }
   }, [proctorError, proctorEnabled, navigate]);
+
+  useEffect(() => {
+    if (liveProctoringError) {
+      toast.error('Live video monitoring is reconnecting. Continue your test.');
+    }
+  }, [liveProctoringError]);
 
   useEffect(() => {
     if (!proctorEnabled || !testId || !attemptId) return;
@@ -635,6 +653,7 @@ export default function TestInterface() {
     setSubmitting(true);
     await saveCurrentAnswer();
     try {
+      disconnectLiveProctoring();
       await endProctoringSession();
       const { data: submitResult } = await candidateApi.submitTest({ autoSubmit: true });
       setSubmitted(submitResult);
@@ -653,6 +672,7 @@ export default function TestInterface() {
     setSubmitting(true);
     await saveCurrentAnswer();
     try {
+      disconnectLiveProctoring();
       await endProctoringSession();
       const { data: submitResult } = await candidateApi.submitTest({ autoSubmit: false });
       setSubmitted(submitResult);

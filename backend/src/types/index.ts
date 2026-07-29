@@ -4,6 +4,13 @@ export interface AdminPayload {
   id: string;
   email: string;
   role: 'admin';
+  // Standard JWT claim, populated by jsonwebtoken on sign/verify — used by
+  // adminAuth to reject tokens issued before a force-logout timestamp.
+  iat?: number;
+  // Set when this request was authenticated via a superadmin impersonation
+  // token rather than the admin's own login, so it can be audit-logged and
+  // time-boxed distinctly from a normal session.
+  impersonatedBy?: string;
 }
 
 export interface CandidatePayload {
@@ -23,10 +30,22 @@ export interface IntegrationPayload {
   scopes: string[];
 }
 
+export interface SuperAdminPayload {
+  id: string;
+  email: string;
+  role: 'superadmin';
+  // Sub-role gating mutating routes (see requireFullControl middleware) —
+  // distinct from the outer `role: 'superadmin'` discriminant above, which
+  // just identifies the token type against Admin/Candidate/Integration.
+  accessLevel?: 'full_control' | 'read_only';
+  iat?: number;
+}
+
 export interface AuthenticatedRequest extends Request {
   admin?: AdminPayload;
   candidate?: CandidatePayload;
   integration?: IntegrationPayload;
+  superAdmin?: SuperAdminPayload;
 }
 
 export interface MCQOption {

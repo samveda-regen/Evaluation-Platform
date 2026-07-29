@@ -25,6 +25,15 @@ export function emitToAdminRoom(adminId: string, event: string, payload: unknown
   ioInstance.to(`admin-${adminId}`).emit(event, payload);
 }
 
+// Superadmin Observer room — every joined socket has already presented a
+// verified superadmin JWT (see the `superadmin-join` handler in index.ts).
+export const SUPERADMIN_ROOM = 'superadmin-observer';
+
+export function emitToSuperAdminRoom(event: string, payload: unknown): void {
+  if (!ioInstance) return;
+  ioInstance.to(SUPERADMIN_ROOM).emit(event, payload);
+}
+
 export function emitToProctorTargets(
   testId: string,
   attemptId: string,
