@@ -4,7 +4,11 @@ import { AuthenticatedRequest } from '../types/index.js';
 import { ASSISTANT_TOOLS, executeAssistantTool } from '../services/superAdminAssistantTools.js';
 
 const MODEL = 'claude-sonnet-5';
-const MAX_TOOL_ROUNDS = 4;
+// Each round resends the entire growing message list (tool results included)
+// back to the API -- that's inherent to how tool use works, not something we
+// control. Kept low specifically to bound how many times a verbose tool
+// result gets rebilled within one multi-round answer.
+const MAX_TOOL_ROUNDS = 2;
 const MAX_HISTORY_MESSAGES = 16;
 const MAX_MESSAGE_LENGTH = 4000;
 
