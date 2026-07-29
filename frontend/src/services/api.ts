@@ -79,7 +79,10 @@ const ADMIN_PUBLIC_AUTH_PATHS = ['/admin/login', '/admin/register', '/admin/forg
 // Response interceptor to handle errors
 api.interceptors.response.use(
   (response) => response,
-  (error: AxiosError<{ error: string }>) => {
+  (error: AxiosError<{ error: string; message?: string; feature?: string }>) => {
+    if (error.response?.status === 423 && error.response.data?.error === 'feature_locked') {
+      toast.error(error.response.data.message || 'The platform administrator has disabled this feature.');
+    }
     if (error.response?.status === 401) {
       const url = error.config?.url || '';
       const isAdminRoute =

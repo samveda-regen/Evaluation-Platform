@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import { ChevronDown } from 'lucide-react';
 
 export function Card({ title, meta, children, className = '' }: {
   title?: string;
@@ -118,6 +119,48 @@ export function Toggle({ on, onClick, disabled, label }: {
         }`}
       />
     </button>
+  );
+}
+
+export function Select<T extends string>({ value, options, onChange, placeholder }: {
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (value: T) => void;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const current = options.find((option) => option.value === value);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-2 bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2 text-[12.5px] text-sa-ink font-mono min-w-[200px] justify-between hover:border-sa-accent/50 transition-colors"
+      >
+        <span className="truncate">{current?.label ?? placeholder ?? 'Select…'}</span>
+        <ChevronDown size={14} className="text-sa-ink-faint shrink-0" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div className="absolute top-full right-0 mt-1 z-30 min-w-[220px] max-h-72 overflow-y-auto bg-sa-panel-raised border border-sa-line rounded-sm shadow-lg">
+            {options.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => { onChange(option.value); setOpen(false); }}
+                className={`block w-full text-left px-3 py-2 text-[12.5px] font-mono truncate hover:bg-sa-panel-inset transition-colors ${
+                  option.value === value ? 'text-sa-accent' : 'text-sa-ink-dim'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 

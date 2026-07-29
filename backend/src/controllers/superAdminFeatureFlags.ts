@@ -56,11 +56,7 @@ export async function listFeatureFlags(_req: AuthenticatedRequest, res: Response
 export async function toggleFeatureFlag(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { key } = req.params;
-    const { enabled, scope, scopedAdminId } = req.body as {
-      enabled: boolean;
-      scope?: 'GLOBAL' | 'ADMIN';
-      scopedAdminId?: string | null;
-    };
+    const { enabled } = req.body as { enabled: boolean };
 
     if (typeof enabled !== 'boolean') {
       res.status(400).json({ error: '"enabled" must be a boolean' });
@@ -73,15 +69,9 @@ export async function toggleFeatureFlag(req: AuthenticatedRequest, res: Response
       return;
     }
 
-    const resolvedScope = scope === 'ADMIN' ? 'ADMIN' : 'GLOBAL';
     const flag = await prisma.featureFlag.update({
       where: { key },
-      data: {
-        enabled,
-        scope: resolvedScope,
-        scopedAdminId: resolvedScope === 'ADMIN' ? scopedAdminId ?? null : null,
-        updatedByEmail: req.superAdmin!.email,
-      },
+      data: { enabled, updatedByEmail: req.superAdmin!.email },
     });
 
     invalidateFeatureFlagCache(key);
@@ -92,14 +82,145 @@ export async function toggleFeatureFlag(req: AuthenticatedRequest, res: Response
       action: 'update',
       resourceType: 'FeatureFlag',
       resourceId: key,
-      before: { enabled: existing.enabled, scope: existing.scope, scopedAdminId: existing.scopedAdminId },
-      after: { enabled: flag.enabled, scope: flag.scope, scopedAdminId: flag.scopedAdminId },
+      before: { enabled: existing.enabled },
+      after: { enabled: flag.enabled },
     });
 
     emitToSuperAdminRoom('feature-toggled', flag);
     res.json({ flag });
   } catch (error) {
     console.error('Toggle feature flag error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// Merged view of every feature flag for one specific admin: the global
+// default, whether this admin has an override, and the effective value that
+// actually applies to their requests (see requireFeatureEnabled()).
+export async function listAdminFeatureOverrides(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { adminId } = req.params;
+    const [flags, overrides] = await Promise.all([
+      fetchFeatureFlags(),
+      prisma.featureFlagOverride.findMany({ where: { adminId } }),
+    ]);
+    const overrideByKey = new Map(overrides.map((o) => [o.featureKey, o]));
+
+    const merged = flags.map((flag) => {
+      const override = overrideByKey.get(flag.key);
+      return {
+        key: flag.key,
+        label: flag.label,
+        description: flag.description,
+        globalEnabled: flag.enabled,
+        overrideEnabled: override ? override.enabled : null,
+        effectiveEnabled: override ? override.enabled : flag.enabled,
+      };
+    });
+
+    res.json({ flags: merged });
+  } catch (error) {
+    console.error('List admin feature overrides error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function setAdminFeatureOverride(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { adminId, key } = req.params;
+    const { enabled } = req.body as { enabled: boolean };
+
+    if (typeof enabled !== 'boolean') {
+      res.status(400).json({ error: '"enabled" must be a boolean' });
+      return;
+    }
+
+    const flag = await prisma.featureFlag.findUnique({ where: { key } });
+    if (!flag) {
+      res.status(404).json({ error: 'Feature flag not found' });
+      return;
+    }
+
+    const existing = await prisma.featureFlagOverride.findUnique({
+      where: { featureKey_adminId: { featureKey: key, adminId } },
+    });
+
+    const override = await prisma.featureFlagOverride.upsert({
+      where: { featureKey_adminId: { featureKey: key, adminId } },
+      update: { enabled, updatedByEmail: req.superAdmin!.email },
+      create: { featureKey: key, adminId, enabled, updatedByEmail: req.superAdmin!.email },
+    });
+
+    invalidateFeatureFlagCache(key);
+
+    await createAuditLogEntry({
+      actorAdminId: null,
+      actorEmail: req.superAdmin!.email,
+      action: 'update',
+      resourceType: 'FeatureFlagOverride',
+      resourceId: `${key}:${adminId}`,
+      before: existing ? { enabled: existing.enabled } : null,
+      after: { enabled: override.enabled },
+    });
+
+    emitToSuperAdminRoom('feature-override-changed', { featureKey: key, adminId, enabled: override.enabled });
+    res.json({
+      key,
+      label: flag.label,
+      description: flag.description,
+      globalEnabled: flag.enabled,
+      overrideEnabled: override.enabled,
+      effectiveEnabled: override.enabled,
+    });
+  } catch (error) {
+    console.error('Set admin feature override error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function clearAdminFeatureOverride(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { adminId, key } = req.params;
+
+    const flag = await prisma.featureFlag.findUnique({ where: { key } });
+    if (!flag) {
+      res.status(404).json({ error: 'Feature flag not found' });
+      return;
+    }
+
+    const existing = await prisma.featureFlagOverride.findUnique({
+      where: { featureKey_adminId: { featureKey: key, adminId } },
+    });
+
+    if (existing) {
+      await prisma.featureFlagOverride.delete({
+        where: { featureKey_adminId: { featureKey: key, adminId } },
+      });
+      invalidateFeatureFlagCache(key);
+
+      await createAuditLogEntry({
+        actorAdminId: null,
+        actorEmail: req.superAdmin!.email,
+        action: 'delete',
+        resourceType: 'FeatureFlagOverride',
+        resourceId: `${key}:${adminId}`,
+        before: { enabled: existing.enabled },
+        after: null,
+      });
+
+      emitToSuperAdminRoom('feature-override-changed', { featureKey: key, adminId, enabled: null });
+    }
+
+    res.json({
+      key,
+      label: flag.label,
+      description: flag.description,
+      globalEnabled: flag.enabled,
+      overrideEnabled: null,
+      effectiveEnabled: flag.enabled,
+    });
+  } catch (error) {
+    console.error('Clear admin feature override error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }

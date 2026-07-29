@@ -191,7 +191,7 @@ app.use(cors({
     callback(new Error(`CORS blocked for origin: ${origin ?? 'unknown'}`));
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
@@ -569,6 +569,23 @@ async function startServer(): Promise<void> {
       WHERE c.id = sub."candidateId" AND c."companyId" IS NULL
     `;
     console.log('Integration extended tables/columns: ready');
+
+    // Per-admin FeatureFlag exceptions (Superadmin Observer's account-scoped
+    // feature locks). Created idempotently here rather than via `prisma db push`,
+    // consistent with the other tables above.
+    await prisma.$executeRaw`
+      CREATE TABLE IF NOT EXISTS "FeatureFlagOverride" (
+        "id" TEXT PRIMARY KEY,
+        "featureKey" TEXT NOT NULL,
+        "adminId" TEXT NOT NULL,
+        "enabled" BOOLEAN NOT NULL,
+        "updatedByEmail" TEXT,
+        "updatedAt" TIMESTAMP NOT NULL DEFAULT now()
+      )
+    `;
+    await prisma.$executeRaw`CREATE UNIQUE INDEX IF NOT EXISTS "FeatureFlagOverride_featureKey_adminId_key" ON "FeatureFlagOverride"("featureKey", "adminId")`;
+    await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "FeatureFlagOverride_adminId_idx" ON "FeatureFlagOverride"("adminId")`;
+    console.log('Feature flag overrides table: ready');
   } catch (error) {
     console.error('Database connectivity check failed. Verify PostgreSQL and DATABASE_URL.', error);
     process.exit(1);

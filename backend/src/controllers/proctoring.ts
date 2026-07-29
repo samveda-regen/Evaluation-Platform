@@ -1830,7 +1830,7 @@ export const getLiveTestSessions = async (req: Request, res: Response): Promise<
 
     const test = await prisma.test.findUnique({
       where: { id: testId },
-      select: { adminId: true },
+      select: { adminId: true, name: true },
     });
 
     if (!test || test.adminId !== adminId) {
@@ -1891,6 +1891,8 @@ export const getLiveTestSessions = async (req: Request, res: Response): Promise<
       return {
         sessionId: session?.id || '',
         attemptId: attempt.id,
+        testId,
+        test: { id: testId, name: test.name },
         candidate: attempt.candidate,
         status: {
           online,

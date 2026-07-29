@@ -114,10 +114,17 @@ export interface FeatureFlag {
   label: string;
   description: string | null;
   enabled: boolean;
-  scope: 'GLOBAL' | 'ADMIN';
-  scopedAdminId: string | null;
   updatedByEmail: string | null;
   updatedAt: string;
+}
+
+export interface AdminFeatureOverrideView {
+  key: string;
+  label: string;
+  description: string | null;
+  globalEnabled: boolean;
+  overrideEnabled: boolean | null;
+  effectiveEnabled: boolean;
 }
 
 export interface LiveTelemetry {
@@ -337,8 +344,15 @@ export const superAdminApi = {
     superAdminHttp.post<{ message: string }>(`/superadmin/accounts/${adminId}/unlock`),
 
   listFeatureFlags: () => superAdminHttp.get<{ flags: FeatureFlag[] }>('/superadmin/features'),
-  toggleFeatureFlag: (key: string, data: { enabled: boolean; scope?: 'GLOBAL' | 'ADMIN'; scopedAdminId?: string | null }) =>
+  toggleFeatureFlag: (key: string, data: { enabled: boolean }) =>
     superAdminHttp.patch<{ flag: FeatureFlag }>(`/superadmin/features/${key}`, data),
+
+  getAdminFeatureOverrides: (adminId: string) =>
+    superAdminHttp.get<{ flags: AdminFeatureOverrideView[] }>(`/superadmin/features/accounts/${adminId}`),
+  setAdminFeatureOverride: (adminId: string, key: string, enabled: boolean) =>
+    superAdminHttp.patch<AdminFeatureOverrideView>(`/superadmin/features/accounts/${adminId}/${key}`, { enabled }),
+  clearAdminFeatureOverride: (adminId: string, key: string) =>
+    superAdminHttp.delete<AdminFeatureOverrideView>(`/superadmin/features/accounts/${adminId}/${key}`),
 
   getActionLog: (params?: { page?: number; limit?: number; adminId?: string; search?: string; from?: string; to?: string }) =>
     superAdminHttp.get<{ entries: AdminActionLogEntry[]; total: number }>('/superadmin/logs/actions', { params }),

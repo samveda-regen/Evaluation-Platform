@@ -1046,12 +1046,24 @@ model FeatureFlag {
   label          String
   description    String?
   enabled        Boolean  @default(true)
-  scope          String   @default("GLOBAL") // GLOBAL | ADMIN
-  scopedAdminId  String?
+  updatedByEmail String?
+  updatedAt      DateTime @updatedAt
+}
+
+// Per-admin exception to a FeatureFlag's global enabled/disabled value --
+// e.g. a feature can be globally enabled but disabled for one specific
+// account (or vice versa). Absence of a row here means "follow the global
+// FeatureFlag.enabled value"; see requireFeatureEnabled() in featureLock.ts.
+model FeatureFlagOverride {
+  id             String   @id @default(uuid())
+  featureKey     String
+  adminId        String
+  enabled        Boolean
   updatedByEmail String?
   updatedAt      DateTime @updatedAt
 
-  @@index([scopedAdminId])
+  @@unique([featureKey, adminId])
+  @@index([adminId])
 }
 
 // Periodic rollup of live telemetry (ping, proctoring fps, CV latency,

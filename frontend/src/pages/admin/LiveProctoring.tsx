@@ -16,6 +16,8 @@ import { adminApi } from '../../services/api';
 interface LiveCandidate {
   attemptId?: string;
   sessionId?: string;
+  testId?: string;
+  testName?: string;
   initials: string;
   name: string;
   role: string;
@@ -344,6 +346,8 @@ export default function LiveProctoring() {
   const [selectedAttemptId, setSelectedAttemptId] = useState<string | null>(null);
   const [viewerCandidate, setViewerCandidate] = useState<LiveCandidate | null>(null);
   const [search, setSearch] = useState('');
+  const [testFilter, setTestFilter] = useState<string | null>(null);
+  const [testMenuOpen, setTestMenuOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -364,6 +368,8 @@ export default function LiveProctoring() {
           return {
             attemptId: item.attemptId,
             sessionId: item.sessionId,
+            testId: item.testId || testId,
+            testName: item.test?.name,
             initials,
             name,
             role: item.candidate?.email || 'Live candidate',
@@ -378,6 +384,11 @@ export default function LiveProctoring() {
           };
         });
         setLiveCandidates(candidates);
+        setTestFilter((current) =>
+          current && candidates.some((candidate: LiveCandidate) => candidate.testId === current)
+            ? current
+            : null
+        );
         setSelectedAttemptId((current) =>
           current && candidates.some((candidate: LiveCandidate) => candidate.attemptId === current)
             ? current
@@ -396,7 +407,17 @@ export default function LiveProctoring() {
     };
   }, [testId]);
 
+  const testOptions = Array.from(
+    liveCandidates.reduce((map, candidate) => {
+      if (candidate.testId && !map.has(candidate.testId)) {
+        map.set(candidate.testId, candidate.testName || 'Untitled test');
+      }
+      return map;
+    }, new Map<string, string>())
+  ).map(([id, name]) => ({ id, name }));
+
   const visibleCandidates = liveCandidates.filter(candidate => {
+    if (testFilter && candidate.testId !== testFilter) return false;
     const term = search.trim().toLowerCase();
     if (!term) return true;
     return `${candidate.name} ${candidate.role}`.toLowerCase().includes(term);
@@ -444,13 +465,88 @@ export default function LiveProctoring() {
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#34D399' }} />
             {liveCount} live
           </button>
-          <button
-            type="button"
-            className="admin-btn admin-btn-secondary"
-          >
-            All live sessions
-            <ChevronDown size={15} color="var(--admin-text-subtle)" />
-          </button>
+          <div style={{ position: 'relative' }}>
+            <button
+              type="button"
+              className="admin-btn admin-btn-secondary"
+              onClick={() => setTestMenuOpen((open) => !open)}
+            >
+              {testFilter ? testOptions.find((option) => option.id === testFilter)?.name || 'All live sessions' : 'All live sessions'}
+              <ChevronDown size={15} color="var(--admin-text-subtle)" />
+            </button>
+            {testMenuOpen && (
+              <>
+                <div
+                  onClick={() => setTestMenuOpen(false)}
+                  style={{ position: 'fixed', inset: 0, zIndex: 20 }}
+                />
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: 0,
+                    marginTop: '4px',
+                    zIndex: 30,
+                    minWidth: '220px',
+                    maxHeight: '280px',
+                    overflowY: 'auto',
+                    backgroundColor: 'white',
+                    border: '1px solid var(--admin-accent-disabled)',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.10)',
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => { setTestFilter(null); setTestMenuOpen(false); }}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      textAlign: 'left',
+                      padding: '9px 14px',
+                      background: testFilter === null ? 'var(--admin-accent-soft)' : 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      color: testFilter === null ? 'var(--admin-accent-hover)' : 'var(--admin-text)',
+                      fontWeight: testFilter === null ? 600 : 400,
+                    }}
+                  >
+                    All live sessions
+                  </button>
+                  {testOptions.length === 0 && (
+                    <div style={{ padding: '9px 14px', fontSize: '13px', color: 'var(--admin-text-subtle)' }}>
+                      No active tests right now
+                    </div>
+                  )}
+                  {testOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => { setTestFilter(option.id); setTestMenuOpen(false); }}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '9px 14px',
+                        background: testFilter === option.id ? 'var(--admin-accent-soft)' : 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        color: testFilter === option.id ? 'var(--admin-accent-hover)' : 'var(--admin-text)',
+                        fontWeight: testFilter === option.id ? 600 : 400,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {option.name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -531,7 +627,7 @@ export default function LiveProctoring() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
             gap: '16px',
           }}
         >

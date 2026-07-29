@@ -10,7 +10,13 @@ import {
   cancelDeleteAdminAccount,
   impersonateAdmin,
 } from '../controllers/superAdminAccounts.js';
-import { listFeatureFlags, toggleFeatureFlag } from '../controllers/superAdminFeatureFlags.js';
+import {
+  listFeatureFlags,
+  toggleFeatureFlag,
+  listAdminFeatureOverrides,
+  setAdminFeatureOverride,
+  clearAdminFeatureOverride,
+} from '../controllers/superAdminFeatureFlags.js';
 import {
   getActionLog,
   getAuditLog,
@@ -90,6 +96,9 @@ router.post('/accounts/:adminId/unlock', superAdminAuth, requireFullControl, unl
 // ---- Feature locks ----
 router.get('/features', superAdminAuth, listFeatureFlags);
 router.patch('/features/:key', superAdminAuth, requireFullControl, toggleFeatureFlag);
+router.get('/features/accounts/:adminId', superAdminAuth, listAdminFeatureOverrides);
+router.patch('/features/accounts/:adminId/:key', superAdminAuth, requireFullControl, setAdminFeatureOverride);
+router.delete('/features/accounts/:adminId/:key', superAdminAuth, requireFullControl, clearAdminFeatureOverride);
 
 // ---- Logs ----
 router.get('/logs/actions', superAdminAuth, getActionLog);
