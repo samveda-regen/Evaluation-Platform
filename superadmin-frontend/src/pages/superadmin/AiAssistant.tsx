@@ -9,6 +9,13 @@ interface DisplayMessage extends AssistantChatMessage {
   toolsUsed?: string[];
 }
 
+// crypto.randomUUID() only exists in a secure context (HTTPS or localhost) --
+// over plain http:// on a bare IP/hostname it's undefined, which would throw
+// here and silently kill send() before any message ever renders.
+function generateId(): string {
+  return typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+}
+
 const SUGGESTED_PROMPTS = [
   'What happened on the platform today?',
   'Is anything unusual in the last 24 hours?',
@@ -30,7 +37,7 @@ export default function SuperAdminAiAssistant() {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
 
-    const userMessage: DisplayMessage = { id: crypto.randomUUID(), role: 'user', content: trimmed };
+    const userMessage: DisplayMessage = { id: generateId(), role: 'user', content: trimmed };
     const history = messages.map(({ role, content }) => ({ role, content }));
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
@@ -40,7 +47,7 @@ export default function SuperAdminAiAssistant() {
       const { data } = await superAdminApi.chatWithAssistant(trimmed, history);
       setMessages((prev) => [
         ...prev,
-        { id: crypto.randomUUID(), role: 'assistant', content: data.reply, toolsUsed: data.toolsUsed },
+        { id: generateId(), role: 'assistant', content: data.reply, toolsUsed: data.toolsUsed },
       ]);
     } catch (error: unknown) {
       const message =
