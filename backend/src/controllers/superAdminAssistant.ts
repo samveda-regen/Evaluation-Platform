@@ -25,9 +25,18 @@ Rules:
 
 let anthropicClient: Anthropic | null = null;
 function getClient(): Anthropic | null {
-  // Reuses the same Anthropic key already configured for the AI test
-  // generator (see testAgentService.ts) rather than requiring a second key.
-  const apiKey = process.env.ANTHROPIC_API_KEY || process.env.LLM_API_KEY;
+  // Deliberately its own key, separate from LLM_API_KEY (used by the AI test
+  // generator) -- keeps the assistant's usage/spend isolated and trackable
+  // on its own billing line. Only Anthropic is supported today: the tool-use
+  // loop below is written directly against the Anthropic SDK's tool_use
+  // blocks, not the provider-agnostic llmService.ts.
+  const provider = (process.env.SUPERADMIN_LLM_PROVIDER || 'anthropic').toLowerCase();
+  if (provider !== 'anthropic') {
+    console.error(`Superadmin assistant only supports "anthropic"; SUPERADMIN_LLM_PROVIDER is set to "${provider}".`);
+    return null;
+  }
+
+  const apiKey = process.env.SUPERADMIN_LLM_API_KEY;
   if (!apiKey) return null;
   if (!anthropicClient) {
     anthropicClient = new Anthropic({ apiKey });
@@ -59,7 +68,7 @@ export async function chatWithAssistant(req: AuthenticatedRequest, res: Response
   if (!client) {
     res.status(503).json({
       error: 'assistant_unavailable',
-      message: 'ANTHROPIC_API_KEY is not configured on the server.',
+      message: 'SUPERADMIN_LLM_API_KEY is not configured on the server.',
     });
     return;
   }
