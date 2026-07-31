@@ -43,6 +43,10 @@ async function logLoginAttempt(params: {
   }
 }
 
+function getFrontendUrl(): string {
+  return (process.env.FRONTEND_URL || 'https://humint.talentsatq.ai').replace(/\/+$/, '');
+}
+
 export async function registerAdmin(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { email, password, name, companyName, companyId } = req.body;
@@ -145,7 +149,7 @@ export async function registerAdminFromIntegration(req: AuthenticatedRequest, re
       },
     });
 
-    const frontendUrl = process.env.FRONTEND_URL || 'https://humint.talentsatq.ai';
+    const frontendUrl = getFrontendUrl();
     try {
       await sendAdminWelcomeEmail({
         to: sanitizedEmail,
@@ -429,7 +433,7 @@ export async function forgotPassword(req: AuthenticatedRequest, res: Response): 
         data: { resetPasswordTokenHash: tokenHash, resetPasswordExpiresAt: expiresAt }
       });
 
-      const frontendUrl = process.env.FRONTEND_URL || 'https://humint.talentsatq.ai';
+      const frontendUrl = getFrontendUrl();
       const resetUrl = `${frontendUrl}/admin/reset-password?token=${rawToken}`;
 
       try {
