@@ -9,6 +9,7 @@ import IDVerification from '../../components/IDVerification';
 import { clearCachedStreams, getCachedStreams, setCachedStreams } from '../../services/devicePermissionService';
 import { requestScreenShare, ScreenShareSurfaceError } from '../../services/proctorService';
 import { DEFAULT_CUSTOM_AI_VIOLATIONS, normalizeCustomAIViolationSelection } from '../../constants/customAIViolations';
+import { requestFullscreen } from '../../utils/fullscreen';
 import talentstaQLogo from '../../assets/assessment-icons/icons/Talentstaq logo dark.svg';
 
 interface TestDetails {
@@ -152,6 +153,8 @@ export default function TestInstructions() {
         return;
       }
     }
+
+    requestFullscreen();
 
     setStarting(true);
     try {

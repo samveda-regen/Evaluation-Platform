@@ -1062,7 +1062,14 @@ export default function TestDetails() {
                       const dc = diffMap[diff] || diffMap.medium;
 
                       const subtitle = q.questionType === 'mcq'
-                        ? `${q.mcqQuestion?.options?.length ?? 4} options`
+                        ? (() => {
+                            const raw = q.mcqQuestion?.options;
+                            if (!raw) return '4 options';
+                            try {
+                              const arr = typeof raw === 'string' ? JSON.parse(raw) : raw;
+                              return `${Array.isArray(arr) ? arr.length : 4} options`;
+                            } catch { return '4 options'; }
+                          })()
                         : q.questionType === 'coding'
                         ? (() => {
                             try {

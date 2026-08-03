@@ -16,6 +16,7 @@ import {
   normalizeCustomAIViolationSelection,
 } from '../../constants/customAIViolations';
 import talentstaQLogoLight from '../../assets/assessment-icons/icons/TalentstaQ logo-light.svg';
+import { requestFullscreen, isFullscreenActive } from '../../utils/fullscreen';
 
 const HIGH_PRIORITY_VIOLATIONS = new Set([
   'multiple_faces', 'phone_detected', 'looking_away', 'tab_switch',
@@ -83,12 +84,12 @@ export default function TestInterface() {
   const [runningCode, setRunningCode] = useState(false);
   const [showConfirmSubmit, setShowConfirmSubmit] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
-  const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const [showYellowWarning, setShowYellowWarning] = useState(false);
   const [yellowWarningMessage, setYellowWarningMessage] = useState('');
   const [faceFrozen, setFaceFrozen] = useState(false);
   const [policyPaused, setPolicyPaused] = useState(false);
   const [policyPauseReason, setPolicyPauseReason] = useState('');
+  const [needsFullscreenGesture, setNeedsFullscreenGesture] = useState(false);
   // New state for redesigned UI
   const [markedForReview, setMarkedForReview] = useState<Set<number>>(new Set());
   const [autoSaved, setAutoSaved] = useState(false);
@@ -103,7 +104,6 @@ export default function TestInterface() {
   const autoSaveRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cameraPreviewRef = useRef<HTMLVideoElement | null>(null);
   const networkBtnRef = useRef<HTMLButtonElement | null>(null);
-  const isFullscreenRef = useRef(false);
   const lastViolationAtRef = useRef<Record<string, number>>({});
   const proctorInitHandledRef = useRef(false);
   const antiCheatArmedRef = useRef(false);
@@ -309,37 +309,6 @@ export default function TestInterface() {
   }, [startTime, duration, isSubmitted, autoSubmitOnTimeout]);
 
   useEffect(() => {
-    const requestFullscreen = async () => {
-      try {
-        await document.documentElement.requestFullscreen();
-        isFullscreenRef.current = true;
-        setShowFullscreenPrompt(false);
-      } catch {
-        setShowFullscreenPrompt(true);
-        isFullscreenRef.current = false;
-      }
-    };
-    setTimeout(requestFullscreen, 500);
-    return () => { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); };
-  }, []);
-
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      if (!document.fullscreenElement && isFullscreenRef.current && !isSubmitted) {
-        // Show the "Continue in Fullscreen" prompt immediately from the local browser
-        // event — don't wait on handleViolation's network round trip (which includes a
-        // synchronous snapshot upload on the backend and can take several seconds) just
-        // to reflect state we already know locally.
-        setShowFullscreenPrompt(true);
-        handleViolation('fullscreen_exit', 'You exited full-screen mode');
-      }
-      isFullscreenRef.current = !!document.fullscreenElement;
-    };
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, [isSubmitted]);
-
-  useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden && !isSubmitted) {
         hiddenAtRef.current = Date.now();
@@ -352,6 +321,37 @@ export default function TestInterface() {
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [isSubmitted]);
+
+  useEffect(() => {
+    if (isSubmitted) return;
+    if (isFullscreenActive()) {
+      setNeedsFullscreenGesture(false);
+    } else {
+      // A programmatic call here only succeeds if this mount was triggered by a
+      // user gesture (e.g. the Start Test click) that hasn't expired yet. If it
+      // silently fails (direct URL load, refresh, manual exit), fall back to
+      // prompting for a click — the browser requires one to grant fullscreen.
+      requestFullscreen();
+      setTimeout(() => { if (!isFullscreenActive()) setNeedsFullscreenGesture(true); }, 250);
+    }
+    const handleFullscreenChange = () => {
+      if (isSubmitted) return;
+      if (isFullscreenActive()) {
+        setNeedsFullscreenGesture(false);
+      } else {
+        handleViolation('fullscreen_exit', 'You exited fullscreen mode');
+        setNeedsFullscreenGesture(true);
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
+    };
   }, [isSubmitted]);
 
   useEffect(() => {
@@ -503,17 +503,8 @@ export default function TestInterface() {
         socket.emit('candidate-activity', { testId, activity: { attemptId, eventType: normalizedEventType, message, timestamp: new Date().toISOString() } });
       }
       if (response.data.autoSubmit === true) handleAutoSubmit();
-      else if (!document.fullscreenElement) setShowFullscreenPrompt(true);
     } catch (error) { console.error('Failed to log activity:', error); }
   }, [incrementViolations, isSubmitted, captureEvidenceFrame, isViolationEnabled, violationPopupSettings, triggerPolicyPause]);
-
-  const handleReenterFullscreen = async () => {
-    try {
-      await document.documentElement.requestFullscreen();
-      isFullscreenRef.current = true;
-      setShowFullscreenPrompt(false);
-    } catch { toast.error('Please enable fullscreen to continue the test'); }
-  };
 
   const [resumingScreenShare, setResumingScreenShare] = useState(false);
   const handleResumeScreenShare = async () => {
@@ -886,19 +877,25 @@ export default function TestInterface() {
         </div>
       )}
 
-      {/* Fullscreen prompt */}
-      {showFullscreenPrompt && (
-        <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50">
+      {/* Fullscreen gesture prompt — browsers only grant requestFullscreen() in
+          direct response to a click, so this covers direct URL loads, refreshes,
+          and manual exits where the automatic request had no gesture to use. */}
+      {needsFullscreenGesture && !isSubmitted && (
+        <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-[80]">
           <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl">
             <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: '#FEF2F2' }}>
               <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V6a2 2 0 012-2h2M4 16v2a2 2 0 002 2h2m8-16h2a2 2 0 012 2v2m-4 12h2a2 2 0 002-2v-2" />
               </svg>
             </div>
             <h2 className="text-lg font-bold text-gray-900 mb-2">Fullscreen Required</h2>
-            <p className="text-sm text-gray-500 mb-6">You exited fullscreen. Click below to continue your test.</p>
-            <button onClick={handleReenterFullscreen} className="w-full py-3 rounded-xl font-semibold text-white text-sm" style={{ background: 'var(--admin-accent)' }}>
-              Continue in Fullscreen
+            <p className="text-sm text-gray-500 mb-6">This test must be taken in fullscreen mode. Click below to continue.</p>
+            <button
+              onClick={() => requestFullscreen()}
+              className="w-full py-3 rounded-xl font-semibold text-white text-sm"
+              style={{ background: 'var(--admin-accent)' }}
+            >
+              Enter Fullscreen
             </button>
           </div>
         </div>

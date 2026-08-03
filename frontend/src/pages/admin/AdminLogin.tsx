@@ -27,7 +27,7 @@ export default function AdminLogin() {
     try {
       if (isLogin) {
         const { data } = await adminApi.login({ email, password });
-        setAdmin(data.admin, data.token);
+        setAdmin(data.admin, data.token, rememberMe);
         toast.success('Login successful');
         navigate('/admin/dashboard');
       } else {
@@ -39,7 +39,7 @@ export default function AdminLogin() {
           companyId: companyId.trim() || undefined,
         });
 
-        setAdmin(data.admin, data.token);
+        setAdmin(data.admin, data.token, true);
         toast.success('Registration successful');
         navigate('/admin/dashboard');
       }

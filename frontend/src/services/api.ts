@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import { toast } from 'react-hot-toast';
-import { useAuthStore } from '../context/authStore';
+import { useAuthStore, getAdminToken } from '../context/authStore';
 import type {
   RepositoryCategory,
   RepositoryListResponse,
@@ -42,7 +42,7 @@ api.interceptors.request.use((config) => {
     }
   }
 
-  const adminToken = localStorage.getItem('adminToken');
+  const adminToken = getAdminToken();
   const candidateToken = localStorage.getItem('candidateToken');
 
   const url = config.url || '';
@@ -90,7 +90,7 @@ api.interceptors.response.use(
         url.startsWith('/proctoring/admin') ||
         url.startsWith('/verification/admin');
       const isPublicAdminAuthRoute = ADMIN_PUBLIC_AUTH_PATHS.some((path) => url.startsWith(path));
-      const hadAdminToken = !!localStorage.getItem('adminToken');
+      const hadAdminToken = !!getAdminToken();
 
       if (isAdminRoute && !isPublicAdminAuthRoute && hadAdminToken) {
         // The admin's token was rejected on a route that requires one - either
@@ -104,6 +104,7 @@ api.interceptors.response.use(
         // Not an authenticated-session case (e.g. a failed login attempt) -
         // just clear any stale tokens and let the caller handle its own error.
         localStorage.removeItem('adminToken');
+        sessionStorage.removeItem('adminToken');
         localStorage.removeItem('candidateToken');
       }
     }

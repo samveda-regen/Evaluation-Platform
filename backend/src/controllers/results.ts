@@ -946,7 +946,7 @@ export async function getDashboardStats(req: AuthenticatedRequest, res: Response
         where: { test: { adminId } },
         include: {
           candidate: { select: { name: true, email: true } },
-          test: { select: { name: true } }
+          test: { select: { name: true, totalMarks: true } }
         },
         orderBy: { startTime: 'desc' },
         take: 10

@@ -521,7 +521,7 @@ export default function AttemptDetails() {
               { k: 'Submitted',    v: attempt.submittedAt ? format(new Date(attempt.submittedAt), 'hh:mm a') : '-' },
               { k: 'Duration',     v: duration },
               { k: 'Questions',    v: `${totalQs} / ${totalQs}` },
-              { k: 'Score',        v: `${scoreRaw} / ${test.totalMarks}` },
+              { k: 'Score',        v: `${scorePct}%` },
               { k: 'Violations',   v: String(attempt.violations) },
             ].map(({ k, v }) => (
               <div key={k} style={{ display:'flex', justifyContent:'space-between', marginBottom:'8px' }}>
