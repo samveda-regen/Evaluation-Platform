@@ -103,9 +103,8 @@ api.interceptors.response.use(
       } else {
         // Not an authenticated-session case (e.g. a failed login attempt) -
         // just clear any stale tokens and let the caller handle its own error.
-        localStorage.removeItem('adminToken');
-        sessionStorage.removeItem('adminToken');
-        localStorage.removeItem('candidateToken');
+        useAuthStore.getState().logoutAdmin();
+        useAuthStore.getState().logoutCandidate();
       }
     }
     return Promise.reject(error);

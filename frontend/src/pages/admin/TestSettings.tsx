@@ -487,7 +487,7 @@ export default function TestSettings() {
                 </div>
 
                 <div>
-                  <label style={labelSx}>Timer (minutes)</label>
+                  <label style={labelSx}> Duration (minutes)</label>
                   <input type="number" min={1}
                     value={form.duration}
                     onChange={e => {

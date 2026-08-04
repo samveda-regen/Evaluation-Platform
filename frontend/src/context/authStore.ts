@@ -17,18 +17,25 @@ interface AuthState {
 // Reads/clears check both so an existing session works regardless of which
 // one it was written to.
 function getAdminStorage(): Storage {
-  return sessionStorage.getItem('adminToken') ? sessionStorage : localStorage;
+  return localStorage.getItem('adminToken') ? localStorage : sessionStorage;
 }
 
 export function getAdminToken(): string | null {
   return localStorage.getItem('adminToken') || sessionStorage.getItem('adminToken');
 }
 
-function clearAdminStorage() {
+export function clearAdminStorage() {
   localStorage.removeItem('adminToken');
   localStorage.removeItem('adminUser');
   sessionStorage.removeItem('adminToken');
   sessionStorage.removeItem('adminUser');
+}
+
+export function clearCandidateStorage() {
+  localStorage.removeItem('candidateToken');
+  localStorage.removeItem('candidateUser');
+  sessionStorage.removeItem('candidateToken');
+  sessionStorage.removeItem('candidateUser');
 }
 
 const storedAdmin = (() => {
@@ -48,32 +55,31 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   setAdmin: (admin, token, remember) => {
     const storage = remember === undefined ? getAdminStorage() : (remember ? localStorage : sessionStorage);
-    if (token) {
+    if (!admin) {
       clearAdminStorage();
-      storage.setItem('adminToken', token);
-    }
-    if (admin) {
-      storage.setItem('adminUser', JSON.stringify(admin));
     } else {
-      clearAdminStorage();
+      if (token) {
+        clearAdminStorage();
+        storage.setItem('adminToken', token);
+      }
+      storage.setItem('adminUser', JSON.stringify(admin));
     }
     set({ admin, isAdminAuthenticated: !!admin });
   },
-
-  setCandidate: (candidate, token) => {
+   setCandidate: (candidate, token) => {
     if (token) {
       localStorage.setItem('candidateToken', token);
     }
     set({ candidate, isCandidateAuthenticated: !!candidate });
   },
-
+  
   logoutAdmin: () => {
     clearAdminStorage();
     set({ admin: null, isAdminAuthenticated: false });
   },
 
   logoutCandidate: () => {
-    localStorage.removeItem('candidateToken');
+    clearCandidateStorage();
     set({ candidate: null, isCandidateAuthenticated: false });
   }
 }));

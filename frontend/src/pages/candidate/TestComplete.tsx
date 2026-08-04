@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTestStore } from '../../context/testStore';
 import { useAuthStore } from '../../context/authStore';
@@ -35,6 +35,12 @@ export default function TestComplete() {
   } = useTestStore();
 
   const [submittedAt] = useState(() => formatSubmittedAt());
+
+  useEffect(() => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
+  }, []);
 
   const answeredCount = questions.filter((q) => {
     if (q.type === 'mcq') return (mcqAnswers[q.questionId]?.length || 0) > 0;
