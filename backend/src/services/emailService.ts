@@ -8,7 +8,7 @@ export const DEFAULT_INVITE_BODY = `Hello {{candidate_name}},
 You have been invited to take the test: {{test_name}}.
 This test is designed to evaluate your skills and experience.
 
-Exam date: {{exam_date}}
+Exam date: {{exam_start}} to {{exam_end}}
 
 Click the button below to get started:
 
@@ -59,7 +59,8 @@ interface TemplateVars {
   estimated_time: string;
   test_link: string;
   access_code: string;
-  exam_date: string;
+  exam_start: string;
+  exam_end: string;
   closes_at: string;
 }
 
@@ -71,7 +72,8 @@ function applyTemplate(template: string, vars: TemplateVars): string {
     .replace(/\{\{estimated_time\}\}/g, vars.estimated_time)
     .replace(/\{\{test_link\}\}/g,      vars.test_link)
     .replace(/\{\{access_code\}\}/g,    vars.access_code)
-    .replace(/\{\{exam_date\}\}/g,      vars.exam_date)
+    .replace(/\{\{exam_start\}\}/g,     vars.exam_start)
+    .replace(/\{\{exam_end\}\}/g,       vars.exam_end)
     .replace(/\{\{closes_at\}\}/g,      vars.closes_at);
 }
 
@@ -97,7 +99,8 @@ interface InvitationEmailPayload {
   accessCode: string;
   companyName?: string;
   estimatedTime?: string;
-  examDate?: string;
+  examStart?: string;
+  examEnd?: string;
   // custom templates (if set on the test)
   inviteEmailSubject?: string | null;
   inviteEmailBody?: string | null;
@@ -392,7 +395,8 @@ function buildInviteText(payload: InvitationEmailPayload): string {
     estimated_time: payload.estimatedTime || 'some time',
     test_link:      payload.testLink,
     access_code:    payload.accessCode,
-    exam_date:      payload.examDate || 'To be announced',
+    exam_start:     payload.examStart || 'To be announced',
+    exam_end:       payload.examEnd || 'To be announced',
     closes_at:      '',
   });
 }
@@ -406,7 +410,8 @@ function buildInviteSubject(payload: InvitationEmailPayload): string {
     estimated_time: payload.estimatedTime || 'some time',
     test_link:      payload.testLink,
     access_code:    payload.accessCode,
-    exam_date:      payload.examDate || 'To be announced',
+    exam_start:     payload.examStart || 'To be announced',
+    exam_end:       payload.examEnd || 'To be announced',
     closes_at:      '',
   });
 }
@@ -428,7 +433,8 @@ function buildReminderText(payload: ReminderEmailPayload): string {
     estimated_time: payload.estimatedTime || 'some time',
     test_link:      payload.testLink,
     access_code:    payload.accessCode,
-    exam_date:      '',
+    exam_start:     '',
+    exam_end:       '',
     closes_at:      payload.closesAt,
   });
 }
@@ -442,7 +448,8 @@ function buildReminderSubject(payload: ReminderEmailPayload): string {
     estimated_time: payload.estimatedTime || 'some time',
     test_link:      payload.testLink,
     access_code:    payload.accessCode,
-    exam_date:      '',
+    exam_start:     '',
+    exam_end:       '',
     closes_at:      payload.closesAt,
   });
 }
@@ -464,7 +471,8 @@ function buildConfirmText(payload: ConfirmationEmailPayload): string {
     estimated_time: '',
     test_link:      '',
     access_code:    '',
-    exam_date:      '',
+    exam_start:     '',
+    exam_end:       '',
     closes_at:      '',
   });
 }
@@ -478,7 +486,8 @@ function buildConfirmSubject(payload: ConfirmationEmailPayload): string {
     estimated_time: '',
     test_link:      '',
     access_code:    '',
-    exam_date:      '',
+    exam_start:     '',
+    exam_end:       '',
     closes_at:      '',
   });
 }

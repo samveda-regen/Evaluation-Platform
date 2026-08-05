@@ -38,12 +38,13 @@ const AVAILABLE_VARS = [
   { key: '{{test_name}}',      desc: 'Name of the test' },
   { key: '{{company_name}}',   desc: 'Your company name' },
   { key: '{{estimated_time}}', desc: 'Test duration' },
-  { key: '{{exam_date}}',      desc: 'Scheduled exam date & time (invite email only)' },
+  { key: '{{exam_start}}',     desc: 'Exam opens date & time (invite email only)' },
+  { key: '{{exam_end}}',       desc: 'Exam closes date & time (invite email only)' },
   { key: '{{test_link}}',      desc: 'Invite URL — same link originally sent (invite & reminder emails)' },
   { key: '{{access_code}}',    desc: 'Access code (invite & reminder emails)' },
   { key: '{{closes_at}}',      desc: 'When the access window closes (reminder email only)' },
 ];
-const INVITE_ONLY_VAR_KEYS = new Set(['{{exam_date}}']);
+const INVITE_ONLY_VAR_KEYS = new Set(['{{exam_start}}', '{{exam_end}}']);
 const REMINDER_ONLY_VAR_KEYS = new Set(['{{closes_at}}']);
 const INVITE_AND_REMINDER_VAR_KEYS = new Set(['{{test_link}}', '{{access_code}}']);
 
