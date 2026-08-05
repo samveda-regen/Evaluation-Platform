@@ -20,7 +20,7 @@ interface RecentAttempt {
   score?: number;
   reviewed?: boolean;
   candidate: { name: string; email: string };
-  test: { name: string };
+  test: { name: string; totalMarks: number };
 }
 
 const AVATAR_COLORS = [
@@ -602,7 +602,7 @@ export default function AdminDashboard() {
                     </td>
                     <td className="py-3 pr-4">
                       <p className="text-sm font-medium" style={{ color: 'var(--admin-text)' }}>
-                        {attempt.score != null ? `${attempt.score}%` : '-'}
+                        {attempt.score != null && attempt.test.totalMarks > 0 ? `${Math.round((attempt.score / attempt.test.totalMarks) * 100)}%` : '-'}
                       </p>
                     </td>
                     {/* Individual attempt ? /admin/attempts/:id */}
