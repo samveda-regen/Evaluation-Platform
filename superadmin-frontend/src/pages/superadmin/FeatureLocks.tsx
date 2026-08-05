@@ -104,7 +104,7 @@ export default function SuperAdminFeatureLocks() {
       />
 
       <div className="flex items-center justify-between gap-3 mb-4">
-        <span className="font-mono text-[11px] uppercase tracking-[0.1em] text-sa-ink-faint">Scope</span>
+        <span className="text-[11px] text-sa-ink-faint">Scope</span>
         <Select
           value={selectedAccountId}
           onChange={setSelectedAccountId}
@@ -125,10 +125,10 @@ export default function SuperAdminFeatureLocks() {
             {flags?.map((flag) => (
               <div key={flag.key} className="flex items-center gap-3.5 py-3.5 border-b border-sa-line-soft last:border-0">
                 <div
-                  className={`shrink-0 h-8 w-8 rounded-sm border flex items-center justify-center ${
+                  className={`shrink-0 h-8 w-8 rounded-lg border flex items-center justify-center ${
                     flag.enabled
                       ? 'border-sa-line text-sa-ink-dim bg-sa-panel-inset'
-                      : 'border-sa-critical/40 text-sa-critical bg-sa-critical-soft shadow-glow-red'
+                      : 'border-sa-critical/40 text-sa-critical bg-sa-critical-soft'
                   }`}
                 >
                   {flag.enabled ? <LockOpen size={14} /> : <Lock size={14} />}
@@ -138,7 +138,7 @@ export default function SuperAdminFeatureLocks() {
                   {flag.description && <div className="text-[11.5px] text-sa-ink-faint mt-0.5">{flag.description}</div>}
                 </div>
                 <span
-                  className={`font-mono text-[10.5px] uppercase tracking-[0.08em] ${
+                  className={`text-[10.5px] font-medium ${
                     flag.enabled ? 'text-sa-good' : 'text-sa-critical'
                   }`}
                 >
@@ -160,10 +160,10 @@ export default function SuperAdminFeatureLocks() {
             {accountFlags?.map((flag) => (
               <div key={flag.key} className="flex items-center gap-3.5 py-3.5 border-b border-sa-line-soft last:border-0">
                 <div
-                  className={`shrink-0 h-8 w-8 rounded-sm border flex items-center justify-center ${
+                  className={`shrink-0 h-8 w-8 rounded-lg border flex items-center justify-center ${
                     flag.effectiveEnabled
                       ? 'border-sa-line text-sa-ink-dim bg-sa-panel-inset'
-                      : 'border-sa-critical/40 text-sa-critical bg-sa-critical-soft shadow-glow-red'
+                      : 'border-sa-critical/40 text-sa-critical bg-sa-critical-soft'
                   }`}
                 >
                   {flag.effectiveEnabled ? <LockOpen size={14} /> : <Lock size={14} />}
@@ -171,7 +171,7 @@ export default function SuperAdminFeatureLocks() {
                 <div className="min-w-0 flex-1">
                   <div className="text-[13px] text-sa-ink">{flag.label}</div>
                   {flag.description && <div className="text-[11.5px] text-sa-ink-faint mt-0.5">{flag.description}</div>}
-                  <div className="text-[11px] text-sa-ink-faint mt-0.5 font-mono">
+                  <div className="text-[11px] text-sa-ink-faint mt-0.5">
                     {flag.overrideEnabled === null
                       ? `Following platform default (${flag.globalEnabled ? 'unlocked' : 'locked'})`
                       : 'Custom override for this account'}
@@ -183,13 +183,13 @@ export default function SuperAdminFeatureLocks() {
                     onClick={() => resetAccountOverride(flag)}
                     disabled={pending === flag.key}
                     title="Reset to platform default"
-                    className="shrink-0 h-8 w-8 rounded-sm border border-sa-line text-sa-ink-faint hover:text-sa-accent hover:border-sa-accent/50 flex items-center justify-center transition-colors disabled:opacity-50"
+                    className="shrink-0 h-8 w-8 rounded-lg border border-sa-line text-sa-ink-faint hover:text-sa-accent hover:border-sa-accent/50 flex items-center justify-center transition-colors disabled:opacity-50"
                   >
                     <RotateCcw size={13} />
                   </button>
                 )}
                 <span
-                  className={`font-mono text-[10.5px] uppercase tracking-[0.08em] ${
+                  className={`text-[10.5px] font-medium ${
                     flag.effectiveEnabled ? 'text-sa-good' : 'text-sa-critical'
                   }`}
                 >

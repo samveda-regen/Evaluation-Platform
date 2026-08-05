@@ -83,7 +83,7 @@ function TwoFactorCard() {
           <p className="text-[12.5px] text-sa-ink-dim">
             Scan with an authenticator app (Google Authenticator, 1Password, Authy), then enter the 6-digit code to confirm.
           </p>
-          <div className="bg-white p-3 rounded-sm w-fit">
+          <div className="bg-white p-3 rounded-lg w-fit">
             <QRCode value={enrolling.otpauthUrl} size={140} />
           </div>
           <p className="font-mono text-[11px] text-sa-ink-faint break-all">Manual entry: {enrolling.secret}</p>
@@ -95,20 +95,20 @@ function TwoFactorCard() {
             value={code}
             onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
             placeholder="000000"
-            className="w-40 bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2 text-sm text-sa-ink outline-none focus:border-sa-accent transition-all font-mono tracking-[0.3em] text-center"
+            className="w-40 bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2 text-sm text-sa-ink outline-none focus:border-sa-accent transition-colors font-mono tracking-[0.3em] text-center"
           />
           <div className="flex gap-2">
             <button
               type="submit"
               disabled={busy}
-              className="font-mono text-[12px] uppercase tracking-wide px-3.5 py-2 rounded-sm bg-sa-accent text-sa-void font-bold shadow-glow-cyan disabled:opacity-60 transition-all"
+              className="text-[13px] px-3.5 py-2 rounded-lg bg-sa-accent text-white font-semibold disabled:opacity-60 transition-colors"
             >
               Confirm
             </button>
             <button
               type="button"
               onClick={() => setEnrolling(null)}
-              className="font-mono text-[12px] uppercase tracking-wide px-3.5 py-2 rounded-sm border border-sa-line text-sa-ink-dim transition-all"
+              className="text-[13px] px-3.5 py-2 rounded-lg border border-sa-line text-sa-ink-dim hover:text-sa-ink hover:border-sa-line-bright transition-colors"
             >
               Cancel
             </button>
@@ -127,12 +127,12 @@ function TwoFactorCard() {
               value={disableCode}
               onChange={(e) => setDisableCode(e.target.value.replace(/\D/g, ''))}
               placeholder="000000"
-              className="w-40 bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2 text-sm text-sa-ink outline-none focus:border-sa-critical transition-all font-mono tracking-[0.3em] text-center"
+              className="w-40 bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2 text-sm text-sa-ink outline-none focus:border-sa-critical transition-colors font-mono tracking-[0.3em] text-center"
             />
             <button
               type="submit"
               disabled={busy}
-              className="inline-flex items-center gap-1.5 font-mono text-[12px] uppercase tracking-wide px-3.5 py-2 rounded-sm border border-sa-critical/40 text-sa-critical hover:shadow-glow-red transition-all disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 text-[13px] px-3.5 py-2 rounded-lg border border-sa-critical/40 text-sa-critical hover:bg-sa-critical-soft transition-colors disabled:opacity-60"
             >
               <ShieldOff size={14} /> Disable
             </button>
@@ -144,7 +144,7 @@ function TwoFactorCard() {
           <button
             onClick={() => void startSetup()}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 font-mono text-[12px] uppercase tracking-wide px-3.5 py-2 rounded-sm bg-sa-accent text-sa-void font-bold shadow-glow-cyan disabled:opacity-60 transition-all"
+            className="inline-flex items-center gap-1.5 text-[13px] px-3.5 py-2 rounded-lg bg-sa-accent text-white font-semibold disabled:opacity-60 transition-colors"
           >
             <ShieldCheck size={14} /> Enable 2FA
           </button>
@@ -222,17 +222,17 @@ function IpAllowlistCard() {
           placeholder="e.g. 203.0.113.4 or 203.0.113.0/24"
           value={cidrOrIp}
           onChange={(e) => setCidrOrIp(e.target.value)}
-          className="flex-1 bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent transition-all font-mono"
+          className="flex-1 bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent transition-colors font-mono"
         />
         <input
           placeholder="Label (optional)"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-          className="w-40 bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent transition-all font-mono"
+          className="w-40 bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent transition-colors"
         />
         <button
           type="submit"
-          className="shrink-0 inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-wide text-sa-accent border border-sa-accent/40 rounded-sm px-2.5 hover:shadow-glow-cyan-sm transition-all"
+          className="shrink-0 inline-flex items-center gap-1 text-[12.5px] text-sa-accent border border-sa-accent/40 rounded-lg px-2.5 hover:bg-sa-accent-soft transition-colors"
         >
           <Plus size={13} /> Add
         </button>
@@ -240,7 +240,7 @@ function IpAllowlistCard() {
 
       <div className="space-y-1.5">
         {entries?.map((entry) => (
-          <div key={entry.id} className="flex items-center justify-between bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2">
+          <div key={entry.id} className="flex items-center justify-between bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2">
             <div>
               <span className="font-mono text-[12.5px] text-sa-ink">{entry.cidrOrIp}</span>
               {entry.label && <span className="ml-2 text-[11px] text-sa-ink-faint">{entry.label}</span>}
@@ -321,20 +321,20 @@ function TeamCard() {
       meta={
         <button
           onClick={() => setShowForm((v) => !v)}
-          className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wide text-sa-accent hover:shadow-glow-cyan-sm border border-sa-accent/40 rounded-full px-2.5 py-1 transition-all"
+          className="inline-flex items-center gap-1.5 text-[12.5px] text-sa-accent hover:bg-sa-accent-soft border border-sa-accent/40 rounded-full px-2.5 py-1 transition-colors"
         >
           <Plus size={12} /> Add member
         </button>
       }
     >
       {showForm && (
-        <form onSubmit={createMember} className="grid grid-cols-2 gap-2 mb-4 p-3 border border-sa-line rounded-sm bg-sa-panel-inset">
+        <form onSubmit={createMember} className="grid grid-cols-2 gap-2 mb-4 p-3 border border-sa-line rounded-lg bg-sa-panel-inset">
           <input
             required
             placeholder="Name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="bg-sa-panel border border-sa-line rounded-sm px-2.5 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent font-mono"
+            className="bg-sa-panel border border-sa-line rounded-lg px-2.5 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent"
           />
           <input
             required
@@ -342,7 +342,7 @@ function TeamCard() {
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="bg-sa-panel border border-sa-line rounded-sm px-2.5 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent font-mono"
+            className="bg-sa-panel border border-sa-line rounded-lg px-2.5 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent"
           />
           <input
             required
@@ -351,19 +351,19 @@ function TeamCard() {
             minLength={12}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="bg-sa-panel border border-sa-line rounded-sm px-2.5 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent font-mono"
+            className="bg-sa-panel border border-sa-line rounded-lg px-2.5 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent"
           />
           <select
             value={role}
             onChange={(e) => setRole(e.target.value as 'full_control' | 'read_only')}
-            className="bg-sa-panel border border-sa-line rounded-sm px-2.5 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent font-mono"
+            className="bg-sa-panel border border-sa-line rounded-lg px-2.5 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent"
           >
             <option value="read_only">Read-only observer</option>
             <option value="full_control">Full control</option>
           </select>
           <button
             type="submit"
-            className="col-span-2 font-mono text-[12px] uppercase tracking-wide px-3.5 py-2 rounded-sm bg-sa-accent text-sa-void font-bold shadow-glow-cyan transition-all"
+            className="col-span-2 text-[13px] px-3.5 py-2 rounded-lg bg-sa-accent text-white font-semibold transition-colors"
           >
             Create
           </button>
@@ -372,10 +372,10 @@ function TeamCard() {
 
       <div className="space-y-1.5">
         {team?.map((member) => (
-          <div key={member.id} className="flex items-center justify-between bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2.5">
+          <div key={member.id} className="flex items-center justify-between bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2.5">
             <div>
               <div className="text-[13px] text-sa-ink">{member.name}</div>
-              <div className="font-mono text-[11px] text-sa-ink-faint">{member.email}</div>
+              <div className="text-[11px] text-sa-ink-faint">{member.email}</div>
             </div>
             <div className="flex items-center gap-2">
               <StatusPill tone={member.role === 'full_control' ? 'good' : 'dim'}>

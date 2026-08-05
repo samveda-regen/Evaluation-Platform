@@ -70,20 +70,18 @@ export default function SuperAdminAiAssistant() {
     <div className="flex flex-col h-[calc(100vh-7.5rem)]">
       <PageHeader
         title="AI Assistant"
-        description="Ask the Observer anything about admin activity, audit history, or platform health — every answer is backed by a live query, never guessed."
+        description="Ask ReGen anything about admin activity, audit history, or platform health — every answer is backed by a live query, never guessed."
       />
 
-      <div className="flex-1 min-h-0 bg-sa-panel-raised border border-sa-line rounded-sm flex flex-col overflow-hidden relative">
-        <span className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-sa-accent to-transparent" />
-
+      <div className="flex-1 min-h-0 bg-sa-panel-raised border border-sa-line rounded-xl flex flex-col overflow-hidden relative">
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
           {messages.length === 0 && (
             <div className="h-full flex flex-col items-center justify-center text-center gap-5">
-              <div className="h-12 w-12 rounded-full bg-sa-accent-soft border border-sa-accent/40 flex items-center justify-center shadow-glow-cyan-sm">
+              <div className="h-12 w-12 rounded-full bg-sa-accent-soft border border-sa-accent/40 flex items-center justify-center">
                 <Sparkles size={20} className="text-sa-accent" />
               </div>
               <div>
-                <p className="text-sa-ink font-mono text-sm">Observer Assistant online</p>
+                <p className="text-sa-ink text-sm">ReGen Assistant online</p>
                 <p className="text-sa-ink-faint text-[12.5px] mt-1 max-w-sm">
                   Read-only. It queries real accounts, logs, and telemetry — it cannot delete, lock, or change anything.
                 </p>
@@ -94,7 +92,7 @@ export default function SuperAdminAiAssistant() {
                     key={prompt}
                     type="button"
                     onClick={() => void send(prompt)}
-                    className="font-mono text-[11.5px] text-sa-ink-dim border border-sa-line rounded-full px-3 py-1.5 hover:border-sa-accent hover:text-sa-accent hover:shadow-glow-cyan-sm transition-all"
+                    className="text-[11.5px] text-sa-ink-dim border border-sa-line rounded-full px-3 py-1.5 hover:border-sa-accent hover:text-sa-accent transition-all"
                   >
                     {prompt}
                   </button>
@@ -111,7 +109,7 @@ export default function SuperAdminAiAssistant() {
                 </div>
               )}
               <div
-                className={`max-w-[75%] rounded-sm px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap ${
+                className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap ${
                   msg.role === 'user'
                     ? 'bg-sa-accent2-soft border border-sa-accent2/30 text-sa-ink'
                     : 'bg-sa-panel-inset border border-sa-line text-sa-ink'
@@ -119,7 +117,7 @@ export default function SuperAdminAiAssistant() {
               >
                 {msg.content}
                 {msg.toolsUsed && msg.toolsUsed.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-sa-line-soft font-mono text-[10px] tracking-[0.06em] uppercase text-sa-ink-faint">
+                  <div className="mt-2 pt-2 border-t border-sa-line-soft text-[10px] text-sa-ink-faint">
                     queried: {msg.toolsUsed.join(', ')}
                   </div>
                 )}
@@ -137,7 +135,7 @@ export default function SuperAdminAiAssistant() {
               <div className="shrink-0 h-7 w-7 rounded-full bg-sa-accent-soft border border-sa-accent/40 flex items-center justify-center">
                 <Bot size={13} className="text-sa-accent" />
               </div>
-              <div className="bg-sa-panel-inset border border-sa-line rounded-sm px-3.5 py-2.5 flex items-center gap-2 text-sa-ink-faint text-[12.5px] font-mono">
+              <div className="bg-sa-panel-inset border border-sa-line rounded-2xl px-3.5 py-2.5 flex items-center gap-2 text-sa-ink-faint text-[12.5px]">
                 <Loader2 size={13} className="animate-spin" />
                 querying live data…
               </div>
@@ -157,12 +155,12 @@ export default function SuperAdminAiAssistant() {
             }}
             placeholder="Ask about admin activity, audit history, or platform health…"
             rows={1}
-            className="flex-1 resize-none bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2.5 text-[13px] text-sa-ink outline-none focus:border-sa-accent focus:shadow-glow-cyan-sm transition-all font-mono max-h-32"
+            className="flex-1 resize-none bg-sa-panel-inset border border-sa-line rounded-xl px-3 py-2.5 text-[13px] text-sa-ink outline-none focus:border-sa-accent transition-all max-h-32"
           />
           <button
             type="submit"
             disabled={loading || !input.trim()}
-            className="shrink-0 h-[42px] w-[42px] flex items-center justify-center bg-sa-accent text-sa-void rounded-sm shadow-glow-cyan hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+            className="shrink-0 h-[42px] w-[42px] flex items-center justify-center bg-sa-accent text-white font-semibold rounded-lg hover:brightness-110 active:brightness-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
           >
             <Send size={16} />
           </button>

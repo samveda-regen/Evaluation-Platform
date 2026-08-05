@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { Users, Eye, Lock, AlertTriangle } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   superAdminApi,
@@ -10,16 +11,16 @@ import {
   type OverviewTrends,
 } from '../../services/superAdminApi';
 import { getRealtimeSocket } from '../../services/realtimeService';
-import { Card, KpiTile, EmptyState, PageHeader, StatusPill } from './components';
+import { Card, StatCard, EmptyState, PageHeader, StatusPill } from './components';
 
 const tooltipStyle = {
-  contentStyle: { background: '#141026', border: '1px solid #3D2E66', borderRadius: 2, fontSize: 12 },
-  labelStyle: { color: '#8D8FB8' },
+  contentStyle: { background: '#1A1A1F', border: '1px solid #3A3A42', borderRadius: 8, fontSize: 12 },
+  labelStyle: { color: '#9B9BA5' },
 };
 const gridProps = {
-  cartesian: { stroke: '#1A1430', vertical: false as const },
-  xAxis: { tick: { fill: '#56587A', fontSize: 10 }, axisLine: { stroke: '#241B3D' }, tickLine: false as const, minTickGap: 30 },
-  yAxis: { tick: { fill: '#56587A', fontSize: 10 }, axisLine: false as const, tickLine: false as const, width: 28 },
+  cartesian: { stroke: '#1D1D22', vertical: false as const },
+  xAxis: { tick: { fill: '#68686F', fontSize: 10 }, axisLine: { stroke: '#26262C' }, tickLine: false as const, minTickGap: 30 },
+  yAxis: { tick: { fill: '#68686F', fontSize: 10 }, axisLine: false as const, tickLine: false as const, width: 28 },
 };
 
 export default function SuperAdminOverview() {
@@ -68,17 +69,19 @@ export default function SuperAdminOverview() {
       />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <KpiTile label="Admins online" value={onlineCount} sub={`of ${admins.length} total`} />
-        <KpiTile label="Active proctoring sessions" value={live?.activeSessions ?? '—'} />
-        <KpiTile
+        <StatCard label="Admins online" value={onlineCount} sub={`of ${admins.length} total`} icon={Users} tone="default" />
+        <StatCard label="Active proctoring sessions" value={live?.activeSessions ?? '—'} icon={Eye} tone="good" />
+        <StatCard
           label="Locked features"
           value={lockedFlags.length}
           sub={lockedFlags.length > 0 ? lockedFlags.map((f) => f.label).join(', ') : 'none locked'}
+          icon={Lock}
           tone={lockedFlags.length > 0 ? 'warn' : 'good'}
         />
-        <KpiTile
+        <StatCard
           label="Failed request rate"
           value={live ? `${failedRate.toFixed(1)}%` : '—'}
+          icon={AlertTriangle}
           tone={failedRate > 2 ? 'critical' : 'good'}
         />
       </div>
@@ -90,7 +93,7 @@ export default function SuperAdminOverview() {
               <div key={row.id} className="flex items-center gap-2.5 py-1.5 border-b border-sa-line-soft last:border-0">
                 <div className="min-w-0 flex-1">
                   <div className="text-[13px] text-sa-ink truncate">{row.adminEmail}</div>
-                  <div className="text-[11.5px] font-mono text-sa-ink-faint truncate">{row.method} {row.path}</div>
+                  <div className="text-[12px] text-sa-ink-faint truncate">{row.method} {row.path}</div>
                 </div>
                 <StatusPill tone={row.statusCode >= 500 ? 'critical' : row.statusCode >= 400 ? 'warn' : 'good'}>
                   {row.statusCode}
@@ -110,7 +113,7 @@ export default function SuperAdminOverview() {
                   <div className="text-[13px] text-sa-ink truncate">{a.name}</div>
                   <div className="text-[11.5px] text-sa-ink-faint truncate">{a.email}</div>
                 </div>
-                <span className="font-mono text-[11px] text-sa-ink-faint shrink-0">{a.ownedContent.tests} tests</span>
+                <span className="text-[12px] text-sa-ink-faint shrink-0">{a.ownedContent.tests} tests</span>
               </div>
             ))}
             {admins.length === 0 && <EmptyState>No admin accounts yet.</EmptyState>}
@@ -125,15 +128,15 @@ export default function SuperAdminOverview() {
               <AreaChart data={trends.activeAdminsPerDay}>
                 <defs>
                   <linearGradient id="activeAdminsFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#00F0FF" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#00F0FF" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#4E8EFF" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#4E8EFF" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid {...gridProps.cartesian} />
                 <XAxis dataKey="date" {...gridProps.xAxis} tickFormatter={(d) => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} />
                 <YAxis allowDecimals={false} {...gridProps.yAxis} />
                 <Tooltip {...tooltipStyle} />
-                <Area type="monotone" dataKey="activeAdmins" stroke="#00F0FF" strokeWidth={2} fill="url(#activeAdminsFill)" />
+                <Area type="monotone" dataKey="activeAdmins" stroke="#4E8EFF" strokeWidth={2} fill="url(#activeAdminsFill)" />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
@@ -147,15 +150,15 @@ export default function SuperAdminOverview() {
               <AreaChart data={trends.testsCreatedPerWeek}>
                 <defs>
                   <linearGradient id="testsPerWeekFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#FF2ED1" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#FF2ED1" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#A855F7" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#A855F7" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid {...gridProps.cartesian} />
                 <XAxis dataKey="weekStart" {...gridProps.xAxis} tickFormatter={(d) => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} />
                 <YAxis allowDecimals={false} {...gridProps.yAxis} />
                 <Tooltip {...tooltipStyle} />
-                <Area type="monotone" dataKey="count" stroke="#FF2ED1" strokeWidth={2} fill="url(#testsPerWeekFill)" />
+                <Area type="monotone" dataKey="count" stroke="#A855F7" strokeWidth={2} fill="url(#testsPerWeekFill)" />
               </AreaChart>
             </ResponsiveContainer>
           ) : (

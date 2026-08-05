@@ -26,21 +26,15 @@ function fpsLabel(fps: number | null): string {
   return 'janky';
 }
 
-const tooltipStyle = (glow: string) => ({
-  contentStyle: {
-    background: '#141026',
-    border: '1px solid #3D2E66',
-    borderRadius: 2,
-    fontSize: 12,
-    boxShadow: `0 0 20px ${glow}`,
-  },
-  labelStyle: { color: '#8D8FB8' },
-});
+const tooltipStyle = {
+  contentStyle: { background: '#1A1A1F', border: '1px solid #3A3A42', borderRadius: 8, fontSize: 12 },
+  labelStyle: { color: '#9B9BA5' },
+};
 
 const gridProps = {
-  cartesian: { stroke: '#1A1430', vertical: false as const },
-  xAxis: { tick: { fill: '#56587A', fontSize: 10 }, axisLine: { stroke: '#241B3D' }, tickLine: false as const, minTickGap: 40 },
-  yAxis: { tick: { fill: '#56587A', fontSize: 10 }, axisLine: false as const, tickLine: false as const, width: 36 },
+  cartesian: { stroke: '#1D1D22', vertical: false as const },
+  xAxis: { tick: { fill: '#68686F', fontSize: 10 }, axisLine: { stroke: '#26262C' }, tickLine: false as const, minTickGap: 40 },
+  yAxis: { tick: { fill: '#68686F', fontSize: 10 }, axisLine: false as const, tickLine: false as const, width: 36 },
 };
 
 export default function SuperAdminTelemetry() {
@@ -107,7 +101,7 @@ export default function SuperAdminTelemetry() {
       />
 
       {/* ---- Overall application: is the app itself smooth and responsive? ---- */}
-      <h2 className="font-mono text-[11px] tracking-[0.14em] uppercase text-sa-accent2 mb-2.5">
+      <h2 className="text-[11px] font-semibold text-sa-accent2 mb-2.5">
         Overall application
       </h2>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
@@ -142,15 +136,15 @@ export default function SuperAdminTelemetry() {
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="fpsFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#FF2ED1" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#FF2ED1" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#A855F7" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#A855F7" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid {...gridProps.cartesian} />
                 <XAxis dataKey="time" {...gridProps.xAxis} />
                 <YAxis {...gridProps.yAxis} domain={[0, 62]} />
-                <Tooltip {...tooltipStyle('rgba(255,46,209,0.15)')} />
-                <Area type="monotone" dataKey="appFps" stroke="#FF2ED1" strokeWidth={2} fill="url(#fpsFill)" connectNulls />
+                <Tooltip {...tooltipStyle} />
+                <Area type="monotone" dataKey="appFps" stroke="#A855F7" strokeWidth={2} fill="url(#fpsFill)" connectNulls />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
@@ -164,16 +158,16 @@ export default function SuperAdminTelemetry() {
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="apiFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#00F0FF" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#00F0FF" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#4E8EFF" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#4E8EFF" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid {...gridProps.cartesian} />
                 <XAxis dataKey="time" {...gridProps.xAxis} />
                 <YAxis {...gridProps.yAxis} />
-                <Tooltip {...tooltipStyle('rgba(0,240,255,0.15)')} />
-                <Area type="monotone" dataKey="apiP95" stroke="#8D8FB8" strokeWidth={1.5} fill="transparent" connectNulls />
-                <Area type="monotone" dataKey="apiP50" stroke="#00F0FF" strokeWidth={2} fill="url(#apiFill)" connectNulls />
+                <Tooltip {...tooltipStyle} />
+                <Area type="monotone" dataKey="apiP95" stroke="#9B9BA5" strokeWidth={1.5} fill="transparent" connectNulls />
+                <Area type="monotone" dataKey="apiP50" stroke="#4E8EFF" strokeWidth={2} fill="url(#apiFill)" connectNulls />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
@@ -183,7 +177,7 @@ export default function SuperAdminTelemetry() {
       </div>
 
       {/* ---- Proctoring pipeline: candidate-facing camera capture + CV engine ---- */}
-      <h2 className="font-mono text-[11px] tracking-[0.14em] uppercase text-sa-accent mb-2.5">
+      <h2 className="text-[11px] font-semibold text-sa-accent mb-2.5">
         Proctoring pipeline
       </h2>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
@@ -201,15 +195,15 @@ export default function SuperAdminTelemetry() {
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="pingFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#00F0FF" stopOpacity={0.35} />
-                    <stop offset="100%" stopColor="#00F0FF" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#4E8EFF" stopOpacity={0.35} />
+                    <stop offset="100%" stopColor="#4E8EFF" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid {...gridProps.cartesian} />
                 <XAxis dataKey="time" {...gridProps.xAxis} />
                 <YAxis {...gridProps.yAxis} />
-                <Tooltip {...tooltipStyle('rgba(0,240,255,0.15)')} />
-                <Area type="monotone" dataKey="ping" stroke="#00F0FF" strokeWidth={2} fill="url(#pingFill)" connectNulls />
+                <Tooltip {...tooltipStyle} />
+                <Area type="monotone" dataKey="ping" stroke="#4E8EFF" strokeWidth={2} fill="url(#pingFill)" connectNulls />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
@@ -223,16 +217,16 @@ export default function SuperAdminTelemetry() {
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="cvFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#FF2ED1" stopOpacity={0.25} />
-                    <stop offset="100%" stopColor="#FF2ED1" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#A855F7" stopOpacity={0.25} />
+                    <stop offset="100%" stopColor="#A855F7" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid {...gridProps.cartesian} />
                 <XAxis dataKey="time" {...gridProps.xAxis} />
                 <YAxis {...gridProps.yAxis} />
-                <Tooltip {...tooltipStyle('rgba(255,46,209,0.15)')} />
-                <Area type="monotone" dataKey="cvP95" stroke="#FF2ED1" strokeWidth={1.5} fill="url(#cvFill)" connectNulls />
-                <Area type="monotone" dataKey="cvP50" stroke="#00F0FF" strokeWidth={2} fill="transparent" connectNulls />
+                <Tooltip {...tooltipStyle} />
+                <Area type="monotone" dataKey="cvP95" stroke="#A855F7" strokeWidth={1.5} fill="url(#cvFill)" connectNulls />
+                <Area type="monotone" dataKey="cvP50" stroke="#4E8EFF" strokeWidth={2} fill="transparent" connectNulls />
               </AreaChart>
             </ResponsiveContainer>
           ) : (

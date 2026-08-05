@@ -48,20 +48,20 @@ function FilterBar({
         placeholder="Search actor, resource, action…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        className="flex-1 min-w-[200px] bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent font-mono"
+        className="flex-1 min-w-[200px] bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent"
       />
       <input
         type="date"
         value={from}
         onChange={(e) => setFrom(e.target.value)}
-        className="bg-sa-panel-inset border border-sa-line rounded-sm px-2.5 py-2 text-[12px] text-sa-ink outline-none focus:border-sa-accent font-mono"
+        className="bg-sa-panel-inset border border-sa-line rounded-lg px-2.5 py-2 text-[12px] text-sa-ink outline-none focus:border-sa-accent"
       />
       <span className="text-sa-ink-faint text-[11px]">to</span>
       <input
         type="date"
         value={to}
         onChange={(e) => setTo(e.target.value)}
-        className="bg-sa-panel-inset border border-sa-line rounded-sm px-2.5 py-2 text-[12px] text-sa-ink outline-none focus:border-sa-accent font-mono"
+        className="bg-sa-panel-inset border border-sa-line rounded-lg px-2.5 py-2 text-[12px] text-sa-ink outline-none focus:border-sa-accent"
       />
     </div>
   );
@@ -164,8 +164,8 @@ export default function SuperAdminAuditLog() {
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`font-mono text-[11px] uppercase tracking-[0.05em] px-3 py-1.5 rounded-full border ${
-                tab === t ? 'text-sa-accent bg-sa-accent-soft border-sa-accent/40' : 'text-sa-ink-dim bg-sa-panel-inset border-sa-line'
+              className={`text-[12.5px] px-3 py-1.5 rounded-full border transition-colors ${
+                tab === t ? 'text-sa-accent bg-sa-accent-soft border-sa-accent/40' : 'text-sa-ink-dim bg-sa-panel-inset border-sa-line hover:text-sa-ink'
               }`}
             >
               {t === 'changes' ? 'What changed' : t === 'requests' ? 'Every request' : 'Session replay'}
@@ -181,13 +181,13 @@ export default function SuperAdminAuditLog() {
             )}
             <button
               onClick={() => void verifyChain()}
-              className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wide px-2.5 py-1.5 rounded-sm border border-sa-line text-sa-ink-dim hover:border-sa-line-bright transition-all"
+              className="inline-flex items-center gap-1.5 text-[12.5px] px-2.5 py-1.5 rounded-lg border border-sa-line text-sa-ink-dim hover:text-sa-ink hover:border-sa-line-bright transition-colors"
             >
               {chainStatus?.intact === false ? <ShieldAlert size={13} /> : <ShieldCheck size={13} />} Verify integrity
             </button>
             <button
               onClick={() => void exportCsv()}
-              className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wide px-2.5 py-1.5 rounded-sm border border-sa-accent/40 text-sa-accent hover:shadow-glow-cyan-sm transition-all"
+              className="inline-flex items-center gap-1.5 text-[12.5px] px-2.5 py-1.5 rounded-lg border border-sa-accent/40 text-sa-accent hover:bg-sa-accent-soft transition-colors"
             >
               <Download size={13} /> Export CSV
             </button>
@@ -206,7 +206,7 @@ export default function SuperAdminAuditLog() {
               <thead>
                 <tr className="border-b border-sa-line text-left">
                   {['Time', 'Actor', 'Action', 'Resource', 'Before → After'].map((h) => (
-                    <th key={h} className="px-4 py-2.5 font-mono text-[10px] tracking-[0.06em] uppercase text-sa-ink-faint font-medium">
+                    <th key={h} className="px-4 py-2.5 text-xs text-sa-ink-faint font-medium">
                       {h}
                     </th>
                   ))}
@@ -214,13 +214,13 @@ export default function SuperAdminAuditLog() {
               </thead>
               <tbody>
                 {audit?.map((row) => (
-                  <tr key={row.id} className="border-b border-sa-line-soft last:border-0 align-top">
-                    <td className="px-4 py-2.5 font-mono text-[11.5px] text-sa-ink-faint whitespace-nowrap">
+                  <tr key={row.id} className="border-b border-sa-line-soft last:border-0 align-top hover:bg-sa-panel-raised/50 transition-colors">
+                    <td className="px-4 py-2.5 text-[11.5px] text-sa-ink-faint whitespace-nowrap">
                       {new Date(row.createdAt).toLocaleString()}
                     </td>
                     <td className="px-4 py-2.5 text-sa-ink">{row.actorEmail}</td>
                     <td className="px-4 py-2.5">
-                      <span className="font-mono text-[11px] px-2 py-0.5 rounded-full bg-sa-panel-inset border border-sa-line text-sa-ink-dim">
+                      <span className="text-[11.5px] px-2 py-0.5 rounded-full bg-sa-panel-inset border border-sa-line text-sa-ink-dim">
                         {row.action}
                       </span>
                     </td>
@@ -248,7 +248,7 @@ export default function SuperAdminAuditLog() {
               <thead>
                 <tr className="border-b border-sa-line text-left">
                   {['Time', 'Admin', 'Method', 'Path', 'Status', 'Duration'].map((h) => (
-                    <th key={h} className="px-4 py-2.5 font-mono text-[10px] tracking-[0.06em] uppercase text-sa-ink-faint font-medium">
+                    <th key={h} className="px-4 py-2.5 text-xs text-sa-ink-faint font-medium">
                       {h}
                     </th>
                   ))}
@@ -256,19 +256,19 @@ export default function SuperAdminAuditLog() {
               </thead>
               <tbody>
                 {actions?.map((row) => (
-                  <tr key={row.id} className="border-b border-sa-line-soft last:border-0">
-                    <td className="px-4 py-2.5 font-mono text-[11.5px] text-sa-ink-faint whitespace-nowrap">
+                  <tr key={row.id} className="border-b border-sa-line-soft last:border-0 hover:bg-sa-panel-raised/50 transition-colors">
+                    <td className="px-4 py-2.5 text-[11.5px] text-sa-ink-faint whitespace-nowrap">
                       {new Date(row.createdAt).toLocaleTimeString()}
                     </td>
                     <td className="px-4 py-2.5 text-sa-ink">{row.adminEmail}</td>
-                    <td className="px-4 py-2.5 font-mono text-[11.5px] text-sa-ink-dim">{row.method}</td>
+                    <td className="px-4 py-2.5 text-[11.5px] text-sa-ink-dim">{row.method}</td>
                     <td className="px-4 py-2.5 font-mono text-[11.5px] text-sa-ink-dim truncate max-w-xs">{row.path}</td>
                     <td className="px-4 py-2.5">
                       <StatusPill tone={row.statusCode >= 500 ? 'critical' : row.statusCode >= 400 ? 'warn' : 'good'}>
                         {row.statusCode}
                       </StatusPill>
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-[11.5px] text-sa-ink-faint tabular-nums">{row.durationMs}ms</td>
+                    <td className="px-4 py-2.5 text-[11.5px] text-sa-ink-faint tabular-nums">{row.durationMs}ms</td>
                   </tr>
                 ))}
               </tbody>
@@ -288,15 +288,15 @@ export default function SuperAdminAuditLog() {
                   setSelectedSession(null);
                   setReplayEvents(null);
                 }}
-                className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wide text-sa-ink-dim hover:text-sa-accent transition-colors mb-4"
+                className="inline-flex items-center gap-1.5 text-[12.5px] text-sa-ink-dim hover:text-sa-accent transition-colors mb-4"
               >
                 <ArrowLeft size={13} /> Back to sessions
               </button>
               <div className="relative pl-5 space-y-3 border-l border-sa-line-bright ml-1.5">
                 {replayEvents?.map((event) => (
                   <div key={event.id} className="relative">
-                    <span className="absolute -left-[23px] top-1 h-2 w-2 rounded-full bg-sa-accent shadow-glow-cyan-sm" />
-                    <div className="font-mono text-[11px] text-sa-ink-faint">
+                    <span className="absolute -left-[23px] top-1 h-2 w-2 rounded-full bg-sa-accent" />
+                    <div className="text-[11.5px] text-sa-ink-faint">
                       {new Date(event.clientTimestamp).toLocaleTimeString()}
                     </div>
                     <div className="text-[13px] text-sa-ink">
@@ -316,7 +316,7 @@ export default function SuperAdminAuditLog() {
                 <thead>
                   <tr className="border-b border-sa-line text-left">
                     {['Admin', 'Started', 'Ended', 'Events', ''].map((h) => (
-                      <th key={h} className="px-4 py-2.5 font-mono text-[10px] tracking-[0.06em] uppercase text-sa-ink-faint font-medium">
+                      <th key={h} className="px-4 py-2.5 text-xs text-sa-ink-faint font-medium">
                         {h}
                       </th>
                     ))}
@@ -324,15 +324,15 @@ export default function SuperAdminAuditLog() {
                 </thead>
                 <tbody>
                   {sessions?.map((s) => (
-                    <tr key={s.sessionId} className="border-b border-sa-line-soft last:border-0">
+                    <tr key={s.sessionId} className="border-b border-sa-line-soft last:border-0 hover:bg-sa-panel-raised/50 transition-colors">
                       <td className="px-4 py-2.5 text-sa-ink">{s.adminEmail}</td>
-                      <td className="px-4 py-2.5 font-mono text-[11.5px] text-sa-ink-faint">{relativeTime(s.startedAt)}</td>
-                      <td className="px-4 py-2.5 font-mono text-[11.5px] text-sa-ink-faint">{relativeTime(s.endedAt)}</td>
-                      <td className="px-4 py-2.5 font-mono text-[11.5px] text-sa-ink-dim">{s.eventCount}</td>
+                      <td className="px-4 py-2.5 text-[11.5px] text-sa-ink-faint">{relativeTime(s.startedAt)}</td>
+                      <td className="px-4 py-2.5 text-[11.5px] text-sa-ink-faint">{relativeTime(s.endedAt)}</td>
+                      <td className="px-4 py-2.5 text-[11.5px] text-sa-ink-dim">{s.eventCount}</td>
                       <td className="px-4 py-2.5 text-right">
                         <button
                           onClick={() => void openSession(s.sessionId)}
-                          className="font-mono text-[11.5px] uppercase tracking-wide text-sa-accent border border-sa-accent/40 rounded-sm px-2.5 py-1.5 hover:shadow-glow-cyan-sm transition-all"
+                          className="text-[12.5px] text-sa-accent border border-sa-accent/40 rounded-lg px-2.5 py-1.5 hover:bg-sa-accent-soft transition-colors"
                         >
                           Replay
                         </button>

@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { superAdminApi } from '../../services/superAdminApi';
 import { useSuperAdminStore } from '../../context/superAdminStore';
+import loginBackground from '../../assets/login-background.png';
+import regenLogo from '../../assets/regen-logo.png';
 
 export default function SuperAdminLogin() {
   const navigate = useNavigate();
@@ -37,38 +39,24 @@ export default function SuperAdminLogin() {
 
   return (
     <div
-      className="min-h-screen bg-sa-void flex items-center justify-center px-4 relative overflow-hidden"
-      style={{
-        backgroundImage:
-          'linear-gradient(rgba(0,240,255,0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(0,240,255,0.045) 1px, transparent 1px)',
-        backgroundSize: '42px 42px',
-      }}
+      className="min-h-screen bg-sa-void flex items-center justify-center px-4 relative overflow-hidden bg-cover bg-bottom bg-no-repeat"
+      style={{ backgroundImage: `url(${loginBackground})` }}
     >
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{ background: 'radial-gradient(700px 420px at 50% 30%, rgba(0,240,255,0.1), transparent 65%)' }}
-      />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-sa-void/60 via-sa-void/20 to-sa-void" />
 
       <form
         onSubmit={handleSubmit}
-        className="relative w-full max-w-sm bg-sa-panel-raised border border-sa-line-bright rounded-sm p-8 shadow-[0_0_60px_rgba(0,240,255,0.08)]"
+        className="relative w-full max-w-sm bg-sa-panel/90 backdrop-blur-sm border border-sa-line rounded-2xl p-8"
       >
-        <span className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-sa-accent to-transparent" />
-
-        <div className="flex items-center gap-2.5 mb-1">
-          <span className="h-2.5 w-2.5 bg-sa-accent shadow-glow-cyan-sm rotate-45" />
-          <span className="font-mono text-xs tracking-[0.24em] uppercase text-sa-accent [text-shadow:0_0_14px_rgba(0,240,255,0.6)]">
-            Observer
-          </span>
-        </div>
-        <h1 className="text-xl font-bold text-sa-ink mb-1 mt-4 uppercase tracking-tight">Superadmin Access</h1>
-        <p className="text-[12.5px] text-sa-ink-faint font-mono mb-7">
-          {needsTotp ? 'Enter your authenticator code.' : 'Authenticate to enter the observer console.'}
+        <img src={regenLogo} alt="ReGen" className="block h-16 w-auto mx-auto" />
+        <h1 className="text-xl font-bold text-sa-ink mb-1 mt-5">Superadmin access</h1>
+        <p className="text-sm text-sa-ink-dim mb-7">
+          {needsTotp ? 'Enter your authenticator code.' : 'Sign in to the ReGen console.'}
         </p>
 
         {!needsTotp ? (
           <>
-            <label className="block font-mono text-[10.5px] tracking-[0.1em] uppercase text-sa-ink-dim mb-1.5">
+            <label className="block text-sm font-medium text-sa-ink-dim mb-1.5">
               Email
             </label>
             <input
@@ -76,11 +64,11 @@ export default function SuperAdminLogin() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full mb-4 bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2.5 text-sm text-sa-ink outline-none focus:border-sa-accent focus:shadow-glow-cyan-sm transition-all font-mono"
+              className="w-full mb-4 bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2.5 text-sm text-sa-ink outline-none focus:border-sa-accent transition-colors"
               autoComplete="username"
             />
 
-            <label className="block font-mono text-[10.5px] tracking-[0.1em] uppercase text-sa-ink-dim mb-1.5">
+            <label className="block text-sm font-medium text-sa-ink-dim mb-1.5">
               Password
             </label>
             <input
@@ -88,13 +76,13 @@ export default function SuperAdminLogin() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full mb-7 bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2.5 text-sm text-sa-ink outline-none focus:border-sa-accent focus:shadow-glow-cyan-sm transition-all font-mono"
+              className="w-full mb-7 bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2.5 text-sm text-sa-ink outline-none focus:border-sa-accent transition-colors"
               autoComplete="current-password"
             />
           </>
         ) : (
           <>
-            <label className="block font-mono text-[10.5px] tracking-[0.1em] uppercase text-sa-ink-dim mb-1.5">
+            <label className="block text-sm font-medium text-sa-ink-dim mb-1.5">
               6-digit code
             </label>
             <input
@@ -105,7 +93,7 @@ export default function SuperAdminLogin() {
               maxLength={6}
               value={totpCode}
               onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
-              className="w-full mb-7 bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2.5 text-sm text-sa-ink outline-none focus:border-sa-accent focus:shadow-glow-cyan-sm transition-all font-mono tracking-[0.3em] text-center"
+              className="w-full mb-7 bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2.5 text-sm text-sa-ink outline-none focus:border-sa-accent transition-colors tracking-[0.3em] text-center"
               autoComplete="one-time-code"
             />
           </>
@@ -114,7 +102,7 @@ export default function SuperAdminLogin() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-sa-accent text-sa-void font-mono font-bold text-sm uppercase tracking-[0.1em] rounded-sm py-3 shadow-glow-cyan hover:brightness-110 active:brightness-95 disabled:opacity-60 transition-all"
+          className="w-full bg-sa-accent text-white font-semibold text-sm rounded-lg py-2.5 hover:brightness-110 active:brightness-95 disabled:opacity-60 transition-all"
         >
           {loading ? 'Authenticating…' : needsTotp ? 'Verify' : 'Sign In'}
         </button>

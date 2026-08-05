@@ -118,9 +118,9 @@ export default function SuperAdminLiveMonitor() {
                 <span className={`h-1.5 w-1.5 rounded-full mt-1.5 ${entry.kind === 'action' ? 'bg-sa-accent' : 'bg-sa-ink-faint'}`} />
                 <div className="min-w-0 flex-1">
                   <div className="text-[13px] text-sa-ink">{entry.adminEmail}</div>
-                  <div className="text-[11.5px] text-sa-ink-faint font-mono truncate">{entry.detail}</div>
+                  <div className="text-[11.5px] text-sa-ink-faint truncate">{entry.detail}</div>
                 </div>
-                <span className="font-mono text-[10.5px] text-sa-ink-faint shrink-0">
+                <span className="text-[10.5px] text-sa-ink-faint shrink-0">
                   {new Date(entry.time).toLocaleTimeString()}
                 </span>
               </div>

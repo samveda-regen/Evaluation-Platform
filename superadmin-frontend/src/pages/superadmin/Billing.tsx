@@ -24,19 +24,19 @@ function fmtLimit(value: number | null): string {
 
 const tooltipStyle = {
   contentStyle: {
-    background: '#141026',
-    border: '1px solid #3D2E66',
-    borderRadius: 2,
+    background: '#1A1A1F',
+    border: '1px solid #3A3A42',
+    borderRadius: 8,
     fontSize: 12,
-    boxShadow: '0 0 20px rgba(0,240,255,0.15)',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.35)',
   },
-  labelStyle: { color: '#8D8FB8' },
+  labelStyle: { color: '#9B9BA5' },
 };
 
 const gridProps = {
-  cartesian: { stroke: '#1A1430', vertical: false as const },
-  xAxis: { tick: { fill: '#56587A', fontSize: 10 }, axisLine: { stroke: '#241B3D' }, tickLine: false as const, minTickGap: 30 },
-  yAxis: { tick: { fill: '#56587A', fontSize: 10 }, axisLine: false as const, tickLine: false as const, width: 32 },
+  cartesian: { stroke: '#1D1D22', vertical: false as const },
+  xAxis: { tick: { fill: '#68686F', fontSize: 10 }, axisLine: { stroke: '#26262C' }, tickLine: false as const, minTickGap: 30 },
+  yAxis: { tick: { fill: '#68686F', fontSize: 10 }, axisLine: false as const, tickLine: false as const, width: 32 },
 };
 
 interface PlanFormState {
@@ -108,13 +108,13 @@ const PLAN_FIELDS: { key: keyof PlanFormState; label: string; placeholder: strin
 
 function UsageBar({ current, limit }: { current: number; limit: number | null }) {
   const pct = limit === null || limit === 0 ? 0 : Math.min(100, (current / limit) * 100);
-  const tone = limit !== null && current >= limit ? '#FF2E63' : pct > 85 ? '#FFD426' : '#00F0FF';
+  const tone = limit !== null && current >= limit ? '#EF4444' : pct > 85 ? '#F59E0B' : '#4E8EFF';
   return (
     <div className="w-24">
-      <div className="h-1.5 rounded-full bg-sa-panel-inset border border-sa-line overflow-hidden">
+      <div className="h-2 rounded-full bg-sa-panel-inset overflow-hidden">
         <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: tone }} />
       </div>
-      <div className="font-mono text-[10.5px] text-sa-ink-faint mt-0.5">
+      <div className="text-[10.5px] text-sa-ink-faint mt-0.5 tabular-nums">
         {current}/{limit === null ? '∞' : limit}
       </div>
     </div>
@@ -257,7 +257,7 @@ export default function SuperAdminBilling() {
 
       <Card className="mb-6 flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h3 className="text-[13px] font-semibold text-sa-ink tracking-wide uppercase font-mono mb-1">
+          <h3 className="text-[13px] font-semibold text-sa-ink mb-1">
             Billing enforcement
           </h3>
           <p className="text-[12.5px] text-sa-ink-dim max-w-lg">
@@ -290,7 +290,7 @@ export default function SuperAdminBilling() {
               <button
                 key={d}
                 onClick={() => setTrendDays(d)}
-                className={`font-mono text-[10.5px] px-2 py-0.5 rounded-full border transition-all ${
+                className={`text-[10.5px] px-2 py-0.5 rounded-full border transition-colors ${
                   trendDays === d
                     ? 'border-sa-accent text-sa-accent bg-sa-accent-soft'
                     : 'border-sa-line text-sa-ink-faint hover:border-sa-line-bright'
@@ -308,24 +308,24 @@ export default function SuperAdminBilling() {
             <AreaChart data={chartData}>
               <defs>
                 <linearGradient id="testsFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#00F0FF" stopOpacity={0.3} />
-                  <stop offset="100%" stopColor="#00F0FF" stopOpacity={0} />
+                  <stop offset="0%" stopColor="#4E8EFF" stopOpacity={0.3} />
+                  <stop offset="100%" stopColor="#4E8EFF" stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="aiFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#FF2ED1" stopOpacity={0.3} />
-                  <stop offset="100%" stopColor="#FF2ED1" stopOpacity={0} />
+                  <stop offset="0%" stopColor="#A855F7" stopOpacity={0.3} />
+                  <stop offset="100%" stopColor="#A855F7" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid {...gridProps.cartesian} />
               <XAxis dataKey="date" {...gridProps.xAxis} />
               <YAxis {...gridProps.yAxis} />
               <Tooltip {...tooltipStyle} />
-              <Legend wrapperStyle={{ fontSize: 11, fontFamily: 'ui-monospace, monospace' }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
               <Area
                 type="monotone"
                 dataKey="testsCreated"
                 name="Tests created"
-                stroke="#00F0FF"
+                stroke="#4E8EFF"
                 strokeWidth={2}
                 fill="url(#testsFill)"
               />
@@ -333,7 +333,7 @@ export default function SuperAdminBilling() {
                 type="monotone"
                 dataKey="aiTestsCreated"
                 name="AI-generated"
-                stroke="#FF2ED1"
+                stroke="#A855F7"
                 strokeWidth={2}
                 fill="url(#aiFill)"
               />
@@ -349,7 +349,7 @@ export default function SuperAdminBilling() {
         meta={
           <button
             onClick={() => setEditingPlan(EMPTY_PLAN_FORM)}
-            className="inline-flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wide text-sa-accent hover:shadow-glow-cyan-sm border border-sa-accent/40 rounded-full px-2.5 py-1 transition-all"
+            className="inline-flex items-center gap-1.5 text-[11px] font-medium text-sa-accent border border-sa-accent/40 rounded-full px-2.5 py-1 hover:bg-sa-accent-soft transition-colors"
           >
             <Plus size={12} /> New plan
           </button>
@@ -358,11 +358,11 @@ export default function SuperAdminBilling() {
       >
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
           {plans?.map((plan) => (
-            <div key={plan.id} className="border border-sa-line rounded-sm p-3.5 bg-sa-panel-inset relative">
+            <div key={plan.id} className="border border-sa-line rounded-xl p-3.5 bg-sa-panel-inset relative">
               <div className="flex items-start justify-between">
                 <div>
-                  <div className="font-mono text-[13px] font-semibold text-sa-ink">{plan.label}</div>
-                  <div className="font-mono text-[11px] text-sa-accent mt-0.5">{fmtMoney(plan.priceMonthly)}/mo</div>
+                  <div className="text-[13px] font-semibold text-sa-ink">{plan.label}</div>
+                  <div className="text-[11px] text-sa-accent mt-0.5 tabular-nums">{fmtMoney(plan.priceMonthly)}/mo</div>
                 </div>
                 <div className="flex gap-1">
                   <button
@@ -381,7 +381,7 @@ export default function SuperAdminBilling() {
                   )}
                 </div>
               </div>
-              <div className="mt-2.5 space-y-1 font-mono text-[11px] text-sa-ink-dim">
+              <div className="mt-2.5 space-y-1 text-[11px] text-sa-ink-dim">
                 <div>Tests: {fmtLimit(plan.maxTests)}</div>
                 <div>AI generations: {fmtLimit(plan.maxAiGenerations)}</div>
                 <div>Invitations: {fmtLimit(plan.maxInvitationsPerCycle)}</div>
@@ -401,7 +401,7 @@ export default function SuperAdminBilling() {
             <thead>
               <tr className="border-b border-sa-line text-left">
                 {['Admin', 'Plan', 'Status', 'Tests', 'AI gens', 'Invitations', ''].map((h) => (
-                  <th key={h} className="px-3 py-2.5 font-mono text-[10px] tracking-[0.06em] uppercase text-sa-ink-faint font-medium">
+                  <th key={h} className="px-3 py-2.5 text-[10px] text-sa-ink-faint font-medium">
                     {h}
                   </th>
                 ))}
@@ -412,9 +412,9 @@ export default function SuperAdminBilling() {
                 <tr key={row.admin.id} className="border-b border-sa-line-soft last:border-0">
                   <td className="px-3 py-2.5">
                     <div className="text-sa-ink">{row.admin.name}</div>
-                    <div className="font-mono text-[11px] text-sa-ink-faint">{row.admin.email}</div>
+                    <div className="text-[11px] text-sa-ink-faint">{row.admin.email}</div>
                   </td>
-                  <td className="px-3 py-2.5 font-mono text-[12px] text-sa-ink-dim">{row.plan.label}</td>
+                  <td className="px-3 py-2.5 text-[12px] text-sa-ink-dim">{row.plan.label}</td>
                   <td className="px-3 py-2.5">
                     <StatusPill tone={row.billing.status === 'suspended' ? 'critical' : row.billing.status === 'active' ? 'good' : 'dim'}>
                       {row.billing.status}
@@ -435,7 +435,7 @@ export default function SuperAdminBilling() {
                   <td className="px-3 py-2.5 text-right">
                     <button
                       onClick={() => setManagingAdminId(row.admin.id)}
-                      className="font-mono text-[11.5px] uppercase tracking-wide text-sa-accent border border-sa-accent/40 rounded-sm px-2.5 py-1.5 hover:shadow-glow-cyan-sm transition-all"
+                      className="text-[11.5px] font-medium text-sa-accent border border-sa-accent/40 rounded-lg px-2.5 py-1.5 hover:bg-sa-accent-soft transition-colors"
                     >
                       Manage
                     </button>
@@ -453,46 +453,45 @@ export default function SuperAdminBilling() {
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 px-4">
           <form
             onSubmit={savePlan}
-            className="relative w-full max-w-lg bg-sa-panel-raised border border-sa-accent/40 rounded-sm p-6 shadow-[0_0_50px_rgba(0,240,255,0.12)] max-h-[85vh] overflow-y-auto"
+            className="relative w-full max-w-lg bg-sa-panel-raised border border-sa-line rounded-2xl p-6 shadow-2xl max-h-[85vh] overflow-y-auto"
           >
-            <span className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-sa-accent to-transparent" />
-            <h2 className="font-mono text-sm font-semibold text-sa-ink uppercase tracking-wide mb-4">
+            <h2 className="text-sm font-semibold text-sa-ink mb-4">
               {plans?.some((p) => p.key === editingPlan.key) ? `Edit ${editingPlan.label}` : 'New plan'}
             </h2>
 
             <div className="grid grid-cols-2 gap-3 mb-3">
               <div>
-                <label className="block font-mono text-[10.5px] tracking-[0.1em] uppercase text-sa-ink-dim mb-1.5">Key</label>
+                <label className="block text-[10.5px] text-sa-ink-dim mb-1.5">Key</label>
                 <input
                   required
                   disabled={plans?.some((p) => p.key === editingPlan.key)}
                   value={editingPlan.key}
                   onChange={(e) => setEditingPlan((f) => (f ? { ...f, key: e.target.value } : f))}
-                  className="w-full bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2 text-sm text-sa-ink outline-none focus:border-sa-accent transition-all font-mono disabled:opacity-50"
+                  className="w-full bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2 text-sm text-sa-ink outline-none focus:border-sa-accent transition-colors disabled:opacity-50"
                 />
               </div>
               <div>
-                <label className="block font-mono text-[10.5px] tracking-[0.1em] uppercase text-sa-ink-dim mb-1.5">Label</label>
+                <label className="block text-[10.5px] text-sa-ink-dim mb-1.5">Label</label>
                 <input
                   required
                   value={editingPlan.label}
                   onChange={(e) => setEditingPlan((f) => (f ? { ...f, label: e.target.value } : f))}
-                  className="w-full bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2 text-sm text-sa-ink outline-none focus:border-sa-accent transition-all font-mono"
+                  className="w-full bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2 text-sm text-sa-ink outline-none focus:border-sa-accent transition-colors"
                 />
               </div>
             </div>
 
-            <label className="block font-mono text-[10.5px] tracking-[0.1em] uppercase text-sa-ink-dim mb-1.5">Description</label>
+            <label className="block text-[10.5px] text-sa-ink-dim mb-1.5">Description</label>
             <input
               value={editingPlan.description}
               onChange={(e) => setEditingPlan((f) => (f ? { ...f, description: e.target.value } : f))}
-              className="w-full mb-3 bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2 text-sm text-sa-ink outline-none focus:border-sa-accent transition-all font-mono"
+              className="w-full mb-3 bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2 text-sm text-sa-ink outline-none focus:border-sa-accent transition-colors"
             />
 
             <div className="grid grid-cols-2 gap-3 mb-4">
               {PLAN_FIELDS.map((field) => (
                 <div key={field.key}>
-                  <label className="block font-mono text-[10.5px] tracking-[0.1em] uppercase text-sa-ink-dim mb-1.5">
+                  <label className="block text-[10.5px] text-sa-ink-dim mb-1.5">
                     {field.label}
                   </label>
                   <input
@@ -500,7 +499,7 @@ export default function SuperAdminBilling() {
                     placeholder={field.placeholder}
                     value={editingPlan[field.key]}
                     onChange={(e) => setEditingPlan((f) => (f ? { ...f, [field.key]: e.target.value } : f))}
-                    className="w-full bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2 text-sm text-sa-ink outline-none focus:border-sa-accent transition-all font-mono"
+                    className="w-full bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2 text-sm text-sa-ink outline-none focus:border-sa-accent transition-colors"
                   />
                 </div>
               ))}
@@ -511,14 +510,14 @@ export default function SuperAdminBilling() {
                 type="button"
                 onClick={() => setEditingPlan(null)}
                 disabled={savingPlan}
-                className="font-mono text-[12.5px] uppercase tracking-wide px-3.5 py-2 rounded-sm border border-sa-line text-sa-ink-dim hover:border-sa-line-bright transition-all"
+                className="text-[12.5px] font-medium px-3.5 py-2 rounded-lg border border-sa-line text-sa-ink-dim hover:text-sa-ink hover:border-sa-line-bright transition-colors"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={savingPlan}
-                className="font-mono text-[12.5px] uppercase tracking-wide px-3.5 py-2 rounded-sm bg-sa-accent text-sa-void font-bold shadow-glow-cyan disabled:opacity-60 hover:brightness-110 transition-all"
+                className="text-[12.5px] px-3.5 py-2 rounded-lg bg-sa-accent text-white font-semibold disabled:opacity-60 hover:brightness-110 transition-all"
               >
                 {savingPlan ? 'Saving…' : 'Save plan'}
               </button>
@@ -649,17 +648,16 @@ function ManageBillingModal({
 
   return (
     <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 px-4">
-      <div className="relative w-full max-w-xl bg-sa-panel-raised border border-sa-accent/40 rounded-sm p-6 shadow-[0_0_50px_rgba(0,240,255,0.12)] max-h-[88vh] overflow-y-auto">
-        <span className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-sa-accent to-transparent" />
-        <h2 className="font-mono text-sm font-semibold text-sa-ink uppercase tracking-wide mb-1">{row.admin.name}</h2>
-        <p className="font-mono text-[11.5px] text-sa-ink-faint mb-5">{row.admin.email}</p>
+      <div className="relative w-full max-w-xl bg-sa-panel-raised border border-sa-line rounded-2xl p-6 shadow-2xl max-h-[88vh] overflow-y-auto">
+        <h2 className="text-sm font-semibold text-sa-ink mb-1">{row.admin.name}</h2>
+        <p className="text-[11.5px] text-sa-ink-faint mb-5">{row.admin.email}</p>
 
-        <label className="block font-mono text-[10.5px] tracking-[0.1em] uppercase text-sa-ink-dim mb-1.5">Plan</label>
+        <label className="block text-[10.5px] text-sa-ink-dim mb-1.5">Plan</label>
         <select
           value={row.plan.id}
           disabled={busy}
           onChange={(e) => void assignPlan(e.target.value)}
-          className="w-full mb-4 bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2 text-sm text-sa-ink outline-none focus:border-sa-accent transition-all font-mono"
+          className="w-full mb-4 bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2 text-sm text-sa-ink outline-none focus:border-sa-accent transition-colors"
         >
           {plans.map((p) => (
             <option key={p.id} value={p.id}>
@@ -670,7 +668,7 @@ function ManageBillingModal({
 
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div>
-            <label className="block font-mono text-[10.5px] tracking-[0.1em] uppercase text-sa-ink-dim mb-1.5 flex items-center gap-1">
+            <label className="block text-[10.5px] text-sa-ink-dim mb-1.5 flex items-center gap-1">
               <Sparkles size={11} /> AI credits (+/-)
             </label>
             <div className="flex gap-1.5">
@@ -678,12 +676,12 @@ function ManageBillingModal({
                 type="number"
                 value={creditAmount}
                 onChange={(e) => setCreditAmount(e.target.value)}
-                className="w-full bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2 text-sm text-sa-ink outline-none focus:border-sa-accent transition-all font-mono"
+                className="w-full bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2 text-sm text-sa-ink outline-none focus:border-sa-accent transition-colors tabular-nums"
               />
               <button
                 onClick={() => void addCredits()}
                 disabled={busy}
-                className="shrink-0 font-mono text-[11px] uppercase tracking-wide text-sa-accent border border-sa-accent/40 rounded-sm px-2.5 hover:shadow-glow-cyan-sm transition-all disabled:opacity-50"
+                className="shrink-0 text-[11px] font-medium text-sa-accent border border-sa-accent/40 rounded-lg px-2.5 hover:bg-sa-accent-soft transition-colors disabled:opacity-50"
               >
                 Apply
               </button>
@@ -692,14 +690,14 @@ function ManageBillingModal({
           </div>
 
           <div>
-            <label className="block font-mono text-[10.5px] tracking-[0.1em] uppercase text-sa-ink-dim mb-1.5">
+            <label className="block text-[10.5px] text-sa-ink-dim mb-1.5">
               Account status
             </label>
             {row.billing.status === 'suspended' ? (
               <button
                 onClick={() => void reactivate()}
                 disabled={busy}
-                className="w-full inline-flex items-center justify-center gap-1.5 font-mono text-[11.5px] uppercase tracking-wide text-sa-good border border-sa-good/40 rounded-sm px-2.5 py-2 hover:shadow-glow-green transition-all disabled:opacity-50"
+                className="w-full inline-flex items-center justify-center gap-1.5 text-[11.5px] font-medium text-sa-good border border-sa-good/40 rounded-lg px-2.5 py-2 hover:bg-sa-good-soft transition-colors disabled:opacity-50"
               >
                 <RotateCcw size={13} /> Reactivate
               </button>
@@ -709,12 +707,12 @@ function ManageBillingModal({
                   placeholder="Reason (optional)"
                   value={suspendReason}
                   onChange={(e) => setSuspendReason(e.target.value)}
-                  className="w-full bg-sa-panel-inset border border-sa-line rounded-sm px-2.5 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-critical transition-all font-mono"
+                  className="w-full bg-sa-panel-inset border border-sa-line rounded-lg px-2.5 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-critical transition-colors"
                 />
                 <button
                   onClick={() => void suspend()}
                   disabled={busy}
-                  className="shrink-0 inline-flex items-center gap-1 font-mono text-[11px] uppercase tracking-wide text-sa-critical border border-sa-critical/40 rounded-sm px-2.5 hover:shadow-glow-red transition-all disabled:opacity-50"
+                  className="shrink-0 inline-flex items-center gap-1 text-[11px] font-medium text-sa-critical border border-sa-critical/40 rounded-lg px-2.5 hover:bg-sa-critical-soft transition-colors disabled:opacity-50"
                 >
                   <Ban size={13} /> Suspend
                 </button>
@@ -723,21 +721,21 @@ function ManageBillingModal({
           </div>
         </div>
 
-        <h3 className="font-mono text-[11px] tracking-[0.1em] uppercase text-sa-ink-faint mb-2 flex items-center gap-1.5">
+        <h3 className="text-[11px] text-sa-ink-faint mb-2 flex items-center gap-1.5">
           <Receipt size={12} /> Invoices
         </h3>
-        <div className="border border-sa-line rounded-sm mb-3 max-h-32 overflow-y-auto">
-          {invoices === null && <div className="p-3 text-[12px] text-sa-ink-faint font-mono">Loading…</div>}
-          {invoices?.length === 0 && <div className="p-3 text-[12px] text-sa-ink-faint font-mono">No invoices recorded.</div>}
+        <div className="border border-sa-line rounded-lg mb-3 max-h-32 overflow-y-auto">
+          {invoices === null && <div className="p-3 text-[12px] text-sa-ink-faint">Loading…</div>}
+          {invoices?.length === 0 && <div className="p-3 text-[12px] text-sa-ink-faint">No invoices recorded.</div>}
           {invoices?.map((inv) => (
             <div key={inv.id} className="flex items-center justify-between px-3 py-2 border-b border-sa-line-soft last:border-0 text-[12px]">
-              <span className="font-mono text-sa-ink">
+              <span className="text-sa-ink tabular-nums">
                 {inv.currency} {inv.amount.toFixed(2)}
               </span>
               <StatusPill tone={inv.status === 'paid' ? 'good' : inv.status === 'failed' ? 'critical' : 'dim'}>
                 {inv.status}
               </StatusPill>
-              <span className="font-mono text-sa-ink-faint">{new Date(inv.issuedAt).toLocaleDateString()}</span>
+              <span className="text-sa-ink-faint">{new Date(inv.issuedAt).toLocaleDateString()}</span>
             </div>
           ))}
         </div>
@@ -750,18 +748,18 @@ function ManageBillingModal({
             placeholder="Amount"
             value={invoiceAmount}
             onChange={(e) => setInvoiceAmount(e.target.value)}
-            className="w-24 bg-sa-panel-inset border border-sa-line rounded-sm px-2.5 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent transition-all font-mono"
+            className="w-24 bg-sa-panel-inset border border-sa-line rounded-lg px-2.5 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent transition-colors tabular-nums"
           />
           <input
             placeholder="Note (optional)"
             value={invoiceNote}
             onChange={(e) => setInvoiceNote(e.target.value)}
-            className="flex-1 bg-sa-panel-inset border border-sa-line rounded-sm px-2.5 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent transition-all font-mono"
+            className="flex-1 bg-sa-panel-inset border border-sa-line rounded-lg px-2.5 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent transition-colors"
           />
           <button
             type="submit"
             disabled={busy}
-            className="shrink-0 font-mono text-[11px] uppercase tracking-wide text-sa-accent border border-sa-accent/40 rounded-sm px-2.5 hover:shadow-glow-cyan-sm transition-all disabled:opacity-50"
+            className="shrink-0 text-[11px] font-medium text-sa-accent border border-sa-accent/40 rounded-lg px-2.5 hover:bg-sa-accent-soft transition-colors disabled:opacity-50"
           >
             Record
           </button>
@@ -770,7 +768,7 @@ function ManageBillingModal({
         <div className="flex justify-end">
           <button
             onClick={onClose}
-            className="font-mono text-[12.5px] uppercase tracking-wide px-3.5 py-2 rounded-sm border border-sa-line text-sa-ink-dim hover:border-sa-line-bright transition-all"
+            className="text-[12.5px] font-medium px-3.5 py-2 rounded-lg border border-sa-line text-sa-ink-dim hover:text-sa-ink hover:border-sa-line-bright transition-colors"
           >
             Close
           </button>

@@ -111,7 +111,7 @@ export default function SuperAdminAccounts() {
             <thead>
               <tr className="border-b border-sa-line text-left">
                 {['Account', 'Status', 'Last active', 'Content', 'Actions logged', ''].map((h) => (
-                  <th key={h} className="px-4 py-2.5 font-mono text-[10px] tracking-[0.06em] uppercase text-sa-ink-faint font-medium">
+                  <th key={h} className="px-4 py-2.5 text-[10px] text-sa-ink-faint font-medium">
                     {h}
                   </th>
                 ))}
@@ -122,7 +122,7 @@ export default function SuperAdminAccounts() {
                 <tr key={a.id} className="border-b border-sa-line-soft last:border-0">
                   <td className="px-4 py-2.5">
                     <div className="text-sa-ink">{a.name}</div>
-                    <div className="font-mono text-[11px] text-sa-ink-faint">{a.email}</div>
+                    <div className="text-[11px] text-sa-ink-faint">{a.email}</div>
                     {a.securityLocked && (
                       <div className="mt-1">
                         <StatusPill tone="critical">Locked{a.securityLockReason ? `: ${a.securityLockReason}` : ''}</StatusPill>
@@ -142,12 +142,12 @@ export default function SuperAdminAccounts() {
                       {a.status === 'online' ? 'Online' : 'Offline'}
                     </StatusPill>
                   </td>
-                  <td className="px-4 py-2.5 font-mono text-[12px] text-sa-ink-dim">{relativeTime(a.lastActiveAt)}</td>
-                  <td className="px-4 py-2.5 font-mono text-[12px] text-sa-ink-dim">
+                  <td className="px-4 py-2.5 text-[12px] text-sa-ink-dim">{relativeTime(a.lastActiveAt)}</td>
+                  <td className="px-4 py-2.5 text-[12px] text-sa-ink-dim">
                     {a.ownedContent.tests} test{a.ownedContent.tests === 1 ? '' : 's'},{' '}
                     {a.ownedContent.mcqQuestions + a.ownedContent.codingQuestions + a.ownedContent.behavioralQuestions} question(s)
                   </td>
-                  <td className="px-4 py-2.5 font-mono text-[12px] text-sa-ink-dim">{a.actionsRecorded}</td>
+                  <td className="px-4 py-2.5 text-[12px] text-sa-ink-dim">{a.actionsRecorded}</td>
                   <td className="px-4 py-2.5">
                     <div className="flex items-center justify-end gap-1.5">
                       <button
@@ -176,14 +176,14 @@ export default function SuperAdminAccounts() {
                       {a.pendingDeletionAt ? (
                         <button
                           onClick={() => void cancelDeletion(a)}
-                          className="inline-flex items-center gap-1.5 text-[12px] font-mono uppercase tracking-wide font-medium text-sa-warn bg-sa-warn-soft border border-sa-warn/40 rounded-sm px-2.5 py-1.5 transition-all"
+                          className="inline-flex items-center gap-1.5 text-[12px] font-medium text-sa-warn bg-sa-warn-soft border border-sa-warn/40 rounded-lg px-2.5 py-1.5 transition-all"
                         >
                           <XCircle size={13} /> Cancel deletion
                         </button>
                       ) : (
                         <button
                           onClick={() => setPendingDelete(a)}
-                          className="inline-flex items-center gap-1.5 text-[12px] font-mono uppercase tracking-wide font-medium text-sa-critical bg-sa-critical-soft border border-sa-critical/40 rounded-sm px-2.5 py-1.5 hover:shadow-glow-red transition-all"
+                          className="inline-flex items-center gap-1.5 text-[12px] font-medium text-sa-critical bg-sa-critical-soft border border-sa-critical/40 rounded-lg px-2.5 py-1.5 transition-all"
                         >
                           <Trash2 size={13} /> Delete
                         </button>
@@ -201,9 +201,8 @@ export default function SuperAdminAccounts() {
 
       {pendingDelete && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 px-4">
-          <div className="relative w-full max-w-md bg-sa-panel-raised border border-sa-critical/40 rounded-sm p-6 shadow-[0_0_50px_rgba(255,46,99,0.15)]">
-            <span className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-sa-critical to-transparent" />
-            <h2 className="font-mono text-sm font-semibold text-sa-critical uppercase tracking-wide mb-2">
+          <div className="relative w-full max-w-md bg-sa-panel-raised border border-sa-critical/40 rounded-xl p-6 shadow-2xl">
+            <h2 className="text-sm font-semibold text-sa-critical mb-2">
               Delete {pendingDelete.name}?
             </h2>
             <p className="text-[13px] text-sa-ink-dim mb-4">
@@ -218,7 +217,7 @@ export default function SuperAdminAccounts() {
               Audit Log is kept either way.
             </p>
 
-            <label className="flex items-start gap-2.5 mb-5 p-3 border border-sa-line rounded-sm bg-sa-panel-inset cursor-pointer">
+            <label className="flex items-start gap-2.5 mb-5 p-3 border border-sa-line rounded-lg bg-sa-panel-inset cursor-pointer">
               <input
                 type="checkbox"
                 checked={deleteNow}
@@ -238,14 +237,14 @@ export default function SuperAdminAccounts() {
                   setDeleteNow(false);
                 }}
                 disabled={deleting}
-                className="font-mono text-[12.5px] uppercase tracking-wide px-3.5 py-2 rounded-sm border border-sa-line text-sa-ink-dim hover:border-sa-line-bright transition-all"
+                className="text-[12.5px] px-3.5 py-2 rounded-lg border border-sa-line text-sa-ink-dim hover:text-sa-ink hover:border-sa-line-bright transition-all"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmDelete}
                 disabled={deleting}
-                className="font-mono text-[12.5px] uppercase tracking-wide px-3.5 py-2 rounded-sm bg-sa-critical text-sa-void font-bold shadow-glow-red disabled:opacity-60 hover:brightness-110 transition-all"
+                className="text-[12.5px] px-3.5 py-2 rounded-lg bg-sa-critical text-white font-semibold disabled:opacity-60 hover:brightness-110 transition-all"
               >
                 {deleting ? 'Working…' : deleteNow ? 'Delete permanently' : 'Schedule deletion'}
               </button>

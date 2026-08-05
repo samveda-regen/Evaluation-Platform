@@ -4,6 +4,7 @@
 
 body {
   margin: 0;
-  background: #040309;
-  color: #EAF6FF;
+  background: #08080A;
+  color: #F2F2F5;
+  -webkit-font-smoothing: antialiased;
 }

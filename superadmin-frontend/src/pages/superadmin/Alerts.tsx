@@ -93,7 +93,7 @@ export default function SuperAdminAlerts() {
 
       <Card className="mb-4 flex items-center justify-between">
         <div>
-          <h3 className="text-[13px] font-semibold text-sa-ink tracking-wide uppercase font-mono mb-1">Alert delivery</h3>
+          <h3 className="text-[13px] font-semibold text-sa-ink mb-1">Alert delivery</h3>
           <p className="text-[12.5px] text-sa-ink-dim">Every alert is always recorded below; this only controls channel delivery.</p>
         </div>
         <div className="flex items-center gap-3">
@@ -105,35 +105,35 @@ export default function SuperAdminAlerts() {
       <Card title="Channels" className="mb-4">
         <form onSubmit={saveChannels} className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <label className="block font-mono text-[10.5px] tracking-[0.1em] uppercase text-sa-ink-dim mb-1.5">Email to</label>
+            <label className="block text-[10.5px] text-sa-ink-dim mb-1.5">Email to</label>
             <input
               type="email"
               placeholder="ops@yourcompany.com"
               value={form.emailTo}
               onChange={(e) => setForm((f) => ({ ...f, emailTo: e.target.value }))}
-              className="w-full bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent font-mono"
+              className="w-full bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent"
             />
           </div>
           <div className="col-span-2">
-            <label className="block font-mono text-[10.5px] tracking-[0.1em] uppercase text-sa-ink-dim mb-1.5">Slack webhook URL</label>
+            <label className="block text-[10.5px] text-sa-ink-dim mb-1.5">Slack webhook URL</label>
             <input
               placeholder="https://hooks.slack.com/services/…"
               value={form.slackWebhookUrl}
               onChange={(e) => setForm((f) => ({ ...f, slackWebhookUrl: e.target.value }))}
-              className="w-full bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent font-mono"
+              className="w-full bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent"
             />
           </div>
           <div className="col-span-2">
-            <label className="block font-mono text-[10.5px] tracking-[0.1em] uppercase text-sa-ink-dim mb-1.5">Generic webhook URL</label>
+            <label className="block text-[10.5px] text-sa-ink-dim mb-1.5">Generic webhook URL</label>
             <input
               placeholder="https://your-receiver.example.com/hook"
               value={form.genericWebhookUrl}
               onChange={(e) => setForm((f) => ({ ...f, genericWebhookUrl: e.target.value }))}
-              className="w-full bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent font-mono"
+              className="w-full bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent"
             />
           </div>
           <div>
-            <label className="block font-mono text-[10.5px] tracking-[0.1em] uppercase text-sa-ink-dim mb-1.5">
+            <label className="block text-[10.5px] text-sa-ink-dim mb-1.5">
               API latency p95 threshold (ms)
             </label>
             <input
@@ -141,30 +141,30 @@ export default function SuperAdminAlerts() {
               placeholder="blank = disabled"
               value={form.apiLatencyP95ThresholdMs}
               onChange={(e) => setForm((f) => ({ ...f, apiLatencyP95ThresholdMs: e.target.value }))}
-              className="w-full bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent font-mono"
+              className="w-full bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent"
             />
           </div>
           <div>
-            <label className="block font-mono text-[10.5px] tracking-[0.1em] uppercase text-sa-ink-dim mb-1.5">Sustained minutes</label>
+            <label className="block text-[10.5px] text-sa-ink-dim mb-1.5">Sustained minutes</label>
             <input
               type="number"
               min={1}
               value={form.sustainedMinutes}
               onChange={(e) => setForm((f) => ({ ...f, sustainedMinutes: e.target.value }))}
-              className="w-full bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent font-mono"
+              className="w-full bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2 text-[12.5px] text-sa-ink outline-none focus:border-sa-accent"
             />
           </div>
           <div className="col-span-2 flex gap-2">
             <button
               type="submit"
-              className="font-mono text-[12px] uppercase tracking-wide px-3.5 py-2 rounded-sm bg-sa-accent text-sa-void font-bold shadow-glow-cyan transition-all"
+              className="text-[12px] px-3.5 py-2 rounded-lg bg-sa-accent text-white font-semibold transition-all"
             >
               Save
             </button>
             <button
               type="button"
               onClick={() => void sendTest()}
-              className="inline-flex items-center gap-1.5 font-mono text-[12px] uppercase tracking-wide px-3.5 py-2 rounded-sm border border-sa-line text-sa-ink-dim hover:border-sa-line-bright transition-all"
+              className="inline-flex items-center gap-1.5 text-[12px] px-3.5 py-2 rounded-lg border border-sa-line text-sa-ink-dim hover:text-sa-ink hover:border-sa-line-bright transition-all"
             >
               <Send size={13} /> Send test alert
             </button>
@@ -175,19 +175,19 @@ export default function SuperAdminAlerts() {
       <Card title="Alert history" meta={alerts ? `${alerts.length} shown` : undefined}>
         <div className="space-y-1.5">
           {alerts?.map((alert) => (
-            <div key={alert.id} className="flex items-start justify-between gap-3 bg-sa-panel-inset border border-sa-line rounded-sm px-3 py-2.5">
+            <div key={alert.id} className="flex items-start justify-between gap-3 bg-sa-panel-inset border border-sa-line rounded-lg px-3 py-2.5">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
                   <StatusPill tone={alert.severity === 'critical' ? 'critical' : alert.severity === 'warning' ? 'warn' : 'dim'}>
                     {alert.severity}
                   </StatusPill>
-                  <span className="font-mono text-[11px] text-sa-ink-faint uppercase tracking-wide">{alert.type}</span>
+                  <span className="text-[11px] text-sa-ink-faint">{alert.type}</span>
                 </div>
                 <p className="text-[12.5px] text-sa-ink truncate">{alert.message}</p>
               </div>
               <div className="shrink-0 text-right">
-                <div className="font-mono text-[11px] text-sa-ink-faint">{relativeTime(alert.createdAt)}</div>
-                <div className={`font-mono text-[10.5px] ${alert.delivered ? 'text-sa-good' : 'text-sa-ink-faint'}`}>
+                <div className="text-[11px] text-sa-ink-faint">{relativeTime(alert.createdAt)}</div>
+                <div className={`text-[10.5px] ${alert.delivered ? 'text-sa-good' : 'text-sa-ink-faint'}`}>
                   {alert.delivered ? 'delivered' : 'logged only'}
                 </div>
               </div>
