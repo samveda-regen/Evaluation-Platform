@@ -45,6 +45,8 @@ export default {
           'tile-green': '#12704F',
           'tile-amber': '#8A5A12',
           'tile-red': '#9F2B3F',
+          'tile-purple': '#5B3A8E',
+          'tile-teal': '#0E7C7B',
         },
       },
     },

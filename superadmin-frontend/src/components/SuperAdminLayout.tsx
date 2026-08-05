@@ -63,7 +63,9 @@ export default function SuperAdminLayout() {
     <div className="min-h-screen bg-sa-void text-sa-ink font-sans flex">
       <aside className="w-60 shrink-0 border-r border-sa-line bg-sa-panel-inset flex flex-col">
         <div className="px-5 py-5">
-          <img src={regenLogo} alt="ReGen" className="h-10 w-auto" />
+          <div className="inline-flex bg-white rounded-lg p-1.5">
+            <img src={regenLogo} alt="ReGen" className="h-9 w-auto" />
+          </div>
         </div>
         <nav className="flex-1 px-3 py-2 flex flex-col gap-0.5 overflow-y-auto">
           {navItems.map(({ path, label, icon: ItemIcon }) => (
@@ -106,13 +108,15 @@ export default function SuperAdminLayout() {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-14 shrink-0 border-b border-sa-line bg-sa-panel-inset/60 flex items-center justify-between px-6">
-          <span className="text-sm text-sa-ink-dim">Superadmin console</span>
+        <header className="h-16 shrink-0 border-b border-sa-line bg-gradient-to-r from-sa-panel-inset via-sa-panel-inset to-sa-panel-raised/50 flex items-center justify-between px-6">
+          <span className="text-lg font-bold text-sa-ink">
+            Superadmin Console
+          </span>
           <span
-            className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${
+            className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border ${
               joined
-                ? 'text-sa-accent2 bg-sa-accent2-soft'
-                : 'text-sa-ink-faint bg-sa-panel-raised'
+                ? 'text-sa-good bg-sa-good-soft border-sa-good/40 shadow-[0_0_14px_2px_rgba(34,197,94,0.55)]'
+                : 'text-sa-ink-faint bg-sa-panel-raised border-transparent'
             }`}
           >
             <Radio size={11} className={joined ? 'animate-pulse' : ''} />

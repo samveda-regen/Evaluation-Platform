@@ -48,7 +48,11 @@ export default function SuperAdminLogin() {
         onSubmit={handleSubmit}
         className="relative w-full max-w-sm bg-sa-panel/90 backdrop-blur-sm border border-sa-line rounded-2xl p-8"
       >
-        <img src={regenLogo} alt="ReGen" className="block h-16 w-auto mx-auto" />
+        <div className="flex justify-center">
+          <div className="inline-flex bg-white rounded-xl p-2.5">
+            <img src={regenLogo} alt="ReGen" className="h-12 w-auto" />
+          </div>
+        </div>
         <h1 className="text-xl font-bold text-sa-ink mb-1 mt-5">Superadmin access</h1>
         <p className="text-sm text-sa-ink-dim mb-7">
           {needsTotp ? 'Enter your authenticator code.' : 'Sign in to the ReGen console.'}

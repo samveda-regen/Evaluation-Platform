@@ -52,7 +52,7 @@ export function StatCard({ label, value, sub, tone = 'default', icon: Icon }: {
   label: string;
   value: ReactNode;
   sub?: string;
-  tone?: 'default' | 'good' | 'warn' | 'critical';
+  tone?: 'default' | 'good' | 'warn' | 'critical' | 'accent' | 'teal';
   icon?: LucideIcon;
 }) {
   const bgClass = {
@@ -60,6 +60,8 @@ export function StatCard({ label, value, sub, tone = 'default', icon: Icon }: {
     good: 'bg-sa-tile-green',
     warn: 'bg-sa-tile-amber',
     critical: 'bg-sa-tile-red',
+    accent: 'bg-sa-tile-purple',
+    teal: 'bg-sa-tile-teal',
   }[tone];
 
   return (

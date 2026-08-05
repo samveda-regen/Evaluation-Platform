@@ -70,13 +70,13 @@ export default function SuperAdminOverview() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         <StatCard label="Admins online" value={onlineCount} sub={`of ${admins.length} total`} icon={Users} tone="default" />
-        <StatCard label="Active proctoring sessions" value={live?.activeSessions ?? '—'} icon={Eye} tone="good" />
+        <StatCard label="Active proctoring sessions" value={live?.activeSessions ?? '—'} icon={Eye} tone="accent" />
         <StatCard
           label="Locked features"
           value={lockedFlags.length}
           sub={lockedFlags.length > 0 ? lockedFlags.map((f) => f.label).join(', ') : 'none locked'}
           icon={Lock}
-          tone={lockedFlags.length > 0 ? 'warn' : 'good'}
+          tone={lockedFlags.length > 0 ? 'warn' : 'teal'}
         />
         <StatCard
           label="Failed request rate"
