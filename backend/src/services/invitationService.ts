@@ -19,6 +19,7 @@ export function formatExamDate(startTime: Date | null | undefined): string | und
   return new Intl.DateTimeFormat('en-US', {
     dateStyle: 'medium',
     timeStyle: 'short',
+    timeZone: 'Asia/Kolkata',
   }).format(startTime);
 }
 
