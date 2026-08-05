@@ -19,6 +19,7 @@ export function formatExamDate(startTime: Date | null | undefined): string | und
   return new Intl.DateTimeFormat('en-US', {
     dateStyle: 'medium',
     timeStyle: 'short',
+    timeZone: 'Asia/Kolkata',
   }).format(startTime);
 }
 
@@ -441,7 +442,8 @@ export async function sendBulkTestInvitations(input: {
     throw new InvitationServiceError('Cannot send invitations because this test has already ended.', 400);
   }
 
-  const examDate = formatExamDate((test as any).startTime);
+  const examStart = formatExamDate((test as any).startTime);
+  const examEnd = formatExamDate((test as any).endTime);
   const { rows, invalidRows } = await parseInvitationFile(input.file);
 
   let sent = 0;
@@ -494,7 +496,8 @@ export async function sendBulkTestInvitations(input: {
           accessCode: invitation.accessCode ?? accessCode,
           companyName: (test as any).admin?.company?.name ?? undefined,
           estimatedTime: `${(test as any).duration ?? ''} minutes`,
-          examDate,
+          examStart,
+          examEnd,
           inviteEmailSubject: (test as any).inviteEmailSubject ?? undefined,
           inviteEmailBody: (test as any).inviteEmailBody ?? undefined,
         }, row.email);
@@ -604,7 +607,8 @@ export async function sendStructuredTestInvitations(input: {
     throw new InvitationServiceError('Cannot send invitations because this test has already ended.', 400);
   }
 
-  const examDate = formatExamDate((test as any).startTime);
+  const examStart = formatExamDate((test as any).startTime);
+  const examEnd = formatExamDate((test as any).endTime);
   const dedupedCandidates = new Map<string, StructuredInvitationCandidate>();
   for (const candidate of input.candidates) {
     const email = sanitizeInput(candidate.email).toLowerCase().trim();
@@ -669,7 +673,8 @@ export async function sendStructuredTestInvitations(input: {
         accessCode: invitation.accessCode ?? accessCode,
         companyName: (test as any).admin?.company?.name ?? undefined,
         estimatedTime: `${(test as any).duration ?? ''} minutes`,
-        examDate,
+        examStart,
+        examEnd,
         inviteEmailSubject: (test as any).inviteEmailSubject ?? undefined,
         inviteEmailBody: (test as any).inviteEmailBody ?? undefined,
       }, row.email);

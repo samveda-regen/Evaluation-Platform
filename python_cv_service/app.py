@@ -99,6 +99,12 @@ VIOLATION_COOLDOWN_SECONDS = _env_float("VIOLATION_COOLDOWN_SECONDS", 3.0)
 PHONE_CLASS_ID = _env_int("PHONE_CLASS_ID", 67)
 PHONE_CONF = _env_float("PHONE_CONF", 0.35)
 PHONE_MIN_AREA_RATIO = _env_float("PHONE_MIN_AREA_RATIO", 0.00005)
+# Laptop/book/remote are less distinctive shapes than a phone (more false-positive
+# risk — a notebook or tablet on the desk can read as "book"), so this defaults
+# stricter than PHONE_CONF.
+UNAUTHORIZED_OBJECT_CONF = _env_float("UNAUTHORIZED_OBJECT_CONF", 0.5)
+UNAUTHORIZED_OBJECT_MIN_AREA_RATIO = _env_float("UNAUTHORIZED_OBJECT_MIN_AREA_RATIO", 0.001)
+UNAUTHORIZED_OBJECT_EMIT_COOLDOWN_SECONDS = _env_float("UNAUTHORIZED_OBJECT_EMIT_COOLDOWN_SECONDS", 8.0)
 NO_FACE_SECONDS = _env_float("NO_FACE_SECONDS", 5.0)
 MULTI_FACE_SECONDS = _env_float("MULTI_FACE_SECONDS", 3.0)
 LOOK_AWAY_SECONDS = _env_float("LOOK_AWAY_SECONDS", 3.0)
@@ -113,7 +119,7 @@ CV_ENABLED_EVENTS = {
     x.strip()
     for x in os.getenv(
         "CV_ENABLED_EVENTS",
-        "face_not_detected,multiple_faces,phone_detected",
+        "face_not_detected,multiple_faces,phone_detected,unauthorized_object_detected",
     ).split(",")
     if x.strip()
 }
@@ -142,6 +148,7 @@ def _new_session_state() -> Dict[str, Any]:
         "away_count": 0,
         "blocked_start": None,
         "last_phone_emit": 0.0,
+        "last_unauthorized_object_emit": 0.0,
         # Capture time (seconds) of the last successfully processed frame.
         # Used to detect network gaps and reset timers when continuity breaks.
         "last_frame_capture_ts": None,
@@ -314,14 +321,29 @@ def _gaze_signal(img_bgr: np.ndarray, mesh_result: Any = None) -> Tuple[bool, st
         return True, "unknown", 0.0
 
 
-def _phone_detections(img_bgr: np.ndarray) -> List[Dict[str, Any]]:
+UNAUTHORIZED_OBJECT_LABELS = {
+    "laptop": "laptop",
+    "book": "book",
+    "remote": "remote",
+    "remote control": "remote",
+}
+
+
+def _object_detections(img_bgr: np.ndarray) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Single YOLO pass, split into (phone_objects, unauthorized_objects).
+    Returns two lists instead of running predict() twice per frame — a second
+    inference call would blow the per-frame time budget under a 2s cadence."""
     if _model is None:
-        return []
-    out: List[Dict[str, Any]] = []
+        return [], []
+    phones: List[Dict[str, Any]] = []
+    unauthorized: List[Dict[str, Any]] = []
     try:
         # device="cpu" forces CPU execution even if a GPU-capable onnxruntime/torch
         # build happens to be installed on this box.
-        results = _model.predict(img_bgr, verbose=False, conf=PHONE_CONF, iou=0.45, max_det=20, device="cpu")
+        # conf uses the lower of the two thresholds so a class with a higher
+        # per-class threshold below isn't dropped by the model call itself.
+        min_conf = min(PHONE_CONF, UNAUTHORIZED_OBJECT_CONF)
+        results = _model.predict(img_bgr, verbose=False, conf=min_conf, iou=0.45, max_det=20, device="cpu")
         h, w = img_bgr.shape[:2]
         frame_area = float(max(1, h * w))
         model_names = getattr(_model, "names", {}) or {}
@@ -333,24 +355,38 @@ def _phone_detections(img_bgr: np.ndarray) -> List[Dict[str, Any]]:
                 cls_idx = int(b.cls.item())
                 conf = float(b.conf.item())
                 label = str(model_names.get(cls_idx, "")).lower().strip()
-                is_phone = cls_idx == PHONE_CLASS_ID or label in {"cell phone", "mobile phone", "phone", "smartphone"}
-                if not is_phone or conf < PHONE_CONF:
-                    continue
                 x1, y1, x2, y2 = [float(v) for v in b.xyxy[0].tolist()]
                 area_ratio = max(0.0, (x2 - x1) * (y2 - y1)) / frame_area
-                if area_ratio < PHONE_MIN_AREA_RATIO:
+
+                is_phone = cls_idx == PHONE_CLASS_ID or label in {"cell phone", "mobile phone", "phone", "smartphone"}
+                if is_phone:
+                    if conf < PHONE_CONF or area_ratio < PHONE_MIN_AREA_RATIO:
+                        continue
+                    phones.append(
+                        {
+                            "label": "cell phone",
+                            "confidence": conf * 100.0,
+                            "areaRatio": area_ratio,
+                            "source": "yolo",
+                        }
+                    )
                     continue
-                out.append(
-                    {
-                        "label": "cell phone",
-                        "confidence": conf * 100.0,
-                        "areaRatio": area_ratio,
-                        "source": "yolo",
-                    }
-                )
+
+                mapped_label = UNAUTHORIZED_OBJECT_LABELS.get(label)
+                if mapped_label:
+                    if conf < UNAUTHORIZED_OBJECT_CONF or area_ratio < UNAUTHORIZED_OBJECT_MIN_AREA_RATIO:
+                        continue
+                    unauthorized.append(
+                        {
+                            "label": mapped_label,
+                            "confidence": conf * 100.0,
+                            "areaRatio": area_ratio,
+                            "source": "yolo",
+                        }
+                    )
     except Exception:
-        return []
-    return out
+        return [], []
+    return phones, unauthorized
 
 
 def _camera_blocked_signal(img_bgr: np.ndarray) -> Tuple[bool, str, float]:
@@ -376,6 +412,7 @@ def health() -> Dict[str, Any]:
         "voice_supported_in_this_api": False,
         "config": {
             "phoneConf": PHONE_CONF,
+            "unauthorizedObjectConf": UNAUTHORIZED_OBJECT_CONF,
             "noFaceSeconds": NO_FACE_SECONDS,
             "multiFaceSeconds": MULTI_FACE_SECONDS,
             "lookAwaySeconds": LOOK_AWAY_SECONDS,
@@ -459,6 +496,7 @@ def analyze_request(req: AnalyzeRequest) -> Dict[str, Any]:
         face_count, face_details, mesh_result = 0, {"mediapipeFaceDetection": 0, "mediapipeFaceMesh": 0}, None
         looking_at_screen, gaze_direction, gaze_confidence = True, "unknown", 0.0
         phone_objects: List[Dict[str, Any]] = []
+        unauthorized_objects: List[Dict[str, Any]] = []
     else:
         # FaceMesh is computed once here and reused by _gaze_signal to eliminate duplicate inference.
         t0 = time.perf_counter()
@@ -467,7 +505,7 @@ def analyze_request(req: AnalyzeRequest) -> Dict[str, Any]:
         mediapipe_ms = (time.perf_counter() - t0) * 1000.0
 
         t0 = time.perf_counter()
-        phone_objects = _phone_detections(img)
+        phone_objects, unauthorized_objects = _object_detections(img)
         yolo_ms = (time.perf_counter() - t0) * 1000.0
 
         logger.info(
@@ -476,6 +514,7 @@ def analyze_request(req: AnalyzeRequest) -> Dict[str, Any]:
         )
     phone_count = len(phone_objects)
     objects.extend(phone_objects)
+    objects.extend(unauthorized_objects)
 
     # CAMERA BLOCKED > CAMERA_BLOCKED_SECONDS
     if camera_blocked:
@@ -580,6 +619,24 @@ def analyze_request(req: AnalyzeRequest) -> Dict[str, Any]:
         if emitted:
             state["last_phone_emit"] = now
 
+    # UNAUTHORIZED OBJECT (laptop/book/remote, debounced)
+    if unauthorized_objects and (now - float(state["last_unauthorized_object_emit"])) > UNAUTHORIZED_OBJECT_EMIT_COOLDOWN_SECONDS:
+        best = max(unauthorized_objects, key=lambda o: o["confidence"])
+        counts: Dict[str, int] = defaultdict(int)
+        for o in unauthorized_objects:
+            counts[o["label"]] += 1
+        emitted = _add_violation(
+            violations,
+            req.sessionId,
+            "unauthorized_object_detected",
+            "high",
+            best["confidence"],
+            f"{best['label']} detected in frame",
+            {"objects": dict(counts)},
+        )
+        if emitted:
+            state["last_unauthorized_object_emit"] = now
+
     response = {
         "violations": violations,
         "objects": objects,
@@ -596,9 +653,9 @@ def analyze_request(req: AnalyzeRequest) -> Dict[str, Any]:
             "personCount": face_count,
             "phoneCount": phone_count,
             "displayCount": 0,
-            "bookCount": 0,
-            "laptopCount": 0,
-            "electronicCount": 0,
+            "bookCount": sum(1 for o in unauthorized_objects if o["label"] == "book"),
+            "laptopCount": sum(1 for o in unauthorized_objects if o["label"] == "laptop"),
+            "electronicCount": sum(1 for o in unauthorized_objects if o["label"] == "remote"),
             "cameraBlocked": camera_blocked,
             "yoloLoaded": _model is not None,
         },

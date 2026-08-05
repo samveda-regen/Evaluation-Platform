@@ -29,7 +29,6 @@ import {
   ProctorSession,
   ViolationData,
 } from '../services/proctorService';
-import { AIProctor, DetectionResult, getAIProctor } from '../services/aiDetectionService';
 import { clearCachedStreams, getCachedStreams } from '../services/devicePermissionService';
 
 export interface ProctorStatus {
@@ -79,21 +78,7 @@ const defaultConfig: ProctorConfig = {
   snapshotInterval: 45000, // Take snapshot every 45 seconds
 };
 const TEMP_DISABLE_AUDIO_PROCTORING = true;
-const NO_SNAPSHOT_CLIENT_EVENTS = new Set(['voice_detected', 'secondary_monitor_detected']);
 const TEMP_DISABLE_SUSPICIOUS_AUDIO = TEMP_DISABLE_AUDIO_PROCTORING;
-const MATRIX_SEVERITY_BY_EVENT: Partial<Record<string, ViolationData['severity']>> = {
-  tab_switch: 'medium',
-  window_blur: 'medium',
-  fullscreen_exit: 'high',
-  copy_paste_attempt: 'medium',
-  camera_blocked: 'critical',
-  multiple_faces: 'critical',
-  phone_detected: 'critical',
-  face_not_detected: 'critical',
-  looking_away: 'high',
-  voice_detected: 'critical',
-  secondary_monitor_detected: 'critical',
-};
 
 export function useProctoring(attemptId: string, config: Partial<ProctorConfig> = {}) {
   const mergedConfig = { ...defaultConfig, ...config };
@@ -137,9 +122,6 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
   const screenStreamRef = useRef<MediaStream | null>(null);
   const audioAnalyzerRef = useRef<AudioAnalyzer | null>(null);
   const faceDetectorRef = useRef<SimpleFaceDetector | null>(null);
-  const aiProctorRef = useRef<AIProctor | null>(null);
-  const latestAIDetectionRef = useRef<DetectionResult | null>(null);
-  const [aiProctorReady, setAiProctorReady] = useState(false);
   const webcamRecorderRef = useRef<MediaRecorder | null>(null);
   const screenRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingStartRef = useRef<Record<string, number>>({});
@@ -437,17 +419,6 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
             faceDetectorRef.current.initialize(processingVideo);
           }
 
-          // Initialize AI Proctor (YOLO-based detection)
-          aiProctorRef.current = getAIProctor();
-          aiProctorRef.current.initialize().then(ready => {
-            setAiProctorReady(ready);
-            traceLog('ai_init', { ready });
-            if (ready) {
-              console.log('AI Proctor (YOLO/COCO-SSD) initialized successfully');
-            } else {
-              console.warn('AI Proctor failed to initialize, using simple detection');
-            }
-          });
         } else {
           setError('Camera permission denied');
         }
@@ -666,125 +637,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     let faceDetected = true;
     let lookingAtScreen = true;
 
-    // Use AI Proctor (YOLO/COCO-SSD + BlazeFace) if ready
-    if (aiProctorReady && aiProctorRef.current) {
-      try {
-        const aiResult = await aiProctorRef.current.detect(activeVideo);
-        latestAIDetectionRef.current = aiResult;
-
-        // Process AI detection results
-        faceDetected = aiResult.faces.length > 0;
-        lookingAtScreen = aiResult.faces.length > 0 && aiResult.faces[0].isLookingAtScreen;
-        traceLog('ai_detect', {
-          faces: aiResult.faces.length,
-          objects: aiResult.objects.length,
-          violations: aiResult.violations.length,
-          lookingAtScreen,
-        });
-
-        // Direct object-rule fallback based on detector outputs (not only aiResult.violations).
-        const objs = aiResult.objects || [];
-        const phoneObj = objs.find((o) => o.class === 'cell phone' && o.confidence >= 35);
-        const laptopObj = objs.find((o) => o.class === 'laptop' && o.confidence >= 45);
-        const remoteObj = objs.find((o) => o.class === 'remote' && o.confidence >= 45);
-
-        if (phoneObj && isViolationEnabled('phone_detected') && canEmitClientViolation('object:phone', 9000)) {
-          const violationEvidence = captureViolationEvidenceFrame({ quality: 0.72, maxWidth: 1280 });
-          const violationData: ViolationData = {
-            eventType: 'phone_detected',
-            severity: 'critical',
-            confidence: Math.round(phoneObj.confidence),
-            description: `Mobile phone detected (${Math.round(phoneObj.confidence)}%)`,
-            metadata: { snapshotSource: violationEvidence.snapshotSource },
-            snapshotData: violationEvidence.snapshotData,
-          };
-          await reportViolationAndHandleTermination(violationData);
-          traceLog('client_violation_emit', {
-            eventType: violationData.eventType,
-            severity: violationData.severity,
-            confidence: violationData.confidence,
-            source: 'ai_object_rule',
-          });
-          setStatus(prev => ({ ...prev, violations: [...prev.violations, violationData] }));
-          if (finalConfig.onViolation) finalConfig.onViolation(violationData);
-        }
-
-        if ((laptopObj || remoteObj) && isViolationEnabled('unauthorized_object_detected') && canEmitClientViolation('object:unauthorized', 10000)) {
-          const best = laptopObj || remoteObj!;
-          const violationEvidence = captureViolationEvidenceFrame({ quality: 0.72, maxWidth: 1280 });
-          const violationData: ViolationData = {
-            eventType: 'unauthorized_object_detected',
-            severity: 'high',
-            confidence: Math.round(best.confidence),
-            description: `${best.class} detected (${Math.round(best.confidence)}%)`,
-            metadata: { snapshotSource: violationEvidence.snapshotSource },
-            snapshotData: violationEvidence.snapshotData,
-          };
-          await reportViolationAndHandleTermination(violationData);
-          traceLog('client_violation_emit', {
-            eventType: violationData.eventType,
-            severity: violationData.severity,
-            confidence: violationData.confidence,
-            source: 'ai_object_rule',
-          });
-          setStatus(prev => ({ ...prev, violations: [...prev.violations, violationData] }));
-          if (finalConfig.onViolation) finalConfig.onViolation(violationData);
-        }
-
-        // Fallback path: emit client-side critical violations when backend misses/lags.
-        for (const v of aiResult.violations) {
-          let mappedType = v.type;
-          if (v.type.includes('cell phone')) mappedType = 'phone_detected';
-          else if (v.type.includes('multiple_faces')) mappedType = 'multiple_faces';
-          else if (v.type.includes('face_not_detected')) mappedType = 'face_not_detected';
-          else if (v.type.includes('laptop') || v.type.includes('book') || v.type.includes('remote')) {
-            mappedType = 'unauthorized_object_detected';
-          }
-
-          const dedupeKey = `${mappedType}:${v.severity}`;
-          if (!isViolationEnabled(mappedType)) continue;
-          if (!canEmitClientViolation(dedupeKey)) continue;
-          const violationEvidence = NO_SNAPSHOT_CLIENT_EVENTS.has(mappedType)
-            ? { snapshotSource: 'none' as const, snapshotData: undefined }
-            : captureViolationEvidenceFrame({ quality: 0.7, maxWidth: 1280 });
-
-          const violationData: ViolationData = {
-            eventType: mappedType,
-            severity: MATRIX_SEVERITY_BY_EVENT[mappedType] || v.severity,
-            confidence: Math.max(50, v.confidence),
-            description: v.description,
-            metadata: violationEvidence.snapshotData
-              ? { snapshotSource: violationEvidence.snapshotSource }
-              : undefined,
-            snapshotData: violationEvidence.snapshotData,
-          };
-
-          await reportViolationAndHandleTermination(violationData);
-          traceLog('client_violation_emit', {
-            eventType: violationData.eventType,
-            severity: violationData.severity,
-            confidence: violationData.confidence,
-            source: 'ai_violation_list',
-          });
-          setStatus(prev => ({
-            ...prev,
-            violations: [...prev.violations, violationData],
-          }));
-          if (finalConfig.onViolation) {
-            finalConfig.onViolation(violationData);
-          }
-        }
-      } catch (err) {
-        console.error('AI detection failed, using fallback:', err);
-        // Fall back to simple detection
-        if (faceDetectorRef.current) {
-          const result = faceDetectorRef.current.detect();
-          faceDetected = result.faceDetected;
-          lookingAtScreen = result.lookingAtScreen;
-        }
-      }
-    } else if (faceDetectorRef.current) {
-      // Use simple face detection as fallback
+    if (faceDetectorRef.current) {
       const result = faceDetectorRef.current.detect();
       faceDetected = result.faceDetected;
       lookingAtScreen = result.lookingAtScreen;
@@ -795,16 +648,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
       faceDetected,
       lookingAtScreen,
     }));
-  }, [
-    session,
-    aiProctorReady,
-    getActiveVideoElement,
-    isViolationEnabled,
-    canEmitClientViolation,
-    reportViolationAndHandleTermination,
-    finalConfig,
-    captureViolationEvidenceFrame,
-  ]);
+  }, [session, getActiveVideoElement]);
 
   // Run audio status only. Violations are emitted by backend analysis pipeline.
   const runAudioAnalysis = useCallback(async () => {
@@ -1289,9 +1133,6 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
       if (screenRecorderRef.current && screenRecorderRef.current.state !== 'inactive') {
         screenRecorderRef.current.stop();
       }
-      if (aiProctorRef.current) {
-        aiProctorRef.current.dispose();
-      }
       if (session) {
         endProctorSession(session.sessionId);
       }
@@ -1419,7 +1260,6 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     reportViolation: reportManualViolation,
     endSession,
     cameraStream: cameraStreamRef.current,
-    aiProctorReady, // Indicates if YOLO/COCO-SSD AI detection is active
     runAudioAnalysis,
     capturePreviewFrame,
     captureEvidenceFrame,
