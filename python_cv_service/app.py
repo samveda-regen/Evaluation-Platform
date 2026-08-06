@@ -96,13 +96,12 @@ def _env_int(name: str, default: int) -> int:
 VIOLATION_COOLDOWN_SECONDS = _env_float("VIOLATION_COOLDOWN_SECONDS", 3.0)
 
 # New-engine detection behavior (adapted for frame API)
-PHONE_CLASS_ID = _env_int("PHONE_CLASS_ID", 67)
-PHONE_CONF = _env_float("PHONE_CONF", 0.35)
+# exp-1.onnx is a custom-trained model (Person/Laptop/Mobile Phones/TV/Note
+# Books/Head Phones/gaze classes) — only Person, Laptop, and Mobile Phones are
+# actually mapped to violations below; everything else is ignored by label.
+PHONE_CONF = _env_float("PHONE_CONF", 0.01)
 PHONE_MIN_AREA_RATIO = _env_float("PHONE_MIN_AREA_RATIO", 0.00005)
-# Laptop/book/remote are less distinctive shapes than a phone (more false-positive
-# risk — a notebook or tablet on the desk can read as "book"), so this defaults
-# stricter than PHONE_CONF.
-UNAUTHORIZED_OBJECT_CONF = _env_float("UNAUTHORIZED_OBJECT_CONF", 0.5)
+UNAUTHORIZED_OBJECT_CONF = _env_float("UNAUTHORIZED_OBJECT_CONF", 0.25)
 UNAUTHORIZED_OBJECT_MIN_AREA_RATIO = _env_float("UNAUTHORIZED_OBJECT_MIN_AREA_RATIO", 0.001)
 UNAUTHORIZED_OBJECT_EMIT_COOLDOWN_SECONDS = _env_float("UNAUTHORIZED_OBJECT_EMIT_COOLDOWN_SECONDS", 8.0)
 NO_FACE_SECONDS = _env_float("NO_FACE_SECONDS", 5.0)
@@ -114,7 +113,7 @@ FACE_MIN_CONF = _env_float("FACE_MIN_CONF", 0.45)
 GAZE_LEFT_RIGHT_THRESHOLD = _env_float("GAZE_LEFT_RIGHT_THRESHOLD", 0.35)
 CAMERA_BLOCKED_DARK_THRESHOLD = _env_float("CAMERA_BLOCKED_DARK_THRESHOLD", 18.0)
 CAMERA_BLOCKED_UNIFORM_THRESHOLD = _env_float("CAMERA_BLOCKED_UNIFORM_THRESHOLD", 8.0)
-YOLO_MODEL_PATH = os.getenv("YOLO_MODEL", "yolo26n.onnx").strip() or "yolo26n.onnx"
+YOLO_MODEL_PATH = os.getenv("YOLO_MODEL", "exp-1.onnx").strip() or "exp-1.onnx"
 CV_ENABLED_EVENTS = {
     x.strip()
     for x in os.getenv(
@@ -323,9 +322,6 @@ def _gaze_signal(img_bgr: np.ndarray, mesh_result: Any = None) -> Tuple[bool, st
 
 UNAUTHORIZED_OBJECT_LABELS = {
     "laptop": "laptop",
-    "book": "book",
-    "remote": "remote",
-    "remote control": "remote",
 }
 
 
@@ -358,7 +354,7 @@ def _object_detections(img_bgr: np.ndarray) -> Tuple[List[Dict[str, Any]], List[
                 x1, y1, x2, y2 = [float(v) for v in b.xyxy[0].tolist()]
                 area_ratio = max(0.0, (x2 - x1) * (y2 - y1)) / frame_area
 
-                is_phone = cls_idx == PHONE_CLASS_ID or label in {"cell phone", "mobile phone", "phone", "smartphone"}
+                is_phone = label in {"cell phone", "mobile phone", "phone", "smartphone", "mobile phones"}
                 if is_phone:
                     if conf < PHONE_CONF or area_ratio < PHONE_MIN_AREA_RATIO:
                         continue
