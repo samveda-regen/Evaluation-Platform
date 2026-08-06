@@ -161,16 +161,19 @@ function mapTestWithCustomAI<T extends { customAIViolations?: string | null }>(t
   };
 }
 
-// MCQ/coding/behavioral questions store `tags` as a JSON-encoded string column.
-// Every other controller (mcqQuestion.ts, codingQuestion.ts) parses it before
-// sending to the frontend, which expects `tags: string[]` — do the same here for
-// questions embedded inside a test, otherwise the frontend crashes calling
-// array methods on a raw string.
-function parseTagsField(tags: unknown): string[] {
-  if (Array.isArray(tags)) return tags;
-  if (typeof tags === 'string' && tags.trim()) {
+// MCQ/coding/behavioral questions store `tags` (and MCQ `options`) as
+// JSON-encoded string columns. Every other controller (mcqQuestion.ts,
+// codingQuestion.ts, candidate.ts) parses them before sending to the
+// frontend, which expects `tags: string[]` / `options: string[]` — do the
+// same here for questions embedded inside a test, otherwise the frontend
+// crashes calling array methods on a raw string (or, for `options.length`,
+// silently reports the JSON string's character count instead of the
+// option count).
+function parseJsonArrayField(value: unknown): string[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
     try {
-      const parsed = JSON.parse(tags);
+      const parsed = JSON.parse(value);
       return Array.isArray(parsed) ? parsed : [];
     } catch {
       return [];
@@ -179,7 +182,7 @@ function parseTagsField(tags: unknown): string[] {
   return [];
 }
 
-interface QuestionWithTags { tags?: unknown; [key: string]: unknown }
+interface QuestionWithTags { tags?: unknown; options?: unknown; [key: string]: unknown }
 interface TestQuestionLike {
   mcqQuestion?: QuestionWithTags | null;
   codingQuestion?: QuestionWithTags | null;
@@ -190,9 +193,11 @@ interface TestQuestionLike {
 function withParsedQuestionTags<T extends TestQuestionLike>(testQuestion: T): T {
   return {
     ...testQuestion,
-    mcqQuestion: testQuestion.mcqQuestion ? { ...testQuestion.mcqQuestion, tags: parseTagsField(testQuestion.mcqQuestion.tags) } : testQuestion.mcqQuestion,
-    codingQuestion: testQuestion.codingQuestion ? { ...testQuestion.codingQuestion, tags: parseTagsField(testQuestion.codingQuestion.tags) } : testQuestion.codingQuestion,
-    behavioralQuestion: testQuestion.behavioralQuestion ? { ...testQuestion.behavioralQuestion, tags: parseTagsField(testQuestion.behavioralQuestion.tags) } : testQuestion.behavioralQuestion,
+    mcqQuestion: testQuestion.mcqQuestion
+      ? { ...testQuestion.mcqQuestion, tags: parseJsonArrayField(testQuestion.mcqQuestion.tags), options: parseJsonArrayField(testQuestion.mcqQuestion.options) }
+      : testQuestion.mcqQuestion,
+    codingQuestion: testQuestion.codingQuestion ? { ...testQuestion.codingQuestion, tags: parseJsonArrayField(testQuestion.codingQuestion.tags) } : testQuestion.codingQuestion,
+    behavioralQuestion: testQuestion.behavioralQuestion ? { ...testQuestion.behavioralQuestion, tags: parseJsonArrayField(testQuestion.behavioralQuestion.tags) } : testQuestion.behavioralQuestion,
   };
 }
 
