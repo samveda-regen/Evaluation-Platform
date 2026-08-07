@@ -15,7 +15,7 @@ Requires: aiohttp — not in this project's venv by default, install with:
 Usage (single server, one vCPU):
     python3 load_test.py --url http://SERVER_IP:9000 \
         --start 5 --step 5 --max 100 --stage-seconds 30 \
-        --chunk-mb 1.5 --interval 10
+        --chunk-mb 1.5 --interval 30
 
 Usage (multiple servers, e.g. 4 vCPUs — one server.py instance per core):
     python3 load_test.py --url http://SERVER_IP:9000 http://SERVER_IP:9001 \
@@ -106,7 +106,7 @@ async def main():
     parser.add_argument("--max", type=int, default=100, help="max concurrent users to attempt")
     parser.add_argument("--stage-seconds", type=int, default=30, help="how long to hold each concurrency level")
     parser.add_argument("--chunk-mb", type=float, default=1.5, help="simulated video chunk size in MB (~30s webcam chunk)")
-    parser.add_argument("--interval", type=float, default=10.0, help="seconds between each simulated user's uploads")
+    parser.add_argument("--interval", type=float, default=30.0, help="seconds between each simulated user's uploads (default matches real production chunk interval)")
     parser.add_argument("--fail-threshold-pct", type=float, default=95.0, help="stop ramping once success rate drops below this")
     args = parser.parse_args()
 
