@@ -12,10 +12,18 @@ box, the generator's own CPU usage competes with the thing being measured.
 Requires: aiohttp — not in this project's venv by default, install with:
     pip install aiohttp
 
-Usage:
+Usage (single server, one vCPU):
     python3 load_test.py --url http://SERVER_IP:9000 \
         --start 5 --step 5 --max 100 --stage-seconds 30 \
         --chunk-mb 1.5 --interval 10
+
+Usage (multiple servers, e.g. 4 vCPUs — one server.py instance per core):
+    python3 load_test.py --url http://SERVER_IP:9000 http://SERVER_IP:9001 \
+        http://SERVER_IP:9002 http://SERVER_IP:9003 \
+        --start 20 --step 20 --max 400 --stage-seconds 30 \
+        --chunk-mb 1.5 --interval 30
+    (simulated users are distributed round-robin across every --url given,
+    so "concurrency" in the printed table is the TOTAL across all servers)
 """
 import argparse
 import asyncio
@@ -53,13 +61,15 @@ async def simulate_user(session, url, user_id, chunk_b64, interval, stop_event, 
             pass
 
 
-async def run_stage(url, concurrency, duration_s, chunk_b64, interval):
+async def run_stage(urls, concurrency, duration_s, chunk_b64, interval):
     stop_event = asyncio.Event()
     results = []
     connector = aiohttp.TCPConnector(limit=0)  # no artificial client-side connection cap
     async with aiohttp.ClientSession(connector=connector) as session:
+        # Round-robin each simulated user across every server given via --url,
+        # so N vCPUs (N server.py instances) get roughly equal simulated load.
         tasks = [
-            asyncio.create_task(simulate_user(session, url, i, chunk_b64, interval, stop_event, results))
+            asyncio.create_task(simulate_user(session, urls[i % len(urls)], i, chunk_b64, interval, stop_event, results))
             for i in range(concurrency)
         ]
         await asyncio.sleep(duration_s)
@@ -86,7 +96,11 @@ async def run_stage(url, concurrency, duration_s, chunk_b64, interval):
 
 async def main():
     parser = argparse.ArgumentParser(description="Standalone recording-upload capacity load test")
-    parser.add_argument("--url", default="http://localhost:9000", help="base URL of server.py")
+    parser.add_argument(
+        "--url", nargs="+", default=["http://localhost:9000"],
+        help="one or more server.py base URLs — pass several to spread load across multiple vCPUs "
+             "(e.g. --url http://ip:9000 http://ip:9001 http://ip:9002 http://ip:9003 for 4 vCPUs)",
+    )
     parser.add_argument("--start", type=int, default=5, help="starting concurrent user count")
     parser.add_argument("--step", type=int, default=5, help="concurrency increase per stage")
     parser.add_argument("--max", type=int, default=100, help="max concurrent users to attempt")
@@ -96,7 +110,9 @@ async def main():
     parser.add_argument("--fail-threshold-pct", type=float, default=95.0, help="stop ramping once success rate drops below this")
     args = parser.parse_args()
 
+    print(f"[SETUP] {len(args.url)} server(s): {', '.join(args.url)}")
     print(f"[SETUP] chunk size = {args.chunk_mb} MB | upload interval = {args.interval}s per user | stage length = {args.stage_seconds}s")
+    print(f"[SETUP] 'concurrency' below is the TOTAL across all {len(args.url)} server(s), round-robin distributed")
     chunk_b64 = make_chunk_b64(args.chunk_mb)
 
     concurrency = args.start
