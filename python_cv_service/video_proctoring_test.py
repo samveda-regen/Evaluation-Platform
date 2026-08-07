@@ -60,9 +60,9 @@ but only as a one-time CLI export tool -- not imported by this script):
     yolo export model=yolo26n.pt format=onnx imgsz=640
 
 Usage:
-    python video_proctoring_test.py --video session.mp4 --yolo-model yolov8n.onnx
-    python video_proctoring_test.py --video session.mp4 --yolo-model yolov8n.onnx yolo26n.onnx
-    python video_proctoring_test.py --video session.mp4 --yolo-model yolov8n.onnx --interval 3.0 --output-dir violation_evidence
+    python video_proctoring_test.py --video session.mp4 --yolo-model exp-1.onnx
+    python video_proctoring_test.py --video session.mp4 --yolo-model exp-1.onnx yolo26n.onnx
+    python video_proctoring_test.py --video session.mp4 --yolo-model exp-1.onnx --interval 3.0 --output-dir violation_evidence
 """
 
 import argparse
@@ -176,17 +176,12 @@ CV_INFERENCE_MAX_WIDTH = _env_int("CV_INFERENCE_MAX_WIDTH", 640)
 # NMS) scales with candidate box count, not class count, and NMS is only run
 # for classes that actually have a candidate box in a given frame.
 # --------------------------------------------------------------------------
+# NOTE: despite the name, this now holds exp-1.onnx's custom 11-class list
+# (index order matches its training data), not COCO's 80 classes. Kept the
+# name to avoid touching every call site — see _class_config()'s one usage.
 COCO_CLASS_NAMES = [
-    "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck", "boat",
-    "traffic light", "fire hydrant", "stop sign", "parking meter", "bench", "bird", "cat",
-    "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra", "giraffe", "backpack",
-    "umbrella", "handbag", "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball",
-    "kite", "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket",
-    "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana", "apple",
-    "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair",
-    "couch", "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse",
-    "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink", "refrigerator",
-    "book", "clock", "vase", "scissors", "teddy bear", "hair drier", "toothbrush",
+    "head phones", "laptop", "looking down", "looking left", "looking right",
+    "looking straight", "looking up", "mobile phones", "note books", "person", "tv",
 ]
 
 # --------------------------------------------------------------------------
@@ -210,34 +205,24 @@ COCO_CLASS_NAMES = [
 # --------------------------------------------------------------------------
 CALCULATOR_CLASS_ID = _env_int("CALCULATOR_CLASS_ID", -1)  # -1 = disabled, no COCO class exists for this
 
+# Indices below are exp-1.onnx's own class order (see COCO_CLASS_NAMES above),
+# not COCO's. Scoped to just phone + laptop per current requirements — person
+# is handled by the separate MediaPipe pipeline, and TV/Note Books/Head Phones/
+# gaze classes are intentionally not wired to any violation yet.
 VIOLATION_CLASSES: Dict[int, Dict[str, Any]] = {
-    67: {  # cell phone
+    7: {  # Mobile Phones
         "label": "cell phone",
         "event_type": "phone_detected",
         "severity": "critical",
-        "conf": _env_float("PHONE_CONF", 0.35),
+        "conf": _env_float("PHONE_CONF", 0.01),
         "min_area_ratio": _env_float("PHONE_MIN_AREA_RATIO", 0.00005),
     },
-    73: {  # book
-        "label": "book",
-        "event_type": "book_detected",
-        "severity": "medium",
-        "conf": _env_float("BOOK_CONF", 0.40),
-        "min_area_ratio": _env_float("BOOK_MIN_AREA_RATIO", 0.001),
-    },
-    63: {  # laptop — a second computer/device on the desk
+    1: {  # Laptop
         "label": "laptop",
         "event_type": "secondary_device_detected",
         "severity": "high",
-        "conf": _env_float("LAPTOP_CONF", 0.40),
+        "conf": _env_float("LAPTOP_CONF", 0.25),
         "min_area_ratio": _env_float("LAPTOP_MIN_AREA_RATIO", 0.01),
-    },
-    62: {  # tv — used as the closest COCO stand-in for "extra monitor/display"
-        "label": "tv/monitor",
-        "event_type": "extra_display_detected",
-        "severity": "high",
-        "conf": _env_float("DISPLAY_CONF", 0.40),
-        "min_area_ratio": _env_float("DISPLAY_MIN_AREA_RATIO", 0.01),
     },
 }
 if CALCULATOR_CLASS_ID >= 0:
@@ -261,8 +246,7 @@ CV_ENABLED_EVENTS = {
     x.strip()
     for x in os.getenv(
         "CV_ENABLED_EVENTS",
-        "face_not_detected,multiple_faces,phone_detected,book_detected,"
-        "secondary_device_detected,extra_display_detected",
+        "face_not_detected,multiple_faces,phone_detected,secondary_device_detected",
     ).split(",")
     if x.strip()
 }
@@ -985,8 +969,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Optimized AI-proctoring pipeline replica driven by an uploaded video file")
     parser.add_argument("--video", required=True, help="path to the video file to analyze")
     parser.add_argument(
-        "--yolo-model", nargs="+", default=["yolov8n.onnx"],
-        help="one or more .onnx weights to test (e.g. --yolo-model yolov8n.onnx yolo26n.onnx)",
+        "--yolo-model", nargs="+", default=["exp-1.onnx"],
+        help="one or more .onnx weights to test (e.g. --yolo-model exp-1.onnx yolo26n.onnx)",
     )
     parser.add_argument("--session-id", default=None, help="default: derived from the video filename")
     parser.add_argument(
