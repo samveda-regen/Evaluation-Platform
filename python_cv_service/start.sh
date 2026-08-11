@@ -11,12 +11,12 @@
 # Environment variables:
 #   WORKERS              - number of uvicorn worker processes (default: 4)
 #   CV_INFERENCE_THREADS - thread-pool size within each worker (default: 2)
-#   PORT                 - port to listen on (default: 8010)
+#   PORT                 - port to listen on (default: 9010)
 
 set -e
 
 WORKERS="${WORKERS:-4}"
-PORT="${PORT:-8010}"
+PORT="${PORT:-9010}"
 
 echo "[CV Service] Starting with $WORKERS workers on port $PORT"
 

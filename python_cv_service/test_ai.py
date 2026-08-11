@@ -40,7 +40,7 @@ def jpeg_b64(frame, quality: int, max_width: int) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Live AI proctoring test client")
-    parser.add_argument("--url", default="http://127.0.0.1:8010/analyze")
+    parser.add_argument("--url", default="http://127.0.0.1:9010/analyze")
     parser.add_argument("--session-id", default="test-live-session")
     parser.add_argument("--api-key", default="")
     parser.add_argument("--interval", type=float, default=0.8, help="seconds between AI calls")

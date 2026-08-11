@@ -129,7 +129,7 @@ npm run dev
 cd frontend
 npm run dev
 
-# Terminal 3 - Python CV Service (runs on port 8010)
+# Terminal 3 - Python CV Service (runs on port 9010)
 cd python_cv_service
 python -m venv .venv
 
@@ -139,7 +139,7 @@ python -m venv .venv
 #   Linux/Mac:            source .venv/bin/activate
 
 pip install -r requirements.txt
-uvicorn app:app --host 0.0.0.0 --port 8010 --reload
+uvicorn app:app --host 0.0.0.0 --port 9010 --reload
 ```
 
 4. **Access the application**
@@ -298,14 +298,14 @@ npm run preview
 cd python_cv_service
 bash start.sh
 # or manually (all platforms):
-uvicorn app:app --host 0.0.0.0 --port 8010 --workers 4
+uvicorn app:app --host 0.0.0.0 --port 9010 --workers 4
 ```
 
 | Service | Port | Dev Command | Prod Command |
 |---|---|---|---|
 | Backend | 4000 | `npm run dev` | `npm run build` then `node dist/index.js` |
 | Frontend | 5217 | `npm run dev` | `npm run build` then `npm run preview` |
-| Python CV | 8010 | `uvicorn app:app --port 8010 --reload` | `uvicorn app:app --port 8010 --workers 4` |
+| Python CV | 9010 | `uvicorn app:app --port 9010 --reload` | `uvicorn app:app --port 9010 --workers 4` |
 
 ## Production Deployment (Local SQL + Services)
 
@@ -332,7 +332,7 @@ Set in `backend/.env`:
 DATABASE_URL=postgresql://postgres:<password>@localhost:5432/test_platform
 PORT=4000
 FRONTEND_URL=http://localhost:5217
-PYTHON_CV_SERVICE_URL=http://localhost:8010
+PYTHON_CV_SERVICE_URL=http://localhost:9010
 ```
 
 ### 3) Start backend
@@ -353,7 +353,7 @@ cd python_cv_service
 python -m venv .venv
 .venv\\Scripts\\activate
 pip install -r requirements.txt
-uvicorn app:app --host 0.0.0.0 --port 8010
+uvicorn app:app --host 0.0.0.0 --port 9010
 ```
 
 ### 5) Start frontend
@@ -367,7 +367,7 @@ npm run dev
 ### 6) Verify health
 
 - Backend: `http://localhost:4000/api/health`
-- CV service: `http://localhost:8010/health`
+- CV service: `http://localhost:9010/health`
 
 ## License
 

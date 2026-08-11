@@ -12,7 +12,7 @@ cd python_cv_service
 python -m venv .venv
 .venv\\Scripts\\activate
 pip install -r requirements.txt
-uvicorn app:app --host 0.0.0.0 --port 8010
+uvicorn app:app --host 0.0.0.0 --port 9010
 ```
 
 Optional (YOLO object detection, requires torch and long-path-safe environment):
@@ -43,7 +43,7 @@ Generated structure:
 Set in `backend/.env`:
 
 ```env
-PYTHON_CV_SERVICE_URL=http://localhost:8010
+PYTHON_CV_SERVICE_URL=http://localhost:9010
 PYTHON_CV_TIMEOUT_MS=2500
 PYTHON_CV_RETRY_COUNT=1
 PYTHON_CV_RETRY_DELAY_MS=150
@@ -88,7 +88,7 @@ Run with webcam and verify live violations quickly:
 ```bash
 cd python_cv_service
 .venv\\Scripts\\activate
-python test_ai.py --url http://127.0.0.1:8010/analyze --session-id demo
+python test_ai.py --url http://127.0.0.1:9010/analyze --session-id demo
 ```
 
 This prints live violation events from `app.py`.
@@ -102,13 +102,13 @@ Use these logs to monitor real-time AI proctoring behavior.
 ```bash
 cd python_cv_service
 .venv\\Scripts\\activate
-uvicorn app:app --host 0.0.0.0 --port 8010 --log-level info
+uvicorn app:app --host 0.0.0.0 --port 9010 --log-level info
 ```
 
 ### 2) Run live test client (camera feed -> CV service)
 
 ```bash
-python test_ai.py --url http://127.0.0.1:8010/analyze --session-id demo
+python test_ai.py --url http://127.0.0.1:9010/analyze --session-id demo
 ```
 
 ### 3) Log lines to watch
