@@ -7,6 +7,7 @@ export default defineConfig({
     allowedHosts: [
       'localhost',
       '127.0.0.1',
+      'manchesterglobal.talentstaq.ai',
       'unpreaching-unaugmentative-raelynn.ngrok-free.dev',
       'unimputable-reva-puzzledly.ngrok-free.dev'
     ],
