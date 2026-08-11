@@ -37,7 +37,7 @@ export default function ResetPassword() {
       const err = error as { response?: { data?: { error?: string } }; message?: string };
 
       if (!err.response) {
-        toast.error('Cannot reach backend API. Start backend on port 3000 and verify database setup.');
+        toast.error('Cannot reach backend API. Start backend on port 4000 and verify database setup.');
       } else {
         toast.error(err.response.data?.error || err.message || 'An error occurred');
       }

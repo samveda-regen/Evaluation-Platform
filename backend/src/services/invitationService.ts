@@ -151,7 +151,7 @@ function getFrontendInviteBaseUrl(): string {
     .map((value) => normalizeCandidateBaseUrl(value))
     .find((value) => value.length > 0);
 
-  return configured || 'http://localhost:5173';
+  return configured || 'http://localhost:5217';
 }
 
 export function buildInviteLink(token: string): string {

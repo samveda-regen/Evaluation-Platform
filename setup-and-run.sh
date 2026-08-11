@@ -35,7 +35,7 @@ for _ in {1..30}; do
     exit 1
   fi
 
-  if curl -fsS http://localhost:3000/api/health >/dev/null 2>&1; then
+  if curl -fsS http://localhost:4000/api/health >/dev/null 2>&1; then
     BACKEND_READY=true
     break
   fi
@@ -44,7 +44,7 @@ for _ in {1..30}; do
 done
 
 if [[ "$BACKEND_READY" != "true" ]]; then
-  echo "Backend did not become healthy at http://localhost:3000/api/health."
+  echo "Backend did not become healthy at http://localhost:4000/api/health."
   echo "Verify PostgreSQL and backend/.env DATABASE_URL, then retry."
   exit 1
 fi
@@ -53,7 +53,7 @@ npm --prefix frontend run dev &
 FRONT_PID=$!
 
 echo ""
-echo "Admin:     http://localhost:5173/admin/login"
-echo "Candidate: http://localhost:5173/test/login"
+echo "Admin:     http://localhost:5217/admin/login"
+echo "Candidate: http://localhost:5217/test/login"
 echo "Press Ctrl+C to stop both servers."
 wait

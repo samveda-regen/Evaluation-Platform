@@ -101,7 +101,7 @@ cd backend
 # Ensure PostgreSQL is running locally on port 5432
 # and backend/.env has:
 # DATABASE_URL="postgresql://<user>:<password>@localhost:5432/test_platform"
-# FRONTEND_URL="http://localhost:5173"
+# FRONTEND_URL="http://localhost:5217"
 # NODE_ENV=development
 
 # Generate Prisma client
@@ -121,11 +121,11 @@ npm run db:seed:question-bank
 Open a separate terminal for each service:
 
 ```bash
-# Terminal 1 - Backend (runs on port 3000)
+# Terminal 1 - Backend (runs on port 4000)
 cd backend
 npm run dev
 
-# Terminal 2 - Frontend (runs on port 5173)
+# Terminal 2 - Frontend (runs on port 5217)
 cd frontend
 npm run dev
 
@@ -143,8 +143,8 @@ uvicorn app:app --host 0.0.0.0 --port 8010 --reload
 ```
 
 4. **Access the application**
-- Admin Portal: http://localhost:5173/admin/login
-- Candidate Portal: http://localhost:5173/test/login
+- Admin Portal: http://localhost:5217/admin/login
+- Candidate Portal: http://localhost:5217/test/login
 
 ### Default Credentials (after seeding)
 - **Admin**: admin@example.com / admin123
@@ -156,7 +156,7 @@ If login fails, verify backend and DB first:
 
 ```bash
 # 1) Check backend health
-curl http://localhost:3000/api/health
+curl http://localhost:4000/api/health
 
 # Expected success payload:
 # {"status":"ok","database":"connected",...}
@@ -246,9 +246,9 @@ Create `.env` files in backend folder:
 
 ```env
 # Backend .env
-PORT=3000
+PORT=4000
 JWT_SECRET=your-secure-jwt-secret
-FRONTEND_URL=http://localhost:5173
+FRONTEND_URL=http://localhost:5217
 # Optional: candidate-facing URL for invitation emails
 # CANDIDATE_FRONTEND_URL=https://your-domain.com
 MAIL_PROVIDER=smtp
@@ -303,8 +303,8 @@ uvicorn app:app --host 0.0.0.0 --port 8010 --workers 4
 
 | Service | Port | Dev Command | Prod Command |
 |---|---|---|---|
-| Backend | 3000 | `npm run dev` | `npm run build` then `node dist/index.js` |
-| Frontend | 5173 | `npm run dev` | `npm run build` then `npm run preview` |
+| Backend | 4000 | `npm run dev` | `npm run build` then `node dist/index.js` |
+| Frontend | 5217 | `npm run dev` | `npm run build` then `npm run preview` |
 | Python CV | 8010 | `uvicorn app:app --port 8010 --reload` | `uvicorn app:app --port 8010 --workers 4` |
 
 ## Production Deployment (Local SQL + Services)
@@ -330,8 +330,8 @@ Set in `backend/.env`:
 
 ```env
 DATABASE_URL=postgresql://postgres:<password>@localhost:5432/test_platform
-PORT=3000
-FRONTEND_URL=http://localhost:5173
+PORT=4000
+FRONTEND_URL=http://localhost:5217
 PYTHON_CV_SERVICE_URL=http://localhost:8010
 ```
 
@@ -366,7 +366,7 @@ npm run dev
 
 ### 6) Verify health
 
-- Backend: `http://localhost:3000/api/health`
+- Backend: `http://localhost:4000/api/health`
 - CV service: `http://localhost:8010/health`
 
 ## License

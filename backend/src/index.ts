@@ -96,7 +96,7 @@ function normalizeOrigin(origin: string): string {
 }
 
 function parseAllowedOrigins(raw: string | undefined): string[] {
-  const defaults = ['http://localhost:5173', 'http://127.0.0.1:5173'];
+  const defaults = ['http://localhost:5217', 'http://127.0.0.1:5217'];
   const configured = (raw || '')
     .split(',')
     .map((value) => normalizeOrigin(value))
@@ -151,7 +151,7 @@ setSocketServer(io);
 
 const candidateSocketPresence = new Map<string, { testId: string; attemptId: string }>();
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 
 function isHighFrequencyProctoringPath(path: string): boolean {
   return /^\/api\/proctoring\/session\/[^/]+\/(analysis|recording\/upload|snapshot|monitors|violation)$/.test(path);
