@@ -614,7 +614,7 @@ export default function TestList() {
                   ) : <span />}
                   {test.createdByName && (
                     <p className="text-xs" style={{ color: 'var(--admin-text-subtle)' }}>
-                      Created by {test.createdByName}
+                      Created by <span style={{ color: 'var(--admin-accent)', fontWeight: 600 }}>{test.createdByName}</span>
                     </p>
                   )}
                 </div>
@@ -680,7 +680,9 @@ export default function TestList() {
                 <div>
                   <p className="text-xs" style={{ color: 'var(--admin-text-muted)' }}>{format(new Date(test.startTime), 'MMM d, yyyy')}</p>
                   {test.createdByName && (
-                    <p className="text-xs" style={{ color: 'var(--admin-text-subtle)' }}>By {test.createdByName}</p>
+                    <p className="text-xs" style={{ color: 'var(--admin-text-subtle)' }}>
+                      By <span style={{ color: 'var(--admin-accent)', fontWeight: 600 }}>{test.createdByName}</span>
+                    </p>
                   )}
                 </div>
                 <button
