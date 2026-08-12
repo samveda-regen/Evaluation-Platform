@@ -4,14 +4,11 @@
 <dict>
 
   <!-- ==================== ENTRY POINT ==================== -->
-  <!-- Candidates still receive the normal invitation link with their
-       token (…/test/login?token=xxx). Opening that link is unaffected;
-       this file is a separate .seb file you distribute alongside it (or
-       host at a fixed URL) that launches SEB and lands on the login page,
-       where the candidate then pastes/opens their tokenised link, or you
-       swap startURL below per-test if you generate one .seb per invite. -->
+  <!-- Personalized for one invite token. Delete this file (or regenerate
+       the invite) once this test session is used, since it embeds a
+       live credential in plaintext. -->
   <key>startURL</key>
-  <string>https://experiment.talentstaq.ai/test/login</string>
+  <string>https://experiment.talentstaq.ai/test/login?token=70415625d7393d75c6c4b78c3b42cde067f00685d9ab0743a6699f4dfe0b05a8</string>
 
   <!-- ==================== WINDOW / KIOSK MODE ==================== -->
   <key>browserViewMode</key>
@@ -57,7 +54,7 @@
   <key>URLFilterEnable</key>
   <true/>
   <key>URLFilterEnableContentFilter</key>
-  <false/>
+  <true/>
   <key>urlFilterRules</key>
   <array>
     <dict>
@@ -87,11 +84,10 @@
        useProctoring.ts) uses getUserMedia in-browser. SEB blocks media
        capture by default. The two keys below are what recent SEB
        versions (Win 3.3+/Mac 3.0+) use to permit it, but I'm not fully
-       certain these exact key names match your candidates' installed
-       SEB version — verify with the SEB Config Tool (see note below)
-       and test a real exam session with camera preview BEFORE sending
-       this to real candidates. If camera access silently fails, your
-       whole proctoring pipeline goes dark for that session. -->
+       certain these exact key names match your candidate's installed
+       SEB version — this is the #1 thing to watch for in this test run.
+       If camera access silently fails, your whole proctoring pipeline
+       goes dark for that session. -->
   <key>allowAudioCapture</key>
   <true/>
   <key>allowVideoCapture</key>
@@ -167,11 +163,6 @@
   <integer>0</integer>
 
   <!-- ==================== ADMIN / SETTINGS LOCK ==================== -->
-  <!-- No password on the .seb file itself (plain, editable) per your call.
-       hashedAdminPassword blank means anyone with SEB installed can open
-       the in-app settings via Ctrl+Q/the SEB menu — fine for now while
-       you're iterating, but set this before distributing to real
-       candidates so they can't alter the config mid-exam. -->
   <key>hashedAdminPassword</key>
   <string></string>
 
