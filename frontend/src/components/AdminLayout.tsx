@@ -925,7 +925,7 @@ export default function AdminLayout() {
               letterSpacing: '0',
             }}
           >
-            <span style={{ color: '#F27A32' }}>ReGen&apos;s</span>{' '}
+            <span style={{ color: '#F27A32' }}>{admin?.companyName || 'Admin'}&apos;s</span>{' '}
             <span style={{ color: 'var(--admin-text)' }}>Workspace</span>
           </span>
 
