@@ -40,6 +40,7 @@ export interface Test {
   proctoringSettings?: Record<string, unknown>;
   violationPopupSettings?: Record<string, unknown>;
   createdAt: string;
+  createdByName?: string | null;
   _count?: {
     questions: number;
     attempts: number;

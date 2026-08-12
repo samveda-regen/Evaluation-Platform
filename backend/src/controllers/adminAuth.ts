@@ -95,7 +95,8 @@ export async function registerAdmin(req: AuthenticatedRequest, res: Response): P
     const token = generateAdminToken({
       id: admin.id,
       email: admin.email,
-      role: 'admin'
+      role: 'admin',
+      companyId: admin.companyId
     });
 
     res.status(201).json({
@@ -162,7 +163,7 @@ export async function registerAdminFromIntegration(req: AuthenticatedRequest, re
       console.error('Welcome email failed (account still created):', emailError);
     }
 
-    const token = generateAdminToken({ id: admin.id, email: admin.email, role: 'admin' });
+    const token = generateAdminToken({ id: admin.id, email: admin.email, role: 'admin', companyId: admin.companyId });
 
     res.status(201).json({
       message: 'Admin registered successfully. Welcome email sent.',
@@ -240,7 +241,8 @@ export async function loginAdmin(req: AuthenticatedRequest, res: Response): Prom
     const token = generateAdminToken({
       id: admin.id,
       email: admin.email,
-      role: 'admin'
+      role: 'admin',
+      companyId: admin.companyId
     });
     const refreshToken = await issueAdminRefreshToken(admin.id, { ip: req.ip, userAgent: req.headers['user-agent'] });
 
@@ -365,9 +367,19 @@ export async function updateAdminCompany(req: AuthenticatedRequest, res: Respons
           id: true,
           email: true,
           name: true,
+          companyId: true,
           company: { select: { name: true, externalCompanyId: true } },
         },
       });
+    });
+
+    // Re-sign the token with the new companyId so company-scoped test
+    // visibility applies immediately, without requiring a re-login.
+    const token = generateAdminToken({
+      id: admin.id,
+      email: admin.email,
+      role: 'admin',
+      companyId: admin.companyId
     });
 
     res.json({
@@ -375,7 +387,8 @@ export async function updateAdminCompany(req: AuthenticatedRequest, res: Respons
         ...admin,
         companyName: admin.company?.name ?? null,
         companyExternalId: admin.company?.externalCompanyId ?? null,
-      }
+      },
+      token
     });
   } catch (error) {
     console.error('Update admin company error:', error);
