@@ -16,13 +16,7 @@ function xmlEscape(value: string): string {
     .replace(/'/g, '&apos;');
 }
 
-function escapeForRegex(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 export function buildSebConfigXml(startUrl: string): string {
-  const parsed = new URL(startUrl);
-  const hostPattern = escapeForRegex(parsed.hostname);
   const escapedStartUrl = xmlEscape(startUrl);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -65,33 +59,17 @@ export function buildSebConfigXml(startUrl: string): string {
   <key>hashedQuitPassword</key>
   <string></string>
 
+  <!-- No custom urlFilterRules: SEB's own documented behavior is to
+       auto-create an allow rule for the Start URL's domain, covering all
+       pages/resources on it (scripts, stylesheets, websockets included).
+       A hand-written urlFilterRules array here previously wasn't being
+       parsed by SEB at all (logs showed "0 rule(s)" regardless of what
+       it contained) and left the browser falling back to something far
+       more restrictive than intended, blocking the app's own JS/CSS. -->
   <key>URLFilterEnable</key>
   <true/>
   <key>URLFilterEnableContentFilter</key>
   <true/>
-  <key>urlFilterRules</key>
-  <array>
-    <dict>
-      <key>action</key>
-      <integer>1</integer>
-      <key>active</key>
-      <true/>
-      <key>regex</key>
-      <true/>
-      <key>expression</key>
-      <string>^https://${hostPattern}(/.*)?$</string>
-    </dict>
-    <dict>
-      <key>action</key>
-      <integer>1</integer>
-      <key>active</key>
-      <true/>
-      <key>regex</key>
-      <true/>
-      <key>expression</key>
-      <string>^wss://${hostPattern}(/.*)?$</string>
-    </dict>
-  </array>
 
   <key>allowAudioCapture</key>
   <true/>

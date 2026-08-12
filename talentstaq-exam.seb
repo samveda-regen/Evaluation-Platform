@@ -49,38 +49,17 @@
   <string></string>
 
   <!-- ==================== URL WHITELIST ==================== -->
-  <!-- Frontend, backend API, and websocket (Socket.io) all live on the
-       same origin per your setup, so a single rule covers all of it.
-       The Python CV proctoring service and CompreFace are called
-       server-to-server by the backend, never directly from the
-       candidate's browser, so they do NOT need to be whitelisted here. -->
+  <!-- No hand-written urlFilterRules: seb.log showed "Initialized request
+       filter with 0 rule(s)" no matter what this array contained, meaning
+       SEB never parsed it and fell back to a fallback stricter than
+       intended, blocking the app's own JS/CSS. SEB's documented default
+       behavior already auto-allows the Start URL's whole domain (pages,
+       resources, websockets included), which is all we need since
+       frontend/backend/websocket share one origin. -->
   <key>URLFilterEnable</key>
   <true/>
   <key>URLFilterEnableContentFilter</key>
-  <false/>
-  <key>urlFilterRules</key>
-  <array>
-    <dict>
-      <key>action</key>
-      <integer>1</integer> <!-- 1 = allow -->
-      <key>active</key>
-      <true/>
-      <key>regex</key>
-      <true/>
-      <key>expression</key>
-      <string>^https://experiment\.talentstaq\.ai(/.*)?$</string>
-    </dict>
-    <dict>
-      <key>action</key>
-      <integer>1</integer>
-      <key>active</key>
-      <true/>
-      <key>regex</key>
-      <true/>
-      <key>expression</key>
-      <string>^wss://experiment\.talentstaq\.ai(/.*)?$</string>
-    </dict>
-  </array>
+  <true/>
 
   <!-- ==================== CAMERA / MIC ACCESS ==================== -->
   <!-- REQUIRED: your webcam + audio proctoring (WebcamCapture.tsx,
