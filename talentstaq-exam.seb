@@ -49,17 +49,21 @@
   <string></string>
 
   <!-- ==================== URL WHITELIST ==================== -->
-  <!-- No hand-written urlFilterRules: seb.log showed "Initialized request
-       filter with 0 rule(s)" no matter what this array contained, meaning
-       SEB never parsed it and fell back to a fallback stricter than
-       intended, blocking the app's own JS/CSS. SEB's documented default
-       behavior already auto-allows the Start URL's whole domain (pages,
-       resources, websockets included), which is all we need since
-       frontend/backend/websocket share one origin. -->
+  <!-- seb.log (3 separate live tests via the real backend-generated
+       config, not this file) showed the auto-generated start-URL rule
+       matches the START URL ONLY, not the whole domain despite what the
+       manual claims — with URLFilterEnableContentFilter on, every
+       sub-resource that isn't a byte-for-byte match (JS bundle, CSS,
+       favicon) gets blocked, producing a blank page. Content filtering
+       off; URLFilterEnable stays on to still block top-level navigation
+       away from the site.
+       NOTE: this file is a manual-testing reference only — the real
+       source of truth is backend/src/services/sebConfigService.ts,
+       which is what candidates actually get served. -->
   <key>URLFilterEnable</key>
   <true/>
   <key>URLFilterEnableContentFilter</key>
-  <true/>
+  <false/>
 
   <!-- ==================== CAMERA / MIC ACCESS ==================== -->
   <!-- REQUIRED: your webcam + audio proctoring (WebcamCapture.tsx,

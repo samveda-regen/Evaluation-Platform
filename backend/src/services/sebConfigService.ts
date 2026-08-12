@@ -59,17 +59,17 @@ export function buildSebConfigXml(startUrl: string): string {
   <key>hashedQuitPassword</key>
   <string></string>
 
-  <!-- No custom urlFilterRules: SEB's own documented behavior is to
-       auto-create an allow rule for the Start URL's domain, covering all
-       pages/resources on it (scripts, stylesheets, websockets included).
-       A hand-written urlFilterRules array here previously wasn't being
-       parsed by SEB at all (logs showed "0 rule(s)" regardless of what
-       it contained) and left the browser falling back to something far
-       more restrictive than intended, blocking the app's own JS/CSS. -->
+  <!-- seb.log (3 separate live tests) showed the auto-generated start-URL
+       rule matches the START URL ONLY, not the whole domain despite what
+       the manual claims — with URLFilterEnableContentFilter on, every
+       sub-resource that isn't a byte-for-byte match (the app's own JS
+       bundle, CSS, favicon) gets blocked, producing a blank page. Content
+       filtering off; URLFilterEnable stays on to still block top-level
+       navigation away from the site. -->
   <key>URLFilterEnable</key>
   <true/>
   <key>URLFilterEnableContentFilter</key>
-  <true/>
+  <false/>
 
   <key>allowAudioCapture</key>
   <true/>
