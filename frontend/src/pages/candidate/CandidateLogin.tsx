@@ -123,6 +123,17 @@ export default function CandidateLogin() {
     window.location.href = sebUrl;
   };
 
+  // Email clients (Gmail especially) strip raw sebs:// hrefs from the email
+  // itself, so the email's SEB button instead links here with `?seb=1` and
+  // this page performs the handoff once it's running in a real browser.
+  const sebAutoLaunch = searchParams.get('seb') === '1';
+  useEffect(() => {
+    if (sebAutoLaunch && invitationToken) {
+      handleOpenInSeb();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sebAutoLaunch, invitationToken]);
+
   /* loading skeleton */
   if (fetchingInfo) {
     return (
