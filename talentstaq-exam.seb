@@ -23,9 +23,9 @@
   <key>showReloadWarning</key>
   <true/>
   <key>newBrowserWindowByLinkPolicy</key>
-  <integer>0</integer> <!-- block links opening new windows -->
+  <integer>1</integer> <!-- open in same window; 0 (block) was blocking the app's own JS/CSS asset loads, causing the blank screen -->
   <key>newBrowserWindowByScriptPolicy</key>
-  <integer>0</integer>
+  <integer>1</integer>
   <key>enableBrowserWindowToolbar</key>
   <false/>
   <key>hideBrowserWindowToolbar</key>

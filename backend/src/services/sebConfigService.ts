@@ -42,9 +42,9 @@ export function buildSebConfigXml(startUrl: string): string {
   <key>showReloadWarning</key>
   <true/>
   <key>newBrowserWindowByLinkPolicy</key>
-  <integer>0</integer>
+  <integer>1</integer>
   <key>newBrowserWindowByScriptPolicy</key>
-  <integer>0</integer>
+  <integer>1</integer>
   <key>enableBrowserWindowToolbar</key>
   <false/>
   <key>hideBrowserWindowToolbar</key>
