@@ -4,6 +4,7 @@ export interface AdminPayload {
   id: string;
   email: string;
   role: 'admin';
+  companyId?: string | null;
 }
 
 export interface CandidatePayload {

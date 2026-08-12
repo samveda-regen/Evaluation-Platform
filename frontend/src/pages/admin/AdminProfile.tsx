@@ -45,7 +45,7 @@ export default function AdminProfile() {
     setSavingCompany(true);
     try {
       const { data } = await adminApi.updateCompany({ companyName: companyName.trim(), companyId: companyId.trim() });
-      setAdmin(data.admin, getAdminToken() || undefined);
+      setAdmin(data.admin, data.token || getAdminToken() || undefined);
       toast.success('Company linked');
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };

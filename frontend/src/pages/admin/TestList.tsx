@@ -608,9 +608,16 @@ export default function TestList() {
                   </span>
                 </div>
 
-                {attempts === 0 && (
-                  <p className="text-xs" style={{ color: 'var(--admin-text-subtle)' }}>No attempts yet</p>
-                )}
+                <div className="flex items-center justify-between gap-2">
+                  {attempts === 0 ? (
+                    <p className="text-xs" style={{ color: 'var(--admin-text-subtle)' }}>No attempts yet</p>
+                  ) : <span />}
+                  {test.createdByName && (
+                    <p className="text-xs" style={{ color: 'var(--admin-text-subtle)' }}>
+                      Created by {test.createdByName}
+                    </p>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -670,7 +677,12 @@ export default function TestList() {
                 <TestStatusBadge status={status} />
                 <p className="text-sm text-center" style={{ color: 'var(--admin-text-muted)' }}>{test._count?.questions || 0}</p>
                 <p className="text-sm text-center" style={{ color: 'var(--admin-text-muted)' }}>{test._count?.attempts || 0}</p>
-                <p className="text-xs" style={{ color: 'var(--admin-text-muted)' }}>{format(new Date(test.startTime), 'MMM d, yyyy')}</p>
+                <div>
+                  <p className="text-xs" style={{ color: 'var(--admin-text-muted)' }}>{format(new Date(test.startTime), 'MMM d, yyyy')}</p>
+                  {test.createdByName && (
+                    <p className="text-xs" style={{ color: 'var(--admin-text-subtle)' }}>By {test.createdByName}</p>
+                  )}
+                </div>
                 <button
                   onClick={e => { e.stopPropagation(); navigate(`/admin/tests/${test.id}`); }}
                   title="Open test details"

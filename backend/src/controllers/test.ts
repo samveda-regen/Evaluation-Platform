@@ -42,6 +42,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+// Tests are shared across every admin in the same company; admins without a
+// company (or on a stale token issued before company assignment) only see
+// their own tests.
+function testOwnershipWhere(req: AuthenticatedRequest, testId: string): { id: string; companyId: string } | { id: string; adminId: string } {
+  const companyId = req.admin!.companyId;
+  return companyId
+    ? { id: testId, companyId }
+    : { id: testId, adminId: req.admin!.id };
+}
+
+function testListWhere(req: AuthenticatedRequest): { companyId: string } | { adminId: string } {
+  const companyId = req.admin!.companyId;
+  return companyId ? { companyId } : { adminId: req.admin!.id };
+}
+
 function collectTestPreferences(source: Record<string, unknown>): Record<string, unknown> {
   return TEST_PREFERENCE_KEYS.reduce<Record<string, unknown>>((prefs, key) => {
     const value = source[key];
@@ -339,7 +354,7 @@ export async function getTests(req: AuthenticatedRequest, res: Response): Promis
     const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
     const skip = (page - 1) * limit;
     const where = {
-      adminId: req.admin!.id,
+      ...testListWhere(req),
       ...(search
         ? {
             OR: [
@@ -360,6 +375,9 @@ export async function getTests(req: AuthenticatedRequest, res: Response): Promis
               questions: true,
               attempts: true
             }
+          },
+          admin: {
+            select: { name: true }
           }
         },
         orderBy: { createdAt: 'desc' },
@@ -370,7 +388,10 @@ export async function getTests(req: AuthenticatedRequest, res: Response): Promis
     ]);
 
     res.json({
-      tests: tests.map((test) => mapTestWithCustomAI(test)),
+      tests: tests.map(({ admin, ...test }) => ({
+        ...mapTestWithCustomAI(test),
+        createdByName: admin?.name ?? null,
+      })),
       pagination: {
         page,
         limit,
@@ -390,8 +411,7 @@ export async function getTestById(req: AuthenticatedRequest, res: Response): Pro
 
     const test = await prisma.test.findFirst({
       where: {
-        id: testId,
-        adminId: req.admin!.id
+        ...testOwnershipWhere(req, testId)
       },
       include: {
         questions: {
@@ -478,8 +498,7 @@ export async function createTestSection(req: AuthenticatedRequest, res: Response
 
     const test = await prisma.test.findFirst({
       where: {
-        id: testId,
-        adminId: req.admin!.id
+        ...testOwnershipWhere(req, testId)
       }
     });
 
@@ -539,8 +558,7 @@ export async function deleteTestSection(req: AuthenticatedRequest, res: Response
 
     const test = await prisma.test.findFirst({
       where: {
-        id: testId,
-        adminId: req.admin!.id
+        ...testOwnershipWhere(req, testId)
       }
     });
 
@@ -579,8 +597,7 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
 
     const test = await prisma.test.findFirst({
       where: {
-        id: testId,
-        adminId: req.admin!.id
+        ...testOwnershipWhere(req, testId)
       }
     });
 
@@ -778,8 +795,7 @@ export async function deleteTest(req: AuthenticatedRequest, res: Response): Prom
 
     const test = await prisma.test.findFirst({
       where: {
-        id: testId,
-        adminId: req.admin!.id
+        ...testOwnershipWhere(req, testId)
       },
       include: {
         attempts: true
@@ -1000,8 +1016,7 @@ export async function addQuestionToTest(req: AuthenticatedRequest, res: Response
 
     const test = await prisma.test.findFirst({
       where: {
-        id: testId,
-        adminId: req.admin!.id
+        ...testOwnershipWhere(req, testId)
       }
     });
 
@@ -1143,8 +1158,7 @@ export async function addCustomQuestionToTest(req: AuthenticatedRequest, res: Re
 
     const test = await prisma.test.findFirst({
       where: {
-        id: testId,
-        adminId: req.admin!.id
+        ...testOwnershipWhere(req, testId)
       }
     });
 
@@ -1510,8 +1524,7 @@ export async function removeQuestionFromTest(req: AuthenticatedRequest, res: Res
 
     const test = await prisma.test.findFirst({
       where: {
-        id: testId,
-        adminId: req.admin!.id
+        ...testOwnershipWhere(req, testId)
       }
     });
 
@@ -1550,8 +1563,7 @@ export async function reorderTestQuestions(req: AuthenticatedRequest, res: Respo
 
     const test = await prisma.test.findFirst({
       where: {
-        id: testId,
-        adminId: req.admin!.id
+        ...testOwnershipWhere(req, testId)
       }
     });
 
@@ -1593,7 +1605,7 @@ export async function getEmailTemplates(req: AuthenticatedRequest, res: Response
     const { testId } = req.params;
     // cast needed until `prisma generate` is re-run after schema migration
     const test = await (prisma.test as any).findFirst({
-      where: { id: testId, adminId: req.admin!.id },
+      where: testOwnershipWhere(req, testId),
       select: {
         inviteEmailSubject: true,
         inviteEmailBody: true,
@@ -1650,7 +1662,7 @@ export async function updateEmailTemplates(req: AuthenticatedRequest, res: Respo
     }
 
     const exists = await prisma.test.findFirst({
-      where: { id: testId, adminId: req.admin!.id },
+      where: testOwnershipWhere(req, testId),
       select: { id: true }
     });
 
