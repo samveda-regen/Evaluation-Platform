@@ -32,6 +32,7 @@ export default function CandidateLogin() {
   const [testInfo,    setTestInfo]    = useState<TestInfo | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteErrorName, setInviteErrorName] = useState<string | null>(null);
+  const [sebMissing, setSebMissing] = useState(false);
 
   /* fetch test details from token */
   useEffect(() => {
@@ -91,6 +92,35 @@ export default function CandidateLogin() {
       const e = err as { response?: { data?: { error?: string } } };
       toast.error(e.response?.data?.error || 'Unable to start test. Check your access code.');
     } finally { setLoading(false); }
+  };
+
+  const handleOpenInSeb = () => {
+    if (!invitationToken) return;
+    setSebMissing(false);
+
+    const scheme = window.location.protocol === 'https:' ? 'sebs:' : 'seb:';
+    const sebUrl = `${scheme}//${window.location.host}/api/invitations/${encodeURIComponent(invitationToken)}/seb-config`;
+
+    // If SEB is installed, the OS hands off to it and this tab loses
+    // visibility before the timer fires. If nothing intercepts the
+    // navigation, we're still here after ~1.8s — most likely SEB isn't
+    // installed (this heuristic isn't 100% reliable across browsers, but
+    // it's the standard approach for detecting custom protocol handlers).
+    const timer = window.setTimeout(() => {
+      if (!document.hidden) {
+        setSebMissing(true);
+      }
+    }, 1800);
+
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        window.clearTimeout(timer);
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    window.location.href = sebUrl;
   };
 
   /* loading skeleton */
@@ -181,6 +211,35 @@ export default function CandidateLogin() {
             <span style={{ fontSize: '13px', color: 'var(--admin-accent-hover)', fontWeight: 500 }}>
               You've been invited to take this assessment
             </span>
+          </div>
+        )}
+
+        {/* Secure Exam Browser launch */}
+        {invitationToken && (
+          <div style={{ marginBottom: '20px' }}>
+            <button
+              type="button"
+              onClick={handleOpenInSeb}
+              style={{
+                width: '100%', padding: '13px', borderRadius: '12px', border: 'none',
+                backgroundColor: '#111827', color: 'white', fontSize: '14px', fontWeight: 600,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+              }}
+            >
+              Open in Secure Exam Browser
+            </button>
+            {sebMissing && (
+              <p style={{ fontSize: '12px', color: '#B45309', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '8px', padding: '10px 12px', margin: '10px 0 0' }}>
+                Secure Exam Browser doesn't seem to be installed on this device.{' '}
+                <a href="https://safeexambrowser.org/download_en.html" target="_blank" rel="noopener noreferrer" style={{ color: '#B45309', fontWeight: 600 }}>
+                  Download it here
+                </a>
+                , then try the button again — or continue below in your regular browser.
+              </p>
+            )}
+            <p style={{ fontSize: '12px', color: '#9CA3AF', margin: '8px 0 0', textAlign: 'center' }}>
+              or continue in your regular browser below
+            </p>
           </div>
         )}
 

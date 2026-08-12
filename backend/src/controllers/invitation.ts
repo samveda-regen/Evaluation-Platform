@@ -5,8 +5,10 @@ import prisma from '../utils/db.js';
 import {
   InvitationServiceError,
   getPublicInvitationDetails,
-  sendBulkTestInvitations
+  sendBulkTestInvitations,
+  buildInviteLink
 } from '../services/invitationService.js';
+import { buildSebConfigXml } from '../services/sebConfigService.js';
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
@@ -62,6 +64,30 @@ export async function getInvitationDetails(req: AuthenticatedRequest, res: Respo
     }
 
     console.error('Get invitation details error:', error);
+    res.status(500).json({ error: getErrorMessage(error) });
+  }
+}
+
+export async function getInvitationSebConfig(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const token = req.params.token;
+    // Non-consuming lookup — only validates the token/test are still usable.
+    // The actual login (and single-use consumption) happens once the
+    // candidate continues inside SEB, same as the normal browser flow.
+    await getPublicInvitationDetails(token);
+
+    const xml = buildSebConfigXml(buildInviteLink(token));
+
+    res.setHeader('Content-Type', 'application/seb');
+    res.setHeader('Content-Disposition', 'inline; filename="talentstaq-exam.seb"');
+    res.send(xml);
+  } catch (error) {
+    if (error instanceof InvitationServiceError) {
+      res.status(error.statusCode).json({ error: error.message });
+      return;
+    }
+
+    console.error('Get invitation SEB config error:', error);
     res.status(500).json({ error: getErrorMessage(error) });
   }
 }

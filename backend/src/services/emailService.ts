@@ -77,6 +77,34 @@ function applyTemplate(template: string, vars: TemplateVars): string {
     .replace(/\{\{closes_at\}\}/g,      vars.closes_at);
 }
 
+// Derives the sebs:// launch link for a candidate's test link. testLink is
+// always `${origin}/test/login?token=...` (see buildInviteLink in
+// invitationService.ts), so the token is pulled straight out of it rather
+// than threading it through the email payload separately.
+function deriveSebLaunchLink(testLink: string): string | null {
+  try {
+    const parsed = new URL(testLink);
+    const token = parsed.searchParams.get('token');
+    if (!token) return null;
+
+    const scheme = parsed.protocol === 'https:' ? 'sebs:' : 'seb:';
+    return `${scheme}//${parsed.host}/api/invitations/${encodeURIComponent(token)}/seb-config`;
+  } catch {
+    return null;
+  }
+}
+
+function buildSebButtonsHtml(testLink: string): string {
+  const sebLink = deriveSebLaunchLink(testLink);
+  if (!sebLink) return '';
+
+  return `<div style="margin:20px 0">
+  <a href="${escapeHtml(sebLink)}" style="display:inline-block;background:#111827;color:#ffffff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;margin-right:10px">Open in Secure Exam Browser</a>
+  <a href="${escapeHtml(testLink)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#F3F4F6;color:#111827;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">Continue in your browser</a>
+  <p style="margin:10px 0 0;font-size:12px;color:#6B7280">Don't have Secure Exam Browser installed? <a href="https://safeexambrowser.org/download_en.html" style="color:#6B7280">Download it here</a>, then use the first button above.</p>
+</div>`;
+}
+
 function textToHtml(text: string): string {
   return escapeHtml(text)
     .split('\n')
@@ -386,7 +414,13 @@ function escapeHtml(value: string): string {
 }
 
 // ── Build invite email from template ─────────────────────────────────────────
-function buildInviteText(payload: InvitationEmailPayload): string {
+function appendSebPlainTextLine(text: string, testLink: string): string {
+  const sebLink = deriveSebLaunchLink(testLink);
+  if (!sebLink) return text;
+  return `${text}\n\nPrefer to take this test in Secure Exam Browser? Open it here:\n${sebLink}\n(Don't have it installed? Get it at https://safeexambrowser.org/download_en.html)`;
+}
+
+function renderInviteBody(payload: InvitationEmailPayload): string {
   const templateBody = payload.inviteEmailBody || DEFAULT_INVITE_BODY;
   return applyTemplate(templateBody, {
     candidate_name: payload.candidateName,
@@ -399,6 +433,10 @@ function buildInviteText(payload: InvitationEmailPayload): string {
     exam_end:       payload.examEnd || 'To be announced',
     closes_at:      '',
   });
+}
+
+function buildInviteText(payload: InvitationEmailPayload): string {
+  return appendSebPlainTextLine(renderInviteBody(payload), payload.testLink);
 }
 
 function buildInviteSubject(payload: InvitationEmailPayload): string {
@@ -417,14 +455,15 @@ function buildInviteSubject(payload: InvitationEmailPayload): string {
 }
 
 function buildInviteHtml(payload: InvitationEmailPayload): string {
-  const text = buildInviteText(payload);
+  const text = renderInviteBody(payload);
   return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#374151;max-width:600px">
 ${textToHtml(text)}
+${buildSebButtonsHtml(payload.testLink)}
 </div>`;
 }
 
 // ── Build reminder email from template ────────────────────────────────────────
-function buildReminderText(payload: ReminderEmailPayload): string {
+function renderReminderBody(payload: ReminderEmailPayload): string {
   const templateBody = payload.reminderEmailBody || DEFAULT_REMINDER_BODY;
   return applyTemplate(templateBody, {
     candidate_name: payload.candidateName,
@@ -437,6 +476,10 @@ function buildReminderText(payload: ReminderEmailPayload): string {
     exam_end:       '',
     closes_at:      payload.closesAt,
   });
+}
+
+function buildReminderText(payload: ReminderEmailPayload): string {
+  return appendSebPlainTextLine(renderReminderBody(payload), payload.testLink);
 }
 
 function buildReminderSubject(payload: ReminderEmailPayload): string {
@@ -455,9 +498,10 @@ function buildReminderSubject(payload: ReminderEmailPayload): string {
 }
 
 function buildReminderHtml(payload: ReminderEmailPayload): string {
-  const text = buildReminderText(payload);
+  const text = renderReminderBody(payload);
   return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#374151;max-width:600px">
 ${textToHtml(text)}
+${buildSebButtonsHtml(payload.testLink)}
 </div>`;
 }
 
