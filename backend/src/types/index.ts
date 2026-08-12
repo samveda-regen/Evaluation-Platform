@@ -11,6 +11,7 @@ export interface AdminPayload {
   // token rather than the admin's own login, so it can be audit-logged and
   // time-boxed distinctly from a normal session.
   impersonatedBy?: string;
+  companyId?: string | null;
 }
 
 export interface CandidatePayload {
