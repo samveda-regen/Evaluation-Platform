@@ -45,8 +45,14 @@ export function buildSebConfigXml(startUrl: string): string {
   <true/>
   <key>showMenuBar</key>
   <false/>
+  <!-- seb.log showed SEB's own ActionCenter overlay popping in/out
+       automatically throughout a session, unrelated to anything the
+       candidate did. That's plausibly occluding the browser content area
+       and triggering Chromium's occlusion-based Page Visibility API,
+       which is what fired false "tab_switch" violations. Candidates
+       taking a locked-down exam don't need system-tray access anyway. -->
   <key>showTaskBar</key>
-  <true/>
+  <false/>
   <key>showTime</key>
   <true/>
   <key>allowedDisplaysMaxNumber</key>

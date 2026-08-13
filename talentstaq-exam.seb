@@ -32,8 +32,12 @@
   <true/>
   <key>showMenuBar</key>
   <false/>
+  <!-- seb.log showed SEB's own ActionCenter overlay popping in/out
+       automatically, unrelated to the candidate — plausibly occluding the
+       browser content area and triggering false "tab_switch" violations
+       via Chromium's occlusion-based Page Visibility API. -->
   <key>showTaskBar</key>
-  <true/>
+  <false/>
   <key>showTime</key>
   <true/>
   <key>allowedDisplaysMaxNumber</key>
