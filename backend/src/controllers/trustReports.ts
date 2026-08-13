@@ -30,7 +30,7 @@ const REPORT_EVENT_TYPES = Array.from(
 const TRUST_SCORING_EVENT_TYPES = REPORT_EVENT_TYPES.filter(eventType => !AI_PROCTOR_EVENT_TYPES.has(eventType));
 
 type TrustRiskLevel = 'low' | 'medium' | 'high' | 'critical';
-type TrustEvent = {
+export type TrustEvent = {
   id?: string;
   sessionId?: string;
   eventType: string;
@@ -124,7 +124,7 @@ function filterNonAiTrustEvents(events: TrustEvent[]): TrustEvent[] {
   return events.filter(event => !isAiProctorEvent(event));
 }
 
-function buildViolationCounts(events: TrustEvent[]): TrustViolationCounts {
+export function buildViolationCounts(events: TrustEvent[]): TrustViolationCounts {
   return {
     tabSwitch: events.filter(e => e.eventType === 'tab_switch').length,
     focusLoss: events.filter(e => e.eventType === 'window_blur').length,
@@ -145,7 +145,7 @@ function buildViolationCounts(events: TrustEvent[]): TrustViolationCounts {
   };
 }
 
-function calculateTrustFromEvents(events: TrustEvent[]): number {
+export function calculateTrustFromEvents(events: TrustEvent[]): number {
   if (events.length === 0) return 100;
 
   let deductions = 0;
@@ -175,6 +175,75 @@ function calculateTrustFromEvents(events: TrustEvent[]): number {
   }
 
   return Math.max(0, Math.min(100, 100 - deductions));
+}
+
+// Per-eventType counts across ALL report-relevant events (browser-side and
+// AI-detected alike) — unlike buildViolationCounts, which zeroes out the AI
+// event types for its own legacy display shape, this is what callers that
+// need an honest per-type breakdown (e.g. attempt detail integrity tags)
+// should use.
+export function groupEventCounts(events: TrustEvent[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const event of events) {
+    counts[event.eventType] = (counts[event.eventType] || 0) + 1;
+  }
+  return counts;
+}
+
+const TRUST_EVENT_SELECT = {
+  id: true,
+  sessionId: true,
+  eventType: true,
+  severity: true,
+  confidence: true,
+  metadata: true,
+  timestamp: true,
+  snapshotUrl: true,
+} as const;
+
+// Single source of truth for "what events count toward this attempt's trust
+// score / integrity flags" — same filters (dismissed=false, REPORT_EVENT_TYPES)
+// used by every trust display in the app, so they can never diverge again.
+export async function getTrustEventsForAttempt(
+  proctorSessionId: string | null | undefined
+): Promise<TrustEvent[]> {
+  if (!proctorSessionId) return [];
+  return prisma.proctorEvent.findMany({
+    where: {
+      sessionId: proctorSessionId,
+      dismissed: false,
+      eventType: { in: REPORT_EVENT_TYPES },
+    },
+    select: TRUST_EVENT_SELECT,
+    orderBy: { timestamp: 'desc' },
+  });
+}
+
+// Batch version for list views with many attempts/sessions at once.
+export async function getTrustEventsForSessions(
+  sessionIds: string[]
+): Promise<Map<string, TrustEvent[]>> {
+  const eventsBySession = new Map<string, TrustEvent[]>();
+  if (sessionIds.length === 0) return eventsBySession;
+
+  const events = await prisma.proctorEvent.findMany({
+    where: {
+      sessionId: { in: sessionIds },
+      dismissed: false,
+      eventType: { in: REPORT_EVENT_TYPES },
+    },
+    select: TRUST_EVENT_SELECT,
+    orderBy: { timestamp: 'desc' },
+  });
+
+  for (const event of events) {
+    const sessionId = event.sessionId;
+    if (!sessionId) continue;
+    const bucket = eventsBySession.get(sessionId) || [];
+    bucket.push(event);
+    eventsBySession.set(sessionId, bucket);
+  }
+  return eventsBySession;
 }
 
 function riskLevelFromTrustScore(score: number): TrustRiskLevel {

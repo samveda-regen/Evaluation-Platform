@@ -4,6 +4,7 @@ import { format } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { TestAttempt } from '../../types';
+import { violationLabel } from '../../utils/violationLabels';
 import { FileDown, Mail, ChevronLeft, ChevronRight, XCircle, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react';
 import Icon from '../../components/Icon';
 import CustomSelect from '../../components/CustomSelect';
@@ -171,13 +172,12 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
   const selScorePct = selAttempt?.score != null && test?.totalMarks
     ? Math.round((selAttempt.score / test.totalMarks) * 100) : null;
 
-  /* -- Integrity flags (derive from violation count) -- */
-  const viol = selAttempt?.violations ?? 0;
-  const integrityFlags: string[] = viol > 0 ? [
-    `Tab switch ×${Math.ceil(viol / 2)}`,
-    viol >= 2 ? 'Face not detected (8s)' : '',
-    viol >= 4 ? `Multiple persons detected ×${viol - 2}` : '',
-  ].filter(Boolean) : [];
+  /* -- Integrity flags: real per-type counts from the backend, not guessed
+     from the raw violation total (that used to always claim "Tab switch"
+     happened regardless of what the actual violation type was). -- */
+  const integrityFlags: string[] = Object.entries(selAttempt?.violationCounts || {})
+    .filter(([, count]) => count > 0)
+    .map(([eventType, count]) => `${violationLabel(eventType)} ×${count}`);
 
   const isLoading = invLoading || resLoading;
 

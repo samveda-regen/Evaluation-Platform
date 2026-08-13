@@ -62,6 +62,7 @@ interface AttemptData {
   activityLogs: Array<{
     id: string; eventType: string; eventData?: string; timestamp: string;
   }>;
+  violationCounts?: Record<string, number>;
 }
 
 /* -- Helpers -- */
@@ -138,9 +139,6 @@ function QuestionDonut({ pct, color, label, sub }: { pct: number; color: string;
 /* -- Answer review filter -- */
 type ReviewFilter = 'all' | 'correct' | 'incorrect';
 
-/* -- Violation tag color -- */
-const VIOLATION_EVENTS = new Set(['tab_switch','focus_loss','fullscreen_exit','camera_off','face_not_detected','multiple_faces','phone_detected']);
-function isViolation(eventType: string) { return VIOLATION_EVENTS.has(eventType); }
 
 export default function AttemptDetails() {
   const { attemptId } = useParams();
@@ -333,7 +331,7 @@ export default function AttemptDetails() {
   );
   if (!data) return null;
 
-  const { attempt, test, candidate, mcqAnswers, codingAnswers, behavioralAnswers, activityLogs } = data;
+  const { attempt, test, candidate, mcqAnswers, codingAnswers, behavioralAnswers } = data;
 
   /* -- Score calculations -- */
   const scoreRaw   = attempt.score ?? 0;
@@ -377,13 +375,14 @@ export default function AttemptDetails() {
   });
   const totalFiltered = filteredMCQ.length + filteredCoding.length + filteredBehavioral.length;
 
-  /* -- Integrity: violation tag summary -- */
-  const violationCounts: Record<string, number> = {};
-  activityLogs.forEach(log => {
-    if (isViolation(log.eventType)) {
-      violationCounts[log.eventType] = (violationCounts[log.eventType] || 0) + 1;
-    }
-  });
+  /* -- Integrity: violation tag summary --
+     Backend-computed from the same merged event source (ActivityLog +
+     ProctorEvent, i.e. browser-side AND AI-detected violations alike) as
+     the candidates panel and Trust & Integrity report. Deriving this from
+     activityLogs alone used to silently miss AI-detected violations
+     (face_not_detected, multiple_faces, phone_detected), since those are
+     written only to ProctorEvent, never to ActivityLog. */
+  const violationCounts: Record<string, number> = data.violationCounts || {};
   const trustScore = typeof attempt.trustScore === 'number' ? Math.round(attempt.trustScore) : 100;
 
   /* -- integrity tags -- */

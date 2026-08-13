@@ -4,6 +4,12 @@ import prisma from '../utils/db.js';
 import { sendResultEmail } from '../services/emailService.js';
 import { getTestGradingPreferences } from '../utils/testPreferences.js';
 import { scoreBehavioralAnswer } from '../services/behavioralScoringService.js';
+import {
+  calculateTrustFromEvents,
+  groupEventCounts,
+  getTrustEventsForAttempt,
+  getTrustEventsForSessions,
+} from './trustReports.js';
 
 async function resolveCompanyName(companyId: string | null): Promise<string> {
   if (!companyId) return 'Our Team';
@@ -93,6 +99,9 @@ export async function getTestResults(req: AuthenticatedRequest, res: Response): 
             select: {
               trustScore: true
             }
+          },
+          proctorSession: {
+            select: { id: true }
           }
         },
         orderBy: { startTime: 'desc' },
@@ -101,6 +110,15 @@ export async function getTestResults(req: AuthenticatedRequest, res: Response): 
       }),
       prisma.testAttempt.count({ where })
     ]);
+
+    // Same event source/formula as the Trust & Integrity report and the
+    // attempt detail page, so all three surfaces agree on one number
+    // instead of each falling back to its own guess when analytics.trustScore
+    // hasn't been computed yet.
+    const sessionIds = attempts
+      .map((a: typeof attempts[number]) => a.proctorSession?.id)
+      .filter((id: string | undefined): id is string => !!id);
+    const eventsBySession = await getTrustEventsForSessions(sessionIds);
 
     // Calculate statistics
     const stats = await prisma.testAttempt.aggregate({
@@ -121,13 +139,19 @@ export async function getTestResults(req: AuthenticatedRequest, res: Response): 
         })
       : null;
 
-    const attemptsWithTrust = attempts.map((attempt: typeof attempts[number]) => ({
-      ...attempt,
-      trustScore:
-        typeof attempt.analytics?.trustScore === 'number'
-          ? attempt.analytics.trustScore
-          : Math.max(0, 100 - attempt.violations * 8),
-    }));
+    const attemptsWithTrust = attempts.map((attempt: typeof attempts[number]) => {
+      const events = attempt.proctorSession
+        ? eventsBySession.get(attempt.proctorSession.id) || []
+        : [];
+      return {
+        ...attempt,
+        trustScore:
+          typeof attempt.analytics?.trustScore === 'number'
+            ? attempt.analytics.trustScore
+            : Number(calculateTrustFromEvents(events).toFixed(1)),
+        violationCounts: groupEventCounts(events),
+      };
+    });
 
     res.json({
       test: {
@@ -208,6 +232,9 @@ export async function getAttemptDetails(req: AuthenticatedRequest, res: Response
         },
         analytics: {
           select: { trustScore: true }
+        },
+        proctorSession: {
+          select: { id: true }
         }
       }
     });
@@ -257,6 +284,14 @@ export async function getAttemptDetails(req: AuthenticatedRequest, res: Response
 
     const reviewState = await getAttemptReviewState(attempt.id);
 
+    // Same event source/formula as the quick candidates panel and the
+    // Trust & Integrity report — see comment there for why this matters:
+    // this used to default to a hardcoded 100 whenever analytics.trustScore
+    // hadn't been computed yet, silently hiding real violations (including
+    // AI-detected ones, which never appeared in activityLogs at all).
+    const trustEvents = await getTrustEventsForAttempt(attempt.proctorSession?.id);
+    const violationCounts = groupEventCounts(trustEvents);
+
     res.json({
       attempt: {
         id: attempt.id,
@@ -268,7 +303,10 @@ export async function getAttemptDetails(req: AuthenticatedRequest, res: Response
         violations: attempt.violations,
         isFlagged: attempt.isFlagged,
         flagReason: attempt.flagReason,
-        trustScore: typeof attempt.analytics?.trustScore === 'number' ? attempt.analytics.trustScore : 100,
+        trustScore:
+          typeof attempt.analytics?.trustScore === 'number'
+            ? attempt.analytics.trustScore
+            : Number(calculateTrustFromEvents(trustEvents).toFixed(1)),
         reviewed: reviewState.reviewed,
         reviewedAt: reviewState.reviewedAt,
         reviewedBy: reviewState.reviewedBy,
@@ -283,7 +321,8 @@ export async function getAttemptDetails(req: AuthenticatedRequest, res: Response
       mcqAnswers,
       codingAnswers,
       behavioralAnswers,
-      activityLogs: attempt.activityLogs
+      activityLogs: attempt.activityLogs,
+      violationCounts
     });
   } catch (error) {
     console.error('Get attempt details error:', error);

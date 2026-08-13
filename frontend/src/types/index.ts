@@ -125,6 +125,7 @@ export interface TestAttempt {
   score?: number;
   trustScore?: number;
   violations: number;
+  violationCounts?: Record<string, number>;
   isFlagged: boolean;
   flagReason?: string;
   candidate?: Candidate;
