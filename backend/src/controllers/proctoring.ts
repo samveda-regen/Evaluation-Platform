@@ -641,8 +641,37 @@ export const submitAnalysis = async (req: Request, res: Response): Promise<void>
       localViolationTypes: violations.map(v => v.eventType),
     });
 
-    // Optional Python CV service violations (OpenCV/YOLO) when configured
-    if (analysisData.frameData) {
+    // Violations already computed client-side (exp-1 ONNX model running via
+    // onnxruntime-web in the candidate's browser). When present, these are
+    // authoritative for this cycle and python_cv_service is skipped below —
+    // it only runs as a fallback for cycles where client-side inference
+    // didn't produce a result (model still loading, inference error, etc).
+    if (analysisData.clientViolations?.length) {
+      proctorTrace('client_vision_result', {
+        sessionId,
+        clientViolationCount: analysisData.clientViolations.length,
+        clientViolationTypes: analysisData.clientViolations.map(v => v.eventType),
+      });
+      for (const clientViolation of analysisData.clientViolations) {
+        violations.push({
+          eventType: clientViolation.eventType,
+          severity: 'medium', // re-derived from eventType/confidence in the dedup step below
+          confidence: clientViolation.confidence,
+          description: clientViolation.description,
+          metadata: {
+            ...(clientViolation.metadata || {}),
+            aiSource: 'client_onnx',
+          },
+          snapshotData: shouldAttachSnapshotEvidence(clientViolation.eventType)
+            ? analysisData.frameData
+            : undefined,
+        });
+      }
+    }
+
+    // Optional Python CV service violations (OpenCV/YOLO) — only when the
+    // client didn't already produce a result this cycle (see above).
+    if (analysisData.frameData && !analysisData.clientViolations?.length) {
       pythonResult = await analyzeFrameWithPythonForSession(analysisData.frameData, sessionId, analysisData.timestamp);
       proctorTrace('python_cv_result', {
         sessionId,

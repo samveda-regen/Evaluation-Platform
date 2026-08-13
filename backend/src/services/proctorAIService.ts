@@ -144,6 +144,16 @@ export interface ProctoringAnalysis {
   // the actual achieved proctoring refresh rate, not the nominal configured
   // one. Fed into the Superadmin Observer's telemetry ring buffer.
   actualIntervalMs?: number;
+  // Violations already computed client-side (exp-1 ONNX model running via
+  // onnxruntime-web in the candidate's browser — see clientVisionService.ts).
+  // When present, submitAnalysis stores these directly instead of calling
+  // python_cv_service for this cycle.
+  clientViolations?: Array<{
+    eventType: string;
+    confidence: number;
+    description: string;
+    metadata?: Record<string, unknown>;
+  }>;
 }
 
 export interface ViolationEvent {

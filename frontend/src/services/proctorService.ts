@@ -140,6 +140,15 @@ export async function submitAnalysis(sessionId: string, analysisData: {
   // useProctoring.ts::runSnapshotAnalysis. Feeds the Superadmin Observer's
   // live proctoring-refresh-rate telemetry.
   actualIntervalMs?: number;
+  // Violations already computed client-side (clientVisionService.ts, exp-1
+  // ONNX model running via onnxruntime-web). When present, the backend skips
+  // its own python_cv_service call for this cycle and stores these directly.
+  clientViolations?: Array<{
+    eventType: string;
+    confidence: number;
+    description: string;
+    metadata?: Record<string, unknown>;
+  }>;
 }): Promise<{ violations: ViolationData[]; shouldTerminate: boolean }> {
   const response = await api.post(`/proctoring/session/${sessionId}/analysis`, analysisData);
   return {

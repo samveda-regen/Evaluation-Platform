@@ -30,6 +30,7 @@ import {
   ViolationData,
 } from '../services/proctorService';
 import { clearCachedStreams, getCachedStreams } from '../services/devicePermissionService';
+import { loadClientVisionModel, runClientDetection, detectionsToViolations } from '../services/clientVisionService';
 
 export interface ProctorStatus {
   isInitialized: boolean;
@@ -864,10 +865,14 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
   }, [getActiveVideoElement, analysisFrameQuality, analysisFrameMaxWidth]);
 
   /**
-   * Snapshot-based analysis: every few seconds, take a photo from the camera and send it to the
-   * backend. The backend forwards the image to the Python CV service (YOLO + MediaPipe)
-   * which returns violations. This is simpler and more reliable than trying to extract
-   * frames from a live video element.
+   * Snapshot-based analysis: every few seconds, run the exp-1 ONNX model
+   * directly against the live camera feed in-browser (clientVisionService.ts)
+   * and report whatever it finds. A JPEG snapshot is still taken and sent
+   * alongside purely as violation evidence (and as an automatic fallback:
+   * if client-side inference didn't produce a result this cycle — model
+   * still loading, inference error, etc — the backend falls back to its
+   * own python_cv_service call on that frame, so proctoring never goes
+   * fully dark just because the in-browser model hiccups).
    */
   const runSnapshotAnalysis = useCallback(async () => {
     if (!session) return;
@@ -877,6 +882,30 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
 
     try {
       const frameData = await takeWebcamSnapshot();
+
+      let clientViolations: ReturnType<typeof detectionsToViolations> | undefined;
+      try {
+        const activeVideo = getActiveVideoElement();
+        if (activeVideo) {
+          const clientSession = await loadClientVisionModel();
+          const detections = await runClientDetection(clientSession, activeVideo);
+          clientViolations = detectionsToViolations(detections);
+          traceLog('client_vision_detection', {
+            sessionId: session.sessionId,
+            detectionCount: detections.length,
+            violationCount: clientViolations.length,
+            violationTypes: clientViolations.map(v => v.eventType),
+          });
+        }
+      } catch (clientVisionError) {
+        // Model failed to load or infer this cycle — leave clientViolations
+        // undefined so the backend's own python_cv_service fallback covers
+        // this cycle instead of proctoring silently going dark.
+        traceLog('client_vision_error', {
+          sessionId: session.sessionId,
+          message: clientVisionError instanceof Error ? clientVisionError.message : 'unknown',
+        });
+      }
 
       traceLog('snapshot_analysis', {
         sessionId: session.sessionId,
@@ -903,6 +932,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
           timestamp: Date.now(),
           frameData: frameData || undefined,
           ...(audioResult ? { audio: audioResult } : {}),
+          ...(clientViolations ? { clientViolations } : {}),
           screenInfo: {
             monitorCount: status.monitorCount,
             isFullscreen: !!document.fullscreenElement,
