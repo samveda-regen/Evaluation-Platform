@@ -104,6 +104,16 @@ const GENERATE_PROGRESS_STEPS = [
   'Finalizing the test…',
 ];
 
+// Same idea for Step 3's "writing brand-new questions" wait.
+const SUGGESTION_PROGRESS_STEPS = [
+  'Thinking through this role…',
+  'Reviewing your question library…',
+  'Writing new MCQ questions…',
+  'Drafting coding challenges…',
+  'Crafting behavioral questions…',
+  'Developing questions tailored to you…',
+];
+
 function pad(n: number) {
   return String(n).padStart(2, '0');
 }
@@ -271,6 +281,13 @@ export default function AgentTestForm() {
   const [suggestions, setSuggestions] = useState<QuestionSuggestions | null>(null);
   const [suggesting, setSuggesting] = useState(false);
   const [savingSuggestions, setSavingSuggestions] = useState(false);
+  const [suggestionProgressStep, setSuggestionProgressStep] = useState(0);
+
+  useEffect(() => {
+    if (!suggesting) { setSuggestionProgressStep(0); return; }
+    const id = setInterval(() => setSuggestionProgressStep(i => (i + 1) % SUGGESTION_PROGRESS_STEPS.length), 1600);
+    return () => clearInterval(id);
+  }, [suggesting]);
 
   /* Step 4 state */
   const [selection, setSelection] = useState<QuestionSelection | null>(null);
@@ -1025,7 +1042,9 @@ export default function AgentTestForm() {
 
               {suggesting ? (
                 <div style={{ padding: '48px 0', textAlign: 'center' }}>
-                  <p style={{ fontSize: '13px', color: 'var(--admin-text-subtle)', margin: 0 }}>Reviewing your library matches and writing new AI-suggested questions for this role…</p>
+                  <p style={{ fontSize: '13px', color: 'var(--admin-text-subtle)', margin: 0, transition: 'opacity 0.2s' }}>
+                    {SUGGESTION_PROGRESS_STEPS[suggestionProgressStep]}
+                  </p>
                 </div>
               ) : (
               <>
