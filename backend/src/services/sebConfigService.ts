@@ -84,8 +84,16 @@ export function buildSebConfigXml(startUrl: string): string {
 
   <key>allowVirtualMachine</key>
   <false/>
+  <!-- The app's own violation-evidence capture (useProctoring.ts's
+       captureViolationEvidenceFrame) prefers a getDisplayMedia() screen
+       frame over the webcam when reporting a violation. Blocking screen
+       sharing here silently killed that, leaving violations logged with
+       no evidence image. Actual screen-sharing/remote-access SOFTWARE
+       (TeamViewer, AnyDesk, Discord, etc.) is already blocked below via
+       prohibitedProcesses, so this flag was mostly just breaking our own
+       feature rather than adding real security. -->
   <key>allowScreenSharing</key>
-  <false/>
+  <true/>
   <key>allowSiri</key>
   <false/>
   <key>allowDictation</key>

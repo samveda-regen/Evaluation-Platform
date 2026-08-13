@@ -87,8 +87,13 @@
   <!-- ==================== LOCKDOWN HARDENING ==================== -->
   <key>allowVirtualMachine</key>
   <false/>
+  <!-- The app's violation-evidence capture prefers a screen-share frame
+       over the webcam when a violation fires (see useProctoring.ts
+       captureViolationEvidenceFrame). Blocking screen sharing here
+       silently killed evidence capture. Real screen-sharing/remote-access
+       software is already blocked via prohibitedProcesses below. -->
   <key>allowScreenSharing</key>
-  <false/>
+  <true/>
   <key>allowSiri</key>
   <false/>
   <key>allowDictation</key>
