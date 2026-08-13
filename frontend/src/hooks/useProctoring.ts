@@ -394,7 +394,19 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
       let cameraEnabled = false;
       if (finalConfig.enableCamera) {
         const cached = getCachedStreams();
-        const cameraStream = cached.cameraStream || await requestCameraPermission();
+        // Reusing the device-check page's cached stream is the normal path
+        // (no second getUserMedia call, no lock contention). The fallback
+        // fresh request only fires if that cache came up empty for any
+        // reason — a scenario SEB's embedded WebView has been observed to
+        // handle less reliably than a regular browser on a second
+        // getUserMedia() call in the same session. One retry after a short
+        // delay before giving up, rather than failing on the first blip.
+        let cameraStream = cached.cameraStream || await requestCameraPermission();
+        if (!cameraStream) {
+          traceLog('camera_acquire_retry', { attemptId });
+          await new Promise(resolve => setTimeout(resolve, 800));
+          cameraStream = await requestCameraPermission();
+        }
         if (cameraStream) {
           cameraStreamRef.current = cameraStream;
           cameraEnabled = true;
@@ -1123,15 +1135,21 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     initialize();
 
     return () => {
-      // Cleanup on unmount
+      // Cleanup on unmount. Null the refs after stopping so nothing can
+      // read a dangling reference to an already-ended stream afterward
+      // (cameraStream/screenStream are returned straight from these refs
+      // at the bottom of this hook).
       if (cameraStreamRef.current) {
         cameraStreamRef.current.getTracks().forEach(track => track.stop());
+        cameraStreamRef.current = null;
       }
       if (micStreamRef.current) {
         micStreamRef.current.getTracks().forEach(track => track.stop());
+        micStreamRef.current = null;
       }
       if (screenStreamRef.current) {
         screenStreamRef.current.getTracks().forEach(track => track.stop());
+        screenStreamRef.current = null;
       }
       if (processingVideoRef.current) {
         processingVideoRef.current.pause();
