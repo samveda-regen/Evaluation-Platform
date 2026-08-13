@@ -11,18 +11,41 @@
 //   5 looking straight, 6 looking up, 7 mobile phones, 8 note books,
 //   9 person, 10 tv
 
-import * as ort from 'onnxruntime-web';
+// Type-only import: erased at compile time, no runtime side effect. The
+// actual onnxruntime-web module is loaded dynamically inside loadOrt()
+// below, guarded by try/catch — a static top-level `import * as ort from
+// 'onnxruntime-web'` runs its side effects immediately on module load,
+// before any of this file's try/catch blocks exist to catch it. If that
+// library throws during its own init in some particular browser engine
+// (unverified so far specifically inside SEB's bundled CEF/Chromium), a
+// static import would crash the whole module graph that imports this file
+// — including useProctoring.ts, which also owns the camera preview and the
+// rest of the analysis loop, not just this feature.
+import type * as OrtNamespace from 'onnxruntime-web';
 
 const MODEL_URL = '/models/exp-1.onnx';
 const INPUT_SIZE = 640;
 const SCORE_THRESHOLD = 0.5;
 
-ort.env.wasm.wasmPaths = '/ort/';
-// Single-threaded: avoids requiring SharedArrayBuffer / COOP+COEP cross-origin
-// isolation headers, which this app doesn't set and which SEB's bundled
-// Chromium engine has not been verified to handle correctly for anything else
-// unusual so far this rollout — safest default until proven otherwise.
-ort.env.wasm.numThreads = 1;
+let ortModulePromise: Promise<typeof OrtNamespace> | null = null;
+
+function loadOrt(): Promise<typeof OrtNamespace> {
+  if (!ortModulePromise) {
+    ortModulePromise = import('onnxruntime-web')
+      .then(ort => {
+        ort.env.wasm.wasmPaths = '/ort/';
+        // Single-threaded: avoids requiring SharedArrayBuffer / COOP+COEP
+        // cross-origin isolation headers, which this app doesn't set.
+        ort.env.wasm.numThreads = 1;
+        return ort;
+      })
+      .catch(err => {
+        ortModulePromise = null; // allow retry on next call
+        throw err;
+      });
+  }
+  return ortModulePromise;
+}
 
 const CLASS_NAMES = [
   'headphones', 'laptop', 'looking_down', 'looking_left', 'looking_right',
@@ -50,17 +73,19 @@ export interface ClientViolation {
   metadata?: Record<string, unknown>;
 }
 
-let sessionPromise: Promise<ort.InferenceSession> | null = null;
+let sessionPromise: Promise<OrtNamespace.InferenceSession> | null = null;
 
-export function loadClientVisionModel(): Promise<ort.InferenceSession> {
+export function loadClientVisionModel(): Promise<OrtNamespace.InferenceSession> {
   if (!sessionPromise) {
-    sessionPromise = ort.InferenceSession.create(MODEL_URL, {
-      executionProviders: ['wasm'],
-      graphOptimizationLevel: 'all',
-    }).catch(err => {
-      sessionPromise = null; // allow retry on next call rather than caching a permanent failure
-      throw err;
-    });
+    sessionPromise = loadOrt()
+      .then(ort => ort.InferenceSession.create(MODEL_URL, {
+        executionProviders: ['wasm'],
+        graphOptimizationLevel: 'all',
+      }))
+      .catch(err => {
+        sessionPromise = null; // allow retry on next call rather than caching a permanent failure
+        throw err;
+      });
   }
   return sessionPromise;
 }
@@ -68,7 +93,10 @@ export function loadClientVisionModel(): Promise<ort.InferenceSession> {
 // Letterbox-resize a video frame into a square INPUT_SIZE canvas the same way
 // video_proctoring_test.py's OpenCV preprocessing does: preserve aspect
 // ratio, pad the rest with neutral gray (114,114,114).
-function letterboxToTensor(source: HTMLVideoElement | HTMLCanvasElement): ort.Tensor {
+function letterboxToTensor(
+  ort: typeof OrtNamespace,
+  source: HTMLVideoElement | HTMLCanvasElement
+): OrtNamespace.Tensor {
   const srcWidth = 'videoWidth' in source ? source.videoWidth : source.width;
   const srcHeight = 'videoHeight' in source ? source.videoHeight : source.height;
   if (!srcWidth || !srcHeight) {
@@ -105,11 +133,12 @@ function letterboxToTensor(source: HTMLVideoElement | HTMLCanvasElement): ort.Te
 }
 
 export async function runClientDetection(
-  session: ort.InferenceSession,
+  session: OrtNamespace.InferenceSession,
   source: HTMLVideoElement | HTMLCanvasElement
 ): Promise<RawDetection[]> {
-  const inputTensor = letterboxToTensor(source);
-  const feeds: Record<string, ort.Tensor> = { images: inputTensor };
+  const ort = await loadOrt();
+  const inputTensor = letterboxToTensor(ort, source);
+  const feeds: Record<string, OrtNamespace.Tensor> = { images: inputTensor };
   const results = await session.run(feeds);
   const output = results.output0;
   if (!output) return [];
