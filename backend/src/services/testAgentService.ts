@@ -862,7 +862,7 @@ export async function suggestNewQuestions(
   const codingCount = Math.max(0, Math.min(5, Math.floor(counts.codingCount)));
   const behavioralCount = Math.max(0, Math.min(5, Math.floor(counts.behavioralCount)));
 
-  const systemPrompt = `You are an expert technical interviewer and question-bank author. Unlike a librarian picking from an existing catalog, your job here is to WRITE brand-new, original assessment questions from scratch, tailored precisely to the job profile given. Never write generic filler questions — every question must genuinely probe one of the required skills at the requested difficulty. Always respond with a valid JSON object only, no prose outside the JSON. Every string value must be valid JSON: escape all newlines as \\n, tabs as \\t, and double quotes as \\" — this matters most in multi-line fields like a coding question's description, sampleInput, sampleOutput, or a test case's input/expectedOutput. Never place a literal, unescaped line break inside a JSON string.`;
+  const systemPrompt = `You are an expert technical interviewer and question-bank author. Unlike a librarian picking from an existing catalog, your job here is to WRITE brand-new, original assessment questions from scratch, tailored precisely to the job profile given. Never write generic filler questions — every question must genuinely probe one of the required skills at the requested difficulty. Always respond with a valid JSON object only, no prose outside the JSON. Every string value must be valid JSON: escape all newlines as \\n, tabs as \\t, and double quotes as \\" — this matters most in multi-line fields like a coding question's description, sampleInput, sampleOutput, or a test case's input/expectedOutput. Never place a literal, unescaped line break inside a JSON string. Never use a bare double quote to emphasize or quote a word/phrase inside a string value (e.g. do NOT write "the "primitive" types") — use single quotes for that instead (e.g. "the 'primitive' types"), or escape it as \\". Keep every question concise enough that the full response comfortably fits the token budget — never truncate a question mid-way; if you are running low on space, write fewer questions rather than cutting one off.`;
 
   const userPrompt = `Author new assessment questions for this role:
 
@@ -928,12 +928,23 @@ Respond with a JSON object shaped exactly like this:
   ]
 }`;
 
+  // Generous headroom: up to 10 MCQ + 5 coding (each with multiple test cases) + 5 behavioral
+  // questions can easily exceed a few thousand tokens — a response cut off mid-string by hitting
+  // the token limit is genuinely incomplete JSON, which no amount of post-hoc repair can fix, so
+  // the real defense is not running out of room in the first place.
   const response = await callLLM([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
-  ], { temperature: 0.6, maxTokens: 4096 });
+  ], { temperature: 0.6, maxTokens: 8192 });
 
-  const parsed = parseJSONFromLLM(response.content) as Record<string, unknown>;
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = parseJSONFromLLM(response.content) as Record<string, unknown>;
+  } catch (err) {
+    // Log the raw response so a future parse failure can actually be diagnosed instead of guessed at.
+    console.error('suggestNewQuestions: failed to parse LLM JSON response. Raw content:\n', response.content);
+    throw err;
+  }
 
   const mcq = (Array.isArray(parsed.mcq) ? parsed.mcq : [])
     .map(raw => normalizeMCQSuggestion(raw as Record<string, unknown>))
