@@ -427,6 +427,7 @@ export default function AgentTestForm() {
      these are brand-new questions the LLM writes from scratch, not picks from the library) -- */
   const fetchSuggestions = async () => {
     setSuggesting(true);
+    setSuggestions(null); // clear any stale set (e.g. from Regenerate) so the loading state is unambiguous
     try {
       const { data } = await adminApi.suggestNewQuestions({ jobProfile, skills, difficulty, mcqCount, codingCount, behavioralCount });
       if (data.success && data.data) {
@@ -1022,6 +1023,12 @@ export default function AgentTestForm() {
                 )}
               </div>
 
+              {suggesting ? (
+                <div style={{ padding: '48px 0', textAlign: 'center' }}>
+                  <p style={{ fontSize: '13px', color: 'var(--admin-text-subtle)', margin: 0 }}>Reviewing your library matches and writing new AI-suggested questions for this role…</p>
+                </div>
+              ) : (
+              <>
               {/* Live per-type running count against the Step 2 limit */}
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', margin: '12px 0 20px' }}>
                 {(['mcq', 'coding', 'behavioral'] as const).filter(t => getLimit(t) > 0).map(t => {
@@ -1072,9 +1079,6 @@ export default function AgentTestForm() {
                     <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>
                       AI Suggested (New){suggestions && suggestions.mcq.length > 0 ? ` (${suggestions.mcq.length})` : ''}
                     </p>
-                    {suggesting && !suggestions && (
-                      <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: 0 }}>Writing new questions…</p>
-                    )}
                     {suggestions && suggestions.mcq.length === 0 && (
                       <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: 0 }}>No new MCQ suggestions.</p>
                     )}
@@ -1148,9 +1152,6 @@ export default function AgentTestForm() {
                     <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>
                       AI Suggested (New){suggestions && suggestions.coding.length > 0 ? ` (${suggestions.coding.length})` : ''}
                     </p>
-                    {suggesting && !suggestions && (
-                      <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: 0 }}>Writing new questions…</p>
-                    )}
                     {suggestions && suggestions.coding.length === 0 && (
                       <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: 0 }}>No new coding suggestions.</p>
                     )}
@@ -1223,9 +1224,6 @@ export default function AgentTestForm() {
                     <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>
                       AI Suggested (New){suggestions && suggestions.behavioral.length > 0 ? ` (${suggestions.behavioral.length})` : ''}
                     </p>
-                    {suggesting && !suggestions && (
-                      <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: 0 }}>Writing new questions…</p>
-                    )}
                     {suggestions && suggestions.behavioral.length === 0 && (
                       <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: 0 }}>No new behavioral suggestions.</p>
                     )}
@@ -1263,13 +1261,15 @@ export default function AgentTestForm() {
                   </div>
                 )}
               </div>
+              </>
+              )}
 
               <div style={{ display: 'flex', gap: '10px', paddingTop: '20px' }}>
                 <button onClick={() => setStep(2)} style={btnSecondary}>Back</button>
                 <button
                   onClick={handleContinueFromSuggestions}
-                  disabled={savingSuggestions}
-                  style={savingSuggestions ? btnDisabled : btnPrimary}
+                  disabled={suggesting || savingSuggestions}
+                  style={suggesting || savingSuggestions ? btnDisabled : btnPrimary}
                 >
                   {savingSuggestions ? 'Saving...' : 'Continue to Review'}
                 </button>
