@@ -77,11 +77,21 @@ interface SuggestedBehavioral {
   tags: string[];
   suggestedTimeEstimateSec: number;
 }
+// `savedId` is set once a suggestion has actually been persisted as a custom question — lets a
+// second "Continue" (e.g. after Back-ing from Step 4) reuse that id instead of creating a duplicate.
 interface QuestionSuggestions {
-  mcq: (SuggestedMCQ & { selected: boolean })[];
-  coding: (SuggestedCoding & { selected: boolean })[];
-  behavioral: (SuggestedBehavioral & { selected: boolean })[];
+  mcq: (SuggestedMCQ & { selected: boolean; savedId?: string })[];
+  coding: (SuggestedCoding & { selected: boolean; savedId?: string })[];
+  behavioral: (SuggestedBehavioral & { selected: boolean; savedId?: string })[];
 }
+type PreviewEntry = { id: string; text: string; difficulty: string; topic: string | null };
+type LibraryPick = PreviewEntry & { selected: boolean };
+interface LibraryPicks {
+  mcq: LibraryPick[];
+  coding: LibraryPick[];
+  behavioral: LibraryPick[];
+}
+type SuggestionType = 'mcq' | 'coding' | 'behavioral';
 
 const MAX_TEST_VIOLATIONS = 150;
 
@@ -255,7 +265,9 @@ export default function AgentTestForm() {
   const [behavioralCount, setBehavioralCount] = useState(2);
   const [librarySkills, setLibrarySkills] = useState<string[]>([]);
 
-  /* Step 3 state (Question Suggestions — AI-authored, not library-matched) */
+  /* Step 3 state (Question Suggestions — picks from both the library match and AI-authored ones,
+     sharing the same per-type limit set in Step 2 via mcqCount/codingCount/behavioralCount) */
+  const [libraryPicks, setLibraryPicks] = useState<LibraryPicks | null>(null);
   const [suggestions, setSuggestions] = useState<QuestionSuggestions | null>(null);
   const [suggesting, setSuggesting] = useState(false);
   const [savingSuggestions, setSavingSuggestions] = useState(false);
@@ -380,6 +392,12 @@ export default function AgentTestForm() {
       if (data.success && data.data) {
         const sel: QuestionSelection = data.data;
         setSelection(sel);
+        setLibraryPicks({
+          mcq: (sel.mcqPreviews ?? []).map(p => ({ ...p, topic: p.topic ?? null, selected: true })),
+          coding: (sel.codingPreviews ?? []).map(p => ({ ...p, topic: p.topic ?? null, selected: true })),
+          behavioral: (sel.behavioralPreviews ?? []).map(p => ({ ...p, topic: p.topic ?? null, selected: true })),
+        });
+        setSuggestions(null);
         setTestSettings(p => ({
           ...p,
           name:        sel.suggestedTestName    || `${jobProfile.title} Assessment`,
@@ -436,7 +454,25 @@ export default function AgentTestForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
-  const toggleSuggestion = (type: 'mcq' | 'coding' | 'behavioral', index: number) => {
+  // The per-type limit is whatever was set in Step 2 (mcqCount/codingCount/behavioralCount) —
+  // it caps the COMBINED total of library picks + AI suggestions for that type, never either
+  // list on its own, since both lists feed the same final question set.
+  const getLimit = (type: SuggestionType) =>
+    type === 'mcq' ? mcqCount : type === 'coding' ? codingCount : behavioralCount;
+
+  const getSelectedCount = (type: SuggestionType) =>
+    (libraryPicks?.[type] ?? []).filter(q => q.selected).length + (suggestions?.[type] ?? []).filter(q => q.selected).length;
+
+  const typeLabel = (type: SuggestionType) => (type === 'mcq' ? 'MCQ' : type === 'coding' ? 'coding' : 'behavioral');
+
+  const toggleSuggestion = (type: SuggestionType, index: number) => {
+    const item = suggestions?.[type]?.[index];
+    if (!item) return;
+    if (!item.selected && getSelectedCount(type) >= getLimit(type)) {
+      const limit = getLimit(type);
+      toast.error(`You've already picked ${limit} ${typeLabel(type)} question${limit === 1 ? '' : 's'} (the limit set in Step 2) — uncheck one first`);
+      return;
+    }
     setSuggestions(prev => {
       if (!prev) return prev;
       const list = [...prev[type]];
@@ -445,40 +481,76 @@ export default function AgentTestForm() {
     });
   };
 
+  const toggleLibraryPick = (type: SuggestionType, index: number) => {
+    const item = libraryPicks?.[type]?.[index];
+    if (!item) return;
+    if (!item.selected && getSelectedCount(type) >= getLimit(type)) {
+      const limit = getLimit(type);
+      toast.error(`You've already picked ${limit} ${typeLabel(type)} question${limit === 1 ? '' : 's'} (the limit set in Step 2) — uncheck one first`);
+      return;
+    }
+    setLibraryPicks(prev => {
+      if (!prev) return prev;
+      const list = [...prev[type]];
+      list[index] = { ...list[index], selected: !list[index].selected };
+      return { ...prev, [type]: list };
+    });
+  };
+
+  // Fills each type's remaining capacity (limit minus already-selected library picks) with
+  // suggestions, rather than blindly checking every one — keeps the combined total in bounds.
   const setAllSuggestionsSelected = (value: boolean) => {
+    // Generic over the list's element type so TS keeps mcq/coding/behavioral's distinct shapes
+    // intact — indexing `prev[type]` with a union `type` would otherwise collapse them into one.
+    const applyLimit = <T extends { selected: boolean }>(list: T[], type: SuggestionType): T[] => {
+      if (!value) return list.map(q => ({ ...q, selected: false }));
+      const libraryCount = (libraryPicks?.[type] ?? []).filter(q => q.selected).length;
+      let remaining = Math.max(0, getLimit(type) - libraryCount);
+      return list.map(q => {
+        if (remaining > 0) { remaining--; return { ...q, selected: true }; }
+        return { ...q, selected: false };
+      });
+    };
     setSuggestions(prev => prev ? {
-      mcq: prev.mcq.map(q => ({ ...q, selected: value })),
-      coding: prev.coding.map(q => ({ ...q, selected: value })),
-      behavioral: prev.behavioral.map(q => ({ ...q, selected: value })),
+      mcq: applyLimit(prev.mcq, 'mcq'),
+      coding: applyLimit(prev.coding, 'coding'),
+      behavioral: applyLimit(prev.behavioral, 'behavioral'),
     } : prev);
   };
 
-  type PreviewEntry = { id: string; text: string; difficulty: string; topic: string | null };
-
-  /* -- Step 3 -> 4: persist any checked suggestions as real custom questions (same procedure
-     as typing them manually), then fold them into the existing `selection` so they show up
-     in Review Selection alongside the library-matched ones. -- */
+  /* -- Step 3 -> 4: persist any checked AI suggestions as real custom questions (same procedure
+     as typing them manually), then build the final selection from the checked library picks plus
+     the newly created ones — this REPLACES the prior library-only selection rather than adding on
+     top of it, which is what previously let the combined total exceed the Step 2 limit. -- */
   const handleContinueFromSuggestions = async () => {
-    const selectedMcq = suggestions?.mcq.filter(q => q.selected) ?? [];
-    const selectedCoding = suggestions?.coding.filter(q => q.selected) ?? [];
-    const selectedBehavioral = suggestions?.behavioral.filter(q => q.selected) ?? [];
+    const selectedLibraryMcq = libraryPicks?.mcq.filter(q => q.selected) ?? [];
+    const selectedLibraryCoding = libraryPicks?.coding.filter(q => q.selected) ?? [];
+    const selectedLibraryBehavioral = libraryPicks?.behavioral.filter(q => q.selected) ?? [];
 
-    if (!selectedMcq.length && !selectedCoding.length && !selectedBehavioral.length) {
-      setStep(4);
-      return;
-    }
+    // Carry the original index so an already-persisted suggestion (savedId set below) can be
+    // re-marked in place — this is what lets a second "Continue" after Back-ing from Step 4 reuse
+    // the question it already created instead of creating a duplicate.
+    const selectedMcq = (suggestions?.mcq ?? []).map((q, i) => ({ q, i })).filter(({ q }) => q.selected);
+    const selectedCoding = (suggestions?.coding ?? []).map((q, i) => ({ q, i })).filter(({ q }) => q.selected);
+    const selectedBehavioral = (suggestions?.behavioral ?? []).map((q, i) => ({ q, i })).filter(({ q }) => q.selected);
 
     setSavingSuggestions(true);
     let failures = 0;
-    const newMcqIds: string[] = [];
-    const newMcqPreviews: PreviewEntry[] = [];
-    const newCodingIds: string[] = [];
-    const newCodingPreviews: PreviewEntry[] = [];
-    const newBehavioralIds: string[] = [];
-    const newBehavioralPreviews: PreviewEntry[] = [];
+    let newlyCreatedCount = 0;
+    const persistedMcqIds: string[] = [];
+    const persistedMcqPreviews: PreviewEntry[] = [];
+    const persistedCodingIds: string[] = [];
+    const persistedCodingPreviews: PreviewEntry[] = [];
+    const persistedBehavioralIds: string[] = [];
+    const persistedBehavioralPreviews: PreviewEntry[] = [];
 
     try {
-      for (const q of selectedMcq) {
+      for (const { q, i } of selectedMcq) {
+        if (q.savedId) {
+          persistedMcqIds.push(q.savedId);
+          persistedMcqPreviews.push({ id: q.savedId, text: q.questionText, difficulty: q.difficulty, topic: q.topic || null });
+          continue;
+        }
         try {
           const { data } = await adminApi.createMCQ({
             questionText: q.questionText,
@@ -492,12 +564,24 @@ export default function AgentTestForm() {
             tags: [...q.tags, 'AI Generated'],
           });
           const created = data.question;
-          newMcqIds.push(created.id);
-          newMcqPreviews.push({ id: created.id, text: created.questionText, difficulty: created.difficulty, topic: created.topic });
+          persistedMcqIds.push(created.id);
+          persistedMcqPreviews.push({ id: created.id, text: created.questionText, difficulty: created.difficulty, topic: created.topic });
+          newlyCreatedCount++;
+          setSuggestions(prev => {
+            if (!prev || !prev.mcq[i]) return prev;
+            const list = [...prev.mcq];
+            list[i] = { ...list[i], savedId: created.id };
+            return { ...prev, mcq: list };
+          });
         } catch { failures++; }
       }
 
-      for (const q of selectedCoding) {
+      for (const { q, i } of selectedCoding) {
+        if (q.savedId) {
+          persistedCodingIds.push(q.savedId);
+          persistedCodingPreviews.push({ id: q.savedId, text: `${q.title}: ${q.description}`.slice(0, 200), difficulty: q.difficulty, topic: q.topic || null });
+          continue;
+        }
         try {
           const { data } = await adminApi.createCoding({
             title: q.title,
@@ -517,12 +601,24 @@ export default function AgentTestForm() {
             tags: [...q.tags, 'AI Generated'],
           });
           const created = data.question;
-          newCodingIds.push(created.id);
-          newCodingPreviews.push({ id: created.id, text: `${created.title}: ${created.description}`.slice(0, 200), difficulty: created.difficulty, topic: created.topic });
+          persistedCodingIds.push(created.id);
+          persistedCodingPreviews.push({ id: created.id, text: `${created.title}: ${created.description}`.slice(0, 200), difficulty: created.difficulty, topic: created.topic });
+          newlyCreatedCount++;
+          setSuggestions(prev => {
+            if (!prev || !prev.coding[i]) return prev;
+            const list = [...prev.coding];
+            list[i] = { ...list[i], savedId: created.id };
+            return { ...prev, coding: list };
+          });
         } catch { failures++; }
       }
 
-      for (const q of selectedBehavioral) {
+      for (const { q, i } of selectedBehavioral) {
+        if (q.savedId) {
+          persistedBehavioralIds.push(q.savedId);
+          persistedBehavioralPreviews.push({ id: q.savedId, text: `${q.title}: ${q.description}`.slice(0, 200), difficulty: q.difficulty, topic: q.topic || null });
+          continue;
+        }
         try {
           const { data } = await adminApi.createCustomBehavioral({
             title: q.title,
@@ -534,24 +630,31 @@ export default function AgentTestForm() {
             tags: [...q.tags, 'AI Generated'],
           });
           const created = data.question;
-          newBehavioralIds.push(created.id);
-          newBehavioralPreviews.push({ id: created.id, text: `${created.title}: ${created.description}`.slice(0, 200), difficulty: created.difficulty, topic: created.topic });
+          persistedBehavioralIds.push(created.id);
+          persistedBehavioralPreviews.push({ id: created.id, text: `${created.title}: ${created.description}`.slice(0, 200), difficulty: created.difficulty, topic: created.topic });
+          newlyCreatedCount++;
+          setSuggestions(prev => {
+            if (!prev || !prev.behavioral[i]) return prev;
+            const list = [...prev.behavioral];
+            list[i] = { ...list[i], savedId: created.id };
+            return { ...prev, behavioral: list };
+          });
         } catch { failures++; }
       }
 
-      const addedCount = newMcqIds.length + newCodingIds.length + newBehavioralIds.length;
-      if (addedCount > 0) {
-        setSelection(prev => prev ? {
-          ...prev,
-          mcqQuestionIds: [...prev.mcqQuestionIds, ...newMcqIds],
-          codingQuestionIds: [...prev.codingQuestionIds, ...newCodingIds],
-          behavioralQuestionIds: [...prev.behavioralQuestionIds, ...newBehavioralIds],
-          mcqPreviews: [...(prev.mcqPreviews ?? []), ...newMcqPreviews],
-          codingPreviews: [...(prev.codingPreviews ?? []), ...newCodingPreviews],
-          behavioralPreviews: [...(prev.behavioralPreviews ?? []), ...newBehavioralPreviews],
-        } : prev);
-        toast.success(`${addedCount} new question${addedCount === 1 ? '' : 's'} added to your library and included in this test`);
-      }
+      setSelection(prev => prev ? {
+        ...prev,
+        mcqQuestionIds: [...selectedLibraryMcq.map(q => q.id), ...persistedMcqIds],
+        codingQuestionIds: [...selectedLibraryCoding.map(q => q.id), ...persistedCodingIds],
+        behavioralQuestionIds: [...selectedLibraryBehavioral.map(q => q.id), ...persistedBehavioralIds],
+        mcqPreviews: [...selectedLibraryMcq, ...persistedMcqPreviews],
+        codingPreviews: [...selectedLibraryCoding, ...persistedCodingPreviews],
+        behavioralPreviews: [...selectedLibraryBehavioral, ...persistedBehavioralPreviews],
+      } : prev);
+
+      const totalCount = selectedLibraryMcq.length + selectedLibraryCoding.length + selectedLibraryBehavioral.length
+        + persistedMcqIds.length + persistedCodingIds.length + persistedBehavioralIds.length;
+      toast.success(`${totalCount} question${totalCount === 1 ? '' : 's'} selected for this test${newlyCreatedCount ? ` (${newlyCreatedCount} newly created)` : ''}`);
       if (failures > 0) {
         toast.error(`${failures} question${failures === 1 ? '' : 's'} failed to save`);
       }
@@ -629,6 +732,15 @@ export default function AgentTestForm() {
   const btnDisabled: React.CSSProperties = {
     ...btnPrimary, backgroundColor: 'var(--admin-accent-disabled)', cursor: 'not-allowed', opacity: 0.8,
   };
+  // Row style shared by both the "from your library" rows and the AI suggestion cards in Step 3 —
+  // `atLimit` dims and disables a row that isn't already selected once the type's shared cap is hit.
+  const pickRow = (selected: boolean, atLimit: boolean): React.CSSProperties => ({
+    display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '14px 16px', borderRadius: '10px',
+    border: `1.5px solid ${selected ? 'var(--admin-accent-disabled)' : 'var(--admin-border)'}`,
+    backgroundColor: selected ? 'var(--admin-accent-soft)' : 'white',
+    cursor: atLimit && !selected ? 'not-allowed' : 'pointer',
+    opacity: atLimit && !selected ? 0.5 : 1,
+  });
   const focus = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     e.target.style.borderColor = 'var(--admin-border-focus)';
     if (e.target instanceof HTMLInputElement && e.target.type === 'number') e.target.select();
@@ -885,166 +997,282 @@ export default function AgentTestForm() {
             </div>
           )}
 
-          {/* ============ STEP 3: Question Suggestions (AI-authored, brand-new) ============ */}
+          {/* ============ STEP 3: Question Suggestions (library picks + AI-authored, brand-new) ============ */}
           {step === 3 && (
             <div style={card}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', marginBottom: '8px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', marginBottom: '4px', flexWrap: 'wrap' }}>
                 <div>
                   <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 4px' }}>Step 3: Question Suggestions</h2>
                   <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: 0 }}>
-                    The AI has written brand-new questions for this role. Nothing is saved unless you check it — only the questions you select below will be added to your question library (tagged "AI Generated") and included in this test.
+                    Pick from your library matches and/or the AI's brand-new suggestions below — each type is capped at the count you set in Step 2. Newly written questions are only saved (tagged "AI Generated") if you check them.
                   </p>
                 </div>
-                {!suggesting && suggestions && (suggestions.mcq.length + suggestions.coding.length + suggestions.behavioral.length > 0) && (
+                {suggestions && (suggestions.mcq.length + suggestions.coding.length + suggestions.behavioral.length > 0) && (
                   <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
                     <button type="button" onClick={() => setAllSuggestionsSelected(true)} style={{ ...btnSecondary, padding: '8px 14px', fontSize: '13px' }}>
-                      Select all
+                      Select all suggestions
                     </button>
                     <button type="button" onClick={() => setAllSuggestionsSelected(false)} style={{ ...btnSecondary, padding: '8px 14px', fontSize: '13px' }}>
-                      Deselect all
+                      Deselect all suggestions
                     </button>
-                    <button type="button" onClick={fetchSuggestions} style={{ ...btnSecondary, padding: '8px 14px', fontSize: '13px' }}>
+                    <button type="button" onClick={fetchSuggestions} disabled={suggesting} style={suggesting ? btnDisabled : { ...btnSecondary, padding: '8px 14px', fontSize: '13px' }}>
                       Regenerate
                     </button>
                   </div>
                 )}
               </div>
 
-              {suggesting && (
-                <div style={{ padding: '48px 0', textAlign: 'center' }}>
-                  <p style={{ fontSize: '13px', color: 'var(--admin-text-subtle)', margin: 0 }}>Writing new questions tailored to this role…</p>
-                </div>
-              )}
+              {/* Live per-type running count against the Step 2 limit */}
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', margin: '12px 0 20px' }}>
+                {(['mcq', 'coding', 'behavioral'] as const).filter(t => getLimit(t) > 0).map(t => {
+                  const count = getSelectedCount(t);
+                  const limit = getLimit(t);
+                  const atLimit = count >= limit;
+                  return (
+                    <span key={t} style={{
+                      fontSize: '12px', fontWeight: 700, padding: '5px 12px', borderRadius: '999px',
+                      backgroundColor: atLimit ? 'var(--admin-accent-soft)' : '#F9FAFB',
+                      color: atLimit ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)',
+                      border: `1px solid ${atLimit ? 'var(--admin-accent-disabled)' : 'var(--admin-border)'}`,
+                    }}>
+                      {t === 'mcq' ? 'MCQ' : t === 'coding' ? 'Coding' : 'Behavioral'}: {count} / {limit} selected
+                    </span>
+                  );
+                })}
+              </div>
 
-              {!suggesting && suggestions && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '16px' }}>
-                  {suggestions.mcq.length === 0 && suggestions.coding.length === 0 && suggestions.behavioral.length === 0 && (
-                    <p style={{ fontSize: '13px', color: 'var(--admin-text-subtle)', margin: 0 }}>No suggestions were generated. You can regenerate or skip this step.</p>
-                  )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '28px' }}>
 
-                  {suggestions.mcq.length > 0 && (
-                    <div>
-                      <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--admin-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 10px' }}>MCQ ({suggestions.mcq.length})</p>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        {suggestions.mcq.map((q, i) => (
-                          <label key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '14px 16px', borderRadius: '10px', border: `1.5px solid ${q.selected ? 'var(--admin-accent-disabled)' : 'var(--admin-border)'}`, backgroundColor: q.selected ? 'var(--admin-accent-soft)' : 'white', cursor: 'pointer' }}>
-                            <input type="checkbox" checked={q.selected} onChange={() => toggleSuggestion('mcq', i)}
-                              style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--admin-button-primary)', flexShrink: 0 }} />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 8px', lineHeight: '1.5' }}>{q.questionText}</p>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '8px' }}>
-                                {q.options.map((opt, oi) => (
-                                  <div key={oi} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: q.correctAnswers.includes(oi) ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)', fontWeight: q.correctAnswers.includes(oi) ? 600 : 400 }}>
-                                    <span>{q.correctAnswers.includes(oi) ? '✓' : '○'}</span>
-                                    <span>{opt}</span>
-                                  </div>
-                                ))}
-                              </div>
-                              {q.explanation && (
-                                <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 8px', lineHeight: '1.5' }}><strong>Explanation:</strong> {q.explanation}</p>
-                              )}
-                              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--admin-text-subtle)' }}>
-                                <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{q.difficulty}</span>
-                                <span>·</span>
-                                <span>{q.marks} pts</span>
-                                <span>·</span>
-                                <span>~{q.suggestedTimeEstimateSec}s</span>
-                                {q.topic && (<><span>·</span><span>{q.topic}</span></>)}
-                                {q.tags.map(t => (
-                                  <span key={t} style={{ padding: '1px 8px', borderRadius: '999px', backgroundColor: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)' }}>{t}</span>
-                                ))}
-                              </div>
-                            </div>
-                          </label>
-                        ))}
+                {/* ---- MCQ ---- */}
+                {mcqCount > 0 && (
+                  <div>
+                    <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--admin-text)', margin: '0 0 12px' }}>MCQ</p>
+
+                    {(libraryPicks?.mcq.length ?? 0) > 0 && (
+                      <div style={{ marginBottom: '14px' }}>
+                        <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>
+                          From Your Question Library ({libraryPicks!.mcq.length})
+                        </p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {libraryPicks!.mcq.map((q, i) => {
+                            const atLimit = !q.selected && getSelectedCount('mcq') >= getLimit('mcq');
+                            return (
+                              <label key={q.id} style={pickRow(q.selected, atLimit)}>
+                                <input type="checkbox" checked={q.selected} disabled={atLimit} onChange={() => toggleLibraryPick('mcq', i)}
+                                  style={{ marginTop: '3px', width: '16px', height: '16px', cursor: atLimit ? 'not-allowed' : 'pointer', accentColor: 'var(--admin-button-primary)', flexShrink: 0 }} />
+                                <span style={{ flex: 1, fontSize: '13px', color: 'var(--admin-text)', lineHeight: '1.5' }}>{q.text}</span>
+                                <span style={{ flexShrink: 0, fontSize: '11px', fontWeight: 600, color: 'var(--admin-text-subtle)', textTransform: 'capitalize' }}>{q.difficulty}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    )}
 
-                  {suggestions.coding.length > 0 && (
-                    <div>
-                      <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--admin-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 10px' }}>Coding ({suggestions.coding.length})</p>
+                    <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>
+                      AI Suggested (New){suggestions && suggestions.mcq.length > 0 ? ` (${suggestions.mcq.length})` : ''}
+                    </p>
+                    {suggesting && !suggestions && (
+                      <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: 0 }}>Writing new questions…</p>
+                    )}
+                    {suggestions && suggestions.mcq.length === 0 && (
+                      <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: 0 }}>No new MCQ suggestions.</p>
+                    )}
+                    {suggestions && suggestions.mcq.length > 0 && (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        {suggestions.coding.map((q, i) => (
-                          <label key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '14px 16px', borderRadius: '10px', border: `1.5px solid ${q.selected ? 'var(--admin-accent-disabled)' : 'var(--admin-border)'}`, backgroundColor: q.selected ? 'var(--admin-accent-soft)' : 'white', cursor: 'pointer' }}>
-                            <input type="checkbox" checked={q.selected} onChange={() => toggleSuggestion('coding', i)}
-                              style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--admin-button-primary)', flexShrink: 0 }} />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 4px' }}>{q.title}</p>
-                              <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: '0 0 8px', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{q.description}</p>
-                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '12px', color: 'var(--admin-text-subtle)', marginBottom: '8px' }}>
-                                <p style={{ margin: 0 }}><strong>Input:</strong> {q.inputFormat}</p>
-                                <p style={{ margin: 0 }}><strong>Output:</strong> {q.outputFormat}</p>
-                                <p style={{ margin: 0 }}><strong>Sample in:</strong> {q.sampleInput}</p>
-                                <p style={{ margin: 0 }}><strong>Sample out:</strong> {q.sampleOutput}</p>
+                        {suggestions.mcq.map((q, i) => {
+                          const atLimit = !q.selected && getSelectedCount('mcq') >= getLimit('mcq');
+                          return (
+                            <label key={i} style={pickRow(q.selected, atLimit)}>
+                              <input type="checkbox" checked={q.selected} disabled={atLimit} onChange={() => toggleSuggestion('mcq', i)}
+                                style={{ marginTop: '3px', width: '16px', height: '16px', cursor: atLimit ? 'not-allowed' : 'pointer', accentColor: 'var(--admin-button-primary)', flexShrink: 0 }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 8px', lineHeight: '1.5' }}>{q.questionText}</p>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '8px' }}>
+                                  {q.options.map((opt, oi) => (
+                                    <div key={oi} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: q.correctAnswers.includes(oi) ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)', fontWeight: q.correctAnswers.includes(oi) ? 600 : 400 }}>
+                                      <span>{q.correctAnswers.includes(oi) ? '✓' : '○'}</span>
+                                      <span>{opt}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                {q.explanation && (
+                                  <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 8px', lineHeight: '1.5' }}><strong>Explanation:</strong> {q.explanation}</p>
+                                )}
+                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--admin-text-subtle)' }}>
+                                  <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{q.difficulty}</span>
+                                  <span>·</span>
+                                  <span>{q.marks} pts</span>
+                                  <span>·</span>
+                                  <span>~{q.suggestedTimeEstimateSec}s</span>
+                                  {q.topic && (<><span>·</span><span>{q.topic}</span></>)}
+                                  {q.tags.map(t => (
+                                    <span key={t} style={{ padding: '1px 8px', borderRadius: '999px', backgroundColor: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)' }}>{t}</span>
+                                  ))}
+                                </div>
                               </div>
-                              {q.testCases.length > 0 && (
-                                <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 8px' }}>{q.testCases.length} test case{q.testCases.length === 1 ? '' : 's'} · {q.supportedLanguages.join(', ')}</p>
-                              )}
-                              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--admin-text-subtle)' }}>
-                                <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{q.difficulty}</span>
-                                <span>·</span>
-                                <span>{q.marks} pts</span>
-                                <span>·</span>
-                                <span>{Math.round(q.timeLimit / 1000)}s limit</span>
-                                {q.topic && (<><span>·</span><span>{q.topic}</span></>)}
-                                {q.tags.map(t => (
-                                  <span key={t} style={{ padding: '1px 8px', borderRadius: '999px', backgroundColor: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)' }}>{t}</span>
-                                ))}
-                              </div>
-                            </div>
-                          </label>
-                        ))}
+                            </label>
+                          );
+                        })}
                       </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
+                )}
 
-                  {suggestions.behavioral.length > 0 && (
-                    <div>
-                      <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--admin-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 10px' }}>Behavioral ({suggestions.behavioral.length})</p>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        {suggestions.behavioral.map((q, i) => (
-                          <label key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '14px 16px', borderRadius: '10px', border: `1.5px solid ${q.selected ? 'var(--admin-accent-disabled)' : 'var(--admin-border)'}`, backgroundColor: q.selected ? 'var(--admin-accent-soft)' : 'white', cursor: 'pointer' }}>
-                            <input type="checkbox" checked={q.selected} onChange={() => toggleSuggestion('behavioral', i)}
-                              style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--admin-button-primary)', flexShrink: 0 }} />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 4px' }}>{q.title}</p>
-                              <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: '0 0 8px', lineHeight: '1.5' }}>{q.description}</p>
-                              {q.expectedAnswer && (
-                                <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 8px', lineHeight: '1.5' }}><strong>Grading benchmark:</strong> {q.expectedAnswer}</p>
-                              )}
-                              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--admin-text-subtle)' }}>
-                                <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{q.difficulty}</span>
-                                <span>·</span>
-                                <span>{q.marks} pts</span>
-                                <span>·</span>
-                                <span>~{q.suggestedTimeEstimateSec}s</span>
-                                {q.topic && (<><span>·</span><span>{q.topic}</span></>)}
-                                {q.tags.map(t => (
-                                  <span key={t} style={{ padding: '1px 8px', borderRadius: '999px', backgroundColor: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)' }}>{t}</span>
-                                ))}
-                              </div>
-                            </div>
-                          </label>
-                        ))}
+                {/* ---- Coding ---- */}
+                {codingCount > 0 && (
+                  <div>
+                    <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--admin-text)', margin: '0 0 12px' }}>Coding</p>
+
+                    {(libraryPicks?.coding.length ?? 0) > 0 && (
+                      <div style={{ marginBottom: '14px' }}>
+                        <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>
+                          From Your Question Library ({libraryPicks!.coding.length})
+                        </p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {libraryPicks!.coding.map((q, i) => {
+                            const atLimit = !q.selected && getSelectedCount('coding') >= getLimit('coding');
+                            return (
+                              <label key={q.id} style={pickRow(q.selected, atLimit)}>
+                                <input type="checkbox" checked={q.selected} disabled={atLimit} onChange={() => toggleLibraryPick('coding', i)}
+                                  style={{ marginTop: '3px', width: '16px', height: '16px', cursor: atLimit ? 'not-allowed' : 'pointer', accentColor: 'var(--admin-button-primary)', flexShrink: 0 }} />
+                                <span style={{ flex: 1, fontSize: '13px', color: 'var(--admin-text)', lineHeight: '1.5' }}>{q.text}</span>
+                                <span style={{ flexShrink: 0, fontSize: '11px', fontWeight: 600, color: 'var(--admin-text-subtle)', textTransform: 'capitalize' }}>{q.difficulty}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              )}
+                    )}
+
+                    <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>
+                      AI Suggested (New){suggestions && suggestions.coding.length > 0 ? ` (${suggestions.coding.length})` : ''}
+                    </p>
+                    {suggesting && !suggestions && (
+                      <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: 0 }}>Writing new questions…</p>
+                    )}
+                    {suggestions && suggestions.coding.length === 0 && (
+                      <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: 0 }}>No new coding suggestions.</p>
+                    )}
+                    {suggestions && suggestions.coding.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {suggestions.coding.map((q, i) => {
+                          const atLimit = !q.selected && getSelectedCount('coding') >= getLimit('coding');
+                          return (
+                            <label key={i} style={pickRow(q.selected, atLimit)}>
+                              <input type="checkbox" checked={q.selected} disabled={atLimit} onChange={() => toggleSuggestion('coding', i)}
+                                style={{ marginTop: '3px', width: '16px', height: '16px', cursor: atLimit ? 'not-allowed' : 'pointer', accentColor: 'var(--admin-button-primary)', flexShrink: 0 }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 4px' }}>{q.title}</p>
+                                <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: '0 0 8px', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{q.description}</p>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '12px', color: 'var(--admin-text-subtle)', marginBottom: '8px' }}>
+                                  <p style={{ margin: 0 }}><strong>Input:</strong> {q.inputFormat}</p>
+                                  <p style={{ margin: 0 }}><strong>Output:</strong> {q.outputFormat}</p>
+                                  <p style={{ margin: 0 }}><strong>Sample in:</strong> {q.sampleInput}</p>
+                                  <p style={{ margin: 0 }}><strong>Sample out:</strong> {q.sampleOutput}</p>
+                                </div>
+                                {q.testCases.length > 0 && (
+                                  <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 8px' }}>{q.testCases.length} test case{q.testCases.length === 1 ? '' : 's'} · {q.supportedLanguages.join(', ')}</p>
+                                )}
+                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--admin-text-subtle)' }}>
+                                  <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{q.difficulty}</span>
+                                  <span>·</span>
+                                  <span>{q.marks} pts</span>
+                                  <span>·</span>
+                                  <span>{Math.round(q.timeLimit / 1000)}s limit</span>
+                                  {q.topic && (<><span>·</span><span>{q.topic}</span></>)}
+                                  {q.tags.map(t => (
+                                    <span key={t} style={{ padding: '1px 8px', borderRadius: '999px', backgroundColor: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)' }}>{t}</span>
+                                  ))}
+                                </div>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ---- Behavioral ---- */}
+                {behavioralCount > 0 && (
+                  <div>
+                    <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--admin-text)', margin: '0 0 12px' }}>Behavioral</p>
+
+                    {(libraryPicks?.behavioral.length ?? 0) > 0 && (
+                      <div style={{ marginBottom: '14px' }}>
+                        <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>
+                          From Your Question Library ({libraryPicks!.behavioral.length})
+                        </p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {libraryPicks!.behavioral.map((q, i) => {
+                            const atLimit = !q.selected && getSelectedCount('behavioral') >= getLimit('behavioral');
+                            return (
+                              <label key={q.id} style={pickRow(q.selected, atLimit)}>
+                                <input type="checkbox" checked={q.selected} disabled={atLimit} onChange={() => toggleLibraryPick('behavioral', i)}
+                                  style={{ marginTop: '3px', width: '16px', height: '16px', cursor: atLimit ? 'not-allowed' : 'pointer', accentColor: 'var(--admin-button-primary)', flexShrink: 0 }} />
+                                <span style={{ flex: 1, fontSize: '13px', color: 'var(--admin-text)', lineHeight: '1.5' }}>{q.text}</span>
+                                <span style={{ flexShrink: 0, fontSize: '11px', fontWeight: 600, color: 'var(--admin-text-subtle)', textTransform: 'capitalize' }}>{q.difficulty}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>
+                      AI Suggested (New){suggestions && suggestions.behavioral.length > 0 ? ` (${suggestions.behavioral.length})` : ''}
+                    </p>
+                    {suggesting && !suggestions && (
+                      <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: 0 }}>Writing new questions…</p>
+                    )}
+                    {suggestions && suggestions.behavioral.length === 0 && (
+                      <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: 0 }}>No new behavioral suggestions.</p>
+                    )}
+                    {suggestions && suggestions.behavioral.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {suggestions.behavioral.map((q, i) => {
+                          const atLimit = !q.selected && getSelectedCount('behavioral') >= getLimit('behavioral');
+                          return (
+                            <label key={i} style={pickRow(q.selected, atLimit)}>
+                              <input type="checkbox" checked={q.selected} disabled={atLimit} onChange={() => toggleSuggestion('behavioral', i)}
+                                style={{ marginTop: '3px', width: '16px', height: '16px', cursor: atLimit ? 'not-allowed' : 'pointer', accentColor: 'var(--admin-button-primary)', flexShrink: 0 }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 4px' }}>{q.title}</p>
+                                <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: '0 0 8px', lineHeight: '1.5' }}>{q.description}</p>
+                                {q.expectedAnswer && (
+                                  <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 8px', lineHeight: '1.5' }}><strong>Grading benchmark:</strong> {q.expectedAnswer}</p>
+                                )}
+                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--admin-text-subtle)' }}>
+                                  <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{q.difficulty}</span>
+                                  <span>·</span>
+                                  <span>{q.marks} pts</span>
+                                  <span>·</span>
+                                  <span>~{q.suggestedTimeEstimateSec}s</span>
+                                  {q.topic && (<><span>·</span><span>{q.topic}</span></>)}
+                                  {q.tags.map(t => (
+                                    <span key={t} style={{ padding: '1px 8px', borderRadius: '999px', backgroundColor: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)' }}>{t}</span>
+                                  ))}
+                                </div>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               <div style={{ display: 'flex', gap: '10px', paddingTop: '20px' }}>
                 <button onClick={() => setStep(2)} style={btnSecondary}>Back</button>
                 <button
                   onClick={handleContinueFromSuggestions}
-                  disabled={suggesting || savingSuggestions}
-                  style={suggesting || savingSuggestions ? btnDisabled : btnPrimary}
+                  disabled={savingSuggestions}
+                  style={savingSuggestions ? btnDisabled : btnPrimary}
                 >
                   {savingSuggestions ? 'Saving...' : 'Continue to Review'}
                 </button>
-                {!suggesting && (
-                  <button onClick={() => setStep(4)} disabled={savingSuggestions} style={btnSecondary}>Skip</button>
-                )}
               </div>
             </div>
           )}
@@ -1060,17 +1288,17 @@ export default function AgentTestForm() {
                   <div style={{ borderRadius: '10px', padding: '20px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
                     <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--admin-accent-hover)', margin: '0 0 8px' }}>MCQ Questions</p>
                     <p style={{ fontSize: '44px', fontWeight: 700, color: 'var(--admin-accent)', margin: '0 0 2px', lineHeight: 1 }}>{selection.mcqQuestionIds.length}</p>
-                    <p style={{ fontSize: '12px', color: 'var(--admin-text-muted)', margin: 0, fontWeight: 500 }}>selected from library</p>
+                    <p style={{ fontSize: '12px', color: 'var(--admin-text-muted)', margin: 0, fontWeight: 500 }}>selected for this test</p>
                   </div>
                   <div style={{ borderRadius: '10px', padding: '20px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
                     <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--admin-accent-hover)', margin: '0 0 8px' }}>Coding Questions</p>
                     <p style={{ fontSize: '44px', fontWeight: 700, color: 'var(--admin-accent-hover)', margin: '0 0 2px', lineHeight: 1 }}>{selection.codingQuestionIds.length}</p>
-                    <p style={{ fontSize: '12px', color: 'var(--admin-text-muted)', margin: 0, fontWeight: 500 }}>selected from library</p>
+                    <p style={{ fontSize: '12px', color: 'var(--admin-text-muted)', margin: 0, fontWeight: 500 }}>selected for this test</p>
                   </div>
                   <div style={{ borderRadius: '10px', padding: '20px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
                     <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--admin-accent-hover)', margin: '0 0 8px' }}>Behavioral Questions</p>
                     <p style={{ fontSize: '44px', fontWeight: 700, color: 'var(--admin-accent-hover)', margin: '0 0 2px', lineHeight: 1 }}>{selection.behavioralQuestionIds.length}</p>
-                    <p style={{ fontSize: '12px', color: 'var(--admin-text-muted)', margin: 0, fontWeight: 500 }}>selected from library</p>
+                    <p style={{ fontSize: '12px', color: 'var(--admin-text-muted)', margin: 0, fontWeight: 500 }}>selected for this test</p>
                   </div>
                 </div>
 
