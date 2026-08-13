@@ -724,15 +724,15 @@ export default function AgentTestForm() {
 
                 {/* Questions Selected */}
                 {(selection.mcqPreviews?.length || selection.codingPreviews?.length || selection.behavioralPreviews?.length) ? (
-                  <div style={{ borderRadius: '10px', padding: '16px', backgroundColor: 'white', border: '1px solid var(--admin-border)' }}>
-                    <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--admin-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 12px' }}>Questions Selected</p>
+                  <div style={{ borderRadius: '10px', padding: '16px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
+                    <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--admin-accent-hover)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 12px' }}>Questions Selected</p>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                       {[
                         ...(selection.mcqPreviews ?? []).map(q => ({ ...q, type: 'MCQ' })),
                         ...(selection.codingPreviews ?? []).map(q => ({ ...q, type: 'Coding' })),
                         ...(selection.behavioralPreviews ?? []).map(q => ({ ...q, type: 'Behavioral' })),
                       ].map((q, i) => (
-                        <div key={`${q.type}-${q.id}-${i}`} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 12px', borderRadius: '8px', backgroundColor: '#F9FAFB', border: '1px solid var(--admin-border)' }}>
+                        <div key={`${q.type}-${q.id}-${i}`} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 12px', borderRadius: '8px', backgroundColor: 'white', border: '1px solid var(--admin-accent-disabled)' }}>
                           <span style={{ flexShrink: 0, fontSize: '11px', fontWeight: 700, color: 'var(--admin-accent-hover)', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)', borderRadius: '6px', padding: '2px 8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                             {q.type}
                           </span>
