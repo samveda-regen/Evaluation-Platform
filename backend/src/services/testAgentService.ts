@@ -694,6 +694,265 @@ Respond with a JSON object containing (in this order):
   }
 }
 
+/* ── brand-new question authoring (separate from the library-selection flow above) ───── */
+
+export interface SuggestedMCQQuestion {
+  questionText: string;
+  options: string[];
+  correctAnswers: number[];
+  marks: number;
+  isMultipleChoice: boolean;
+  explanation: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  topic: string;
+  tags: string[];
+  suggestedTimeEstimateSec: number;
+}
+
+export interface SuggestedCodingQuestion {
+  title: string;
+  description: string;
+  inputFormat: string;
+  outputFormat: string;
+  constraints: string;
+  sampleInput: string;
+  sampleOutput: string;
+  marks: number;
+  timeLimit: number;
+  memoryLimit: number;
+  supportedLanguages: string[];
+  testCases: Array<{ input: string; expectedOutput: string; isHidden: boolean; marks: number }>;
+  difficulty: 'easy' | 'medium' | 'hard';
+  topic: string;
+  tags: string[];
+}
+
+export interface SuggestedBehavioralQuestion {
+  title: string;
+  description: string;
+  expectedAnswer: string;
+  marks: number;
+  difficulty: 'easy' | 'medium' | 'hard';
+  topic: string;
+  tags: string[];
+  suggestedTimeEstimateSec: number;
+}
+
+export interface QuestionSuggestions {
+  mcq: SuggestedMCQQuestion[];
+  coding: SuggestedCodingQuestion[];
+  behavioral: SuggestedBehavioralQuestion[];
+}
+
+const SUPPORTED_CODING_LANGUAGES = ['python', 'javascript', 'java', 'cpp', 'c', 'csharp', 'go', 'typescript'];
+
+function normalizeDifficulty(value: unknown): 'easy' | 'medium' | 'hard' {
+  return value === 'easy' || value === 'hard' ? value : 'medium';
+}
+
+function normalizeStringArray(value: unknown, max: number): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((v): v is string => typeof v === 'string' && v.trim().length > 0).slice(0, max);
+}
+
+function normalizeMarks(value: unknown, fallback: number): number {
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function normalizeMCQSuggestion(raw: Record<string, unknown>): SuggestedMCQQuestion | null {
+  const questionText = typeof raw.questionText === 'string' ? raw.questionText.trim() : '';
+  const options = Array.isArray(raw.options)
+    ? raw.options.filter((o): o is string => typeof o === 'string' && o.trim().length > 0)
+    : [];
+  if (!questionText || options.length < 2) return null;
+
+  const correctAnswers = Array.isArray(raw.correctAnswers)
+    ? raw.correctAnswers
+        .map(i => Math.floor(Number(i)))
+        .filter(i => Number.isInteger(i) && i >= 0 && i < options.length)
+    : [];
+  if (correctAnswers.length === 0) return null;
+
+  return {
+    questionText,
+    options,
+    correctAnswers,
+    marks: normalizeMarks(raw.marks, 5),
+    isMultipleChoice: Boolean(raw.isMultipleChoice) || correctAnswers.length > 1,
+    explanation: typeof raw.explanation === 'string' ? raw.explanation.trim() : '',
+    difficulty: normalizeDifficulty(raw.difficulty),
+    topic: typeof raw.topic === 'string' ? raw.topic.trim() : '',
+    tags: normalizeStringArray(raw.tags, 8),
+    suggestedTimeEstimateSec: Number.isFinite(Number(raw.suggestedTimeEstimateSec)) ? Math.floor(Number(raw.suggestedTimeEstimateSec)) : 45
+  };
+}
+
+function normalizeCodingSuggestion(raw: Record<string, unknown>): SuggestedCodingQuestion | null {
+  const title = typeof raw.title === 'string' ? raw.title.trim() : '';
+  const description = typeof raw.description === 'string' ? raw.description.trim() : '';
+  const sampleInput = typeof raw.sampleInput === 'string' ? raw.sampleInput : '';
+  const sampleOutput = typeof raw.sampleOutput === 'string' ? raw.sampleOutput : '';
+  if (!title || !description) return null;
+
+  const testCases = Array.isArray(raw.testCases)
+    ? raw.testCases
+        .filter((tc): tc is Record<string, unknown> => !!tc && typeof tc === 'object')
+        .map(tc => ({
+          input: typeof tc.input === 'string' ? tc.input : '',
+          expectedOutput: typeof tc.expectedOutput === 'string' ? tc.expectedOutput : '',
+          isHidden: Boolean(tc.isHidden),
+          marks: normalizeMarks(tc.marks, 0)
+        }))
+        .filter(tc => tc.input && tc.expectedOutput)
+        .slice(0, 10)
+    : [];
+
+  const supportedLanguages = normalizeStringArray(raw.supportedLanguages, 8)
+    .map(l => l.toLowerCase())
+    .filter(l => SUPPORTED_CODING_LANGUAGES.includes(l));
+
+  return {
+    title,
+    description,
+    inputFormat: typeof raw.inputFormat === 'string' ? raw.inputFormat.trim() : '',
+    outputFormat: typeof raw.outputFormat === 'string' ? raw.outputFormat.trim() : '',
+    constraints: typeof raw.constraints === 'string' ? raw.constraints.trim() : '',
+    sampleInput,
+    sampleOutput,
+    marks: normalizeMarks(raw.marks, 20),
+    timeLimit: Number.isFinite(Number(raw.timeLimit)) && Number(raw.timeLimit) > 0 ? Math.floor(Number(raw.timeLimit)) : 2000,
+    memoryLimit: Number.isFinite(Number(raw.memoryLimit)) && Number(raw.memoryLimit) > 0 ? Math.floor(Number(raw.memoryLimit)) : 256,
+    supportedLanguages: supportedLanguages.length ? supportedLanguages : ['python', 'javascript'],
+    testCases,
+    difficulty: normalizeDifficulty(raw.difficulty),
+    topic: typeof raw.topic === 'string' ? raw.topic.trim() : '',
+    tags: normalizeStringArray(raw.tags, 8)
+  };
+}
+
+function normalizeBehavioralSuggestion(raw: Record<string, unknown>): SuggestedBehavioralQuestion | null {
+  const title = typeof raw.title === 'string' ? raw.title.trim() : '';
+  const description = typeof raw.description === 'string' ? raw.description.trim() : '';
+  if (!title || !description) return null;
+
+  return {
+    title,
+    description,
+    expectedAnswer: typeof raw.expectedAnswer === 'string' ? raw.expectedAnswer.trim() : '',
+    marks: normalizeMarks(raw.marks, 5),
+    difficulty: normalizeDifficulty(raw.difficulty),
+    topic: typeof raw.topic === 'string' ? raw.topic.trim() : '',
+    tags: normalizeStringArray(raw.tags, 8),
+    suggestedTimeEstimateSec: Number.isFinite(Number(raw.suggestedTimeEstimateSec)) ? Math.floor(Number(raw.suggestedTimeEstimateSec)) : 120
+  };
+}
+
+export async function suggestNewQuestions(
+  jobProfile: JobProfile,
+  skills: string[],
+  difficulty: 'easy' | 'medium' | 'hard' | 'mixed',
+  counts: { mcqCount: number; codingCount: number; behavioralCount: number }
+): Promise<QuestionSuggestions> {
+  if (!hasLLMKey()) {
+    throw new Error('AI question authoring requires an LLM API key to be configured.');
+  }
+
+  const mcqCount = Math.max(0, Math.min(10, Math.floor(counts.mcqCount)));
+  const codingCount = Math.max(0, Math.min(5, Math.floor(counts.codingCount)));
+  const behavioralCount = Math.max(0, Math.min(5, Math.floor(counts.behavioralCount)));
+
+  const systemPrompt = `You are an expert technical interviewer and question-bank author. Unlike a librarian picking from an existing catalog, your job here is to WRITE brand-new, original assessment questions from scratch, tailored precisely to the job profile given. Never write generic filler questions — every question must genuinely probe one of the required skills at the requested difficulty. Always respond with a valid JSON object only, no prose outside the JSON.`;
+
+  const userPrompt = `Author new assessment questions for this role:
+
+**Job Title:** ${jobProfile.title}
+**Experience Level:** ${jobProfile.experience}
+${jobProfile.description ? `**Job Description:** ${jobProfile.description}` : ''}
+**Required Skills:** ${skills.join(', ')}
+**Difficulty Level:** ${difficulty}
+
+Write exactly:
+- ${mcqCount} multiple-choice question(s)
+- ${codingCount} coding question(s)
+- ${behavioralCount} behavioral question(s)
+
+(If a count is 0, return an empty array for that section.)
+
+Respond with a JSON object shaped exactly like this:
+{
+  "mcq": [
+    {
+      "questionText": "...",
+      "options": ["...", "...", "...", "..."],
+      "correctAnswers": [0],
+      "marks": 5,
+      "isMultipleChoice": false,
+      "explanation": "why the correct answer is right",
+      "difficulty": "easy|medium|hard",
+      "topic": "short category name",
+      "tags": ["skill1", "skill2"],
+      "suggestedTimeEstimateSec": 45
+    }
+  ],
+  "coding": [
+    {
+      "title": "...",
+      "description": "full problem statement",
+      "inputFormat": "...",
+      "outputFormat": "...",
+      "constraints": "...",
+      "sampleInput": "...",
+      "sampleOutput": "...",
+      "marks": 20,
+      "timeLimit": 2000,
+      "memoryLimit": 256,
+      "supportedLanguages": ["python", "javascript"],
+      "testCases": [{ "input": "...", "expectedOutput": "...", "isHidden": false, "marks": 10 }],
+      "difficulty": "easy|medium|hard",
+      "topic": "short category name",
+      "tags": ["skill1", "skill2"]
+    }
+  ],
+  "behavioral": [
+    {
+      "title": "short scenario title",
+      "description": "the full behavioral question/prompt shown to the candidate",
+      "expectedAnswer": "what a strong answer covers (grading benchmark, not shown to candidate)",
+      "marks": 5,
+      "difficulty": "easy|medium|hard",
+      "topic": "short category name",
+      "tags": ["communication", "teamwork"],
+      "suggestedTimeEstimateSec": 120
+    }
+  ]
+}`;
+
+  const response = await callLLM([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ], { temperature: 0.6, maxTokens: 4096 });
+
+  const parsed = parseJSONFromLLM(response.content) as Record<string, unknown>;
+
+  const mcq = (Array.isArray(parsed.mcq) ? parsed.mcq : [])
+    .map(raw => normalizeMCQSuggestion(raw as Record<string, unknown>))
+    .filter((q): q is SuggestedMCQQuestion => q !== null)
+    .slice(0, mcqCount);
+
+  const coding = (Array.isArray(parsed.coding) ? parsed.coding : [])
+    .map(raw => normalizeCodingSuggestion(raw as Record<string, unknown>))
+    .filter((q): q is SuggestedCodingQuestion => q !== null)
+    .slice(0, codingCount);
+
+  const behavioral = (Array.isArray(parsed.behavioral) ? parsed.behavioral : [])
+    .map(raw => normalizeBehavioralSuggestion(raw as Record<string, unknown>))
+    .filter((q): q is SuggestedBehavioralQuestion => q !== null)
+    .slice(0, behavioralCount);
+
+  return { mcq, coding, behavioral };
+}
+
 export async function suggestQuestionTags(
   questionText: string,
   questionType: 'mcq' | 'coding'

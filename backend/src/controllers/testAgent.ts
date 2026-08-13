@@ -5,6 +5,7 @@ import {
   createTestFromSelection,
   analyzeJobRequirements,
   suggestQuestionTags,
+  suggestNewQuestions,
   getLibrarySkillTags
 } from '../services/testAgentService.js';
 import prisma from '../utils/db.js';
@@ -180,6 +181,48 @@ export const createTestFromAgent = async (req: AuthenticatedRequest, res: Respon
     console.error('Error creating test from agent:', error);
     res.status(500).json({
       error: 'Failed to create test',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+// POST /admin/agent/suggest-questions
+export const suggestQuestions = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { jobProfile, skills, difficulty, mcqCount, codingCount, behavioralCount } = req.body;
+
+    if (!jobProfile?.title) {
+      return res.status(400).json({ error: 'Job profile with title is required' });
+    }
+    if (!skills || !Array.isArray(skills) || skills.length === 0) {
+      return res.status(400).json({ error: 'At least one skill is required' });
+    }
+    if (!difficulty || !['easy', 'medium', 'hard', 'mixed'].includes(difficulty)) {
+      return res.status(400).json({ error: 'Valid difficulty level is required (easy, medium, hard, mixed)' });
+    }
+
+    const resolvedMcqCount = typeof mcqCount === 'number' && mcqCount >= 0 ? mcqCount : 5;
+    const resolvedCodingCount = typeof codingCount === 'number' && codingCount >= 0 ? codingCount : 2;
+    const resolvedBehavioralCount = typeof behavioralCount === 'number' && behavioralCount >= 0 ? behavioralCount : 2;
+
+    if (resolvedMcqCount === 0 && resolvedCodingCount === 0 && resolvedBehavioralCount === 0) {
+      return res.status(400).json({ error: 'At least one question is required' });
+    }
+
+    const suggestions = await suggestNewQuestions(jobProfile, skills, difficulty, {
+      mcqCount: resolvedMcqCount,
+      codingCount: resolvedCodingCount,
+      behavioralCount: resolvedBehavioralCount
+    });
+
+    res.json({
+      success: true,
+      data: suggestions
+    });
+  } catch (error) {
+    console.error('Error suggesting new questions:', error);
+    res.status(500).json({
+      error: 'Failed to suggest new questions',
       message: error instanceof Error ? error.message : 'Unknown error'
     });
   }

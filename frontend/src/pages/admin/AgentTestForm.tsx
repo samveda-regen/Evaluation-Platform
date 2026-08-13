@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { BriefcaseBusiness, Check, ClipboardCheck, ListChecks, Settings2 } from 'lucide-react';
+import { BriefcaseBusiness, Check, ClipboardCheck, ListChecks, Settings2, Sparkles } from 'lucide-react';
 import { adminApi } from '../../services/api';
 import DateTimePicker from '../../components/DateTimePicker';
 import CustomSelect from '../../components/CustomSelect';
@@ -35,6 +35,52 @@ interface TestSettings {
   shuffleQuestions: boolean;
   shuffleOptions: boolean;
   maxViolations: number;
+}
+
+/* -- AI-authored (brand-new, not library-matched) question suggestions -- */
+interface SuggestedMCQ {
+  questionText: string;
+  options: string[];
+  correctAnswers: number[];
+  marks: number;
+  isMultipleChoice: boolean;
+  explanation: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  topic: string;
+  tags: string[];
+  suggestedTimeEstimateSec: number;
+}
+interface SuggestedCoding {
+  title: string;
+  description: string;
+  inputFormat: string;
+  outputFormat: string;
+  constraints: string;
+  sampleInput: string;
+  sampleOutput: string;
+  marks: number;
+  timeLimit: number;
+  memoryLimit: number;
+  supportedLanguages: string[];
+  testCases: Array<{ input: string; expectedOutput: string; isHidden: boolean; marks: number }>;
+  difficulty: 'easy' | 'medium' | 'hard';
+  topic: string;
+  tags: string[];
+}
+interface SuggestedBehavioral {
+  title: string;
+  description: string;
+  expectedAnswer: string;
+  marks: number;
+  difficulty: 'easy' | 'medium' | 'hard';
+  topic: string;
+  tags: string[];
+  suggestedTimeEstimateSec: number;
+}
+interface QuestionSuggestions {
+  mcq: (SuggestedMCQ & { selected: boolean })[];
+  coding: (SuggestedCoding & { selected: boolean })[];
+  behavioral: (SuggestedBehavioral & { selected: boolean })[];
 }
 
 const MAX_TEST_VIOLATIONS = 150;
@@ -135,6 +181,7 @@ function StepIndicator({ current }: { current: number }) {
   const steps = [
     { label: 'Job Profile', icon: BriefcaseBusiness },
     { label: 'Skills & Settings', icon: ListChecks },
+    { label: 'Question Suggestions', icon: Sparkles },
     { label: 'Review Selection', icon: ClipboardCheck },
     { label: 'Finalize Settings', icon: Settings2 },
   ];
@@ -208,11 +255,16 @@ export default function AgentTestForm() {
   const [behavioralCount, setBehavioralCount] = useState(2);
   const [librarySkills, setLibrarySkills] = useState<string[]>([]);
 
-  /* Step 3 state */
+  /* Step 3 state (Question Suggestions — AI-authored, not library-matched) */
+  const [suggestions, setSuggestions] = useState<QuestionSuggestions | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [savingSuggestions, setSavingSuggestions] = useState(false);
+
+  /* Step 4 state */
   const [selection, setSelection] = useState<QuestionSelection | null>(null);
   const [progressStep, setProgressStep] = useState(0);
 
-  // `loading` is shared with the Create Test action (step 4), so only cycle this text while
+  // `loading` is shared with the Create Test action (step 5), so only cycle this text while
   // step 2's Generate Test call is actually the one in flight.
   const generatingTest = loading && step === 2;
   useEffect(() => {
@@ -221,7 +273,7 @@ export default function AgentTestForm() {
     return () => clearInterval(id);
   }, [generatingTest]);
 
-  /* Step 4 state */
+  /* Step 5 state */
   const [testSettings, setTestSettings] = useState<TestSettings>({
     name: '', description: '', duration: 60,
     startTime: '', endTime: '', passingMarks: 0,
@@ -353,7 +405,163 @@ export default function AgentTestForm() {
     }
   };
 
-  /* -- Step 4 -> create -- */
+  /* -- Step 3: AI-authored question suggestions (separate prompt from handleGenerateTest above —
+     these are brand-new questions the LLM writes from scratch, not picks from the library) -- */
+  const fetchSuggestions = async () => {
+    setSuggesting(true);
+    try {
+      const { data } = await adminApi.suggestNewQuestions({ jobProfile, skills, difficulty, mcqCount, codingCount, behavioralCount });
+      if (data.success && data.data) {
+        setSuggestions({
+          mcq: (data.data.mcq || []).map((q: SuggestedMCQ) => ({ ...q, selected: false })),
+          coding: (data.data.coding || []).map((q: SuggestedCoding) => ({ ...q, selected: false })),
+          behavioral: (data.data.behavioral || []).map((q: SuggestedBehavioral) => ({ ...q, selected: false })),
+        });
+      } else {
+        toast.error('Unexpected response from server');
+      }
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string; message?: string } } };
+      toast.error(e.response?.data?.message || e.response?.data?.error || 'Failed to generate question suggestions');
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
+  // Auto-fetch once when the admin lands on the Question Suggestions step.
+  useEffect(() => {
+    if (step === 3 && !suggestions && !suggesting) {
+      fetchSuggestions();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
+
+  const toggleSuggestion = (type: 'mcq' | 'coding' | 'behavioral', index: number) => {
+    setSuggestions(prev => {
+      if (!prev) return prev;
+      const list = [...prev[type]];
+      list[index] = { ...list[index], selected: !list[index].selected };
+      return { ...prev, [type]: list };
+    });
+  };
+
+  const setAllSuggestionsSelected = (value: boolean) => {
+    setSuggestions(prev => prev ? {
+      mcq: prev.mcq.map(q => ({ ...q, selected: value })),
+      coding: prev.coding.map(q => ({ ...q, selected: value })),
+      behavioral: prev.behavioral.map(q => ({ ...q, selected: value })),
+    } : prev);
+  };
+
+  type PreviewEntry = { id: string; text: string; difficulty: string; topic: string | null };
+
+  /* -- Step 3 -> 4: persist any checked suggestions as real custom questions (same procedure
+     as typing them manually), then fold them into the existing `selection` so they show up
+     in Review Selection alongside the library-matched ones. -- */
+  const handleContinueFromSuggestions = async () => {
+    const selectedMcq = suggestions?.mcq.filter(q => q.selected) ?? [];
+    const selectedCoding = suggestions?.coding.filter(q => q.selected) ?? [];
+    const selectedBehavioral = suggestions?.behavioral.filter(q => q.selected) ?? [];
+
+    if (!selectedMcq.length && !selectedCoding.length && !selectedBehavioral.length) {
+      setStep(4);
+      return;
+    }
+
+    setSavingSuggestions(true);
+    let failures = 0;
+    const newMcqIds: string[] = [];
+    const newMcqPreviews: PreviewEntry[] = [];
+    const newCodingIds: string[] = [];
+    const newCodingPreviews: PreviewEntry[] = [];
+    const newBehavioralIds: string[] = [];
+    const newBehavioralPreviews: PreviewEntry[] = [];
+
+    try {
+      for (const q of selectedMcq) {
+        try {
+          const { data } = await adminApi.createMCQ({
+            questionText: q.questionText,
+            options: q.options,
+            correctAnswers: q.correctAnswers,
+            marks: q.marks,
+            isMultipleChoice: q.isMultipleChoice,
+            explanation: q.explanation,
+            difficulty: q.difficulty,
+            topic: q.topic,
+            tags: [...q.tags, 'AI Generated'],
+          });
+          const created = data.question;
+          newMcqIds.push(created.id);
+          newMcqPreviews.push({ id: created.id, text: created.questionText, difficulty: created.difficulty, topic: created.topic });
+        } catch { failures++; }
+      }
+
+      for (const q of selectedCoding) {
+        try {
+          const { data } = await adminApi.createCoding({
+            title: q.title,
+            description: q.description,
+            inputFormat: q.inputFormat,
+            outputFormat: q.outputFormat,
+            constraints: q.constraints,
+            sampleInput: q.sampleInput,
+            sampleOutput: q.sampleOutput,
+            marks: q.marks,
+            timeLimit: q.timeLimit,
+            memoryLimit: q.memoryLimit,
+            supportedLanguages: q.supportedLanguages,
+            testCases: q.testCases,
+            difficulty: q.difficulty,
+            topic: q.topic,
+            tags: [...q.tags, 'AI Generated'],
+          });
+          const created = data.question;
+          newCodingIds.push(created.id);
+          newCodingPreviews.push({ id: created.id, text: `${created.title}: ${created.description}`.slice(0, 200), difficulty: created.difficulty, topic: created.topic });
+        } catch { failures++; }
+      }
+
+      for (const q of selectedBehavioral) {
+        try {
+          const { data } = await adminApi.createCustomBehavioral({
+            title: q.title,
+            description: q.description,
+            expectedAnswer: q.expectedAnswer,
+            marks: q.marks,
+            difficulty: q.difficulty,
+            topic: q.topic,
+            tags: [...q.tags, 'AI Generated'],
+          });
+          const created = data.question;
+          newBehavioralIds.push(created.id);
+          newBehavioralPreviews.push({ id: created.id, text: `${created.title}: ${created.description}`.slice(0, 200), difficulty: created.difficulty, topic: created.topic });
+        } catch { failures++; }
+      }
+
+      const addedCount = newMcqIds.length + newCodingIds.length + newBehavioralIds.length;
+      if (addedCount > 0) {
+        setSelection(prev => prev ? {
+          ...prev,
+          mcqQuestionIds: [...prev.mcqQuestionIds, ...newMcqIds],
+          codingQuestionIds: [...prev.codingQuestionIds, ...newCodingIds],
+          behavioralQuestionIds: [...prev.behavioralQuestionIds, ...newBehavioralIds],
+          mcqPreviews: [...(prev.mcqPreviews ?? []), ...newMcqPreviews],
+          codingPreviews: [...(prev.codingPreviews ?? []), ...newCodingPreviews],
+          behavioralPreviews: [...(prev.behavioralPreviews ?? []), ...newBehavioralPreviews],
+        } : prev);
+        toast.success(`${addedCount} new question${addedCount === 1 ? '' : 's'} added to your library and included in this test`);
+      }
+      if (failures > 0) {
+        toast.error(`${failures} question${failures === 1 ? '' : 's'} failed to save`);
+      }
+    } finally {
+      setSavingSuggestions(false);
+      setStep(4);
+    }
+  };
+
+  /* -- Step 5 -> create -- */
   const handleCreateTest = async () => {
     if (!selection)                  { toast.error('No test selection available'); return; }
     if (!testSettings.startTime)     { toast.error('Start time is required'); return; }
@@ -677,10 +885,174 @@ export default function AgentTestForm() {
             </div>
           )}
 
-          {/* ============ STEP 3: Review AI Selection ============ */}
-          {step === 3 && selection && (
+          {/* ============ STEP 3: Question Suggestions (AI-authored, brand-new) ============ */}
+          {step === 3 && (
             <div style={card}>
-              <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 20px' }}>Step 3: Review AI Selection</h2>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                <div>
+                  <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 4px' }}>Step 3: Question Suggestions</h2>
+                  <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: 0 }}>
+                    The AI has written brand-new questions for this role. Nothing is saved unless you check it — only the questions you select below will be added to your question library (tagged "AI Generated") and included in this test.
+                  </p>
+                </div>
+                {!suggesting && suggestions && (suggestions.mcq.length + suggestions.coding.length + suggestions.behavioral.length > 0) && (
+                  <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                    <button type="button" onClick={() => setAllSuggestionsSelected(true)} style={{ ...btnSecondary, padding: '8px 14px', fontSize: '13px' }}>
+                      Select all
+                    </button>
+                    <button type="button" onClick={() => setAllSuggestionsSelected(false)} style={{ ...btnSecondary, padding: '8px 14px', fontSize: '13px' }}>
+                      Deselect all
+                    </button>
+                    <button type="button" onClick={fetchSuggestions} style={{ ...btnSecondary, padding: '8px 14px', fontSize: '13px' }}>
+                      Regenerate
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {suggesting && (
+                <div style={{ padding: '48px 0', textAlign: 'center' }}>
+                  <p style={{ fontSize: '13px', color: 'var(--admin-text-subtle)', margin: 0 }}>Writing new questions tailored to this role…</p>
+                </div>
+              )}
+
+              {!suggesting && suggestions && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '16px' }}>
+                  {suggestions.mcq.length === 0 && suggestions.coding.length === 0 && suggestions.behavioral.length === 0 && (
+                    <p style={{ fontSize: '13px', color: 'var(--admin-text-subtle)', margin: 0 }}>No suggestions were generated. You can regenerate or skip this step.</p>
+                  )}
+
+                  {suggestions.mcq.length > 0 && (
+                    <div>
+                      <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--admin-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 10px' }}>MCQ ({suggestions.mcq.length})</p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {suggestions.mcq.map((q, i) => (
+                          <label key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '14px 16px', borderRadius: '10px', border: `1.5px solid ${q.selected ? 'var(--admin-accent-disabled)' : 'var(--admin-border)'}`, backgroundColor: q.selected ? 'var(--admin-accent-soft)' : 'white', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={q.selected} onChange={() => toggleSuggestion('mcq', i)}
+                              style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--admin-button-primary)', flexShrink: 0 }} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 8px', lineHeight: '1.5' }}>{q.questionText}</p>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '8px' }}>
+                                {q.options.map((opt, oi) => (
+                                  <div key={oi} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: q.correctAnswers.includes(oi) ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)', fontWeight: q.correctAnswers.includes(oi) ? 600 : 400 }}>
+                                    <span>{q.correctAnswers.includes(oi) ? '✓' : '○'}</span>
+                                    <span>{opt}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              {q.explanation && (
+                                <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 8px', lineHeight: '1.5' }}><strong>Explanation:</strong> {q.explanation}</p>
+                              )}
+                              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--admin-text-subtle)' }}>
+                                <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{q.difficulty}</span>
+                                <span>·</span>
+                                <span>{q.marks} pts</span>
+                                <span>·</span>
+                                <span>~{q.suggestedTimeEstimateSec}s</span>
+                                {q.topic && (<><span>·</span><span>{q.topic}</span></>)}
+                                {q.tags.map(t => (
+                                  <span key={t} style={{ padding: '1px 8px', borderRadius: '999px', backgroundColor: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)' }}>{t}</span>
+                                ))}
+                              </div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {suggestions.coding.length > 0 && (
+                    <div>
+                      <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--admin-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 10px' }}>Coding ({suggestions.coding.length})</p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {suggestions.coding.map((q, i) => (
+                          <label key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '14px 16px', borderRadius: '10px', border: `1.5px solid ${q.selected ? 'var(--admin-accent-disabled)' : 'var(--admin-border)'}`, backgroundColor: q.selected ? 'var(--admin-accent-soft)' : 'white', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={q.selected} onChange={() => toggleSuggestion('coding', i)}
+                              style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--admin-button-primary)', flexShrink: 0 }} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 4px' }}>{q.title}</p>
+                              <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: '0 0 8px', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{q.description}</p>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '12px', color: 'var(--admin-text-subtle)', marginBottom: '8px' }}>
+                                <p style={{ margin: 0 }}><strong>Input:</strong> {q.inputFormat}</p>
+                                <p style={{ margin: 0 }}><strong>Output:</strong> {q.outputFormat}</p>
+                                <p style={{ margin: 0 }}><strong>Sample in:</strong> {q.sampleInput}</p>
+                                <p style={{ margin: 0 }}><strong>Sample out:</strong> {q.sampleOutput}</p>
+                              </div>
+                              {q.testCases.length > 0 && (
+                                <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 8px' }}>{q.testCases.length} test case{q.testCases.length === 1 ? '' : 's'} · {q.supportedLanguages.join(', ')}</p>
+                              )}
+                              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--admin-text-subtle)' }}>
+                                <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{q.difficulty}</span>
+                                <span>·</span>
+                                <span>{q.marks} pts</span>
+                                <span>·</span>
+                                <span>{Math.round(q.timeLimit / 1000)}s limit</span>
+                                {q.topic && (<><span>·</span><span>{q.topic}</span></>)}
+                                {q.tags.map(t => (
+                                  <span key={t} style={{ padding: '1px 8px', borderRadius: '999px', backgroundColor: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)' }}>{t}</span>
+                                ))}
+                              </div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {suggestions.behavioral.length > 0 && (
+                    <div>
+                      <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--admin-text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 10px' }}>Behavioral ({suggestions.behavioral.length})</p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {suggestions.behavioral.map((q, i) => (
+                          <label key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', padding: '14px 16px', borderRadius: '10px', border: `1.5px solid ${q.selected ? 'var(--admin-accent-disabled)' : 'var(--admin-border)'}`, backgroundColor: q.selected ? 'var(--admin-accent-soft)' : 'white', cursor: 'pointer' }}>
+                            <input type="checkbox" checked={q.selected} onChange={() => toggleSuggestion('behavioral', i)}
+                              style={{ marginTop: '3px', width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--admin-button-primary)', flexShrink: 0 }} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 4px' }}>{q.title}</p>
+                              <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: '0 0 8px', lineHeight: '1.5' }}>{q.description}</p>
+                              {q.expectedAnswer && (
+                                <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 8px', lineHeight: '1.5' }}><strong>Grading benchmark:</strong> {q.expectedAnswer}</p>
+                              )}
+                              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--admin-text-subtle)' }}>
+                                <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{q.difficulty}</span>
+                                <span>·</span>
+                                <span>{q.marks} pts</span>
+                                <span>·</span>
+                                <span>~{q.suggestedTimeEstimateSec}s</span>
+                                {q.topic && (<><span>·</span><span>{q.topic}</span></>)}
+                                {q.tags.map(t => (
+                                  <span key={t} style={{ padding: '1px 8px', borderRadius: '999px', backgroundColor: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)' }}>{t}</span>
+                                ))}
+                              </div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '10px', paddingTop: '20px' }}>
+                <button onClick={() => setStep(2)} style={btnSecondary}>Back</button>
+                <button
+                  onClick={handleContinueFromSuggestions}
+                  disabled={suggesting || savingSuggestions}
+                  style={suggesting || savingSuggestions ? btnDisabled : btnPrimary}
+                >
+                  {savingSuggestions ? 'Saving...' : 'Continue to Review'}
+                </button>
+                {!suggesting && (
+                  <button onClick={() => setStep(4)} disabled={savingSuggestions} style={btnSecondary}>Skip</button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ============ STEP 4: Review AI Selection ============ */}
+          {step === 4 && selection && (
+            <div style={card}>
+              <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 20px' }}>Step 4: Review AI Selection</h2>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
                 {/* MCQ / Coding / Behavioral counts */}
@@ -771,12 +1143,12 @@ export default function AgentTestForm() {
                 )}
 
                 <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
-                  <button onClick={() => setStep(2)} style={btnSecondary}>Back</button>
+                  <button onClick={() => setStep(3)} style={btnSecondary}>Back</button>
                   {(() => {
                     const noQuestions = selection.mcqQuestionIds.length + selection.codingQuestionIds.length + selection.behavioralQuestionIds.length === 0;
                     return (
                       <button
-                        onClick={() => setStep(4)}
+                        onClick={() => setStep(5)}
                         disabled={noQuestions}
                         style={noQuestions ? btnDisabled : btnPrimary}
                       >
@@ -789,10 +1161,10 @@ export default function AgentTestForm() {
             </div>
           )}
 
-          {/* ============ STEP 4: Finalize Test Settings ============ */}
-          {step === 4 && (
+          {/* ============ STEP 5: Finalize Test Settings ============ */}
+          {step === 5 && (
             <div style={card}>
-              <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 20px' }}>Step 4: Finalize Test Settings</h2>
+              <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 20px' }}>Step 5: Finalize Test Settings</h2>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
@@ -881,7 +1253,7 @@ export default function AgentTestForm() {
                 </div>
 
                 <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
-                  <button onClick={() => setStep(3)} style={btnSecondary}>Back</button>
+                  <button onClick={() => setStep(4)} style={btnSecondary}>Back</button>
                   <button
                     onClick={handleCreateTest}
                     disabled={loading || !testSettings.startTime || !testSettings.name.trim()}

@@ -75,6 +75,7 @@ import {
   generateTest,
   createTestFromAgent,
   suggestTags,
+  suggestQuestions,
   getLibrarySkills
 } from '../controllers/testAgent.js';
 import {
@@ -186,6 +187,7 @@ router.post('/agent/analyze-job', adminAuth, analyzeJob);
 router.post('/agent/generate-test', adminAuth, generateTest);
 router.post('/agent/create-test', adminAuth, createTestFromAgent);
 router.post('/agent/suggest-tags', adminAuth, suggestTags);
+router.post('/agent/suggest-questions', adminAuth, suggestQuestions);
 
 // ==============================
 // Questions Repository Routes
