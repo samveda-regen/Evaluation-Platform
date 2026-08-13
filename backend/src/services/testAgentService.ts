@@ -862,7 +862,7 @@ export async function suggestNewQuestions(
   const codingCount = Math.max(0, Math.min(5, Math.floor(counts.codingCount)));
   const behavioralCount = Math.max(0, Math.min(5, Math.floor(counts.behavioralCount)));
 
-  const systemPrompt = `You are an expert technical interviewer and question-bank author. Unlike a librarian picking from an existing catalog, your job here is to WRITE brand-new, original assessment questions from scratch, tailored precisely to the job profile given. Never write generic filler questions — every question must genuinely probe one of the required skills at the requested difficulty. Always respond with a valid JSON object only, no prose outside the JSON.`;
+  const systemPrompt = `You are an expert technical interviewer and question-bank author. Unlike a librarian picking from an existing catalog, your job here is to WRITE brand-new, original assessment questions from scratch, tailored precisely to the job profile given. Never write generic filler questions — every question must genuinely probe one of the required skills at the requested difficulty. Always respond with a valid JSON object only, no prose outside the JSON. Every string value must be valid JSON: escape all newlines as \\n, tabs as \\t, and double quotes as \\" — this matters most in multi-line fields like a coding question's description, sampleInput, sampleOutput, or a test case's input/expectedOutput. Never place a literal, unescaped line break inside a JSON string.`;
 
   const userPrompt = `Author new assessment questions for this role:
 
