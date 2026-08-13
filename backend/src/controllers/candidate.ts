@@ -1165,6 +1165,7 @@ export async function logActivity(req: AuthenticatedRequest, res: Response): Pro
             id: true,
             maxViolations: true,
             customAIViolations: true,
+            proctorEnabled: true,
           },
         },
       },
@@ -1230,10 +1231,32 @@ export async function logActivity(req: AuthenticatedRequest, res: Response): Pro
         return;
       }
 
-      const session = await prisma.proctorSession.findUnique({
+      let session = await prisma.proctorSession.findUnique({
         where: { attemptId },
         select: { id: true },
       });
+
+      // On a proctored test, session init (camera/mic permission -> POST /session/init)
+      // races against these violation listeners, which attach as soon as the test page
+      // mounts. An early violation (e.g. an immediate fullscreen-exit) can land here
+      // before that init call has finished, so the session briefly doesn't exist yet
+      // even though it's about to. Give it one short retry before accepting that the
+      // violation will go unrecorded as a ProctorEvent (no evidence/snapshot) — on a
+      // non-proctored test (proctorEnabled: false) no session is ever expected, so skip
+      // straight through.
+      if (!session && attempt.test.proctorEnabled) {
+        await new Promise(resolve => setTimeout(resolve, 800));
+        session = await prisma.proctorSession.findUnique({
+          where: { attemptId },
+          select: { id: true },
+        });
+        if (!session) {
+          console.warn(
+            `logActivity: no proctorSession for attempt ${attemptId} after retry — ` +
+            `violation "${mappedType}" will increment the counter with no ProctorEvent/evidence.`
+          );
+        }
+      }
 
       // Shares the cooldown state proctoring.ts's periodic AI-analysis pipeline uses, so a
       // single fullscreen/tab-switch incident doesn't get double-counted: once from this
