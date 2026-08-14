@@ -1586,14 +1586,6 @@ export default function AgentTestForm() {
                   </div>
                 </div>
 
-                {/* AI Reasoning */}
-                {selection.reasoning && (
-                  <div style={{ borderRadius: '10px', padding: '16px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
-                    <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--admin-accent-hover)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>AI Reasoning</p>
-                    <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: 0, lineHeight: '1.7' }}>{selection.reasoning}</p>
-                  </div>
-                )}
-
                 {/* Finalized test settings (locked in from Step 4) */}
                 <div style={{ borderRadius: '10px', padding: '16px 18px', backgroundColor: '#F9FAFB', border: '1px solid var(--admin-border)' }}>
                   <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--admin-text)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 14px' }}>Test Settings</p>
