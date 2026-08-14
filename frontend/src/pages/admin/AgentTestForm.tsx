@@ -1,29 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { BriefcaseBusiness, Check, ClipboardCheck, ListChecks, Settings2, Sparkles } from 'lucide-react';
+import { BriefcaseBusiness, Check, ClipboardCheck, ListChecks, Settings2, Sparkles, LibraryBig, Plus } from 'lucide-react';
 import { adminApi } from '../../services/api';
 import DateTimePicker from '../../components/DateTimePicker';
 import CustomSelect from '../../components/CustomSelect';
+import AgentLibraryPickerModal from './AgentLibraryPickerModal';
+import AgentNewQuestionModal from './AgentNewQuestionModal';
+import type {
+  JobProfile, QuestionSelection, SuggestedMCQ, SuggestedCoding, SuggestedBehavioral,
+  QuestionSuggestions, PreviewEntry, LibraryPicks, SuggestionType, QuestionSectionKey,
+} from './agentTestForm.types';
+import { QUESTION_SECTIONS } from './agentTestForm.types';
 
-/* -- Types -- */
-interface JobProfile {
-  title: string;
-  experience: string;
-  description: string;
-}
-interface QuestionSelection {
-  mcqQuestionIds: string[];
-  codingQuestionIds: string[];
-  behavioralQuestionIds: string[];
-  reasoning: string;
-  suggestedDuration: number;
-  suggestedTestName: string;
-  suggestedDescription: string;
-  mcqPreviews?: Array<{ id: string; text: string; difficulty: string; topic?: string | null }>;
-  codingPreviews?: Array<{ id: string; text: string; difficulty: string; topic?: string | null }>;
-  behavioralPreviews?: Array<{ id: string; text: string; difficulty: string; topic?: string | null }>;
-}
+/* -- Types local to this file only -- */
 interface TestSettings {
   name: string;
   description: string;
@@ -36,62 +26,6 @@ interface TestSettings {
   shuffleOptions: boolean;
   maxViolations: number;
 }
-
-/* -- AI-authored (brand-new, not library-matched) question suggestions -- */
-interface SuggestedMCQ {
-  questionText: string;
-  options: string[];
-  correctAnswers: number[];
-  marks: number;
-  isMultipleChoice: boolean;
-  explanation: string;
-  difficulty: 'easy' | 'medium' | 'hard';
-  topic: string;
-  tags: string[];
-  suggestedTimeEstimateSec: number;
-}
-interface SuggestedCoding {
-  title: string;
-  description: string;
-  inputFormat: string;
-  outputFormat: string;
-  constraints: string;
-  sampleInput: string;
-  sampleOutput: string;
-  marks: number;
-  timeLimit: number;
-  memoryLimit: number;
-  supportedLanguages: string[];
-  testCases: Array<{ input: string; expectedOutput: string; isHidden: boolean; marks: number }>;
-  difficulty: 'easy' | 'medium' | 'hard';
-  topic: string;
-  tags: string[];
-}
-interface SuggestedBehavioral {
-  title: string;
-  description: string;
-  expectedAnswer: string;
-  marks: number;
-  difficulty: 'easy' | 'medium' | 'hard';
-  topic: string;
-  tags: string[];
-  suggestedTimeEstimateSec: number;
-}
-// `savedId` is set once a suggestion has actually been persisted as a custom question — lets a
-// second "Continue" (e.g. after Back-ing from Step 4) reuse that id instead of creating a duplicate.
-interface QuestionSuggestions {
-  mcq: (SuggestedMCQ & { selected: boolean; savedId?: string })[];
-  coding: (SuggestedCoding & { selected: boolean; savedId?: string })[];
-  behavioral: (SuggestedBehavioral & { selected: boolean; savedId?: string })[];
-}
-type PreviewEntry = { id: string; text: string; difficulty: string; topic: string | null };
-type LibraryPick = PreviewEntry & { selected: boolean };
-interface LibraryPicks {
-  mcq: LibraryPick[];
-  coding: LibraryPick[];
-  behavioral: LibraryPick[];
-}
-type SuggestionType = 'mcq' | 'coding' | 'behavioral';
 
 const MAX_TEST_VIOLATIONS = 150;
 
@@ -162,13 +96,6 @@ const EXPERIENCE_OPTIONS = [
   { value: '0-2 years', label: '0-2 years (Entry Level)' },
   { value: '2-5 years', label: '2-5 years (Mid-Level)' },
   { value: '5+ years',  label: '5+ years (Senior)' },
-];
-
-type QuestionSectionKey = 'mcq' | 'coding' | 'behavioral';
-const QUESTION_SECTIONS: { key: QuestionSectionKey; label: string }[] = [
-  { key: 'mcq', label: 'MCQ' },
-  { key: 'coding', label: 'Coding' },
-  { key: 'behavioral', label: 'Behavioral' },
 ];
 
 function normalizeExperienceLevel(value?: string): string {
@@ -293,6 +220,8 @@ export default function AgentTestForm() {
   const [suggesting, setSuggesting] = useState(false);
   const [savingSuggestions, setSavingSuggestions] = useState(false);
   const [suggestionProgressStep, setSuggestionProgressStep] = useState(0);
+  const [showLibraryPicker, setShowLibraryPicker] = useState(false);
+  const [showNewQuestionModal, setShowNewQuestionModal] = useState(false);
 
   useEffect(() => {
     if (!suggesting) { setSuggestionProgressStep(0); return; }
@@ -556,6 +485,44 @@ export default function AgentTestForm() {
       list[index] = { ...list[index], selected: !list[index].selected };
       return { ...prev, [type]: list };
     });
+  };
+
+  // "Add from Library" modal toggles an existing library pick, or — if this question wasn't
+  // already in `libraryPicks` (it's outside the AI's skill-matched set) — appends it fresh.
+  const handleTogglePickFromLibrary = (type: SuggestionType, preview: PreviewEntry) => {
+    setLibraryPicks(prev => {
+      if (!prev) return prev;
+      const list = prev[type];
+      const idx = list.findIndex(p => p.id === preview.id);
+      const alreadySelected = idx !== -1 && list[idx].selected;
+      if (!alreadySelected && getSelectedCount(type) >= getLimit(type)) {
+        const limit = getLimit(type);
+        toast.error(`You've already picked ${limit} ${typeLabel(type)} question${limit === 1 ? '' : 's'} (the limit set in Step 2) — uncheck one first`);
+        return prev;
+      }
+      if (idx === -1) {
+        return { ...prev, [type]: [...list, { ...preview, selected: true }] };
+      }
+      const next = [...list];
+      next[idx] = { ...next[idx], selected: !next[idx].selected };
+      return { ...prev, [type]: next };
+    });
+  };
+
+  // "+ New Question" modal already persisted the question by the time this fires — fold it into
+  // libraryPicks like any other real library question. If the type is already at its limit, the
+  // question stays saved to the library (not wasted) but isn't included in this test.
+  const handleQuestionCreatedFromModal = (type: SuggestionType, id: string, preview: PreviewEntry) => {
+    let added = false;
+    setLibraryPicks(prev => {
+      if (!prev || prev[type].some(p => p.id === id)) return prev;
+      if (getSelectedCount(type) >= getLimit(type)) return prev;
+      added = true;
+      return { ...prev, [type]: [...prev[type], { ...preview, selected: true }] };
+    });
+    if (!added) {
+      toast(`Saved to your library — the ${typeLabel(type)} limit (${getLimit(type)}) for this test is already reached, so it wasn't added here. Uncheck one to make room, or add it later.`, { icon: 'ℹ️' });
+    }
   };
 
   // Fills each type's remaining capacity (limit minus already-selected library picks) with
@@ -1132,6 +1099,19 @@ export default function AgentTestForm() {
                     Pick from your library matches and/or the AI's brand-new suggestions below — each type is capped at the count you set in Step 2. Newly written questions are only saved (tagged "AI Generated") if you check them.
                   </p>
                 </div>
+                <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
+                  <button type="button" onClick={() => setShowLibraryPicker(true)}
+                    style={{ ...btnSecondary, padding: '8px 14px', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <LibraryBig size={14} /> Add from Library
+                  </button>
+                  <button type="button" onClick={() => setShowNewQuestionModal(true)}
+                    style={{ ...btnPrimary, padding: '8px 14px', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    <Plus size={14} color="white" /> New question
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 {suggestions && (suggestions.mcq.length + suggestions.coding.length + suggestions.behavioral.length > 0) && (
                   <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
                     <button type="button" onClick={() => setAllSuggestionsSelected(true)} style={{ ...btnSecondary, padding: '8px 14px', fontSize: '13px' }}>
@@ -1401,6 +1381,25 @@ export default function AgentTestForm() {
                 </button>
               </div>
             </div>
+          )}
+
+          {step === 3 && showLibraryPicker && libraryPicks && (
+            <AgentLibraryPickerModal
+              allowedTypes={QUESTION_SECTIONS.filter(s => selectedSections.has(s.key)).map(s => s.key)}
+              libraryPicks={libraryPicks}
+              getLimit={getLimit}
+              getSelectedCount={getSelectedCount}
+              onTogglePick={handleTogglePickFromLibrary}
+              onClose={() => setShowLibraryPicker(false)}
+            />
+          )}
+
+          {step === 3 && showNewQuestionModal && (
+            <AgentNewQuestionModal
+              allowedTypes={QUESTION_SECTIONS.filter(s => selectedSections.has(s.key)).map(s => s.key)}
+              onClose={() => setShowNewQuestionModal(false)}
+              onCreated={handleQuestionCreatedFromModal}
+            />
           )}
 
           {/* ============ STEP 4: Review AI Selection ============ */}
