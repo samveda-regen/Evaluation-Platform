@@ -12,6 +12,7 @@
  */
 
 import api from './api';
+import { acquireVerifiedCameraStream } from './cameraDeviceService';
 
 // Types
 export interface ProctorConfig {
@@ -274,21 +275,29 @@ export async function detectMonitors(): Promise<number> {
   return 1;
 }
 
-// Request camera permission
+// Request camera permission. Uses acquireVerifiedCameraStream so this behaves the same
+// way as the pre-check page: steers away from IR/Windows-Hello cameras and confirms the
+// stream actually produces frames rather than trusting a 'live' track alone (see
+// cameraDeviceService.ts for why — this is the exact path that was silently handing back
+// an unusable stream during the exam while the pre-check appeared to pass).
 export async function requestCameraPermission(): Promise<MediaStream | null> {
   try {
     const targetWidth = Number((import.meta as any).env?.VITE_PROCTOR_CAMERA_WIDTH || 1280);
     const targetHeight = Number((import.meta as any).env?.VITE_PROCTOR_CAMERA_HEIGHT || 720);
     const maxFrameRate = Number((import.meta as any).env?.VITE_PROCTOR_CAMERA_FPS || 30);
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        width: { ideal: targetWidth },
-        height: { ideal: targetHeight },
-        frameRate: { ideal: maxFrameRate, max: maxFrameRate },
-        facingMode: 'user',
-      },
+    const result = await acquireVerifiedCameraStream({
+      width: { ideal: targetWidth },
+      height: { ideal: targetHeight },
+      // ideal only, no hard max — a mandatory max constraint some camera drivers can't
+      // satisfy throws OverconstrainedError outright instead of degrading gracefully.
+      frameRate: { ideal: maxFrameRate },
+      facingMode: 'user',
     });
-    return stream;
+    if (!result.stream) return null;
+    if (!result.framesVerified) {
+      console.error('Camera stream acquired but never produced a frame (tried all available devices)');
+    }
+    return result.stream;
   } catch (error) {
     console.error('Camera permission denied:', error);
     return null;

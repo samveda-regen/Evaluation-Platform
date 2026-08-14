@@ -844,33 +844,18 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
   }, [session, getActiveVideoElement, snapshotFrameQuality, snapshotFrameMaxWidth]);
 
   /**
-   * Capture a JPEG snapshot from the camera.
-   * Uses ImageCapture API first (takes photo directly from hardware, most reliable),
-   * then falls back to drawing the video element onto a canvas.
+   * Capture a JPEG snapshot from the camera by drawing the video element onto a canvas.
+   *
+   * Previously this tried the ImageCapture API (ic.takePhoto()) first. That call asks the
+   * hardware for a hardware "still photo," which on a lot of camera drivers (particularly
+   * on Windows via Media Foundation) means briefly switching the physical camera out of
+   * its live-preview streaming mode into a photo mode and back. Doing that once a second
+   * for the whole exam — this function runs on every analysis cycle — could stall the
+   * shared video track that the preview, face detector, and client vision model all read
+   * from, if the driver's mode switch-back doesn't complete cleanly. Canvas capture reads
+   * whatever frame the video element already has and never touches the capture pipeline.
    */
   const takeWebcamSnapshot = useCallback(async (): Promise<string | null> => {
-    // --- Method 1: ImageCapture API (bypasses video element completely) ---
-    const track = cameraStreamRef.current?.getVideoTracks()?.[0];
-    if (track && track.readyState === 'live' && typeof (window as any).ImageCapture !== 'undefined') {
-      try {
-        const ic = new (window as any).ImageCapture(track);
-        const blob: Blob = await ic.takePhoto({ imageWidth: analysisFrameMaxWidth });
-        return await new Promise<string | null>((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const result = reader.result as string;
-            const b64 = result.split(',')[1];
-            resolve(b64 || null);
-          };
-          reader.onerror = () => resolve(null);
-          reader.readAsDataURL(blob);
-        });
-      } catch {
-        // fall through to canvas fallback
-      }
-    }
-
-    // --- Method 2: Canvas from video element ---
     const activeVideo = getActiveVideoElement();
     if (!activeVideo) return null;
     return captureFrame(activeVideo, { quality: analysisFrameQuality, maxWidth: analysisFrameMaxWidth });

@@ -8,6 +8,7 @@ import { useAuthStore } from '../../context/authStore';
 import IDVerification from '../../components/IDVerification';
 import { clearCachedStreams, getCachedStreams, setCachedStreams } from '../../services/devicePermissionService';
 import { requestScreenShare, ScreenShareSurfaceError } from '../../services/proctorService';
+import { acquireVerifiedCameraStream } from '../../services/cameraDeviceService';
 import { DEFAULT_CUSTOM_AI_VIOLATIONS, normalizeCustomAIViolationSelection } from '../../constants/customAIViolations';
 import talentstaQLogo from '../../assets/assessment-icons/icons/Talentstaq logo dark.svg';
 
@@ -66,6 +67,10 @@ export default function TestInstructions() {
     screenShare: false,
   });
   const [cameraPreviewStream, setCameraPreviewStream] = useState<MediaStream | null>(null);
+  // True when a camera stream was obtained but never produced a real frame (e.g. an IR/
+  // Windows Hello camera got picked, or the driver never warmed up) — distinct from "no
+  // camera at all" so the UI can tell the candidate what's actually wrong.
+  const [cameraFrameIssue, setCameraFrameIssue] = useState(false);
   const [connectionLatency, setConnectionLatency] = useState<number | null>(null);
   const cameraPreviewRef = useRef<HTMLVideoElement | null>(null);
   const navigate = useNavigate();
@@ -231,21 +236,36 @@ export default function TestInstructions() {
     let micStream: MediaStream | null = null;
     let screenStream: MediaStream | null = null;
     let screenShareErrorMessage: string | null = null;
+    let cameraErrorMessage: string | null = null;
+    let frameIssue = false;
 
-    try {
-      if (required.requireCamera || microphoneRequired) {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: required.requireCamera,
-          audio: microphoneRequired,
-        });
-        cameraOk = required.requireCamera ? stream.getVideoTracks().length > 0 : true;
-        microphoneOk = microphoneRequired ? stream.getAudioTracks().length > 0 : true;
-        cameraStream = required.requireCamera ? new MediaStream(stream.getVideoTracks()) : null;
-        micStream = microphoneRequired ? new MediaStream(stream.getAudioTracks()) : null;
+    if (required.requireCamera) {
+      const result = await acquireVerifiedCameraStream({
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+      });
+      if (result.stream) {
+        cameraStream = result.stream;
+        cameraOk = result.framesVerified;
+        frameIssue = !result.framesVerified;
+        if (!result.framesVerified) {
+          cameraErrorMessage = 'Camera detected but not producing a picture — try a different camera or restart your browser.';
+        }
+      } else {
+        cameraOk = false;
+        cameraErrorMessage = 'Could not access camera — please allow camera permissions.';
       }
-    } catch {
-      cameraOk = !required.requireCamera;
-      microphoneOk = !microphoneRequired;
+    }
+
+    if (microphoneRequired) {
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true },
+        });
+        microphoneOk = micStream.getAudioTracks().length > 0;
+      } catch {
+        microphoneOk = false;
+      }
     }
 
     if (required.requireScreenShare) {
@@ -260,19 +280,23 @@ export default function TestInstructions() {
     }
 
     setDeviceStatus({ camera: cameraOk, microphone: microphoneOk, screenShare: screenOk });
+    setCameraFrameIssue(frameIssue);
     const ready = cameraOk && microphoneOk && screenOk;
     setDeviceReady(ready);
 
-    if (ready) {
-      setCachedStreams({ cameraStream, microphoneStream: micStream, screenStream });
-      if (cameraStream) setCameraPreviewStream(cameraStream);
-    } else {
-      clearCachedStreams(true);
-      setCameraPreviewStream(null);
-    }
+    // Cache and preview whatever individually succeeded — a failing mic or screen share
+    // check should never tear down a camera stream that's actually working, and vice
+    // versa. The candidate still can't proceed (`ready` gates the Start button) until
+    // every required device passes, but retrying one broken device doesn't force
+    // re-granting permission for devices that already passed.
+    setCachedStreams({ cameraStream, microphoneStream: micStream, screenStream });
+    setCameraPreviewStream(cameraOk ? cameraStream : null);
 
     if (ready) toast.success('Device permission checks passed');
-    else toast.error(screenShareErrorMessage || 'Required device permissions are not granted', { duration: 8000 });
+    else toast.error(
+      cameraErrorMessage || screenShareErrorMessage || 'Required device permissions are not granted',
+      { duration: 8000 },
+    );
 
     setCheckingDevices(false);
   };
@@ -542,6 +566,18 @@ export default function TestInstructions() {
                       style={{ width: '45%', height: '70%' }}
                     />
                   </div>
+                </div>
+              ) : cameraFrameIssue ? (
+                <div className="text-center px-6">
+                  <div
+                    className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-2"
+                    style={{ background: '#3F3F46' }}
+                  >
+                    <span className="text-white font-semibold text-xl">{initials}</span>
+                  </div>
+                  <p className="text-amber-400 text-xs font-medium">
+                    Camera detected but no picture — try a different camera or restart your browser
+                  </p>
                 </div>
               ) : (
                 <div
