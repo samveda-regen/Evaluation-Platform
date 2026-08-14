@@ -164,6 +164,13 @@ const EXPERIENCE_OPTIONS = [
   { value: '5+ years',  label: '5+ years (Senior)' },
 ];
 
+type QuestionSectionKey = 'mcq' | 'coding' | 'behavioral';
+const QUESTION_SECTIONS: { key: QuestionSectionKey; label: string }[] = [
+  { key: 'mcq', label: 'MCQ' },
+  { key: 'coding', label: 'Coding' },
+  { key: 'behavioral', label: 'Behavioral' },
+];
+
 function normalizeExperienceLevel(value?: string): string {
   if (!value) return '0-2 years';
   const normalized = value.trim().toLowerCase();
@@ -273,6 +280,9 @@ export default function AgentTestForm() {
   const [mcqCount,    setMcqCount]    = useState(10);
   const [codingCount, setCodingCount] = useState(2);
   const [behavioralCount, setBehavioralCount] = useState(2);
+  // Empty until the recruiter explicitly picks which question types to include (or Analyze
+  // pre-picks whichever ones it suggested a count > 0 for) — nothing is shown/counted otherwise.
+  const [selectedSections, setSelectedSections] = useState<Set<QuestionSectionKey>>(new Set());
   const [librarySkills, setLibrarySkills] = useState<string[]>([]);
 
   /* Step 3 state (Question Suggestions — picks from both the library match and AI-authored ones,
@@ -338,6 +348,27 @@ export default function AgentTestForm() {
   };
   const removeSkill = (s: string) => setSkills(prev => prev.filter(x => x !== s));
 
+  // Deselecting a section zeroes its count so it's fully excluded everywhere downstream (Step 3's
+  // AI suggestions reuse these same counts as the per-type limit) — reselecting restores a sensible
+  // default rather than leaving the input at 0.
+  const toggleQuestionSection = (key: QuestionSectionKey) => {
+    setSelectedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+        if (key === 'mcq') setMcqCount(0);
+        if (key === 'coding') setCodingCount(0);
+        if (key === 'behavioral') setBehavioralCount(0);
+      } else {
+        next.add(key);
+        if (key === 'mcq' && mcqCount === 0) setMcqCount(10);
+        if (key === 'coding' && codingCount === 0) setCodingCount(2);
+        if (key === 'behavioral' && behavioralCount === 0) setBehavioralCount(2);
+      }
+      return next;
+    });
+  };
+
   const handleSkillInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && filteredSuggestions.length) {
       e.preventDefault();
@@ -368,9 +399,19 @@ export default function AgentTestForm() {
         const d = data.data;
         setSkills(d.suggestedSkills || []);
         setDifficulty(d.suggestedDifficulty || 'mixed');
-        setMcqCount(d.suggestedMcqCount || 10);
-        setCodingCount(d.suggestedCodingCount || 2);
-        setBehavioralCount(typeof d.suggestedBehavioralCount === 'number' ? d.suggestedBehavioralCount : 2);
+        const suggestedMcq = d.suggestedMcqCount || 10;
+        const suggestedCoding = d.suggestedCodingCount || 2;
+        const suggestedBehavioral = typeof d.suggestedBehavioralCount === 'number' ? d.suggestedBehavioralCount : 2;
+        setMcqCount(suggestedMcq);
+        setCodingCount(suggestedCoding);
+        setBehavioralCount(suggestedBehavioral);
+        // Pre-select whichever sections the analysis actually recommended a count for, so the
+        // recruiter isn't forced to re-pick what the AI already decided — still fully editable.
+        setSelectedSections(new Set([
+          ...(suggestedMcq > 0 ? (['mcq'] as const) : []),
+          ...(suggestedCoding > 0 ? (['coding'] as const) : []),
+          ...(suggestedBehavioral > 0 ? (['behavioral'] as const) : []),
+        ]));
         setJobProfile(p => ({ ...p, experience: normalizeExperienceLevel(d.experienceLevel || p.experience) }));
         if (d.suggestedSkills?.length) {
           toast.success(
@@ -401,8 +442,9 @@ export default function AgentTestForm() {
   /* -- Step 2 -> 3 -- */
   const handleGenerateTest = async () => {
     if (!skills.length)                              { toast.error('At least one skill is required'); return; }
+    if (selectedSections.size === 0) { toast.error('No section is selected. Choose at least one question type (MCQ, Coding, or Behavioral) to continue.'); return; }
     if (mcqCount < 0 || codingCount < 0 || behavioralCount < 0) { toast.error('Question counts cannot be negative'); return; }
-    if (!mcqCount && !codingCount && !behavioralCount) { toast.error('At least one question type must be > 0'); return; }
+    if (!mcqCount && !codingCount && !behavioralCount) { toast.error('Enter at least one question for the selected section(s)'); return; }
     setLoading(true);
     try {
       const { data } = await adminApi.generateTest({ jobProfile, skills, difficulty, mcqCount, codingCount, behavioralCount });
@@ -951,57 +993,98 @@ export default function AgentTestForm() {
                   )}
                 </div>
 
-                {/* Difficulty + counts in a grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '14px' }}>
-                  <div>
-                    <label style={lbl}>Difficulty Level</label>
-                    <CustomSelect
-                      value={difficulty}
-                      onChange={v => setDifficulty(v as typeof difficulty)}
-                      options={[
-                        { value:'easy',   label:'Easy' },
-                        { value:'medium', label:'Medium' },
-                        { value:'hard',   label:'Hard' },
-                        { value:'mixed',  label:'Mixed (All Levels)' },
-                      ]}
-                      style={{ width:'100%' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={lbl}>MCQ Questions</label>
-                    <input type="number"
-                      value={mcqCount}
-                      onChange={e => setMcqCount(parseNum(e.target.value, 0))}
-                      min={0}
-                      style={inp} onFocus={focus} onBlur={blur}
-                    />
-                  </div>
-                  <div>
-                    <label style={lbl}>Coding Questions</label>
-                    <input type="number"
-                      value={codingCount}
-                      onChange={e => setCodingCount(parseNum(e.target.value, 0))}
-                      min={0}
-                      style={inp} onFocus={focus} onBlur={blur}
-                    />
-                  </div>
-                  <div>
-                    <label style={lbl}>Behavioral Questions</label>
-                    <input type="number"
-                      value={behavioralCount}
-                      onChange={e => setBehavioralCount(parseNum(e.target.value, 0))}
-                      min={0} max={10}
-                      style={inp} onFocus={focus} onBlur={blur}
-                    />
-                  </div>
+                {/* Difficulty (unchanged) */}
+                <div style={{ maxWidth: '280px' }}>
+                  <label style={lbl}>Difficulty Level</label>
+                  <CustomSelect
+                    value={difficulty}
+                    onChange={v => setDifficulty(v as typeof difficulty)}
+                    options={[
+                      { value:'easy',   label:'Easy' },
+                      { value:'medium', label:'Medium' },
+                      { value:'hard',   label:'Hard' },
+                      { value:'mixed',  label:'Mixed (All Levels)' },
+                    ]}
+                    style={{ width:'100%' }}
+                  />
                 </div>
+
+                {/* Question sections: pick which types to include first, then set counts for just those */}
+                <div>
+                  <label style={lbl}>Question Sections <span style={{ color: '#EF4444' }}>*</span></label>
+                  <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 10px' }}>
+                    Select which question types to include, then set how many for each.
+                  </p>
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    {QUESTION_SECTIONS.map(section => {
+                      const active = selectedSections.has(section.key);
+                      return (
+                        <button key={section.key} type="button"
+                          onClick={() => toggleQuestionSection(section.key)}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '6px',
+                            padding: '9px 18px', borderRadius: '999px',
+                            border: `1.5px solid ${active ? 'var(--admin-accent)' : 'var(--admin-border)'}`,
+                            backgroundColor: active ? 'var(--admin-accent-soft)' : 'white',
+                            color: active ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)',
+                            fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+                          }}
+                        >
+                          {active && <Check size={14} strokeWidth={2.6} />}
+                          {section.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {selectedSections.size === 0 && (
+                    <p style={{ fontSize: '12px', color: '#EF4444', margin: '10px 0 0' }}>No section is selected. Choose at least one question type to continue.</p>
+                  )}
+                </div>
+
+                {selectedSections.size > 0 && (
+                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${selectedSections.size}, 1fr)`, gap: '14px' }}>
+                    {selectedSections.has('mcq') && (
+                      <div>
+                        <label style={lbl}>MCQ Questions</label>
+                        <input type="number"
+                          value={mcqCount}
+                          onChange={e => setMcqCount(parseNum(e.target.value, 0))}
+                          min={0}
+                          style={inp} onFocus={focus} onBlur={blur}
+                        />
+                      </div>
+                    )}
+                    {selectedSections.has('coding') && (
+                      <div>
+                        <label style={lbl}>Coding Questions</label>
+                        <input type="number"
+                          value={codingCount}
+                          onChange={e => setCodingCount(parseNum(e.target.value, 0))}
+                          min={0}
+                          style={inp} onFocus={focus} onBlur={blur}
+                        />
+                      </div>
+                    )}
+                    {selectedSections.has('behavioral') && (
+                      <div>
+                        <label style={lbl}>Behavioral Questions</label>
+                        <input type="number"
+                          value={behavioralCount}
+                          onChange={e => setBehavioralCount(parseNum(e.target.value, 0))}
+                          min={0} max={10}
+                          style={inp} onFocus={focus} onBlur={blur}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
                   <button onClick={() => setStep(1)} style={btnSecondary}>Back</button>
                   <button
                     onClick={handleGenerateTest}
-                    disabled={loading || !skills.length}
-                    style={loading || !skills.length ? btnDisabled : btnPrimary}
+                    disabled={loading || !skills.length || selectedSections.size === 0}
+                    style={loading || !skills.length || selectedSections.size === 0 ? btnDisabled : btnPrimary}
                   >
                     {loading ? 'Generating...' : 'Generate Test'}
                   </button>
