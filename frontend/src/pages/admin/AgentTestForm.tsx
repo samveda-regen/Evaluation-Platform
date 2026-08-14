@@ -283,6 +283,7 @@ export default function AgentTestForm() {
   // Empty until the recruiter explicitly picks which question types to include (or Analyze
   // pre-picks whichever ones it suggested a count > 0 for) — nothing is shown/counted otherwise.
   const [selectedSections, setSelectedSections] = useState<Set<QuestionSectionKey>>(new Set());
+  const [sectionsDropdownOpen, setSectionsDropdownOpen] = useState(false);
   const [librarySkills, setLibrarySkills] = useState<string[]>([]);
 
   /* Step 3 state (Question Suggestions — picks from both the library match and AI-authored ones,
@@ -1015,26 +1016,49 @@ export default function AgentTestForm() {
                   <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 10px' }}>
                     Select which question types to include, then set how many for each.
                   </p>
-                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                    {QUESTION_SECTIONS.map(section => {
-                      const active = selectedSections.has(section.key);
-                      return (
-                        <button key={section.key} type="button"
-                          onClick={() => toggleQuestionSection(section.key)}
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '6px',
-                            padding: '9px 18px', borderRadius: '999px',
-                            border: `1.5px solid ${active ? 'var(--admin-accent)' : 'var(--admin-border)'}`,
-                            backgroundColor: active ? 'var(--admin-accent-soft)' : 'white',
-                            color: active ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)',
-                            fontSize: '14px', fontWeight: 600, cursor: 'pointer',
-                          }}
-                        >
-                          {active && <Check size={14} strokeWidth={2.6} />}
-                          {section.label}
-                        </button>
-                      );
-                    })}
+                  <div style={{ position: 'relative', maxWidth: '360px' }}>
+                    {sectionsDropdownOpen && <div className="fixed inset-0 z-30" onClick={() => setSectionsDropdownOpen(false)} />}
+                    <button type="button"
+                      className="ui-field ui-select-trigger"
+                      onClick={() => setSectionsDropdownOpen(v => !v)}
+                      data-open={sectionsDropdownOpen ? 'true' : undefined}
+                    >
+                      <span>
+                        {selectedSections.size === 0
+                          ? 'Select question types…'
+                          : QUESTION_SECTIONS.filter(s => selectedSections.has(s.key)).map(s => s.label).join(', ')}
+                      </span>
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0, color: 'var(--admin-text-subtle)' }}>
+                        <path d="M2 4L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </button>
+                    {sectionsDropdownOpen && (
+                      <div className="ui-popover" role="listbox" aria-multiselectable="true">
+                        {QUESTION_SECTIONS.map(section => {
+                          const active = selectedSections.has(section.key);
+                          return (
+                            <button key={section.key} type="button"
+                              role="option"
+                              aria-selected={active}
+                              onClick={() => toggleQuestionSection(section.key)}
+                              className="ui-menu-item"
+                              data-active={active ? 'true' : undefined}
+                              style={{ display: 'flex', alignItems: 'center', gap: '10px' }}
+                            >
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                width: '16px', height: '16px', borderRadius: '4px', flexShrink: 0,
+                                border: `1.5px solid ${active ? 'var(--admin-accent)' : 'var(--admin-border)'}`,
+                                backgroundColor: active ? 'var(--admin-accent)' : 'white',
+                              }}>
+                                {active && <Check size={11} strokeWidth={3} color="white" />}
+                              </span>
+                              {section.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                   {selectedSections.size === 0 && (
                     <p style={{ fontSize: '12px', color: '#EF4444', margin: '10px 0 0' }}>No section is selected. Choose at least one question type to continue.</p>
