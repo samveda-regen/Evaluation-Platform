@@ -6,25 +6,34 @@
 //
 // 1. Laptops with a Windows Hello / IR camera in addition to the regular webcam: a bare
 //    getUserMedia({video:true}) can be resolved by the browser against the IR sensor,
-//    which reports a genuinely 'live' track (permission UI shows granted) but renders
-//    black/unusable in a normal color <video> element and is useless to a vision model.
+//    which reports a genuinely 'live' track (permission UI shows granted) and even
+//    produces real, non-zero-dimension frames — just not a usable picture (a flat,
+//    near-monochrome image instead of the candidate's face).
 // 2. Some camera pipelines (observed specifically inside SEB's embedded browser) can
 //    return a track that stays at 0x0 dimensions — never firing a real frame — with no
 //    error thrown anywhere, so nothing in a plain try/catch around getUserMedia() catches
 //    it.
 //
-// Device labels are the only signal available to steer away from (1), and are only
-// populated by the browser once some camera permission has already been granted this
-// session — hence the two-phase approach below (first grab whatever the browser gives us,
-// then re-request a specific alternate device only if that first grab doesn't pan out).
-
-const UNWANTED_CAMERA_LABEL_PATTERN = /\b(ir|infrared|hello|depth|face\s*auth)\b/i;
+// Device *labels* ("IR Camera", "Windows Hello Face Camera", etc.) are not a reliable way
+// to catch (1) — naming conventions vary across OEMs and drivers, and plenty of IR
+// cameras aren't labeled distinctly at all. The reliable, vendor-agnostic signal is the
+// actual pixel content: an IR sensor decoded as color video reports near-identical R/G/B
+// values per pixel (colorfulness ~0), while a real color camera pointed at a person/room
+// always shows meaningful RGB spread. So when a system has more than one camera, each
+// candidate is briefly sampled and scored on that basis, and the best-scoring one wins —
+// regardless of what any driver calls it.
 
 export interface VerifiedCameraResult {
   stream: MediaStream | null;
   deviceId?: string;
   framesVerified: boolean;
 }
+
+// Average per-pixel max(R,G,B) - min(R,G,B) across a sampled frame. A genuinely
+// monochrome/IR feed sits at ~0-3 (channels are copies of one intensity value); a real
+// color picture of a person/room is reliably well above this even under flat lighting.
+const MIN_COLORFULNESS = 5;
+const MAX_DEVICE_ATTEMPTS = 3;
 
 async function listVideoInputDevices(): Promise<MediaDeviceInfo[]> {
   try {
@@ -35,23 +44,44 @@ async function listVideoInputDevices(): Promise<MediaDeviceInfo[]> {
   }
 }
 
-function pickPreferredDeviceId(devices: MediaDeviceInfo[], excludeIds: Set<string>): string | undefined {
-  const candidates = devices.filter(d => d.deviceId && !excludeIds.has(d.deviceId));
-  if (candidates.length === 0) return undefined;
-  const nonIr = candidates.filter(d => !UNWANTED_CAMERA_LABEL_PATTERN.test(d.label || ''));
-  return (nonIr[0] || candidates[0]).deviceId;
+function sampleColorfulness(video: HTMLVideoElement): number {
+  try {
+    const canvas = document.createElement('canvas');
+    const w = 64;
+    const h = 48;
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return 0;
+    ctx.drawImage(video, 0, 0, w, h);
+    const { data } = ctx.getImageData(0, 0, w, h);
+    let sumSpread = 0;
+    const pixelCount = data.length / 4;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      sumSpread += Math.max(r, g, b) - Math.min(r, g, b);
+    }
+    return sumSpread / pixelCount;
+  } catch {
+    return 0;
+  }
 }
 
 /**
- * Resolves once the stream's video track has actually decoded a frame (videoWidth/
- * videoHeight populated) — not merely once getUserMedia() has resolved. A track can
- * report readyState 'live' while sitting at 0x0 indefinitely.
+ * Resolves once the stream's video track has actually decoded a frame, then measures how
+ * colorful that frame is. A track can report readyState 'live' while sitting at 0x0
+ * indefinitely — framesOk catches that. colorfulness is 0 whenever framesOk is false.
  */
-export function waitForVideoFrame(stream: MediaStream, timeoutMs = 4000): Promise<boolean> {
+function checkFrameAndColor(
+  stream: MediaStream,
+  timeoutMs: number,
+): Promise<{ framesOk: boolean; colorfulness: number }> {
   return new Promise(resolve => {
     const track = stream.getVideoTracks()[0];
     if (!track) {
-      resolve(false);
+      resolve({ framesOk: false, colorfulness: 0 });
       return;
     }
 
@@ -62,15 +92,17 @@ export function waitForVideoFrame(stream: MediaStream, timeoutMs = 4000): Promis
 
     let settled = false;
     let timer: ReturnType<typeof setTimeout>;
-    const finish = (ok: boolean) => {
+
+    const finish = (framesOk: boolean) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       video.removeEventListener('loadedmetadata', checkFrame);
       video.removeEventListener('playing', checkFrame);
+      const colorfulness = framesOk ? sampleColorfulness(video) : 0;
       video.pause();
       video.srcObject = null;
-      resolve(ok);
+      resolve({ framesOk, colorfulness });
     };
 
     const checkFrame = () => {
@@ -85,68 +117,77 @@ export function waitForVideoFrame(stream: MediaStream, timeoutMs = 4000): Promis
   });
 }
 
+/** Non-IR-labeled devices first as a cheap tiebreaker — the real accept/reject decision
+ * happens on measured pixel content below, this just tries the more-likely-good device
+ * first so the common case resolves in one attempt instead of two. */
+async function preferredDeviceOrder(): Promise<string[]> {
+  const devices = await listVideoInputDevices();
+  const unwantedLabel = /\b(ir|infrared|hello|depth|face\s*auth)\b/i;
+  return devices
+    .filter(d => d.deviceId)
+    .sort((a, b) => {
+      const aBad = unwantedLabel.test(a.label || '') ? 1 : 0;
+      const bBad = unwantedLabel.test(b.label || '') ? 1 : 0;
+      return aBad - bBad;
+    })
+    .map(d => d.deviceId);
+}
+
 /**
- * Acquires a camera stream, steering away from IR/Windows-Hello-style cameras and
- * confirming the result actually produces frames before accepting it. Tries up to 3
- * distinct devices (when more than one is available) before giving up and returning
- * whatever it last got, so callers always have a fallback rather than nothing.
- *
- * IR/Hello cameras are rejected on label alone even when they DO produce frames — an IR
- * sensor decoded through a normal color pipeline still reports real non-zero videoWidth/
- * videoHeight (so frame-presence checks alone don't catch it), it's just not a usable
- * picture (typically a flat dark/blue-tinted image, not the candidate's face).
+ * Acquires a camera stream, verifying the result is both frame-producing AND a real
+ * color picture (not an IR/monochrome sensor) before accepting it. On systems with more
+ * than one camera, tries up to 3 distinct devices, scoring each by measured pixel
+ * colorfulness, and keeps the best one seen even if none clears the color threshold — so
+ * callers always get a result rather than nothing.
  */
 export async function acquireVerifiedCameraStream(
   constraints: MediaTrackConstraints = {},
   frameTimeoutMs = 4000,
 ): Promise<VerifiedCameraResult> {
-  const triedDeviceIds = new Set<string>();
-  let lastStream: MediaStream | null = null;
-  let lastDeviceId: string | undefined;
+  let candidateDeviceIds = await preferredDeviceOrder();
+  const tried = new Set<string>();
+  let best: { stream: MediaStream; deviceId?: string; colorfulness: number } | null = null;
 
-  for (let attempt = 0; attempt < 3; attempt++) {
-    // Device labels are populated once permission has been granted at least once this
-    // origin/session (either from an earlier attempt in this loop, or a prior visit) —
-    // as soon as they're available, pick an explicit non-IR device rather than leaving
-    // selection to the browser default, instead of only reacting after a failure.
-    const devices = await listVideoInputDevices();
-    const labelsKnown = devices.some(d => d.label);
-    let deviceId: string | undefined;
-    if (triedDeviceIds.size > 0 || labelsKnown) {
-      deviceId = pickPreferredDeviceId(devices, triedDeviceIds);
-      if (!deviceId && triedDeviceIds.size > 0) break; // no untried device left to fall back to
-    }
+  for (let attempt = 0; attempt < MAX_DEVICE_ATTEMPTS; attempt++) {
+    const nextDeviceId = candidateDeviceIds.find(id => !tried.has(id));
+    if (candidateDeviceIds.length > 0 && !nextDeviceId) break; // every known device already tried
 
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: deviceId ? { ...constraints, deviceId: { exact: deviceId } } : constraints,
+        video: nextDeviceId ? { ...constraints, deviceId: { exact: nextDeviceId } } : constraints,
       });
     } catch (err) {
       console.error('Camera acquisition failed:', err);
       break;
     }
 
-    const track = stream.getVideoTracks()[0];
-    const actualDeviceId = track?.getSettings().deviceId;
-    if (actualDeviceId) triedDeviceIds.add(actualDeviceId);
+    const actualDeviceId = stream.getVideoTracks()[0]?.getSettings().deviceId;
+    tried.add(actualDeviceId || nextDeviceId || `attempt-${attempt}`);
 
-    const label = track?.label || devices.find(d => d.deviceId === actualDeviceId)?.label || '';
-    const isUnwantedDevice = UNWANTED_CAMERA_LABEL_PATTERN.test(label);
-    const framesOk = !isUnwantedDevice && await waitForVideoFrame(stream, frameTimeoutMs);
+    const { framesOk, colorfulness } = await checkFrameAndColor(stream, frameTimeoutMs);
 
-    if (framesOk) {
-      lastStream?.getTracks().forEach(t => t.stop());
+    if (framesOk && colorfulness >= MIN_COLORFULNESS) {
+      best?.stream.getTracks().forEach(t => t.stop());
       return { stream, deviceId: actualDeviceId, framesVerified: true };
     }
 
-    // Not usable — but keep it as a last-resort fallback in case every candidate device
-    // fails verification (e.g. only an IR camera is present at all, or every device is
-    // slow to warm up rather than genuinely broken).
-    lastStream?.getTracks().forEach(t => t.stop());
-    lastStream = stream;
-    lastDeviceId = actualDeviceId;
+    if (framesOk && (!best || colorfulness > best.colorfulness)) {
+      best?.stream.getTracks().forEach(t => t.stop());
+      best = { stream, deviceId: actualDeviceId, colorfulness };
+    } else {
+      stream.getTracks().forEach(t => t.stop());
+    }
+
+    // First attempt with no enumerable devices yet (fresh permission grant, labels were
+    // empty beforehand) — now that access is granted, real devices are enumerable, so
+    // refresh the candidate list for the next iteration instead of hitting the same
+    // browser default again.
+    if (candidateDeviceIds.length === 0) {
+      candidateDeviceIds = await preferredDeviceOrder();
+    }
   }
 
-  return { stream: lastStream, deviceId: lastDeviceId, framesVerified: false };
+  if (best) return { stream: best.stream, deviceId: best.deviceId, framesVerified: false };
+  return { stream: null, framesVerified: false };
 }
