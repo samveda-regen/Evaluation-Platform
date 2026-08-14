@@ -78,6 +78,28 @@ export interface LibraryPicks {
 }
 export type SuggestionType = 'mcq' | 'coding' | 'behavioral';
 
+/* -- Full, read-only detail for the final Review step (fetched by id from the backend, since
+   library-matched/picked questions only carry a lightweight preview through the rest of the flow) -- */
+export interface ReviewMCQDetail {
+  id: string; questionText: string; options: string[]; correctAnswers: number[]; marks: number;
+  isMultipleChoice: boolean; explanation: string | null; difficulty: string; topic: string | null; tags: string[];
+}
+export interface ReviewCodingDetail {
+  id: string; title: string; description: string; inputFormat: string; outputFormat: string;
+  constraints: string | null; sampleInput: string; sampleOutput: string; marks: number; timeLimit: number;
+  memoryLimit: number; supportedLanguages: string[]; difficulty: string; topic: string | null; tags: string[];
+  testCases: Array<{ input: string; expectedOutput: string; isHidden: boolean; marks: number }>;
+}
+export interface ReviewBehavioralDetail {
+  id: string; title: string; description: string; expectedAnswer: string | null; marks: number;
+  difficulty: string; topic: string | null; tags: string[];
+}
+export interface ReviewDetails {
+  mcq: ReviewMCQDetail[];
+  coding: ReviewCodingDetail[];
+  behavioral: ReviewBehavioralDetail[];
+}
+
 export type QuestionSectionKey = SuggestionType;
 export const QUESTION_SECTIONS: { key: QuestionSectionKey; label: string }[] = [
   { key: 'mcq', label: 'MCQ' },

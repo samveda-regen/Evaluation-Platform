@@ -9,7 +9,7 @@ import AgentLibraryPickerModal from './AgentLibraryPickerModal';
 import AgentNewQuestionModal from './AgentNewQuestionModal';
 import type {
   JobProfile, QuestionSelection, SuggestedMCQ, SuggestedCoding, SuggestedBehavioral,
-  QuestionSuggestions, PreviewEntry, LibraryPicks, SuggestionType, QuestionSectionKey,
+  QuestionSuggestions, PreviewEntry, LibraryPicks, SuggestionType, QuestionSectionKey, ReviewDetails,
 } from './agentTestForm.types';
 import { QUESTION_SECTIONS } from './agentTestForm.types';
 
@@ -242,12 +242,33 @@ export default function AgentTestForm() {
     return () => clearInterval(id);
   }, [generatingTest]);
 
-  /* Step 5 state */
+  /* Step 4 (Finalize Settings) state */
   const [testSettings, setTestSettings] = useState<TestSettings>({
     name: '', description: '', duration: 60,
     startTime: '', endTime: '', passingMarks: 0,
     negativeMarking: 0, shuffleQuestions: true, shuffleOptions: true, maxViolations: 3,
   });
+
+  /* Step 5 (Review Selection — final, read-only) state: full question details fetched by id, since
+     library-matched/picked questions only carry a lightweight preview {id,text,difficulty,topic}
+     through the rest of the flow — this fills in options/test cases/expected answers for the
+     pre-creation review. */
+  const [reviewDetails, setReviewDetails] = useState<ReviewDetails | null>(null);
+  const [loadingReviewDetails, setLoadingReviewDetails] = useState(false);
+
+  useEffect(() => {
+    if (step !== 5 || !selection) return;
+    setLoadingReviewDetails(true);
+    adminApi.getAgentReviewDetails({
+      mcqQuestionIds: selection.mcqQuestionIds,
+      codingQuestionIds: selection.codingQuestionIds,
+      behavioralQuestionIds: selection.behavioralQuestionIds,
+    })
+      .then(({ data }) => { if (data.success && data.data) setReviewDetails(data.data); })
+      .catch(() => toast.error('Failed to load full question details for review'))
+      .finally(() => setLoadingReviewDetails(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, selection]);
 
   /* -- pull live skill/topic tags from the question library so autocomplete isn't a fixed list -- */
   useEffect(() => {
@@ -769,6 +790,32 @@ export default function AgentTestForm() {
     cursor: atLimit && !selected ? 'not-allowed' : 'pointer',
     opacity: atLimit && !selected ? 0.5 : 1,
   });
+  // Read-only display styles for the final Step 5 review — no selection state, so no pickRow needed.
+  const reviewCard: React.CSSProperties = {
+    padding: '14px 16px', borderRadius: '10px', border: '1px solid var(--admin-border)', backgroundColor: 'white',
+  };
+  const sectionHeading: React.CSSProperties = {
+    fontSize: '13px', fontWeight: 700, color: 'var(--admin-text)', margin: '0 0 12px',
+  };
+  const qTitle: React.CSSProperties = {
+    fontSize: '14px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 8px', lineHeight: '1.5',
+  };
+  const settingLabel: React.CSSProperties = {
+    fontSize: '11px', fontWeight: 600, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 4px',
+  };
+  const settingValue: React.CSSProperties = {
+    fontSize: '13px', fontWeight: 600, color: 'var(--admin-text)', margin: 0,
+  };
+  const metaRow = (difficulty: string, marks: number | undefined, topic: string | null | undefined, tags: string[]) => (
+    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--admin-text-subtle)' }}>
+      <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{difficulty}</span>
+      {typeof marks === 'number' && (<><span>·</span><span>{marks} pts</span></>)}
+      {topic && (<><span>·</span><span>{topic}</span></>)}
+      {tags.map(t => (
+        <span key={t} style={{ padding: '1px 8px', borderRadius: '999px', backgroundColor: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)' }}>{t}</span>
+      ))}
+    </div>
+  );
   const focus = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     e.target.style.borderColor = 'var(--admin-border-focus)';
     if (e.target instanceof HTMLInputElement && e.target.type === 'number') e.target.select();
@@ -1507,10 +1554,17 @@ export default function AgentTestForm() {
             </div>
           )}
 
-          {/* ============ STEP 5: Review AI Selection ============ */}
-          {step === 5 && selection && (
+          {/* ============ STEP 5: Review AI Selection (final, read-only preview) ============ */}
+          {step === 5 && selection && (() => {
+            const mcqDetailById = new Map((reviewDetails?.mcq ?? []).map(q => [q.id, q]));
+            const codingDetailById = new Map((reviewDetails?.coding ?? []).map(q => [q.id, q]));
+            const behavioralDetailById = new Map((reviewDetails?.behavioral ?? []).map(q => [q.id, q]));
+            return (
             <div style={card}>
-              <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 20px' }}>Step 5: Review AI Selection</h2>
+              <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 4px' }}>Step 5: Review Selection</h2>
+              <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 20px' }}>
+                This is a read-only preview of the test as it will be created. Go Back to change anything.
+              </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
                 {/* MCQ / Coding / Behavioral counts */}
@@ -1540,39 +1594,182 @@ export default function AgentTestForm() {
                   </div>
                 )}
 
-                {/* Suggested settings summary */}
-                <div style={{ borderRadius: '10px', padding: '16px 18px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)', display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
-                  <div>
-                    <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 4px' }}>Suggested Duration</p>
-                    <p style={{ fontSize: '20px', fontWeight: 700, color: 'var(--admin-accent-hover)', margin: 0 }}>{selection.suggestedDuration} <span style={{ fontSize: '13px', fontWeight: 500 }}>min</span></p>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ fontSize: '11px', fontWeight: 600, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 4px' }}>Suggested Test Name</p>
-                    <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--admin-accent-hover)', margin: 0 }}>{selection.suggestedTestName}</p>
-                  </div>
-                </div>
-
-                {/* Questions Selected */}
-                {(selection.mcqPreviews?.length || selection.codingPreviews?.length || selection.behavioralPreviews?.length) ? (
-                  <div style={{ borderRadius: '10px', padding: '16px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
-                    <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--admin-accent-hover)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 12px' }}>Questions Selected</p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      {[
-                        ...(selection.mcqPreviews ?? []).map(q => ({ ...q, type: 'MCQ' })),
-                        ...(selection.codingPreviews ?? []).map(q => ({ ...q, type: 'Coding' })),
-                        ...(selection.behavioralPreviews ?? []).map(q => ({ ...q, type: 'Behavioral' })),
-                      ].map((q, i) => (
-                        <div key={`${q.type}-${q.id}-${i}`} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', padding: '10px 12px', borderRadius: '8px', backgroundColor: 'white', border: '1px solid var(--admin-accent-disabled)' }}>
-                          <span style={{ flexShrink: 0, fontSize: '11px', fontWeight: 700, color: 'var(--admin-accent-hover)', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)', borderRadius: '6px', padding: '2px 8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                            {q.type}
-                          </span>
-                          <span style={{ flex: 1, fontSize: '13px', color: 'var(--admin-text)', lineHeight: '1.5' }}>{q.text}</span>
-                          <span style={{ flexShrink: 0, fontSize: '11px', fontWeight: 600, color: 'var(--admin-text-subtle)', textTransform: 'capitalize' }}>{q.difficulty}</span>
-                        </div>
-                      ))}
+                {/* Finalized test settings (locked in from Step 4) */}
+                <div style={{ borderRadius: '10px', padding: '16px 18px', backgroundColor: '#F9FAFB', border: '1px solid var(--admin-border)' }}>
+                  <p style={{ fontSize: '12px', fontWeight: 700, color: 'var(--admin-text)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 14px' }}>Test Settings</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '14px 20px' }}>
+                    <div>
+                      <p style={settingLabel}>Test Name</p>
+                      <p style={settingValue}>{testSettings.name || '—'}</p>
+                    </div>
+                    <div>
+                      <p style={settingLabel}>Duration</p>
+                      <p style={settingValue}>{testSettings.duration} min</p>
+                    </div>
+                    <div>
+                      <p style={settingLabel}>Start Time</p>
+                      <p style={settingValue}>{testSettings.startTime ? new Date(testSettings.startTime).toLocaleString() : '—'}</p>
+                    </div>
+                    <div>
+                      <p style={settingLabel}>End Time</p>
+                      <p style={settingValue}>{testSettings.endTime ? new Date(testSettings.endTime).toLocaleString() : 'Not set'}</p>
+                    </div>
+                    <div>
+                      <p style={settingLabel}>Passing Marks</p>
+                      <p style={settingValue}>{testSettings.passingMarks}</p>
+                    </div>
+                    <div>
+                      <p style={settingLabel}>Negative Marking</p>
+                      <p style={settingValue}>{testSettings.negativeMarking} per wrong answer</p>
+                    </div>
+                    <div>
+                      <p style={settingLabel}>Max Violations</p>
+                      <p style={settingValue}>{testSettings.maxViolations}</p>
+                    </div>
+                    <div>
+                      <p style={settingLabel}>Shuffle Questions</p>
+                      <p style={settingValue}>{testSettings.shuffleQuestions ? 'Yes' : 'No'}</p>
+                    </div>
+                    <div>
+                      <p style={settingLabel}>Shuffle Options</p>
+                      <p style={settingValue}>{testSettings.shuffleOptions ? 'Yes' : 'No'}</p>
                     </div>
                   </div>
-                ) : null}
+                  {testSettings.description && (
+                    <div style={{ marginTop: '14px' }}>
+                      <p style={settingLabel}>Description</p>
+                      <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: 0, lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>{testSettings.description}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Full question details */}
+                {loadingReviewDetails && !reviewDetails && (
+                  <p style={{ fontSize: '13px', color: 'var(--admin-text-subtle)', textAlign: 'center', margin: '8px 0' }}>Loading full question details…</p>
+                )}
+
+                {selection.mcqQuestionIds.length > 0 && (
+                  <div>
+                    <p style={sectionHeading}>MCQ Questions ({selection.mcqQuestionIds.length})</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {selection.mcqQuestionIds.map((id, idx) => {
+                        const detail = mcqDetailById.get(id);
+                        const preview = selection.mcqPreviews?.find(p => p.id === id);
+                        return (
+                          <div key={id} style={reviewCard}>
+                            {detail ? (
+                              <>
+                                <p style={qTitle}>{idx + 1}. {detail.questionText}</p>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', margin: '0 0 8px' }}>
+                                  {detail.options.map((opt, oi) => (
+                                    <div key={oi} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: detail.correctAnswers.includes(oi) ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)', fontWeight: detail.correctAnswers.includes(oi) ? 600 : 400 }}>
+                                      <span>{detail.correctAnswers.includes(oi) ? '✓' : '○'}</span>
+                                      <span>{opt}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                {detail.explanation && (
+                                  <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 8px', lineHeight: '1.5' }}><strong>Explanation:</strong> {detail.explanation}</p>
+                                )}
+                                {metaRow(detail.difficulty, detail.marks, detail.topic, detail.tags)}
+                              </>
+                            ) : (
+                              <>
+                                <p style={qTitle}>{idx + 1}. {preview?.text ?? 'Loading…'}</p>
+                                {preview && metaRow(preview.difficulty, undefined, preview.topic, [])}
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {selection.codingQuestionIds.length > 0 && (
+                  <div>
+                    <p style={sectionHeading}>Coding Questions ({selection.codingQuestionIds.length})</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {selection.codingQuestionIds.map((id, idx) => {
+                        const detail = codingDetailById.get(id);
+                        const preview = selection.codingPreviews?.find(p => p.id === id);
+                        return (
+                          <div key={id} style={reviewCard}>
+                            {detail ? (
+                              <>
+                                <p style={qTitle}>{idx + 1}. {detail.title}</p>
+                                <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: '0 0 8px', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{detail.description}</p>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '12px', color: 'var(--admin-text-subtle)', marginBottom: '8px' }}>
+                                  <p style={{ margin: 0 }}><strong>Input:</strong> {detail.inputFormat}</p>
+                                  <p style={{ margin: 0 }}><strong>Output:</strong> {detail.outputFormat}</p>
+                                  <p style={{ margin: 0 }}><strong>Sample in:</strong> {detail.sampleInput}</p>
+                                  <p style={{ margin: 0 }}><strong>Sample out:</strong> {detail.sampleOutput}</p>
+                                  {detail.constraints && (
+                                    <p style={{ margin: 0, gridColumn: '1 / -1' }}><strong>Constraints:</strong> {detail.constraints}</p>
+                                  )}
+                                </div>
+                                {detail.testCases.length > 0 && (
+                                  <div style={{ marginBottom: '8px' }}>
+                                    <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>
+                                      Test Cases ({detail.testCases.length})
+                                    </p>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                      {detail.testCases.map((tc, ti) => (
+                                        <p key={ti} style={{ margin: 0, fontSize: '12px', color: 'var(--admin-text-subtle)' }}>
+                                          #{ti + 1}: in=<code>{tc.input}</code> → out=<code>{tc.expectedOutput}</code>{tc.isHidden ? ' (hidden)' : ''} · {tc.marks} pts
+                                        </p>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 8px' }}>
+                                  {detail.supportedLanguages.join(', ')} · {Math.round(detail.timeLimit / 1000)}s limit · {detail.memoryLimit}MB
+                                </p>
+                                {metaRow(detail.difficulty, detail.marks, detail.topic, detail.tags)}
+                              </>
+                            ) : (
+                              <>
+                                <p style={qTitle}>{idx + 1}. {preview?.text ?? 'Loading…'}</p>
+                                {preview && metaRow(preview.difficulty, undefined, preview.topic, [])}
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {selection.behavioralQuestionIds.length > 0 && (
+                  <div>
+                    <p style={sectionHeading}>Behavioral Questions ({selection.behavioralQuestionIds.length})</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {selection.behavioralQuestionIds.map((id, idx) => {
+                        const detail = behavioralDetailById.get(id);
+                        const preview = selection.behavioralPreviews?.find(p => p.id === id);
+                        return (
+                          <div key={id} style={reviewCard}>
+                            {detail ? (
+                              <>
+                                <p style={qTitle}>{idx + 1}. {detail.title}</p>
+                                <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: '0 0 8px', lineHeight: '1.5' }}>{detail.description}</p>
+                                {detail.expectedAnswer && (
+                                  <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 8px', lineHeight: '1.5' }}><strong>Grading benchmark:</strong> {detail.expectedAnswer}</p>
+                                )}
+                                {metaRow(detail.difficulty, detail.marks, detail.topic, detail.tags)}
+                              </>
+                            ) : (
+                              <>
+                                <p style={qTitle}>{idx + 1}. {preview?.text ?? 'Loading…'}</p>
+                                {preview && metaRow(preview.difficulty, undefined, preview.topic, [])}
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* Warnings */}
                 {selection.mcqQuestionIds.length + selection.codingQuestionIds.length + selection.behavioralQuestionIds.length === 0 && (
@@ -1618,7 +1815,8 @@ export default function AgentTestForm() {
                 </div>
               </div>
             </div>
-          )}
+            );
+          })()}
       </div>
       </div>
     </div>

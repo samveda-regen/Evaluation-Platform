@@ -477,6 +477,12 @@ export const adminApi = {
     behavioralCount: number;
   }) => api.post('/admin/agent/suggest-questions', data),
 
+  getAgentReviewDetails: (data: {
+    mcqQuestionIds: string[];
+    codingQuestionIds: string[];
+    behavioralQuestionIds: string[];
+  }) => api.post('/admin/agent/review-details', data),
+
   // Proctoring - Admin
   getProctoringSummary: (attemptId: string) =>
     api.get(`/proctoring/admin/attempt/${attemptId}/summary`),

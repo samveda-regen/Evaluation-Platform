@@ -999,3 +999,123 @@ Respond with a JSON object:
     suggestedDifficulty: 'easy' | 'medium' | 'hard';
   };
 }
+
+export interface ReviewMCQDetail {
+  id: string;
+  questionText: string;
+  options: string[];
+  correctAnswers: number[];
+  marks: number;
+  isMultipleChoice: boolean;
+  explanation: string | null;
+  difficulty: string;
+  topic: string | null;
+  tags: string[];
+}
+export interface ReviewCodingDetail {
+  id: string;
+  title: string;
+  description: string;
+  inputFormat: string;
+  outputFormat: string;
+  constraints: string | null;
+  sampleInput: string;
+  sampleOutput: string;
+  marks: number;
+  timeLimit: number;
+  memoryLimit: number;
+  supportedLanguages: string[];
+  difficulty: string;
+  topic: string | null;
+  tags: string[];
+  testCases: Array<{ input: string; expectedOutput: string; isHidden: boolean; marks: number }>;
+}
+export interface ReviewBehavioralDetail {
+  id: string;
+  title: string;
+  description: string;
+  expectedAnswer: string | null;
+  marks: number;
+  difficulty: string;
+  topic: string | null;
+  tags: string[];
+}
+
+// Pure read — fetches the full stored details (options, test cases, expected answers, etc.) for a
+// final set of selected question IDs, regardless of whether they originated from a library match,
+// a manual library pick, or an AI-authored suggestion (all three are real persisted questions by
+// the time their ids reach here) — used to render a complete, read-only pre-creation review.
+export async function getQuestionDetailsForReview(
+  mcqIds: string[],
+  codingIds: string[],
+  behavioralIds: string[]
+): Promise<{
+  mcq: ReviewMCQDetail[];
+  coding: ReviewCodingDetail[];
+  behavioral: ReviewBehavioralDetail[];
+}> {
+  const [mcqQuestions, codingQuestions, behavioralQuestions] = await Promise.all([
+    mcqIds.length ? prisma.mCQQuestion.findMany({ where: { id: { in: mcqIds } } }) : Promise.resolve([]),
+    codingIds.length ? prisma.codingQuestion.findMany({ where: { id: { in: codingIds } }, include: { testCases: true } }) : Promise.resolve([]),
+    behavioralIds.length ? prisma.behavioralQuestion.findMany({ where: { id: { in: behavioralIds } } }) : Promise.resolve([])
+  ]);
+
+  const mcqById = new Map(mcqQuestions.map((q: typeof mcqQuestions[number]) => [q.id, q]));
+  const codingById = new Map(codingQuestions.map((q: typeof codingQuestions[number]) => [q.id, q]));
+  const behavioralById = new Map(behavioralQuestions.map((q: typeof behavioralQuestions[number]) => [q.id, q]));
+
+  return {
+    // Preserve the order the caller asked for (the order questions were selected in), not DB order.
+    mcq: mcqIds
+      .map(id => mcqById.get(id))
+      .filter((q): q is NonNullable<typeof q> => !!q)
+      .map(q => ({
+        id: q.id,
+        questionText: q.questionText,
+        options: JSON.parse(q.options),
+        correctAnswers: JSON.parse(q.correctAnswers),
+        marks: q.marks,
+        isMultipleChoice: q.isMultipleChoice,
+        explanation: q.explanation,
+        difficulty: q.difficulty,
+        topic: q.topic,
+        tags: q.tags ? JSON.parse(q.tags) : []
+      })),
+    coding: codingIds
+      .map(id => codingById.get(id))
+      .filter((q): q is NonNullable<typeof q> => !!q)
+      .map(q => ({
+        id: q.id,
+        title: q.title,
+        description: q.description,
+        inputFormat: q.inputFormat,
+        outputFormat: q.outputFormat,
+        constraints: q.constraints,
+        sampleInput: q.sampleInput,
+        sampleOutput: q.sampleOutput,
+        marks: q.marks,
+        timeLimit: q.timeLimit,
+        memoryLimit: q.memoryLimit,
+        supportedLanguages: JSON.parse(q.supportedLanguages),
+        difficulty: q.difficulty,
+        topic: q.topic,
+        tags: q.tags ? JSON.parse(q.tags) : [],
+        testCases: q.testCases.map((tc: { input: string; expectedOutput: string; isHidden: boolean; marks: number }) => ({
+          input: tc.input, expectedOutput: tc.expectedOutput, isHidden: tc.isHidden, marks: tc.marks
+        }))
+      })),
+    behavioral: behavioralIds
+      .map(id => behavioralById.get(id))
+      .filter((q): q is NonNullable<typeof q> => !!q)
+      .map(q => ({
+        id: q.id,
+        title: q.title,
+        description: q.description,
+        expectedAnswer: q.expectedAnswer,
+        marks: q.marks,
+        difficulty: q.difficulty,
+        topic: q.topic,
+        tags: q.tags ? JSON.parse(q.tags) : []
+      }))
+  };
+}

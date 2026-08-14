@@ -6,7 +6,8 @@ import {
   analyzeJobRequirements,
   suggestQuestionTags,
   suggestNewQuestions,
-  getLibrarySkillTags
+  getLibrarySkillTags,
+  getQuestionDetailsForReview
 } from '../services/testAgentService.js';
 import prisma from '../utils/db.js';
 
@@ -223,6 +224,31 @@ export const suggestQuestions = async (req: AuthenticatedRequest, res: Response)
     console.error('Error suggesting new questions:', error);
     res.status(500).json({
       error: 'Failed to suggest new questions',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+};
+
+// POST /admin/agent/review-details — full details (options, test cases, expected answers, etc.)
+// for a final set of selected question ids, for the read-only pre-creation review step.
+export const getReviewDetails = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { mcqQuestionIds, codingQuestionIds, behavioralQuestionIds } = req.body;
+
+    const details = await getQuestionDetailsForReview(
+      Array.isArray(mcqQuestionIds) ? mcqQuestionIds : [],
+      Array.isArray(codingQuestionIds) ? codingQuestionIds : [],
+      Array.isArray(behavioralQuestionIds) ? behavioralQuestionIds : []
+    );
+
+    res.json({
+      success: true,
+      data: details
+    });
+  } catch (error) {
+    console.error('Error fetching review details:', error);
+    res.status(500).json({
+      error: 'Failed to fetch review details',
       message: error instanceof Error ? error.message : 'Unknown error'
     });
   }
