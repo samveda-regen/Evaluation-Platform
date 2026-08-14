@@ -136,8 +136,8 @@ function StepIndicator({ current }: { current: number }) {
     { label: 'Job Profile', icon: BriefcaseBusiness },
     { label: 'Skills & Settings', icon: ListChecks },
     { label: 'Question Suggestions', icon: Sparkles },
-    { label: 'Review Selection', icon: ClipboardCheck },
     { label: 'Finalize Settings', icon: Settings2 },
+    { label: 'Review Selection', icon: ClipboardCheck },
   ];
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '32px', width: '100%' }}>
@@ -1402,10 +1402,115 @@ export default function AgentTestForm() {
             />
           )}
 
-          {/* ============ STEP 4: Review AI Selection ============ */}
-          {step === 4 && selection && (
+          {/* ============ STEP 4: Finalize Test Settings ============ */}
+          {step === 4 && (
             <div style={card}>
-              <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 20px' }}>Step 4: Review AI Selection</h2>
+              <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 20px' }}>Step 4: Finalize Test Settings</h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={lbl}>Test Name <span style={{ color: '#EF4444' }}>*</span></label>
+                    <input type="text"
+                      value={testSettings.name}
+                      onChange={e => setTestSettings(p => ({ ...p, name: e.target.value }))}
+                      style={inp} onFocus={focus} onBlur={blur}
+                    />
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <label style={lbl}>Description</label>
+                    <textarea
+                      value={testSettings.description}
+                      onChange={e => setTestSettings(p => ({ ...p, description: e.target.value }))}
+                      rows={3}
+                      style={{ ...inp, lineHeight: '1.6', resize: 'vertical' }}
+                      onFocus={focus} onBlur={blur}
+                    />
+                  </div>
+                  <div>
+                    <label style={lbl}>Duration (minutes) <span style={{ color: '#EF4444' }}>*</span></label>
+                    <input type="number" min={1}
+                      value={testSettings.duration === 0 ? '' : testSettings.duration}
+                      onChange={e => setTestSettings(p => ({ ...p, duration: e.target.value === '' ? 0 : parseNum(e.target.value, 0) }))}
+                      style={inp} onFocus={focus} onBlur={blur}
+                      placeholder="e.g. 60"
+                    />
+                  </div>
+                  <div>
+                    <label style={lbl}>Passing Marks</label>
+                    <input type="number"
+                      value={testSettings.passingMarks}
+                      onChange={e => setTestSettings(p => ({ ...p, passingMarks: parseNum(e.target.value, 0) }))}
+                      style={inp} onFocus={focus} onBlur={blur}
+                    />
+                  </div>
+                  <div>
+                    <label style={lbl}>Start Time <span style={{ color: '#EF4444' }}>*</span></label>
+                    <DateTimePicker
+                      value={testSettings.startTime}
+                      onChange={handleStartTimeChange}
+                      placeholder="Select start date & time"
+                    />
+                  </div>
+                  <div>
+                    <label style={lbl}>End Time <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--admin-text-subtle)' }}>(Optional)</span></label>
+                    <DateTimePicker
+                      value={testSettings.endTime}
+                      onChange={handleEndTimeChange}
+                      minDateTime={minEndTime}
+                      placeholder="Select end date & time"
+                    />
+                  </div>
+                  <div>
+                    <label style={lbl}>Negative Marking (per question)</label>
+                    <input type="number"
+                      value={testSettings.negativeMarking}
+                      onChange={e => setTestSettings(p => ({ ...p, negativeMarking: e.target.value === '' ? 0 : Number(e.target.value) }))}
+                      style={inp} onFocus={focus} onBlur={blur}
+                    />
+                  </div>
+                  <div>
+                    <label style={lbl}>Max Violations</label>
+                    <input type="number"
+                      value={testSettings.maxViolations}
+                      onChange={e => setTestSettings(p => ({ ...p, maxViolations: parseNum(e.target.value, 3) }))}
+                      min={1} max={MAX_TEST_VIOLATIONS}
+                      style={inp} onFocus={focus} onBlur={blur}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '24px', padding: '14px 16px', borderRadius: '8px', backgroundColor: '#F9FAFB', border: '1px solid var(--admin-border)' }}>
+                  {(['shuffleQuestions', 'shuffleOptions'] as const).map(key => (
+                    <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: 'var(--admin-text-muted)' }}>
+                      <input type="checkbox"
+                        checked={testSettings[key]}
+                        onChange={e => setTestSettings(p => ({ ...p, [key]: e.target.checked }))}
+                        style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--admin-button-primary)' }}
+                      />
+                      {key === 'shuffleQuestions' ? 'Shuffle Questions' : 'Shuffle Options'}
+                    </label>
+                  ))}
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
+                  <button onClick={() => setStep(3)} style={btnSecondary}>Back</button>
+                  <button
+                    onClick={() => setStep(5)}
+                    disabled={!testSettings.startTime || !testSettings.name.trim()}
+                    style={!testSettings.startTime || !testSettings.name.trim() ? btnDisabled : btnPrimary}
+                  >
+                    Continue to Review
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ============ STEP 5: Review AI Selection ============ */}
+          {step === 5 && selection && (
+            <div style={card}>
+              <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 20px' }}>Step 5: Review AI Selection</h2>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
                 {/* MCQ / Coding / Behavioral counts */}
@@ -1496,124 +1601,20 @@ export default function AgentTestForm() {
                 )}
 
                 <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
-                  <button onClick={() => setStep(3)} style={btnSecondary}>Back</button>
+                  <button onClick={() => setStep(4)} style={btnSecondary}>Back</button>
                   {(() => {
                     const noQuestions = selection.mcqQuestionIds.length + selection.codingQuestionIds.length + selection.behavioralQuestionIds.length === 0;
+                    const disabled = noQuestions || loading;
                     return (
                       <button
-                        onClick={() => setStep(5)}
-                        disabled={noQuestions}
-                        style={noQuestions ? btnDisabled : btnPrimary}
+                        onClick={handleCreateTest}
+                        disabled={disabled}
+                        style={disabled ? btnDisabled : btnPrimary}
                       >
-                        Continue to Settings
+                        {loading ? 'Creating...' : 'Create Test'}
                       </button>
                     );
                   })()}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ============ STEP 5: Finalize Test Settings ============ */}
-          {step === 5 && (
-            <div style={card}>
-              <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 20px' }}>Step 5: Finalize Test Settings</h2>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={lbl}>Test Name <span style={{ color: '#EF4444' }}>*</span></label>
-                    <input type="text"
-                      value={testSettings.name}
-                      onChange={e => setTestSettings(p => ({ ...p, name: e.target.value }))}
-                      style={inp} onFocus={focus} onBlur={blur}
-                    />
-                  </div>
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <label style={lbl}>Description</label>
-                    <textarea
-                      value={testSettings.description}
-                      onChange={e => setTestSettings(p => ({ ...p, description: e.target.value }))}
-                      rows={3}
-                      style={{ ...inp, lineHeight: '1.6', resize: 'vertical' }}
-                      onFocus={focus} onBlur={blur}
-                    />
-                  </div>
-                  <div>
-                    <label style={lbl}>Duration (minutes) <span style={{ color: '#EF4444' }}>*</span></label>
-                    <input type="number" min={1}
-                      value={testSettings.duration === 0 ? '' : testSettings.duration}
-                      onChange={e => setTestSettings(p => ({ ...p, duration: e.target.value === '' ? 0 : parseNum(e.target.value, 0) }))}
-                      style={inp} onFocus={focus} onBlur={blur}
-                      placeholder="e.g. 60"
-                    />
-                  </div>
-                  <div>
-                    <label style={lbl}>Passing Marks</label>
-                    <input type="number"
-                      value={testSettings.passingMarks}
-                      onChange={e => setTestSettings(p => ({ ...p, passingMarks: parseNum(e.target.value, 0) }))}
-                      style={inp} onFocus={focus} onBlur={blur}
-                    />
-                  </div>
-                  <div>
-                    <label style={lbl}>Start Time <span style={{ color: '#EF4444' }}>*</span></label>
-                    <DateTimePicker
-                      value={testSettings.startTime}
-                      onChange={handleStartTimeChange}
-                      placeholder="Select start date & time"
-                    />
-                  </div>
-                  <div>
-                    <label style={lbl}>End Time <span style={{ fontSize: '12px', fontWeight: 400, color: 'var(--admin-text-subtle)' }}>(Optional)</span></label>
-                    <DateTimePicker
-                      value={testSettings.endTime}
-                      onChange={handleEndTimeChange}
-                      minDateTime={minEndTime}
-                      placeholder="Select end date & time"
-                    />
-                  </div>
-                  <div>
-                    <label style={lbl}>Negative Marking (per question)</label>
-                    <input type="number"
-                      value={testSettings.negativeMarking}
-                      onChange={e => setTestSettings(p => ({ ...p, negativeMarking: e.target.value === '' ? 0 : Number(e.target.value) }))}
-                      style={inp} onFocus={focus} onBlur={blur}
-                    />
-                  </div>
-                  <div>
-                    <label style={lbl}>Max Violations</label>
-                    <input type="number"
-                      value={testSettings.maxViolations}
-                      onChange={e => setTestSettings(p => ({ ...p, maxViolations: parseNum(e.target.value, 3) }))}
-                      min={1} max={MAX_TEST_VIOLATIONS}
-                      style={inp} onFocus={focus} onBlur={blur}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', gap: '24px', padding: '14px 16px', borderRadius: '8px', backgroundColor: '#F9FAFB', border: '1px solid var(--admin-border)' }}>
-                  {(['shuffleQuestions', 'shuffleOptions'] as const).map(key => (
-                    <label key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: 'var(--admin-text-muted)' }}>
-                      <input type="checkbox"
-                        checked={testSettings[key]}
-                        onChange={e => setTestSettings(p => ({ ...p, [key]: e.target.checked }))}
-                        style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: 'var(--admin-button-primary)' }}
-                      />
-                      {key === 'shuffleQuestions' ? 'Shuffle Questions' : 'Shuffle Options'}
-                    </label>
-                  ))}
-                </div>
-
-                <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
-                  <button onClick={() => setStep(4)} style={btnSecondary}>Back</button>
-                  <button
-                    onClick={handleCreateTest}
-                    disabled={loading || !testSettings.startTime || !testSettings.name.trim()}
-                    style={loading || !testSettings.startTime || !testSettings.name.trim() ? btnDisabled : btnPrimary}
-                  >
-                    {loading ? 'Creating...' : 'Create Test'}
-                  </button>
                 </div>
               </div>
             </div>
