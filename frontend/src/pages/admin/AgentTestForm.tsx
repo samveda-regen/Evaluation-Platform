@@ -796,15 +796,15 @@ export default function AgentTestForm() {
   return (
     <div style={{
       backgroundColor: '#F9FAFB',
-      height: 'calc(100vh - 100px)',
-      minHeight: '560px',
+      height: 'calc(100vh - 60px)',
+      minHeight: '680px',
       overflow: 'hidden',
       display: 'flex',
       flexDirection: 'column',
     }}>
       <div style={{
         width: '100%',
-        maxWidth: '1360px',
+        maxWidth: '1640px',
         margin: '0 auto',
         height: '100%',
         minHeight: 0,
