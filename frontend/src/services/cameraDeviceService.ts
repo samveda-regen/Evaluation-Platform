@@ -90,6 +90,11 @@ export function waitForVideoFrame(stream: MediaStream, timeoutMs = 4000): Promis
  * confirming the result actually produces frames before accepting it. Tries up to 3
  * distinct devices (when more than one is available) before giving up and returning
  * whatever it last got, so callers always have a fallback rather than nothing.
+ *
+ * IR/Hello cameras are rejected on label alone even when they DO produce frames — an IR
+ * sensor decoded through a normal color pipeline still reports real non-zero videoWidth/
+ * videoHeight (so frame-presence checks alone don't catch it), it's just not a usable
+ * picture (typically a flat dark/blue-tinted image, not the candidate's face).
  */
 export async function acquireVerifiedCameraStream(
   constraints: MediaTrackConstraints = {},
@@ -100,11 +105,16 @@ export async function acquireVerifiedCameraStream(
   let lastDeviceId: string | undefined;
 
   for (let attempt = 0; attempt < 3; attempt++) {
+    // Device labels are populated once permission has been granted at least once this
+    // origin/session (either from an earlier attempt in this loop, or a prior visit) —
+    // as soon as they're available, pick an explicit non-IR device rather than leaving
+    // selection to the browser default, instead of only reacting after a failure.
+    const devices = await listVideoInputDevices();
+    const labelsKnown = devices.some(d => d.label);
     let deviceId: string | undefined;
-    if (triedDeviceIds.size > 0) {
-      const devices = await listVideoInputDevices();
+    if (triedDeviceIds.size > 0 || labelsKnown) {
       deviceId = pickPreferredDeviceId(devices, triedDeviceIds);
-      if (!deviceId) break; // no untried device left to fall back to
+      if (!deviceId && triedDeviceIds.size > 0) break; // no untried device left to fall back to
     }
 
     let stream: MediaStream;
@@ -117,10 +127,13 @@ export async function acquireVerifiedCameraStream(
       break;
     }
 
-    const actualDeviceId = stream.getVideoTracks()[0]?.getSettings().deviceId;
+    const track = stream.getVideoTracks()[0];
+    const actualDeviceId = track?.getSettings().deviceId;
     if (actualDeviceId) triedDeviceIds.add(actualDeviceId);
 
-    const framesOk = await waitForVideoFrame(stream, frameTimeoutMs);
+    const label = track?.label || devices.find(d => d.deviceId === actualDeviceId)?.label || '';
+    const isUnwantedDevice = UNWANTED_CAMERA_LABEL_PATTERN.test(label);
+    const framesOk = !isUnwantedDevice && await waitForVideoFrame(stream, frameTimeoutMs);
 
     if (framesOk) {
       lastStream?.getTracks().forEach(t => t.stop());
@@ -128,7 +141,8 @@ export async function acquireVerifiedCameraStream(
     }
 
     // Not usable — but keep it as a last-resort fallback in case every candidate device
-    // fails verification (e.g. a slow-to-warm-up camera rather than a genuinely broken one).
+    // fails verification (e.g. only an IR camera is present at all, or every device is
+    // slow to warm up rather than genuinely broken).
     lastStream?.getTracks().forEach(t => t.stop());
     lastStream = stream;
     lastDeviceId = actualDeviceId;
