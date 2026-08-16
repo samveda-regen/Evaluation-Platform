@@ -246,6 +246,12 @@ export default function TestInstructions() {
         height: { ideal: 720 },
       });
       cameraDiagnostics = result.diagnostics;
+      // Fire-and-forget: report this from the pre-check itself, not just at exam start —
+      // a candidate whose camera fails here never proceeds to the exam at all, so this is
+      // the only chance to see what happened on their machine server-side.
+      candidateApi
+        .logActivity({ eventType: 'camera_precheck_diagnostics', eventData: cameraDiagnostics as unknown as Record<string, unknown> })
+        .catch(() => {});
       if (result.stream) {
         cameraStream = result.stream;
         cameraOk = result.framesVerified;
