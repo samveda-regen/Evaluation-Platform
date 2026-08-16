@@ -1194,6 +1194,14 @@ export async function logActivity(req: AuthenticatedRequest, res: Response): Pro
       console.log(`[CAMERA_DIAGNOSTICS] stage=${stage} attempt=${attemptId}`, JSON.stringify(normalizedEventData));
     }
 
+    // The exam page no longer attempts a fresh getUserMedia() call when the pre-check's
+    // cached stream isn't there (that silent second request was the thing hanging) — it
+    // now sends the candidate back to redo the device check instead. This tracks how
+    // often that recovery path actually triggers in practice.
+    if (normalizedEventType === 'camera_examstart_cache_miss') {
+      console.log(`[CAMERA_DIAGNOSTICS] stage=examstart_cache_miss attempt=${attemptId}`, JSON.stringify(normalizedEventData));
+    }
+
     // Same idea, for the screen-share timeout added alongside the camera diagnostics —
     // grep SCREEN_SHARE_DIAGNOSTICS to see whether a given machine's getDisplayMedia()
     // call succeeded, was denied, picked the wrong surface, or timed out entirely.

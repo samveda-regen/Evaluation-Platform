@@ -18,7 +18,6 @@ import {
   getBrowserInfo,
   getScreenResolution,
   detectMonitors,
-  requestCameraPermission,
   requestMicrophonePermission,
   requestScreenShare,
   getScreenShareErrorMessage,
@@ -398,33 +397,32 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
       let cameraDiagnostics: CameraDiagnostics | null = null;
       if (finalConfig.enableCamera) {
         const cached = getCachedStreams();
-        // Reusing the device-check page's cached stream is the normal path
-        // (no second getUserMedia call, no lock contention). The fallback
-        // fresh request only fires if that cache came up empty for any
-        // reason — a scenario SEB's embedded WebView has been observed to
-        // handle less reliably than a regular browser on a second
-        // getUserMedia() call in the same session. One retry after a short
-        // delay before giving up, rather than failing on the first blip.
-        let cameraStream = cached.cameraStream;
+        // Reuse the device-check page's already-verified stream — the *only* source of
+        // camera access here now. There used to be a fallback that requested the camera
+        // fresh when this cache came up empty, but that second getUserMedia() call was
+        // confirmed via real production logs to hang indefinitely on some machines (no
+        // error, no timeout catching it because there was nothing to catch — it simply
+        // never resolved). Rather than gamble on a second request under worse conditions
+        // (candidate already mid-flow, higher stakes), a cache miss is now a hard stop:
+        // cameraStream stays null, the existing 'Camera permission denied' error path
+        // below fires, and TestInterface.tsx's existing effect sends the candidate back
+        // to redo the device check on the one path that's actually proven reliable.
+        const cameraStream = cached.cameraStream;
         cameraDiagnostics = cached.cameraDiagnostics || null;
-        if (!cameraStream) {
-          const result = await requestCameraPermission();
-          cameraStream = result.stream;
-          cameraDiagnostics = result.diagnostics;
-        }
-        if (!cameraStream) {
-          traceLog('camera_acquire_retry', { attemptId });
-          await new Promise(resolve => setTimeout(resolve, 800));
-          const retryResult = await requestCameraPermission();
-          cameraStream = retryResult.stream;
-          cameraDiagnostics = retryResult.diagnostics;
-        }
 
-        // Report unconditionally, before any chance of an early-return below (e.g. mic/
-        // screen-share also required and failing) — initializeProctorSession() further
-        // down never gets reached on a hard camera failure here, which would otherwise
-        // make exactly the failures we most want visibility into report nothing at all.
-        if (cameraDiagnostics) {
+        if (!cameraStream) {
+          traceLog('camera_cache_miss', { attemptId });
+          candidateApi
+            .logActivity({
+              eventType: 'camera_examstart_cache_miss',
+              eventData: { hadDiagnostics: !!cameraDiagnostics } as unknown as Record<string, unknown>,
+            })
+            .catch(() => {});
+        } else if (cameraDiagnostics) {
+          // Report unconditionally, before any chance of an early-return below (e.g. mic/
+          // screen-share also required and failing) — initializeProctorSession() further
+          // down never gets reached on a hard camera failure here, which would otherwise
+          // make exactly the failures we most want visibility into report nothing at all.
           candidateApi
             .logActivity({ eventType: 'camera_examstart_diagnostics', eventData: cameraDiagnostics as unknown as Record<string, unknown> })
             .catch(() => {});
