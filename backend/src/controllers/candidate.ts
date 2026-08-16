@@ -1185,11 +1185,13 @@ export async function logActivity(req: AuthenticatedRequest, res: Response): Pro
     });
 
     // Same [CAMERA_DIAGNOSTICS] tag proctoring.ts's session-init logs use (grep-compatible
-    // across both), but reachable from the pre-check page itself — a candidate whose camera
-    // fails there never reaches session-init at all, so that path alone left zero visibility
-    // for exactly the machines most likely to need it.
-    if (normalizedEventType === 'camera_precheck_diagnostics') {
-      console.log(`[CAMERA_DIAGNOSTICS] stage=precheck attempt=${attemptId}`, JSON.stringify(normalizedEventData));
+    // across all three sources). precheck = TestInstructions.tsx's own acquisition;
+    // examstart = useProctoring.ts's exam-time acquisition, reported unconditionally
+    // before initializeProctorSession() so a hard camera failure there (which skips that
+    // call entirely) still shows up here instead of silently reporting nothing.
+    if (normalizedEventType === 'camera_precheck_diagnostics' || normalizedEventType === 'camera_examstart_diagnostics') {
+      const stage = normalizedEventType === 'camera_precheck_diagnostics' ? 'precheck' : 'examstart';
+      console.log(`[CAMERA_DIAGNOSTICS] stage=${stage} attempt=${attemptId}`, JSON.stringify(normalizedEventData));
     }
 
     emitToTestProctorRoom(testId, 'activity-update', {

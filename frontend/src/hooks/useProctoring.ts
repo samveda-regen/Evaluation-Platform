@@ -31,6 +31,7 @@ import {
 } from '../services/proctorService';
 import type { CameraDiagnostics } from '../services/cameraDeviceService';
 import { clearCachedStreams, getCachedStreams } from '../services/devicePermissionService';
+import { candidateApi } from '../services/api';
 import { loadClientVisionModel, runClientDetection, detectionsToViolations } from '../services/clientVisionService';
 
 export interface ProctorStatus {
@@ -417,6 +418,17 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
           cameraStream = retryResult.stream;
           cameraDiagnostics = retryResult.diagnostics;
         }
+
+        // Report unconditionally, before any chance of an early-return below (e.g. mic/
+        // screen-share also required and failing) — initializeProctorSession() further
+        // down never gets reached on a hard camera failure here, which would otherwise
+        // make exactly the failures we most want visibility into report nothing at all.
+        if (cameraDiagnostics) {
+          candidateApi
+            .logActivity({ eventType: 'camera_examstart_diagnostics', eventData: cameraDiagnostics as unknown as Record<string, unknown> })
+            .catch(() => {});
+        }
+
         if (cameraStream) {
           cameraStreamRef.current = cameraStream;
           cameraEnabled = true;
