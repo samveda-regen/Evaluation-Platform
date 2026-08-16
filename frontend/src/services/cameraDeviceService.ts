@@ -53,6 +53,40 @@ export interface VerifiedCameraResult {
 const MIN_COLORFULNESS = 5;
 const MAX_DEVICE_ATTEMPTS = 3;
 
+// getUserMedia() itself was, until now, awaited with no timeout at all — only the frame
+// check *after* a successful acquisition had one. Confirmed via real production logs: a
+// candidate's exam-time acquisition produced zero diagnostic report, on a machine whose
+// pre-check acquisition (same call, same file) worked fine moments earlier — the same
+// "silent, unbounded hang" signature independently confirmed and fixed for
+// getDisplayMedia() in proctorService.ts. This closes the same gap here.
+const GET_USER_MEDIA_TIMEOUT_MS = 15000;
+
+async function getUserMediaWithTimeout(
+  constraints: MediaStreamConstraints,
+  timeoutMs: number,
+): Promise<MediaStream> {
+  let settled = false;
+
+  const streamPromise = navigator.mediaDevices.getUserMedia(constraints);
+  // Attached separately (not awaited) so a stream that resolves *after* we've already
+  // given up on the race below still gets released instead of leaking a camera lock.
+  streamPromise
+    .then(s => { if (settled) s.getTracks().forEach(t => t.stop()); })
+    .catch(() => {});
+
+  const timedOut = Symbol('getUserMedia-timeout');
+  const timeoutPromise = new Promise<typeof timedOut>(resolve => {
+    setTimeout(() => resolve(timedOut), timeoutMs);
+  });
+
+  const result = await Promise.race([streamPromise, timeoutPromise]);
+  settled = true;
+  if (result === timedOut) {
+    throw new Error(`getUserMedia() did not resolve within ${timeoutMs}ms`);
+  }
+  return result;
+}
+
 async function listVideoInputDevices(): Promise<MediaDeviceInfo[]> {
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
@@ -181,9 +215,9 @@ export async function acquireVerifiedCameraStream(
 
     let stream: MediaStream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
+      stream = await getUserMediaWithTimeout({
         video: nextDeviceId ? { ...constraints, deviceId: { exact: nextDeviceId } } : constraints,
-      });
+      }, GET_USER_MEDIA_TIMEOUT_MS);
     } catch (err) {
       console.error('Camera acquisition failed:', err);
       attempts.push({
