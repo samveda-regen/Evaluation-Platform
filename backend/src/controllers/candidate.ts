@@ -1194,6 +1194,13 @@ export async function logActivity(req: AuthenticatedRequest, res: Response): Pro
       console.log(`[CAMERA_DIAGNOSTICS] stage=${stage} attempt=${attemptId}`, JSON.stringify(normalizedEventData));
     }
 
+    // Same idea, for the screen-share timeout added alongside the camera diagnostics —
+    // grep SCREEN_SHARE_DIAGNOSTICS to see whether a given machine's getDisplayMedia()
+    // call succeeded, was denied, picked the wrong surface, or timed out entirely.
+    if (normalizedEventType === 'screenshare_precheck_diagnostics') {
+      console.log(`[SCREEN_SHARE_DIAGNOSTICS] stage=precheck attempt=${attemptId}`, JSON.stringify(normalizedEventData));
+    }
+
     emitToTestProctorRoom(testId, 'activity-update', {
       testId,
         attemptId,

@@ -21,7 +21,7 @@ import {
   requestCameraPermission,
   requestMicrophonePermission,
   requestScreenShare,
-  ScreenShareSurfaceError,
+  getScreenShareErrorMessage,
   uploadRecordingChunk,
   captureFrame,
   AudioAnalyzer,
@@ -243,8 +243,9 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
       setStatus(prev => ({ ...prev, screenShareEnabled: true, screenShareLost: false }));
       return true;
     } catch (err) {
-      if (err instanceof ScreenShareSurfaceError) {
-        toast.error(err.message, { duration: 8000 });
+      const message = getScreenShareErrorMessage(err);
+      if (message) {
+        toast.error(message, { duration: 8000 });
       }
       return false;
     }
@@ -489,7 +490,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
           try {
             screenStream = await requestScreenShare();
           } catch (err) {
-            screenShareErrorMessage = err instanceof ScreenShareSurfaceError ? err.message : null;
+            screenShareErrorMessage = getScreenShareErrorMessage(err);
           }
         }
         if (screenStream) {

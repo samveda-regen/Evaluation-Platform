@@ -7,7 +7,7 @@ import { useTestStore } from '../../context/testStore';
 import { useAuthStore } from '../../context/authStore';
 import IDVerification from '../../components/IDVerification';
 import { clearCachedStreams, getCachedStreams, setCachedStreams } from '../../services/devicePermissionService';
-import { requestScreenShare, ScreenShareSurfaceError } from '../../services/proctorService';
+import { requestScreenShare, getScreenShareErrorMessage } from '../../services/proctorService';
 import { acquireVerifiedCameraStream, type CameraDiagnostics } from '../../services/cameraDeviceService';
 import { DEFAULT_CUSTOM_AI_VIOLATIONS, normalizeCustomAIViolationSelection } from '../../constants/customAIViolations';
 import talentstaQLogo from '../../assets/assessment-icons/icons/Talentstaq logo dark.svg';
@@ -277,14 +277,29 @@ export default function TestInstructions() {
     }
 
     if (required.requireScreenShare) {
+      let screenShareErrorType: string | undefined;
       try {
         const displayStream = await requestScreenShare();
         screenOk = !!displayStream && displayStream.getVideoTracks().length > 0;
         screenStream = screenOk ? displayStream : null;
       } catch (err) {
         screenOk = false;
-        screenShareErrorMessage = err instanceof ScreenShareSurfaceError ? err.message : null;
+        screenShareErrorMessage = getScreenShareErrorMessage(err);
+        screenShareErrorType = err instanceof Error ? err.name : undefined;
       }
+      // Same reasoning as the camera diagnostics: report from wherever this ran, not
+      // just on eventual success, so a hang on some machine shows up in server logs
+      // without needing devtools access to that exact machine.
+      candidateApi
+        .logActivity({
+          eventType: 'screenshare_precheck_diagnostics',
+          eventData: {
+            ok: screenOk,
+            errorType: screenShareErrorType,
+            errorMessage: screenShareErrorMessage,
+          } as unknown as Record<string, unknown>,
+        })
+        .catch(() => {});
     }
 
     setDeviceStatus({ camera: cameraOk, microphone: microphoneOk, screenShare: screenOk });

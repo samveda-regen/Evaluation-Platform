@@ -333,6 +333,30 @@ export class ScreenShareSurfaceError extends Error {
   }
 }
 
+// getDisplayMedia() was observed hanging indefinitely on some machines — no error, no
+// prompt visible, nothing — leaving checkDevicePermissions() permanently stuck with zero
+// feedback to the candidate. This bounds that wait so a genuine failure becomes a visible,
+// reportable error instead of a silent dead end. It does not explain or fix *why* the
+// picker doesn't respond on a given machine, only makes that failure recoverable.
+export const SCREEN_SHARE_TIMEOUT_MESSAGE =
+  'Screen share did not respond. Please try again.';
+const SCREEN_SHARE_TIMEOUT_MS = 20000;
+
+export class ScreenShareTimeoutError extends Error {
+  constructor() {
+    super(SCREEN_SHARE_TIMEOUT_MESSAGE);
+    this.name = 'ScreenShareTimeoutError';
+  }
+}
+
+/** Maps either screen-share error type to its user-facing message; null for anything else. */
+export function getScreenShareErrorMessage(err: unknown): string | null {
+  if (err instanceof ScreenShareSurfaceError || err instanceof ScreenShareTimeoutError) {
+    return err.message;
+  }
+  return null;
+}
+
 function isEntireScreenCapture(stream: MediaStream): boolean {
   const track = stream.getVideoTracks()[0];
   const settings = track?.getSettings() as MediaTrackSettings & { displaySurface?: string };
@@ -341,15 +365,36 @@ function isEntireScreenCapture(stream: MediaStream): boolean {
 
 // Request screen share
 export async function requestScreenShare(): Promise<MediaStream | null> {
-  const stream = await navigator.mediaDevices.getDisplayMedia({
-    video: true,
-    audio: false,
-  }).catch(error => {
+  let settled = false;
+
+  const pickerPromise = navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+  // Attached separately (not awaited) purely so a picker that resolves *after* we've
+  // already given up on the race below still gets its lock released, instead of leaking.
+  pickerPromise
+    .then(s => { if (settled) s.getTracks().forEach(t => t.stop()); })
+    .catch(() => {});
+
+  const timedOut = Symbol('screen-share-timeout');
+  const timeoutPromise = new Promise<typeof timedOut>(resolve => {
+    setTimeout(() => resolve(timedOut), SCREEN_SHARE_TIMEOUT_MS);
+  });
+
+  let result: MediaStream | typeof timedOut;
+  try {
+    result = await Promise.race([pickerPromise, timeoutPromise]);
+  } catch (error) {
+    settled = true;
     console.error('Screen share denied:', error);
     return null;
-  });
-  if (!stream) return null;
+  }
+  settled = true;
 
+  if (result === timedOut) {
+    console.error('getDisplayMedia() did not resolve within timeout — picker may not have appeared or received no response');
+    throw new ScreenShareTimeoutError();
+  }
+
+  const stream = result;
   if (!isEntireScreenCapture(stream)) {
     stream.getTracks().forEach(track => track.stop());
     throw new ScreenShareSurfaceError();
