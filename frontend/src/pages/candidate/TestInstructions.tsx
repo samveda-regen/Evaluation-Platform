@@ -8,7 +8,7 @@ import { useAuthStore } from '../../context/authStore';
 import IDVerification from '../../components/IDVerification';
 import { clearCachedStreams, getCachedStreams, setCachedStreams } from '../../services/devicePermissionService';
 import { requestScreenShare, ScreenShareSurfaceError } from '../../services/proctorService';
-import { acquireVerifiedCameraStream } from '../../services/cameraDeviceService';
+import { acquireVerifiedCameraStream, type CameraDiagnostics } from '../../services/cameraDeviceService';
 import { DEFAULT_CUSTOM_AI_VIOLATIONS, normalizeCustomAIViolationSelection } from '../../constants/customAIViolations';
 import talentstaQLogo from '../../assets/assessment-icons/icons/Talentstaq logo dark.svg';
 
@@ -238,12 +238,14 @@ export default function TestInstructions() {
     let screenShareErrorMessage: string | null = null;
     let cameraErrorMessage: string | null = null;
     let frameIssue = false;
+    let cameraDiagnostics: CameraDiagnostics | null = null;
 
     if (required.requireCamera) {
       const result = await acquireVerifiedCameraStream({
         width: { ideal: 1280 },
         height: { ideal: 720 },
       });
+      cameraDiagnostics = result.diagnostics;
       if (result.stream) {
         cameraStream = result.stream;
         cameraOk = result.framesVerified;
@@ -289,7 +291,7 @@ export default function TestInstructions() {
     // versa. The candidate still can't proceed (`ready` gates the Start button) until
     // every required device passes, but retrying one broken device doesn't force
     // re-granting permission for devices that already passed.
-    setCachedStreams({ cameraStream, microphoneStream: micStream, screenStream });
+    setCachedStreams({ cameraStream, microphoneStream: micStream, screenStream, cameraDiagnostics });
     setCameraPreviewStream(cameraOk ? cameraStream : null);
 
     if (ready) toast.success('Device permission checks passed');

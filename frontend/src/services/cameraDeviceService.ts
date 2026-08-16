@@ -23,10 +23,28 @@
 // candidate is briefly sampled and scored on that basis, and the best-scoring one wins —
 // regardless of what any driver calls it.
 
+export interface CameraAttemptDiagnostic {
+  deviceId?: string;
+  label: string;
+  framesOk: boolean;
+  colorfulness: number;
+  error?: string;
+}
+
+export interface CameraDiagnostics {
+  devicesFound: number;
+  deviceLabels: string[];
+  attempts: CameraAttemptDiagnostic[];
+  chosenDeviceId?: string;
+  chosenLabel?: string;
+  framesVerified: boolean;
+}
+
 export interface VerifiedCameraResult {
   stream: MediaStream | null;
   deviceId?: string;
   framesVerified: boolean;
+  diagnostics: CameraDiagnostics;
 }
 
 // Average per-pixel max(R,G,B) - min(R,G,B) across a sampled frame. A genuinely
@@ -144,9 +162,18 @@ export async function acquireVerifiedCameraStream(
   constraints: MediaTrackConstraints = {},
   frameTimeoutMs = 4000,
 ): Promise<VerifiedCameraResult> {
+  const initialDevices = await listVideoInputDevices();
+  const attempts: CameraAttemptDiagnostic[] = [];
+  const diagnostics: CameraDiagnostics = {
+    devicesFound: initialDevices.length,
+    deviceLabels: initialDevices.map(d => d.label || '(no label — permission not yet granted)'),
+    attempts,
+    framesVerified: false,
+  };
+
   let candidateDeviceIds = await preferredDeviceOrder();
   const tried = new Set<string>();
-  let best: { stream: MediaStream; deviceId?: string; colorfulness: number } | null = null;
+  let best: { stream: MediaStream; deviceId?: string; label: string; colorfulness: number } | null = null;
 
   for (let attempt = 0; attempt < MAX_DEVICE_ATTEMPTS; attempt++) {
     const nextDeviceId = candidateDeviceIds.find(id => !tried.has(id));
@@ -159,22 +186,35 @@ export async function acquireVerifiedCameraStream(
       });
     } catch (err) {
       console.error('Camera acquisition failed:', err);
+      attempts.push({
+        deviceId: nextDeviceId,
+        label: '(getUserMedia threw)',
+        framesOk: false,
+        colorfulness: 0,
+        error: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+      });
       break;
     }
 
-    const actualDeviceId = stream.getVideoTracks()[0]?.getSettings().deviceId;
+    const track = stream.getVideoTracks()[0];
+    const actualDeviceId = track?.getSettings().deviceId;
     tried.add(actualDeviceId || nextDeviceId || `attempt-${attempt}`);
 
     const { framesOk, colorfulness } = await checkFrameAndColor(stream, frameTimeoutMs);
+    const label = track?.label || '(no label)';
+    attempts.push({ deviceId: actualDeviceId, label, framesOk, colorfulness });
 
     if (framesOk && colorfulness >= MIN_COLORFULNESS) {
       best?.stream.getTracks().forEach(t => t.stop());
-      return { stream, deviceId: actualDeviceId, framesVerified: true };
+      diagnostics.chosenDeviceId = actualDeviceId;
+      diagnostics.chosenLabel = label;
+      diagnostics.framesVerified = true;
+      return { stream, deviceId: actualDeviceId, framesVerified: true, diagnostics };
     }
 
     if (framesOk && (!best || colorfulness > best.colorfulness)) {
       best?.stream.getTracks().forEach(t => t.stop());
-      best = { stream, deviceId: actualDeviceId, colorfulness };
+      best = { stream, deviceId: actualDeviceId, label, colorfulness };
     } else {
       stream.getTracks().forEach(t => t.stop());
     }
@@ -188,6 +228,10 @@ export async function acquireVerifiedCameraStream(
     }
   }
 
-  if (best) return { stream: best.stream, deviceId: best.deviceId, framesVerified: false };
-  return { stream: null, framesVerified: false };
+  if (best) {
+    diagnostics.chosenDeviceId = best.deviceId;
+    diagnostics.chosenLabel = best.label;
+    return { stream: best.stream, deviceId: best.deviceId, framesVerified: false, diagnostics };
+  }
+  return { stream: null, framesVerified: false, diagnostics };
 }

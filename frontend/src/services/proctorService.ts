@@ -12,7 +12,7 @@
  */
 
 import api from './api';
-import { acquireVerifiedCameraStream } from './cameraDeviceService';
+import { acquireVerifiedCameraStream, type CameraDiagnostics } from './cameraDeviceService';
 
 // Types
 export interface ProctorConfig {
@@ -72,6 +72,7 @@ export async function initializeProctorSession(attemptId: string, deviceInfo: {
   browserInfo: { name: string; version: string; os: string };
   screenResolution: string;
   monitorCount: number;
+  cameraDiagnostics?: CameraDiagnostics | null;
 }): Promise<ProctorSession | null> {
   try {
     const response = await api.post(`/proctoring/session/${attemptId}/init`, deviceInfo);
@@ -280,7 +281,7 @@ export async function detectMonitors(): Promise<number> {
 // stream actually produces frames rather than trusting a 'live' track alone (see
 // cameraDeviceService.ts for why — this is the exact path that was silently handing back
 // an unusable stream during the exam while the pre-check appeared to pass).
-export async function requestCameraPermission(): Promise<MediaStream | null> {
+export async function requestCameraPermission(): Promise<{ stream: MediaStream | null; diagnostics: CameraDiagnostics | null }> {
   try {
     const targetWidth = Number((import.meta as any).env?.VITE_PROCTOR_CAMERA_WIDTH || 1280);
     const targetHeight = Number((import.meta as any).env?.VITE_PROCTOR_CAMERA_HEIGHT || 720);
@@ -293,14 +294,13 @@ export async function requestCameraPermission(): Promise<MediaStream | null> {
       frameRate: { ideal: maxFrameRate },
       facingMode: 'user',
     });
-    if (!result.stream) return null;
     if (!result.framesVerified) {
-      console.error('Camera stream acquired but never produced a frame (tried all available devices)');
+      console.error('Camera stream acquired but never produced a verified frame (tried all available devices)', result.diagnostics);
     }
-    return result.stream;
+    return { stream: result.stream, diagnostics: result.diagnostics };
   } catch (error) {
     console.error('Camera permission denied:', error);
-    return null;
+    return { stream: null, diagnostics: null };
   }
 }
 

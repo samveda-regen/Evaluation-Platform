@@ -359,8 +359,18 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
       screenResolution,
       deviceFingerprint,
       monitorCount,
+      cameraDiagnostics,
     } = req.body;
     const effectiveMicrophoneEnabled = TEMP_DISABLE_AUDIO_PROCTORING ? false : microphoneEnabled;
+
+    // Logged unconditionally (not gated behind a trace flag) so camera-selection issues on
+    // a candidate's own machine are visible here (pm2 logs backend) without needing local
+    // devtools access on that machine at all — see cameraDeviceService.ts on the frontend
+    // for what's being measured (frames-per-device + a colorfulness score used to reject
+    // IR/Windows-Hello cameras).
+    if (cameraDiagnostics) {
+      console.log(`[CAMERA_DIAGNOSTICS] attempt=${attemptId}`, JSON.stringify(cameraDiagnostics));
+    }
 
     // Verify attempt exists and belongs to candidate
     const attempt = await prisma.testAttempt.findUnique({
@@ -402,6 +412,7 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
         browserInfo: browserInfo || null,
         screenResolution,
         deviceFingerprint,
+        cameraDiagnostics: cameraDiagnostics || null,
         monitorCount: normalizedMonitorCount,
         externalMonitorDetected: normalizedMonitorCount > 1,
         enabledAIViolations,
@@ -474,6 +485,7 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
       browserInfo: browserInfo || null,
       screenResolution,
       deviceFingerprint,
+      cameraDiagnostics: cameraDiagnostics || null,
       monitorCount: normalizedMonitorCount,
       externalMonitorDetected: normalizedMonitorCount > 1,
       enabledAIViolations,

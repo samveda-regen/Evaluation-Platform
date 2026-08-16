@@ -1,13 +1,17 @@
+import type { CameraDiagnostics } from './cameraDeviceService';
+
 export interface CachedDeviceStreams {
   cameraStream: MediaStream | null;
   microphoneStream: MediaStream | null;
   screenStream: MediaStream | null;
+  cameraDiagnostics?: CameraDiagnostics | null;
 }
 
 let cachedStreams: CachedDeviceStreams = {
   cameraStream: null,
   microphoneStream: null,
   screenStream: null,
+  cameraDiagnostics: null,
 };
 
 function isActiveStream(stream: MediaStream | null): boolean {
@@ -27,6 +31,7 @@ export function getCachedStreams(): CachedDeviceStreams {
     cameraStream: isActiveStream(cachedStreams.cameraStream) ? cachedStreams.cameraStream : null,
     microphoneStream: isActiveStream(cachedStreams.microphoneStream) ? cachedStreams.microphoneStream : null,
     screenStream: isActiveStream(cachedStreams.screenStream) ? cachedStreams.screenStream : null,
+    cameraDiagnostics: cachedStreams.cameraDiagnostics || null,
   };
 }
 
@@ -41,5 +46,6 @@ export function clearCachedStreams(stopTracks = true): void {
     cameraStream: null,
     microphoneStream: null,
     screenStream: null,
+    cameraDiagnostics: null,
   };
 }

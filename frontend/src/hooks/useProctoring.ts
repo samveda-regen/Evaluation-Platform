@@ -29,6 +29,7 @@ import {
   ProctorSession,
   ViolationData,
 } from '../services/proctorService';
+import type { CameraDiagnostics } from '../services/cameraDeviceService';
 import { clearCachedStreams, getCachedStreams } from '../services/devicePermissionService';
 import { loadClientVisionModel, runClientDetection, detectionsToViolations } from '../services/clientVisionService';
 
@@ -392,6 +393,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
 
       // Request camera permission
       let cameraEnabled = false;
+      let cameraDiagnostics: CameraDiagnostics | null = null;
       if (finalConfig.enableCamera) {
         const cached = getCachedStreams();
         // Reusing the device-check page's cached stream is the normal path
@@ -401,11 +403,19 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
         // handle less reliably than a regular browser on a second
         // getUserMedia() call in the same session. One retry after a short
         // delay before giving up, rather than failing on the first blip.
-        let cameraStream = cached.cameraStream || await requestCameraPermission();
+        let cameraStream = cached.cameraStream;
+        cameraDiagnostics = cached.cameraDiagnostics || null;
+        if (!cameraStream) {
+          const result = await requestCameraPermission();
+          cameraStream = result.stream;
+          cameraDiagnostics = result.diagnostics;
+        }
         if (!cameraStream) {
           traceLog('camera_acquire_retry', { attemptId });
           await new Promise(resolve => setTimeout(resolve, 800));
-          cameraStream = await requestCameraPermission();
+          const retryResult = await requestCameraPermission();
+          cameraStream = retryResult.stream;
+          cameraDiagnostics = retryResult.diagnostics;
         }
         if (cameraStream) {
           cameraStreamRef.current = cameraStream;
@@ -525,7 +535,9 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
         browserInfo: getBrowserInfo(),
         screenResolution: getScreenResolution(),
         monitorCount,
+        cameraDiagnostics,
       });
+      traceLog('camera_diagnostics', { attemptId, cameraDiagnostics });
 
       if (!proctorSession) {
         setError('Failed to initialize proctoring session');
