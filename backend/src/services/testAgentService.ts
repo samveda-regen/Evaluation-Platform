@@ -694,6 +694,276 @@ Respond with a JSON object containing (in this order):
   }
 }
 
+/* ── brand-new question authoring (separate from the library-selection flow above) ───── */
+
+export interface SuggestedMCQQuestion {
+  questionText: string;
+  options: string[];
+  correctAnswers: number[];
+  marks: number;
+  isMultipleChoice: boolean;
+  explanation: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  topic: string;
+  tags: string[];
+  suggestedTimeEstimateSec: number;
+}
+
+export interface SuggestedCodingQuestion {
+  title: string;
+  description: string;
+  inputFormat: string;
+  outputFormat: string;
+  constraints: string;
+  sampleInput: string;
+  sampleOutput: string;
+  marks: number;
+  timeLimit: number;
+  memoryLimit: number;
+  supportedLanguages: string[];
+  testCases: Array<{ input: string; expectedOutput: string; isHidden: boolean; marks: number }>;
+  difficulty: 'easy' | 'medium' | 'hard';
+  topic: string;
+  tags: string[];
+}
+
+export interface SuggestedBehavioralQuestion {
+  title: string;
+  description: string;
+  expectedAnswer: string;
+  marks: number;
+  difficulty: 'easy' | 'medium' | 'hard';
+  topic: string;
+  tags: string[];
+  suggestedTimeEstimateSec: number;
+}
+
+export interface QuestionSuggestions {
+  mcq: SuggestedMCQQuestion[];
+  coding: SuggestedCodingQuestion[];
+  behavioral: SuggestedBehavioralQuestion[];
+}
+
+const SUPPORTED_CODING_LANGUAGES = ['python', 'javascript', 'java', 'cpp', 'c', 'csharp', 'go', 'typescript'];
+
+function normalizeDifficulty(value: unknown): 'easy' | 'medium' | 'hard' {
+  return value === 'easy' || value === 'hard' ? value : 'medium';
+}
+
+function normalizeStringArray(value: unknown, max: number): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((v): v is string => typeof v === 'string' && v.trim().length > 0).slice(0, max);
+}
+
+function normalizeMarks(value: unknown, fallback: number): number {
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function normalizeMCQSuggestion(raw: Record<string, unknown>): SuggestedMCQQuestion | null {
+  const questionText = typeof raw.questionText === 'string' ? raw.questionText.trim() : '';
+  const options = Array.isArray(raw.options)
+    ? raw.options.filter((o): o is string => typeof o === 'string' && o.trim().length > 0)
+    : [];
+  if (!questionText || options.length < 2) return null;
+
+  const correctAnswers = Array.isArray(raw.correctAnswers)
+    ? raw.correctAnswers
+        .map(i => Math.floor(Number(i)))
+        .filter(i => Number.isInteger(i) && i >= 0 && i < options.length)
+    : [];
+  if (correctAnswers.length === 0) return null;
+
+  return {
+    questionText,
+    options,
+    correctAnswers,
+    marks: normalizeMarks(raw.marks, 5),
+    isMultipleChoice: Boolean(raw.isMultipleChoice) || correctAnswers.length > 1,
+    explanation: typeof raw.explanation === 'string' ? raw.explanation.trim() : '',
+    difficulty: normalizeDifficulty(raw.difficulty),
+    topic: typeof raw.topic === 'string' ? raw.topic.trim() : '',
+    tags: normalizeStringArray(raw.tags, 8),
+    suggestedTimeEstimateSec: Number.isFinite(Number(raw.suggestedTimeEstimateSec)) ? Math.floor(Number(raw.suggestedTimeEstimateSec)) : 45
+  };
+}
+
+function normalizeCodingSuggestion(raw: Record<string, unknown>): SuggestedCodingQuestion | null {
+  const title = typeof raw.title === 'string' ? raw.title.trim() : '';
+  const description = typeof raw.description === 'string' ? raw.description.trim() : '';
+  const sampleInput = typeof raw.sampleInput === 'string' ? raw.sampleInput : '';
+  const sampleOutput = typeof raw.sampleOutput === 'string' ? raw.sampleOutput : '';
+  if (!title || !description) return null;
+
+  const testCases = Array.isArray(raw.testCases)
+    ? raw.testCases
+        .filter((tc): tc is Record<string, unknown> => !!tc && typeof tc === 'object')
+        .map(tc => ({
+          input: typeof tc.input === 'string' ? tc.input : '',
+          expectedOutput: typeof tc.expectedOutput === 'string' ? tc.expectedOutput : '',
+          isHidden: Boolean(tc.isHidden),
+          marks: normalizeMarks(tc.marks, 0)
+        }))
+        .filter(tc => tc.input && tc.expectedOutput)
+        .slice(0, 10)
+    : [];
+
+  const supportedLanguages = normalizeStringArray(raw.supportedLanguages, 8)
+    .map(l => l.toLowerCase())
+    .filter(l => SUPPORTED_CODING_LANGUAGES.includes(l));
+
+  return {
+    title,
+    description,
+    inputFormat: typeof raw.inputFormat === 'string' ? raw.inputFormat.trim() : '',
+    outputFormat: typeof raw.outputFormat === 'string' ? raw.outputFormat.trim() : '',
+    constraints: typeof raw.constraints === 'string' ? raw.constraints.trim() : '',
+    sampleInput,
+    sampleOutput,
+    marks: normalizeMarks(raw.marks, 20),
+    timeLimit: Number.isFinite(Number(raw.timeLimit)) && Number(raw.timeLimit) > 0 ? Math.floor(Number(raw.timeLimit)) : 2000,
+    memoryLimit: Number.isFinite(Number(raw.memoryLimit)) && Number(raw.memoryLimit) > 0 ? Math.floor(Number(raw.memoryLimit)) : 256,
+    supportedLanguages: supportedLanguages.length ? supportedLanguages : ['python', 'javascript'],
+    testCases,
+    difficulty: normalizeDifficulty(raw.difficulty),
+    topic: typeof raw.topic === 'string' ? raw.topic.trim() : '',
+    tags: normalizeStringArray(raw.tags, 8)
+  };
+}
+
+function normalizeBehavioralSuggestion(raw: Record<string, unknown>): SuggestedBehavioralQuestion | null {
+  const title = typeof raw.title === 'string' ? raw.title.trim() : '';
+  const description = typeof raw.description === 'string' ? raw.description.trim() : '';
+  if (!title || !description) return null;
+
+  return {
+    title,
+    description,
+    expectedAnswer: typeof raw.expectedAnswer === 'string' ? raw.expectedAnswer.trim() : '',
+    marks: normalizeMarks(raw.marks, 5),
+    difficulty: normalizeDifficulty(raw.difficulty),
+    topic: typeof raw.topic === 'string' ? raw.topic.trim() : '',
+    tags: normalizeStringArray(raw.tags, 8),
+    suggestedTimeEstimateSec: Number.isFinite(Number(raw.suggestedTimeEstimateSec)) ? Math.floor(Number(raw.suggestedTimeEstimateSec)) : 120
+  };
+}
+
+export async function suggestNewQuestions(
+  jobProfile: JobProfile,
+  skills: string[],
+  difficulty: 'easy' | 'medium' | 'hard' | 'mixed',
+  counts: { mcqCount: number; codingCount: number; behavioralCount: number }
+): Promise<QuestionSuggestions> {
+  if (!hasLLMKey()) {
+    throw new Error('AI question authoring requires an LLM API key to be configured.');
+  }
+
+  const mcqCount = Math.max(0, Math.min(10, Math.floor(counts.mcqCount)));
+  const codingCount = Math.max(0, Math.min(5, Math.floor(counts.codingCount)));
+  const behavioralCount = Math.max(0, Math.min(5, Math.floor(counts.behavioralCount)));
+
+  const systemPrompt = `You are an expert technical interviewer and question-bank author. Unlike a librarian picking from an existing catalog, your job here is to WRITE brand-new, original assessment questions from scratch, tailored precisely to the job profile given. Never write generic filler questions — every question must genuinely probe one of the required skills at the requested difficulty. Always respond with a valid JSON object only, no prose outside the JSON. Every string value must be valid JSON: escape all newlines as \\n, tabs as \\t, and double quotes as \\" — this matters most in multi-line fields like a coding question's description, sampleInput, sampleOutput, or a test case's input/expectedOutput. Never place a literal, unescaped line break inside a JSON string. Never use a bare double quote to emphasize or quote a word/phrase inside a string value (e.g. do NOT write "the "primitive" types") — use single quotes for that instead (e.g. "the 'primitive' types"), or escape it as \\". Keep every question concise enough that the full response comfortably fits the token budget — never truncate a question mid-way; if you are running low on space, write fewer questions rather than cutting one off.`;
+
+  const userPrompt = `Author new assessment questions for this role:
+
+**Job Title:** ${jobProfile.title}
+**Experience Level:** ${jobProfile.experience}
+${jobProfile.description ? `**Job Description:** ${jobProfile.description}` : ''}
+**Required Skills:** ${skills.join(', ')}
+**Difficulty Level:** ${difficulty}
+
+Write exactly:
+- ${mcqCount} multiple-choice question(s)
+- ${codingCount} coding question(s)
+- ${behavioralCount} behavioral question(s)
+
+(If a count is 0, return an empty array for that section.)
+
+Respond with a JSON object shaped exactly like this:
+{
+  "mcq": [
+    {
+      "questionText": "...",
+      "options": ["...", "...", "...", "..."],
+      "correctAnswers": [0],
+      "marks": 5,
+      "isMultipleChoice": false,
+      "explanation": "why the correct answer is right",
+      "difficulty": "easy|medium|hard",
+      "topic": "short category name",
+      "tags": ["skill1", "skill2"],
+      "suggestedTimeEstimateSec": 45
+    }
+  ],
+  "coding": [
+    {
+      "title": "...",
+      "description": "full problem statement",
+      "inputFormat": "...",
+      "outputFormat": "...",
+      "constraints": "...",
+      "sampleInput": "...",
+      "sampleOutput": "...",
+      "marks": 20,
+      "timeLimit": 2000,
+      "memoryLimit": 256,
+      "supportedLanguages": ["python", "javascript"],
+      "testCases": [{ "input": "...", "expectedOutput": "...", "isHidden": false, "marks": 10 }],
+      "difficulty": "easy|medium|hard",
+      "topic": "short category name",
+      "tags": ["skill1", "skill2"]
+    }
+  ],
+  "behavioral": [
+    {
+      "title": "short scenario title",
+      "description": "the full behavioral question/prompt shown to the candidate",
+      "expectedAnswer": "what a strong answer covers (grading benchmark, not shown to candidate)",
+      "marks": 5,
+      "difficulty": "easy|medium|hard",
+      "topic": "short category name",
+      "tags": ["communication", "teamwork"],
+      "suggestedTimeEstimateSec": 120
+    }
+  ]
+}`;
+
+  // Generous headroom: up to 10 MCQ + 5 coding (each with multiple test cases) + 5 behavioral
+  // questions can easily exceed a few thousand tokens — a response cut off mid-string by hitting
+  // the token limit is genuinely incomplete JSON, which no amount of post-hoc repair can fix, so
+  // the real defense is not running out of room in the first place.
+  const response = await callLLM([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ], { temperature: 0.6, maxTokens: 8192 });
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = parseJSONFromLLM(response.content) as Record<string, unknown>;
+  } catch (err) {
+    // Log the raw response so a future parse failure can actually be diagnosed instead of guessed at.
+    console.error('suggestNewQuestions: failed to parse LLM JSON response. Raw content:\n', response.content);
+    throw err;
+  }
+
+  const mcq = (Array.isArray(parsed.mcq) ? parsed.mcq : [])
+    .map(raw => normalizeMCQSuggestion(raw as Record<string, unknown>))
+    .filter((q): q is SuggestedMCQQuestion => q !== null)
+    .slice(0, mcqCount);
+
+  const coding = (Array.isArray(parsed.coding) ? parsed.coding : [])
+    .map(raw => normalizeCodingSuggestion(raw as Record<string, unknown>))
+    .filter((q): q is SuggestedCodingQuestion => q !== null)
+    .slice(0, codingCount);
+
+  const behavioral = (Array.isArray(parsed.behavioral) ? parsed.behavioral : [])
+    .map(raw => normalizeBehavioralSuggestion(raw as Record<string, unknown>))
+    .filter((q): q is SuggestedBehavioralQuestion => q !== null)
+    .slice(0, behavioralCount);
+
+  return { mcq, coding, behavioral };
+}
+
 export async function suggestQuestionTags(
   questionText: string,
   questionType: 'mcq' | 'coding'
@@ -727,5 +997,125 @@ Respond with a JSON object:
     suggestedTags: string[];
     suggestedTopic: string;
     suggestedDifficulty: 'easy' | 'medium' | 'hard';
+  };
+}
+
+export interface ReviewMCQDetail {
+  id: string;
+  questionText: string;
+  options: string[];
+  correctAnswers: number[];
+  marks: number;
+  isMultipleChoice: boolean;
+  explanation: string | null;
+  difficulty: string;
+  topic: string | null;
+  tags: string[];
+}
+export interface ReviewCodingDetail {
+  id: string;
+  title: string;
+  description: string;
+  inputFormat: string;
+  outputFormat: string;
+  constraints: string | null;
+  sampleInput: string;
+  sampleOutput: string;
+  marks: number;
+  timeLimit: number;
+  memoryLimit: number;
+  supportedLanguages: string[];
+  difficulty: string;
+  topic: string | null;
+  tags: string[];
+  testCases: Array<{ input: string; expectedOutput: string; isHidden: boolean; marks: number }>;
+}
+export interface ReviewBehavioralDetail {
+  id: string;
+  title: string;
+  description: string;
+  expectedAnswer: string | null;
+  marks: number;
+  difficulty: string;
+  topic: string | null;
+  tags: string[];
+}
+
+// Pure read — fetches the full stored details (options, test cases, expected answers, etc.) for a
+// final set of selected question IDs, regardless of whether they originated from a library match,
+// a manual library pick, or an AI-authored suggestion (all three are real persisted questions by
+// the time their ids reach here) — used to render a complete, read-only pre-creation review.
+export async function getQuestionDetailsForReview(
+  mcqIds: string[],
+  codingIds: string[],
+  behavioralIds: string[]
+): Promise<{
+  mcq: ReviewMCQDetail[];
+  coding: ReviewCodingDetail[];
+  behavioral: ReviewBehavioralDetail[];
+}> {
+  const [mcqQuestions, codingQuestions, behavioralQuestions] = await Promise.all([
+    mcqIds.length ? prisma.mCQQuestion.findMany({ where: { id: { in: mcqIds } } }) : Promise.resolve([]),
+    codingIds.length ? prisma.codingQuestion.findMany({ where: { id: { in: codingIds } }, include: { testCases: true } }) : Promise.resolve([]),
+    behavioralIds.length ? prisma.behavioralQuestion.findMany({ where: { id: { in: behavioralIds } } }) : Promise.resolve([])
+  ]);
+
+  const mcqById = new Map(mcqQuestions.map((q: typeof mcqQuestions[number]) => [q.id, q]));
+  const codingById = new Map(codingQuestions.map((q: typeof codingQuestions[number]) => [q.id, q]));
+  const behavioralById = new Map(behavioralQuestions.map((q: typeof behavioralQuestions[number]) => [q.id, q]));
+
+  return {
+    // Preserve the order the caller asked for (the order questions were selected in), not DB order.
+    mcq: mcqIds
+      .map(id => mcqById.get(id))
+      .filter((q): q is NonNullable<typeof q> => !!q)
+      .map(q => ({
+        id: q.id,
+        questionText: q.questionText,
+        options: JSON.parse(q.options),
+        correctAnswers: JSON.parse(q.correctAnswers),
+        marks: q.marks,
+        isMultipleChoice: q.isMultipleChoice,
+        explanation: q.explanation,
+        difficulty: q.difficulty,
+        topic: q.topic,
+        tags: q.tags ? JSON.parse(q.tags) : []
+      })),
+    coding: codingIds
+      .map(id => codingById.get(id))
+      .filter((q): q is NonNullable<typeof q> => !!q)
+      .map(q => ({
+        id: q.id,
+        title: q.title,
+        description: q.description,
+        inputFormat: q.inputFormat,
+        outputFormat: q.outputFormat,
+        constraints: q.constraints,
+        sampleInput: q.sampleInput,
+        sampleOutput: q.sampleOutput,
+        marks: q.marks,
+        timeLimit: q.timeLimit,
+        memoryLimit: q.memoryLimit,
+        supportedLanguages: JSON.parse(q.supportedLanguages),
+        difficulty: q.difficulty,
+        topic: q.topic,
+        tags: q.tags ? JSON.parse(q.tags) : [],
+        testCases: q.testCases.map((tc: { input: string; expectedOutput: string; isHidden: boolean; marks: number }) => ({
+          input: tc.input, expectedOutput: tc.expectedOutput, isHidden: tc.isHidden, marks: tc.marks
+        }))
+      })),
+    behavioral: behavioralIds
+      .map(id => behavioralById.get(id))
+      .filter((q): q is NonNullable<typeof q> => !!q)
+      .map(q => ({
+        id: q.id,
+        title: q.title,
+        description: q.description,
+        expectedAnswer: q.expectedAnswer,
+        marks: q.marks,
+        difficulty: q.difficulty,
+        topic: q.topic,
+        tags: q.tags ? JSON.parse(q.tags) : []
+      }))
   };
 }

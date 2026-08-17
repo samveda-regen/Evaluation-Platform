@@ -468,6 +468,21 @@ export const adminApi = {
   suggestTags: (questionText: string, questionType: 'mcq' | 'coding') =>
     api.post('/admin/agent/suggest-tags', { questionText, questionType }),
 
+  suggestNewQuestions: (data: {
+    jobProfile: { title: string; experience: string; description?: string };
+    skills: string[];
+    difficulty: 'easy' | 'medium' | 'hard' | 'mixed';
+    mcqCount: number;
+    codingCount: number;
+    behavioralCount: number;
+  }) => api.post('/admin/agent/suggest-questions', data),
+
+  getAgentReviewDetails: (data: {
+    mcqQuestionIds: string[];
+    codingQuestionIds: string[];
+    behavioralQuestionIds: string[];
+  }) => api.post('/admin/agent/review-details', data),
+
   // Proctoring - Admin
   getProctoringSummary: (attemptId: string) =>
     api.get(`/proctoring/admin/attempt/${attemptId}/summary`),

@@ -129,28 +129,81 @@ async function callAnthropic(messages: Message[], config: LLMConfig): Promise<LL
   };
 }
 
-export function parseJSONFromLLM(content: string): unknown {
-  // Try to extract JSON from markdown code blocks
-  const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (jsonMatch) {
-    return JSON.parse(jsonMatch[1].trim());
+// Models occasionally emit a literal newline/tab inside a JSON string value (most often in a
+// multi-line code sample or description) instead of escaping it as \n/\t, which makes the string
+// "unterminated" as far as JSON.parse is concerned. This walks the text tracking string/escape
+// state and escapes stray control characters found ONLY inside string literals — structural
+// whitespace between tokens is left untouched.
+function escapeStrayControlCharsInStrings(text: string): string {
+  let result = '';
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (!inString) {
+      if (ch === '"') inString = true;
+      result += ch;
+      continue;
+    }
+    if (escaped) {
+      result += ch;
+      escaped = false;
+      continue;
+    }
+    if (ch === '\\') {
+      result += ch;
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = false;
+      result += ch;
+      continue;
+    }
+    if (ch === '\n') { result += '\\n'; continue; }
+    if (ch === '\r') { result += '\\r'; continue; }
+    if (ch === '\t') { result += '\\t'; continue; }
+    result += ch;
   }
+  return result;
+}
 
-  // Try to parse the entire content as JSON
+// Tries each candidate as-is first, then with control-char escaping as a fallback, so a single
+// malformed field doesn't sink parsing of an otherwise-valid response.
+function tryParse(candidate: string): { ok: true; value: unknown } | { ok: false; error: unknown } {
   try {
-    return JSON.parse(content);
-  } catch {
-    // Try to find JSON object or array in the content
-    const objectMatch = content.match(/\{[\s\S]*\}/);
-    const arrayMatch = content.match(/\[[\s\S]*\]/);
-
-    if (objectMatch) {
-      return JSON.parse(objectMatch[0]);
+    return { ok: true, value: JSON.parse(candidate) };
+  } catch (err) {
+    try {
+      return { ok: true, value: JSON.parse(escapeStrayControlCharsInStrings(candidate)) };
+    } catch {
+      return { ok: false, error: err };
     }
-    if (arrayMatch) {
-      return JSON.parse(arrayMatch[0]);
-    }
-
-    throw new Error('Could not parse JSON from LLM response');
   }
+}
+
+export function parseJSONFromLLM(content: string): unknown {
+  const candidates: string[] = [];
+
+  // Markdown code block, if present
+  const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (jsonMatch) candidates.push(jsonMatch[1].trim());
+
+  // The whole response, trimmed
+  candidates.push(content.trim());
+
+  // Whatever looks like the outermost JSON object/array in the text
+  const objectMatch = content.match(/\{[\s\S]*\}/);
+  if (objectMatch) candidates.push(objectMatch[0]);
+  const arrayMatch = content.match(/\[[\s\S]*\]/);
+  if (arrayMatch) candidates.push(arrayMatch[0]);
+
+  let lastError: unknown = new Error('Could not parse JSON from LLM response');
+  for (const candidate of candidates) {
+    const result = tryParse(candidate);
+    if (result.ok) return result.value;
+    lastError = result.error;
+  }
+
+  throw lastError;
 }
