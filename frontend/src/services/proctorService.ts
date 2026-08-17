@@ -255,13 +255,23 @@ export function getScreenResolution(): string {
 
 // Detect number of monitors
 export async function detectMonitors(): Promise<number> {
-  // Use Screen Details API if available (requires permission)
+  // Use Screen Details API if available (requires permission). Like getUserMedia() and
+  // getDisplayMedia() elsewhere in this file, this call is only guaranteed to reject on
+  // an outright permission denial — if the native prompt it needs never gets to render at
+  // all (confirmed happening with getDisplayMedia() under SEB), the promise can simply
+  // never settle. Since this runs as the very first thing in useProctoring's
+  // initialize(), before the camera block, a hang here silently blocks everything after
+  // it — including camera acquisition, which never even gets a chance to run. Bounded the
+  // same way as the other two.
   if ('getScreenDetails' in window) {
     try {
-      const screenDetails = await (window as any).getScreenDetails();
+      const screenDetails = await Promise.race([
+        (window as any).getScreenDetails(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('getScreenDetails() timed out')), 5000)),
+      ]);
       return screenDetails.screens.length;
     } catch {
-      // Permission denied or not supported
+      // Permission denied, not supported, or timed out
     }
   }
 
