@@ -15,12 +15,21 @@
 
 set -e
 
+# Resolve uvicorn from this script's own .venv rather than relying on PATH — process
+# managers (pm2, systemd) run this script in a fresh shell with no venv activated, so a
+# bare `uvicorn` call fails with "command not found" even though `pip install` succeeded.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+UVICORN="$SCRIPT_DIR/.venv/bin/uvicorn"
+if [ ! -x "$UVICORN" ]; then
+  UVICORN="uvicorn"  # fall back to PATH, e.g. if uvicorn is installed globally instead
+fi
+
 WORKERS="${WORKERS:-1}"
 PORT="${PORT:-8020}"
 
 echo "[Speech Service] Starting with $WORKERS worker(s) on port $PORT"
 
-exec uvicorn app:app \
+exec "$UVICORN" app:app \
   --host 0.0.0.0 \
   --port "$PORT" \
   --workers "$WORKERS" \
