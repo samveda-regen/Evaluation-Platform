@@ -24,6 +24,8 @@ interface TestState {
   codingAnswers: Record<string, { code: string; language: string }>;
   behavioralAnswers: Record<string, string>;
   communicationAnswers: Record<string, string>;
+  communicationSelectedAnswers: Record<string, number[]>;
+  communicationReplayCounts: Record<string, number>;
   violations: number;
   isSubmitted: boolean;
   submissionResult: SubmissionResult | null;
@@ -57,6 +59,8 @@ interface TestState {
   saveCodingAnswer: (questionId: string, code: string, language: string) => void;
   saveBehavioralAnswer: (questionId: string, answerText: string) => void;
   saveCommunicationAnswer: (questionId: string, answerText: string) => void;
+  saveCommunicationSelectedAnswer: (questionId: string, selectedOptions: number[]) => void;
+  setCommunicationReplayCount: (questionId: string, count: number) => void;
   incrementViolations: () => number;
   setSubmitted: (result?: SubmissionResult) => void;
   resetTest: () => void;
@@ -85,6 +89,8 @@ export const useTestStore = create<TestState>((set, get) => ({
   codingAnswers: {},
   behavioralAnswers: {},
   communicationAnswers: {},
+  communicationSelectedAnswers: {},
+  communicationReplayCounts: {},
   violations: 0,
   isSubmitted: false,
   submissionResult: null,
@@ -113,6 +119,8 @@ export const useTestStore = create<TestState>((set, get) => ({
     codingAnswers: {},
     behavioralAnswers: {},
     communicationAnswers: {},
+    communicationSelectedAnswers: {},
+    communicationReplayCounts: {},
     violations: data.initialViolations ?? 0,
     isSubmitted: false,
     showTimer: data.showTimer ?? true,
@@ -149,6 +157,20 @@ export const useTestStore = create<TestState>((set, get) => ({
     }
   })),
 
+  saveCommunicationSelectedAnswer: (questionId, selectedOptions) => set((state) => ({
+    communicationSelectedAnswers: {
+      ...state.communicationSelectedAnswers,
+      [questionId]: selectedOptions
+    }
+  })),
+
+  setCommunicationReplayCount: (questionId, count) => set((state) => ({
+    communicationReplayCounts: {
+      ...state.communicationReplayCounts,
+      [questionId]: count
+    }
+  })),
+
   incrementViolations: () => {
     const newViolations = get().violations + 1;
     set({ violations: newViolations });
@@ -179,6 +201,8 @@ export const useTestStore = create<TestState>((set, get) => ({
     codingAnswers: {},
     behavioralAnswers: {},
     communicationAnswers: {},
+    communicationSelectedAnswers: {},
+    communicationReplayCounts: {},
     violations: 0,
     isSubmitted: false,
     submissionResult: null,
@@ -191,6 +215,8 @@ export const useTestStore = create<TestState>((set, get) => ({
     const codingAnswers: Record<string, { code: string; language: string }> = { ...state.codingAnswers };
     const behavioralAnswers: Record<string, string> = { ...state.behavioralAnswers };
     const communicationAnswers: Record<string, string> = { ...state.communicationAnswers };
+    const communicationSelectedAnswers: Record<string, number[]> = { ...state.communicationSelectedAnswers };
+    const communicationReplayCounts: Record<string, number> = { ...state.communicationReplayCounts };
 
     mcq.forEach((a) => {
       mcqAnswers[a.questionId] = a.selectedOptions;
@@ -206,8 +232,10 @@ export const useTestStore = create<TestState>((set, get) => ({
 
     communication.forEach((a) => {
       communicationAnswers[a.questionId] = a.answerText ?? '';
+      if (a.selectedOptions) communicationSelectedAnswers[a.questionId] = a.selectedOptions;
+      if (typeof a.replayCount === 'number') communicationReplayCounts[a.questionId] = a.replayCount;
     });
 
-    return { mcqAnswers, codingAnswers, behavioralAnswers, communicationAnswers };
+    return { mcqAnswers, codingAnswers, behavioralAnswers, communicationAnswers, communicationSelectedAnswers, communicationReplayCounts };
   })
 }));

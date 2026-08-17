@@ -4,6 +4,7 @@ import { toast } from 'react-hot-toast';
 import Editor from '@monaco-editor/react';
 import { candidateApi } from '../../services/api';
 import { useTestStore } from '../../context/testStore';
+import GuardedAudioPlayer from '../../components/GuardedAudioPlayer';
 import { useProctoring } from '../../hooks/useProctoring';
 import { SCREEN_SHARE_WRONG_SURFACE_MESSAGE } from '../../services/proctorService';
 import {
@@ -64,6 +65,11 @@ interface RichQuestion {
   partialScoring?: boolean;
   // Communication (Written) — stimulusType only meaningful for subType WRITTEN
   stimulusType?: 'NONE' | 'IMAGE' | 'AUDIO';
+  // Communication (Listening) — options/isMultipleChoice shared with MCQ fields above
+  replayLimit?: number | null;
+  allowRewind?: boolean | null;
+  allowSpeedChange?: boolean | null;
+  fixedPlaybackSpeed?: number | null;
 }
 
 export default function TestInterface() {
@@ -72,8 +78,10 @@ export default function TestInterface() {
     testId, testCode, testName, duration, attemptId, maxViolations,
     proctorEnabled, requireCamera, requireMicrophone, requireScreenShare,
     customAIViolations, startTime, questions, currentQuestionIndex,
-    mcqAnswers, codingAnswers, behavioralAnswers, communicationAnswers, isSubmitted,
+    mcqAnswers, codingAnswers, behavioralAnswers, communicationAnswers,
+    communicationSelectedAnswers, communicationReplayCounts, isSubmitted,
     setCurrentQuestion, saveMCQAnswer, saveCodingAnswer, saveBehavioralAnswer, saveCommunicationAnswer,
+    saveCommunicationSelectedAnswer, setCommunicationReplayCount,
     incrementViolations, setSubmitted, violationPopupSettings,
     showTimer, autoSubmitOnTimeout,
   } = useTestStore();
@@ -542,6 +550,9 @@ export default function TestInterface() {
         await candidateApi.saveBehavioralAnswer({ questionId: currentQuestion.questionId, answerText: behavioralAnswers[currentQuestion.questionId] || '' });
       } else if (currentQuestion.type === 'communication' && currentQuestion.subType === 'WRITTEN') {
         await candidateApi.saveCommunicationAnswer({ questionId: currentQuestion.questionId, answerText: communicationAnswers[currentQuestion.questionId] || '' });
+      } else if (currentQuestion.type === 'communication' && currentQuestion.subType === 'LISTENING') {
+        const answer = communicationSelectedAnswers[currentQuestion.questionId];
+        if (answer && answer.length > 0) await candidateApi.saveCommunicationAnswer({ questionId: currentQuestion.questionId, selectedOptions: answer });
       }
       if (silent) {
         setAutoSaved(true);
@@ -634,6 +645,24 @@ export default function TestInterface() {
     saveCommunicationAnswer(currentQuestion!.questionId, value);
   };
 
+  const handleCommunicationSelect = (originalIndex: number) => {
+    if (isSubmitted || answeringLocked) return;
+    const questionId = currentQuestion!.questionId;
+    const isMultiple = currentQuestion!.isMultipleChoice;
+    const currentSelected = communicationSelectedAnswers[questionId] || [];
+    const newSelected = isMultiple
+      ? (currentSelected.includes(originalIndex) ? currentSelected.filter((i) => i !== originalIndex) : [...currentSelected, originalIndex])
+      : [originalIndex];
+    saveCommunicationSelectedAnswer(questionId, newSelected);
+    candidateApi.saveCommunicationAnswer({ questionId, selectedOptions: newSelected }).catch(() => {});
+  };
+
+  const handleReplayCountChange = (count: number) => {
+    const questionId = currentQuestion!.questionId;
+    setCommunicationReplayCount(questionId, count);
+    candidateApi.saveCommunicationAnswer({ questionId, replayCount: count }).catch(() => {});
+  };
+
   // The server also auto-submits attempts whose time has run out (a safety net that
   // fires even if this tab is closed/inactive), so it can beat this client to the
   // punch. Treat "already submitted" as success rather than an error in that race.
@@ -691,7 +720,8 @@ export default function TestInterface() {
       if (q.type === 'mcq' && mcqAnswers[q.questionId]?.length > 0) count++;
       if (q.type === 'coding' && codingAnswers[q.questionId]?.code) count++;
       if (q.type === 'behavioral' && (behavioralAnswers[q.questionId] || '').trim().length > 0) count++;
-      if (q.type === 'communication' && (communicationAnswers[q.questionId] || '').trim().length > 0) count++;
+      if (q.type === 'communication' && q.subType === 'WRITTEN' && (communicationAnswers[q.questionId] || '').trim().length > 0) count++;
+      if (q.type === 'communication' && q.subType === 'LISTENING' && (communicationSelectedAnswers[q.questionId]?.length || 0) > 0) count++;
     });
     return count;
   };
@@ -722,6 +752,7 @@ export default function TestInterface() {
     if (!q) return false;
     if (q.type === 'mcq') return (mcqAnswers[q.questionId]?.length || 0) > 0;
     if (q.type === 'coding') return !!codingAnswers[q.questionId]?.code;
+    if (q.type === 'communication' && q.subType === 'LISTENING') return (communicationSelectedAnswers[q.questionId]?.length || 0) > 0;
     if (q.type === 'communication') return (communicationAnswers[q.questionId] || '').trim().length > 0;
     return (behavioralAnswers[q.questionId] || '').trim().length > 0;
   };
@@ -1276,7 +1307,7 @@ export default function TestInterface() {
                 {/* Breadcrumb */}
                 <div className="flex items-center gap-2 flex-wrap mb-5">
                   <span className="text-sm font-semibold" style={{ color: typeColor[currentQuestion.type] }}>
-                    {typeLabel[currentQuestion.type]}
+                    {currentQuestion.type === 'communication' && currentQuestion.subType === 'LISTENING' ? 'Listening' : typeLabel[currentQuestion.type]}
                   </span>
                   {currentQuestion.difficulty && (
                     <>
@@ -1353,6 +1384,79 @@ export default function TestInterface() {
                     </div>
 
                     {/* Hint */}
+                    <div className="flex items-center gap-2 mt-5">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="text-xs text-gray-400">
+                        {currentQuestion.isMultipleChoice
+                          ? 'Multiple answers · your selections are saved automatically.'
+                          : 'Single answer · your selection is saved automatically.'}
+                      </span>
+                    </div>
+                  </>
+                ) : currentQuestion.type === 'communication' && currentQuestion.subType === 'LISTENING' ? (
+                  // -- Communication (Listening) --
+                  <>
+                    <h2 className="text-xl font-bold text-gray-900 mb-2 leading-snug">
+                      {currentQuestion.title}
+                    </h2>
+                    {currentQuestion.description && (
+                      <p className="text-sm mb-5" style={{ color: 'var(--admin-accent)' }}>
+                        {currentQuestion.description}
+                      </p>
+                    )}
+
+                    {currentQuestion.mediaAssets && currentQuestion.mediaAssets[0] && (
+                      <div className="mb-6">
+                        <GuardedAudioPlayer
+                          src={currentQuestion.mediaAssets[0].storageUrl}
+                          replayLimit={currentQuestion.replayLimit}
+                          allowRewind={currentQuestion.allowRewind}
+                          allowSpeedChange={currentQuestion.allowSpeedChange}
+                          fixedPlaybackSpeed={currentQuestion.fixedPlaybackSpeed}
+                          initialReplayCount={communicationReplayCounts[currentQuestion.questionId] || 0}
+                          onReplayCountChange={handleReplayCountChange}
+                          disabled={isSubmitted || timeUp}
+                        />
+                      </div>
+                    )}
+
+                    {/* Options */}
+                    <div className="space-y-3">
+                      {currentQuestion.options?.map((option, displayIdx) => {
+                        const isSelected = communicationSelectedAnswers[currentQuestion.questionId]?.includes(option.originalIndex);
+                        const letter = String.fromCharCode(65 + displayIdx);
+                        return (
+                          <button
+                            key={option.originalIndex}
+                            onClick={() => handleCommunicationSelect(option.originalIndex)}
+                            className="w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all"
+                            style={{
+                              borderColor: isSelected ? 'var(--admin-accent)' : 'var(--admin-border)',
+                              background: isSelected ? 'var(--admin-accent-soft)' : '#FFFFFF',
+                            }}
+                          >
+                            <span
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0 transition-colors"
+                              style={{
+                                background: isSelected ? 'var(--admin-accent)' : 'var(--admin-border)',
+                                color: isSelected ? '#FFFFFF' : '#6B7280',
+                              }}
+                            >
+                              {letter}
+                            </span>
+                            <span className="flex-1 text-sm text-gray-700">{option.text}</span>
+                            {isSelected && (
+                              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 flex-shrink-0" viewBox="0 0 20 20" fill="var(--admin-accent)">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+
                     <div className="flex items-center gap-2 mt-5">
                       <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />

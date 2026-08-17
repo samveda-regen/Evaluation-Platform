@@ -61,6 +61,7 @@ interface AttemptData {
   }>;
   communicationAnswers: Array<{
     questionId: string; subType: string; title: string; description?: string | null; answerText: string | null;
+    selectedOptions: number[] | null; options: string[] | null; correctAnswers: number[] | null; isCorrect: boolean | null;
     marks: number; marksObtained?: number | null;
   }>;
   activityLogs: Array<{
@@ -938,14 +939,44 @@ export default function AttemptDetails() {
                           )}
                         </div>
                       </div>
-                      {/* Answer text */}
+                      {/* Answer */}
                       <div style={{ padding:'14px 16px' }}>
                         <p style={{ fontSize:'11px', fontWeight:600, color:'var(--admin-text-subtle)', textTransform:'uppercase', letterSpacing:'0.05em', margin:'0 0 8px' }}>
                           Candidate's answer
                         </p>
-                        <p style={{ fontSize:'13px', color:'var(--admin-text-muted)', margin:'0 0 14px', lineHeight:'1.7', whiteSpace:'pre-wrap' }}>
-                          {ans.answerText || '(No answer provided)'}
-                        </p>
+                        {ans.options && ans.options.length > 0 ? (
+                          <div style={{ display:'flex', flexDirection:'column', gap:'7px', marginBottom:'14px' }}>
+                            {ans.options.map((opt, oi) => {
+                              const isSelected = (ans.selectedOptions ?? []).includes(oi);
+                              const isRight = (ans.correctAnswers ?? []).includes(oi);
+                              let bg = '#F9FAFB', border = '1px solid var(--admin-border)', textColor = 'var(--admin-text-muted)';
+                              if (isRight && isSelected)  { bg = 'var(--admin-accent-disabled)'; border = '1.5px solid var(--admin-accent)'; textColor = '#92400E'; }
+                              else if (isRight)            { bg = 'var(--admin-accent-soft)'; border = '1.5px dashed #FCD34D'; textColor = 'var(--admin-accent-hover)'; }
+                              else if (isSelected)         { bg = '#FEF2F2'; border = '1.5px solid #FCA5A5'; textColor = '#DC2626'; }
+                              return (
+                                <div key={oi} style={{ display:'flex', alignItems:'center', gap:'10px', padding:'9px 12px', borderRadius:'8px', backgroundColor:bg, border }}>
+                                  <span style={{
+                                    width:'22px', height:'22px', borderRadius:'50%', flexShrink:0,
+                                    display:'flex', alignItems:'center', justifyContent:'center',
+                                    fontSize:'11px', fontWeight:700,
+                                    backgroundColor: isRight ? 'var(--admin-accent)' : isSelected ? '#FCA5A5' : 'var(--admin-border)',
+                                    color: isRight ? 'white' : isSelected ? 'white' : 'var(--admin-text-muted)',
+                                  }}>
+                                    {String.fromCharCode(65 + oi)}
+                                  </span>
+                                  <span style={{ fontSize:'13px', color:textColor, flex:1 }}>{opt}</span>
+                                  {isRight && isSelected  && <CheckCircle2 size={14} color="var(--admin-accent)" />}
+                                  {isRight && !isSelected && <span style={{ fontSize:'10px', color:'var(--admin-accent-hover)', fontWeight:600 }}>Correct</span>}
+                                  {isSelected && !isRight && <XCircle size={14} color="#EF4444" />}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <p style={{ fontSize:'13px', color:'var(--admin-text-muted)', margin:'0 0 14px', lineHeight:'1.7', whiteSpace:'pre-wrap' }}>
+                            {ans.answerText || '(No answer provided)'}
+                          </p>
+                        )}
                         {aiSuggestion && (
                           <div style={{ display:'flex', gap:'8px', padding:'10px 12px', marginBottom:'12px', borderRadius:'8px', backgroundColor:'var(--admin-accent-soft)', border:'1px solid var(--admin-accent-disabled)' }}>
                             <Sparkles size={14} color="var(--admin-accent-hover)" style={{ flexShrink:0, marginTop:'2px' }} />
