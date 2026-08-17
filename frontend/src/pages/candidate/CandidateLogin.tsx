@@ -162,14 +162,31 @@ export default function CandidateLogin() {
           width: '100%', maxWidth: '480px', textAlign: 'center',
           boxShadow: '0 4px 24px rgba(0,0,0,0.08)', border: '1px solid var(--admin-border)',
         }}>
-          <h1 style={{ fontSize: '20px', fontWeight: 700, color: '#111827', margin: '0 0 10px' }}>
-            Invitation Unavailable
-          </h1>
-          <p style={{ fontSize: '14px', color: '#6B7280', margin: '0 0 20px' }}>
-            {inviteError === 'This invitation link has already been used.'
-              ? `${inviteErrorName ? `Hello ${inviteErrorName}, ` : ''}this invitation link is no longer valid because it has already been used.`
-              : inviteError}
-          </p>
+          {/* An "already used" token lands here in one more scenario beyond a genuine
+              re-visit attempt: TestComplete.tsx's SEB quit link reuses this exact URL
+              (the only one the URL filter allows through) so SEB can recognize it as the
+              quit trigger. If SEB doesn't intercept it, this page loads for real — with a
+              token that's already been consumed. That's not an error the candidate did
+              anything wrong to cause, so it gets a reassuring message instead of an alarm. */}
+          {inviteError === 'This invitation link has already been used.' ? (
+            <>
+              <h1 style={{ fontSize: '20px', fontWeight: 700, color: '#111827', margin: '0 0 10px' }}>
+                Assessment Already Completed
+              </h1>
+              <p style={{ fontSize: '14px', color: '#6B7280', margin: '0 0 20px' }}>
+                {inviteErrorName ? `Hello ${inviteErrorName}, ` : ''}this link has already been used to complete your assessment. You may now safely close this window.
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 style={{ fontSize: '20px', fontWeight: 700, color: '#111827', margin: '0 0 10px' }}>
+                Invitation Unavailable
+              </h1>
+              <p style={{ fontSize: '14px', color: '#6B7280', margin: '0 0 20px' }}>
+                {inviteError}
+              </p>
+            </>
+          )}
           <p style={{ fontSize: '13px', color: '#9CA3AF' }}>
             Trouble signing in? Contact <span style={{ color: 'var(--admin-accent)', fontWeight: 500 }}>connect@hria.io</span>
           </p>
