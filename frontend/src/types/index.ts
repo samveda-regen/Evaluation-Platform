@@ -159,6 +159,7 @@ export interface CommunicationAnswer {
   answerText: string | null;
   selectedOptions: number[] | null;
   replayCount?: number | null;
+  audioAssetId?: string | null;
 }
 
 export interface ActivityLog {

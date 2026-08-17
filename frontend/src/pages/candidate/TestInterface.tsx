@@ -5,6 +5,7 @@ import Editor from '@monaco-editor/react';
 import { candidateApi } from '../../services/api';
 import { useTestStore } from '../../context/testStore';
 import GuardedAudioPlayer from '../../components/GuardedAudioPlayer';
+import AudioRecorder from '../../components/AudioRecorder';
 import { useProctoring } from '../../hooks/useProctoring';
 import { SCREEN_SHARE_WRONG_SURFACE_MESSAGE } from '../../services/proctorService';
 import {
@@ -72,6 +73,8 @@ interface RichQuestion {
   fixedPlaybackSpeed?: number | null;
   // Communication (Reading) — options/isMultipleChoice shared with MCQ fields above
   passage?: { id: string; title: string; passageText: string } | null;
+  // Communication (Speaking)
+  recordingTimeLimit?: number | null;
 }
 
 export default function TestInterface() {
@@ -81,9 +84,9 @@ export default function TestInterface() {
     proctorEnabled, requireCamera, requireMicrophone, requireScreenShare,
     customAIViolations, startTime, questions, currentQuestionIndex,
     mcqAnswers, codingAnswers, behavioralAnswers, communicationAnswers,
-    communicationSelectedAnswers, communicationReplayCounts, isSubmitted,
+    communicationSelectedAnswers, communicationReplayCounts, communicationAudioAnswers, isSubmitted,
     setCurrentQuestion, saveMCQAnswer, saveCodingAnswer, saveBehavioralAnswer, saveCommunicationAnswer,
-    saveCommunicationSelectedAnswer, setCommunicationReplayCount,
+    saveCommunicationSelectedAnswer, setCommunicationReplayCount, saveCommunicationAudioAnswer,
     incrementViolations, setSubmitted, violationPopupSettings,
     showTimer, autoSubmitOnTimeout,
   } = useTestStore();
@@ -665,6 +668,12 @@ export default function TestInterface() {
     candidateApi.saveCommunicationAnswer({ questionId, replayCount: count }).catch(() => {});
   };
 
+  const handleSpeakingRecordingComplete = async (base64: string, mimeType: string) => {
+    const questionId = currentQuestion!.questionId;
+    const { data } = await candidateApi.saveCommunicationAnswer({ questionId, audio: base64, audioMimeType: mimeType });
+    saveCommunicationAudioAnswer(questionId, data.audioAssetId, data.transcript);
+  };
+
   // The server also auto-submits attempts whose time has run out (a safety net that
   // fires even if this tab is closed/inactive), so it can beat this client to the
   // punch. Treat "already submitted" as success rather than an error in that race.
@@ -724,6 +733,7 @@ export default function TestInterface() {
       if (q.type === 'behavioral' && (behavioralAnswers[q.questionId] || '').trim().length > 0) count++;
       if (q.type === 'communication' && q.subType === 'WRITTEN' && (communicationAnswers[q.questionId] || '').trim().length > 0) count++;
       if (q.type === 'communication' && (q.subType === 'LISTENING' || q.subType === 'READING') && (communicationSelectedAnswers[q.questionId]?.length || 0) > 0) count++;
+      if (q.type === 'communication' && q.subType === 'SPEAKING' && communicationAudioAnswers[q.questionId]) count++;
     });
     return count;
   };
@@ -755,6 +765,7 @@ export default function TestInterface() {
     if (q.type === 'mcq') return (mcqAnswers[q.questionId]?.length || 0) > 0;
     if (q.type === 'coding') return !!codingAnswers[q.questionId]?.code;
     if (q.type === 'communication' && (q.subType === 'LISTENING' || q.subType === 'READING')) return (communicationSelectedAnswers[q.questionId]?.length || 0) > 0;
+    if (q.type === 'communication' && q.subType === 'SPEAKING') return Boolean(communicationAudioAnswers[q.questionId]);
     if (q.type === 'communication') return (communicationAnswers[q.questionId] || '').trim().length > 0;
     return (behavioralAnswers[q.questionId] || '').trim().length > 0;
   };
@@ -1311,6 +1322,7 @@ export default function TestInterface() {
                   <span className="text-sm font-semibold" style={{ color: typeColor[currentQuestion.type] }}>
                     {currentQuestion.type === 'communication' && currentQuestion.subType === 'LISTENING' ? 'Listening'
                       : currentQuestion.type === 'communication' && currentQuestion.subType === 'READING' ? 'Reading'
+                      : currentQuestion.type === 'communication' && currentQuestion.subType === 'SPEAKING' ? 'Speaking'
                       : typeLabel[currentQuestion.type]}
                   </span>
                   {currentQuestion.difficulty && (
@@ -1536,6 +1548,45 @@ export default function TestInterface() {
                         {currentQuestion.isMultipleChoice
                           ? 'Multiple answers · your selections are saved automatically.'
                           : 'Single answer · your selection is saved automatically.'}
+                      </span>
+                    </div>
+                  </>
+                ) : currentQuestion.type === 'communication' && currentQuestion.subType === 'SPEAKING' ? (
+                  // -- Communication (Speaking) --
+                  <>
+                    <h2 className="text-xl font-bold text-gray-900 mb-2 leading-snug">
+                      {currentQuestion.title}
+                    </h2>
+                    {currentQuestion.description && (
+                      <p className="text-sm mb-5" style={{ color: 'var(--admin-accent)' }}>
+                        {currentQuestion.description}
+                      </p>
+                    )}
+
+                    {currentQuestion.mediaAssets && currentQuestion.mediaAssets[0] && (
+                      <div className="mb-6 rounded-xl overflow-hidden border p-4 bg-gray-50" style={{ borderColor: 'var(--admin-border)' }}>
+                        <audio src={currentQuestion.mediaAssets[0].storageUrl} controls className="w-full" preload="metadata" />
+                      </div>
+                    )}
+
+                    <AudioRecorder
+                      maxDurationSec={currentQuestion.recordingTimeLimit || 120}
+                      onSubmitRecording={handleSpeakingRecordingComplete}
+                      disabled={isSubmitted || timeUp}
+                      alreadyRecorded={Boolean(communicationAudioAnswers[currentQuestion.questionId])}
+                      existingAudioUrl={
+                        communicationAudioAnswers[currentQuestion.questionId]
+                          ? `/api/files/${communicationAudioAnswers[currentQuestion.questionId].audioAssetId}`
+                          : null
+                      }
+                    />
+
+                    <div className="flex items-center gap-2 mt-5">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="text-xs text-gray-400">
+                        Your recording is transcribed and graded automatically once submitted.
                       </span>
                     </div>
                   </>

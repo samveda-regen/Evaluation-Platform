@@ -28,9 +28,9 @@ const SUB_TYPES: { value: CommunicationSubType; label: string; blurb: string; re
   { value: 'WRITTEN', label: 'Written', blurb: 'Candidate types a response to a prompt — graded by AI on grammar, wording, and coherence.', ready: true },
   { value: 'LISTENING', label: 'Listening', blurb: 'Candidate listens to an audio clip and answers multiple choice — auto-scored, with playback guardrails.', ready: true },
   { value: 'READING', label: 'Reading', blurb: 'Candidate reads a shared passage and answers multiple choice — auto-scored.', ready: true },
-  { value: 'SPEAKING', label: 'Speaking', blurb: 'Recorded spoken response, AI-transcribed and graded — coming soon.', ready: false },
+  { value: 'SPEAKING', label: 'Speaking', blurb: 'Candidate records a spoken response to a topic — transcribed by Whisper, graded by AI.', ready: true },
 ];
-const READY_SUB_TYPES: CommunicationSubType[] = ['WRITTEN', 'LISTENING', 'READING'];
+const READY_SUB_TYPES: CommunicationSubType[] = ['WRITTEN', 'LISTENING', 'READING', 'SPEAKING'];
 
 interface ReadingPassage {
   id: string;
@@ -97,6 +97,12 @@ export default function CommunicationForm() {
     isMultipleChoice: false,
     explanation: '',
   });
+  // Speaking-only fields
+  const [speakingData, setSpeakingData] = useState({
+    description: '',
+    evaluationNotes: '',
+    recordingTimeLimit: 120,
+  });
   const [passages, setPassages] = useState<ReadingPassage[]>([]);
   const [loadingPassages, setLoadingPassages] = useState(false);
   const [showNewPassage, setShowNewPassage] = useState(false);
@@ -109,7 +115,7 @@ export default function CommunicationForm() {
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const isAudioUpload = subType === 'LISTENING' || (subType === 'WRITTEN' && formData.stimulusType === 'AUDIO');
+  const isAudioUpload = subType === 'LISTENING' || subType === 'SPEAKING' || (subType === 'WRITTEN' && formData.stimulusType === 'AUDIO');
 
   useEffect(() => {
     if (isEditing && editQuestion) {
@@ -153,6 +159,13 @@ export default function CommunicationForm() {
             : [],
           isMultipleChoice: typeof editQuestion.isMultipleChoice === 'boolean' ? editQuestion.isMultipleChoice : false,
           explanation: typeof editQuestion.explanation === 'string' ? editQuestion.explanation : '',
+        });
+      }
+      if (editQuestion.subType === 'SPEAKING') {
+        setSpeakingData({
+          description: typeof editQuestion.description === 'string' ? editQuestion.description : '',
+          evaluationNotes: typeof editQuestion.evaluationNotes === 'string' ? editQuestion.evaluationNotes : '',
+          recordingTimeLimit: typeof editQuestion.recordingTimeLimit === 'number' ? editQuestion.recordingTimeLimit : 120,
         });
       }
     }
@@ -326,8 +339,7 @@ export default function CommunicationForm() {
         allowSpeedChange: listeningData.allowSpeedChange,
         fixedPlaybackSpeed: listeningData.fixedPlaybackSpeed,
       };
-    } else {
-      // READING
+    } else if (subType === 'READING') {
       if (!readingData.passageId) { toast.error('Select or create a reading passage'); return; }
       const nonEmpty = readingData.options.filter(o => o.trim() !== '');
       if (nonEmpty.length < 2) { toast.error('At least 2 options required'); return; }
@@ -349,6 +361,23 @@ export default function CommunicationForm() {
         correctAnswers: readingData.correctAnswers,
         explanation: readingData.explanation,
         isMultipleChoice: readingData.isMultipleChoice,
+      };
+    } else {
+      // SPEAKING
+      if (!speakingData.description.trim() && !mediaAssets.length) {
+        toast.error('Provide a topic prompt (text and/or audio) for the candidate to respond to');
+        return;
+      }
+      payload = {
+        subType,
+        title: formData.title,
+        marks: formData.marks,
+        difficulty: formData.difficulty,
+        topic: formData.topic,
+        tags: formData.tags,
+        description: speakingData.description,
+        evaluationNotes: speakingData.evaluationNotes,
+        recordingTimeLimit: speakingData.recordingTimeLimit,
       };
     }
 
@@ -511,7 +540,7 @@ export default function CommunicationForm() {
                   placeholder="e.g. Listen to the recording and choose the best answer…"
                 />
               </div>
-            ) : (
+            ) : subType === 'READING' ? (
               <div>
                 <label className="block text-sm font-medium mb-2" style={{ color: 'var(--admin-text-muted)' }}>
                   Instructions <span style={{ color: 'var(--admin-text-subtle)', fontWeight: 400 }}>(optional — shown above the passage)</span>
@@ -522,6 +551,19 @@ export default function CommunicationForm() {
                   rows={3}
                   style={inputSx}
                   placeholder="e.g. Read the passage and choose the best answer…"
+                />
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--admin-text-muted)' }}>
+                  Topic prompt <span style={{ color: 'var(--admin-text-subtle)', fontWeight: 400 }}>(text and/or audio below — the AI uses this as its grading reference)</span>
+                </label>
+                <textarea
+                  value={speakingData.description}
+                  onChange={e => setSpeakingData({ ...speakingData, description: e.target.value })}
+                  rows={4}
+                  style={inputSx}
+                  placeholder="e.g. Describe a time you resolved a conflict with a coworker…"
                 />
               </div>
             )}
@@ -604,7 +646,7 @@ export default function CommunicationForm() {
                   </div>
                 )}
               </div>
-            ) : (
+            ) : subType === 'READING' ? (
               /* Passage picker (mandatory for Reading) */
               <div className="mt-6 pt-4" style={{ borderTop: '1px solid var(--admin-border)' }}>
                 <div className="flex items-center justify-between mb-2">
@@ -650,6 +692,29 @@ export default function CommunicationForm() {
                 {!showNewPassage && readingData.passageId && (
                   <div className="mt-3 p-3 rounded-xl text-xs leading-relaxed max-h-40 overflow-y-auto" style={{ backgroundColor: '#F9FAFB', border: '1px solid var(--admin-border)', color: 'var(--admin-text-muted)', whiteSpace: 'pre-wrap' }}>
                     {passages.find(p => p.id === readingData.passageId)?.passageText}
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Topic audio (optional — text and/or audio) */
+              <div className="mt-6 pt-4" style={{ borderTop: '1px solid var(--admin-border)' }}>
+                <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: 'var(--admin-text-muted)' }}>
+                  Topic audio <span style={{ fontWeight: 400, textTransform: 'none' }}>(optional — play the topic to the candidate instead of, or alongside, the text above)</span>
+                </label>
+                <input ref={fileInputRef} type="file" accept="audio/*" onChange={handleFileSelect} className="hidden" />
+                {uploadingMedia && <p className="text-xs mb-2" style={{ color: 'var(--admin-text-muted)' }}>Uploading…</p>}
+                {mediaAssets.length === 0 ? (
+                  <div onClick={() => fileInputRef.current?.click()}
+                    className="border-2 border-dashed rounded-xl p-5 text-center cursor-pointer"
+                    style={{ borderColor: 'var(--admin-border)', backgroundColor: '#FAFAFA' }}>
+                    <Upload width={16} height={16} strokeWidth={1.5} style={{ margin: '0 auto 6px', color: 'var(--admin-text-subtle)' }} />
+                    <p className="text-sm" style={{ color: 'var(--admin-text-subtle)' }}>Click to upload an audio file</p>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl border" style={{ borderColor: 'var(--admin-border)', backgroundColor: 'white' }}>
+                    <span className="text-sm flex-1 truncate" style={{ color: 'var(--admin-text-muted)' }}>{mediaAssets[0].originalName}</span>
+                    <span className="text-xs" style={{ color: 'var(--admin-text-subtle)' }}>{(mediaAssets[0].fileSize / 1024 / 1024).toFixed(1)} MB</span>
+                    <button type="button" onClick={() => handleDeleteMedia(mediaAssets[0].id)} className="text-sm font-medium" style={{ color: '#DC2626' }}>Remove</button>
                   </div>
                 )}
               </div>
@@ -730,7 +795,7 @@ export default function CommunicationForm() {
                 />
               </div>
             </div>
-          ) : (
+          ) : subType === 'LISTENING' ? (
             <>
               {/* Answer options */}
               <div className="rounded-2xl p-6" style={{ backgroundColor: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
@@ -837,6 +902,36 @@ export default function CommunicationForm() {
                 )}
               </div>
             </>
+          ) : (
+            <>
+              {/* Evaluation notes card */}
+              <div className="rounded-2xl p-6" style={{ backgroundColor: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+                <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--admin-text-subtle)' }}>EVALUATION NOTES</p>
+                <p className="text-xs mb-4" style={{ color: 'var(--admin-text-subtle)' }}>Optional extra grading guidance for the AI, beyond the topic above. Not shown to candidates.</p>
+                <textarea
+                  value={speakingData.evaluationNotes}
+                  onChange={e => setSpeakingData({ ...speakingData, evaluationNotes: e.target.value })}
+                  rows={4}
+                  style={inputSx}
+                  placeholder="e.g. Focus on content relevance and coherence; accent is not a factor…"
+                />
+              </div>
+
+              {/* Recording limit */}
+              <div className="rounded-2xl p-6" style={{ backgroundColor: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+                <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--admin-text-subtle)' }}>RECORDING LIMIT</p>
+                <p className="text-xs mb-4" style={{ color: 'var(--admin-text-subtle)' }}>Maximum length of the candidate's spoken response. Recording auto-stops at this limit.</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number" min={10}
+                    value={speakingData.recordingTimeLimit}
+                    onChange={e => setSpeakingData({ ...speakingData, recordingTimeLimit: Math.max(10, Number(e.target.value) || 10) })}
+                    style={{ ...inputSx, resize: undefined, width: '120px' }}
+                  />
+                  <span className="text-sm" style={{ color: 'var(--admin-text-subtle)' }}>seconds</span>
+                </div>
+              </div>
+            </>
           )}
         </div>
 
@@ -929,7 +1024,9 @@ export default function CommunicationForm() {
                 ? "Title and description are compulsory — the AI grader only has these (plus your evaluation notes) as its reference when scoring the candidate's typed answer."
                 : subType === 'LISTENING'
                 ? 'Listening answers are scored automatically by exact match, same as MCQ — no manual grading needed. The replay limit and rewind/speed locks are enforced live during the test.'
-                : 'Reading answers are scored automatically by exact match, same as MCQ. Passages are shared across questions — pick an existing one or create a new one, then reuse it for multiple questions.'}
+                : subType === 'READING'
+                ? 'Reading answers are scored automatically by exact match, same as MCQ. Passages are shared across questions — pick an existing one or create a new one, then reuse it for multiple questions.'
+                : "The candidate's recording is transcribed by Whisper and graded by AI on content and fluency from the transcript — not pronunciation or accent, which aren't assessed. Requires the speech transcription service to be configured on the server."}
             </p>
           </div>
         </div>

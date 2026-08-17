@@ -62,6 +62,8 @@ interface AttemptData {
   communicationAnswers: Array<{
     questionId: string; subType: string; title: string; description?: string | null; answerText: string | null;
     selectedOptions: number[] | null; options: string[] | null; correctAnswers: number[] | null; isCorrect: boolean | null;
+    transcript: string | null; audioAssetId: string | null;
+    gradingDetail: { wordsPerMinute?: number; pauseCount?: number; longestPauseSec?: number; contentScore?: number; fluencyScore?: number; reasoning?: string } | null;
     marks: number; marksObtained?: number | null;
   }>;
   activityLogs: Array<{
@@ -185,12 +187,13 @@ export default function AttemptDetails() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.attempt.id, data?.behavioralAnswers]);
 
-  // Same auto-scoring behavior as behavioral, but only for Written answers — Listening/Reading
-  // are auto-scored server-side at submission time, and Speaking AI grading lands in a later phase.
+  // Same auto-scoring behavior as behavioral, for Written (typed text) and Speaking (transcript) —
+  // Listening/Reading are auto-scored server-side at submission time instead.
   useEffect(() => {
     if (!data) return;
     data.communicationAnswers.forEach(a => {
-      const needsScore = a.subType === 'WRITTEN' && (a.marksObtained === null || a.marksObtained === undefined) && a.answerText?.trim();
+      const hasGradableContent = a.subType === 'WRITTEN' ? Boolean(a.answerText?.trim()) : a.subType === 'SPEAKING' ? Boolean(a.transcript?.trim()) : false;
+      const needsScore = (a.subType === 'WRITTEN' || a.subType === 'SPEAKING') && (a.marksObtained === null || a.marksObtained === undefined) && hasGradableContent;
       if (needsScore && !autoGradedCommRef.current.has(a.questionId)) {
         autoGradedCommRef.current.add(a.questionId);
         void handleAutoGradeCommunication(a.questionId);
@@ -972,6 +975,23 @@ export default function AttemptDetails() {
                               );
                             })}
                           </div>
+                        ) : ans.subType === 'SPEAKING' ? (
+                          <div style={{ marginBottom: '14px' }}>
+                            {ans.audioAssetId ? (
+                              <audio src={`/api/files/${ans.audioAssetId}`} controls className="w-full" style={{ marginBottom: '10px' }} />
+                            ) : (
+                              <p style={{ fontSize:'12px', color:'var(--admin-text-subtle)', fontStyle:'italic', margin:'0 0 10px' }}>No recording submitted.</p>
+                            )}
+                            <p style={{ fontSize:'13px', color:'var(--admin-text-muted)', margin:0, lineHeight:'1.7', whiteSpace:'pre-wrap' }}>
+                              {ans.transcript || '(No speech detected)'}
+                            </p>
+                            {ans.gradingDetail && (ans.gradingDetail.wordsPerMinute !== undefined) && (
+                              <p style={{ fontSize:'11px', color:'var(--admin-text-subtle)', margin:'8px 0 0' }}>
+                                {ans.gradingDetail.wordsPerMinute} wpm · {ans.gradingDetail.pauseCount} long pause{ans.gradingDetail.pauseCount === 1 ? '' : 's'}
+                                {ans.gradingDetail.contentScore !== undefined && ` · content ${ans.gradingDetail.contentScore}/10 · fluency ${ans.gradingDetail.fluencyScore}/10`}
+                              </p>
+                            )}
+                          </div>
                         ) : (
                           <p style={{ fontSize:'13px', color:'var(--admin-text-muted)', margin:'0 0 14px', lineHeight:'1.7', whiteSpace:'pre-wrap' }}>
                             {ans.answerText || '(No answer provided)'}
@@ -988,7 +1008,7 @@ export default function AttemptDetails() {
                             </div>
                           </div>
                         )}
-                        {ans.subType === 'WRITTEN' ? (
+                        {ans.subType === 'WRITTEN' || ans.subType === 'SPEAKING' ? (
                           <div style={{ display:'flex', alignItems:'center', gap:'8px', paddingTop:'12px', borderTop:'1px solid var(--admin-border)', flexWrap:'wrap' }}>
                             <p style={{ fontSize:'11px', fontWeight:600, color:'var(--admin-text-subtle)', margin:0 }}>Grade this answer:</p>
                             <input
@@ -1009,15 +1029,20 @@ export default function AttemptDetails() {
                             >
                               {isGrading ? 'Saving…' : 'Save marks'}
                             </button>
-                            <button
-                              onClick={() => handleAutoGradeCommunication(ans.questionId)}
-                              disabled={isAiScoring || !ans.answerText}
-                              title={!ans.answerText ? 'No candidate answer to score' : 'Re-run AI scoring for this answer'}
-                              style={{ display:'flex', alignItems:'center', gap:'4px', padding:'6px 10px', borderRadius:'6px', border:'none', backgroundColor:'transparent', color:'var(--admin-text-subtle)', fontSize:'11px', fontWeight:600, cursor: isAiScoring || !ans.answerText ? 'not-allowed' : 'pointer', opacity: isAiScoring || !ans.answerText ? 0.5 : 1, textDecoration: 'underline' }}
-                            >
-                              <Sparkles size={12} />
-                              {isAiScoring ? 'Scoring…' : aiSuggestion ? 'Re-score with AI' : 'Score with AI'}
-                            </button>
+                            {(() => {
+                              const gradableText = ans.subType === 'SPEAKING' ? ans.transcript : ans.answerText;
+                              return (
+                                <button
+                                  onClick={() => handleAutoGradeCommunication(ans.questionId)}
+                                  disabled={isAiScoring || !gradableText}
+                                  title={!gradableText ? 'No candidate answer to score' : 'Re-run AI scoring for this answer'}
+                                  style={{ display:'flex', alignItems:'center', gap:'4px', padding:'6px 10px', borderRadius:'6px', border:'none', backgroundColor:'transparent', color:'var(--admin-text-subtle)', fontSize:'11px', fontWeight:600, cursor: isAiScoring || !gradableText ? 'not-allowed' : 'pointer', opacity: isAiScoring || !gradableText ? 0.5 : 1, textDecoration: 'underline' }}
+                                >
+                                  <Sparkles size={12} />
+                                  {isAiScoring ? 'Scoring…' : aiSuggestion ? 'Re-score with AI' : 'Score with AI'}
+                                </button>
+                              );
+                            })()}
                           </div>
                         ) : (
                           <p style={{ fontSize:'11px', color:'var(--admin-text-subtle)', fontStyle:'italic', margin:0 }}>

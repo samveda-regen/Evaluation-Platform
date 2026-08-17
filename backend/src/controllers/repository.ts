@@ -954,6 +954,15 @@ async function updateCommunicationBySource(
       if (req.body.isMultipleChoice !== undefined) data.isMultipleChoice = Boolean(req.body.isMultipleChoice);
     }
 
+    if (existing.subType === 'READING' && typeof req.body.passageId === 'string' && req.body.passageId.trim()) {
+      const passage = await prisma.readingPassage.findUnique({ where: { id: req.body.passageId.trim() } });
+      if (!passage) {
+        res.status(400).json({ error: 'Reading passage not found.' });
+        return;
+      }
+      data.passage = { connect: { id: passage.id } };
+    }
+
     if (existing.subType === 'LISTENING') {
       if (req.body.replayLimit !== undefined && Number.isFinite(Number(req.body.replayLimit))) {
         data.replayLimit = Math.max(1, Math.floor(Number(req.body.replayLimit)));
@@ -965,8 +974,12 @@ async function updateCommunicationBySource(
       }
     }
 
-    if (existing.subType === 'SPEAKING' && req.body.recordingTimeLimit !== undefined && Number.isFinite(Number(req.body.recordingTimeLimit))) {
-      data.recordingTimeLimit = Math.max(10, Math.floor(Number(req.body.recordingTimeLimit)));
+    if (existing.subType === 'SPEAKING') {
+      if (req.body.recordingTimeLimit !== undefined && Number.isFinite(Number(req.body.recordingTimeLimit))) {
+        data.recordingTimeLimit = Math.max(10, Math.floor(Number(req.body.recordingTimeLimit)));
+      }
+      const evaluationNotes = toStringOrUndefined(req.body.evaluationNotes);
+      if (evaluationNotes !== undefined) data.evaluationNotes = sanitizeInput(evaluationNotes);
     }
 
     const updated = await prisma.communicationQuestion.update({ where: { id: questionId }, data });

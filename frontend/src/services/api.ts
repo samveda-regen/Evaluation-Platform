@@ -657,7 +657,7 @@ export const candidateApi = {
   saveBehavioralAnswer: (data: { questionId: string; answerText: string }) =>
     api.post('/candidate/answer/behavioral', data),
 
-  saveCommunicationAnswer: (data: { questionId: string; answerText?: string; selectedOptions?: number[]; replayCount?: number }) =>
+  saveCommunicationAnswer: (data: { questionId: string; answerText?: string; selectedOptions?: number[]; replayCount?: number; audio?: string; audioMimeType?: string }) =>
     api.post('/candidate/answer/communication', data),
 
   runCode: (data: { questionId: string; code: string; language: string; input?: string }) =>

@@ -13,7 +13,8 @@ import {
   getInvitationContextForLogin,
   resolveInvitationTokenFromAccessCode
 } from '../services/invitationService.js';
-import { uploadSnapshot } from '../services/fileStorageService.js';
+import { uploadSnapshot, uploadRecording } from '../services/fileStorageService.js';
+import { transcribeAudio, isSpeechServiceConfigured } from '../services/speechService.js';
 import { parseStoredCustomAIViolationEvents } from '../utils/proctoringConfig.js';
 import { sendCandidateScoreWebhook, dispatchCompanyWebhookEvent } from '../services/candidateScoreWebhookService.js';
 import { sendConfirmationEmail, sendResultEmail } from '../services/emailService.js';
@@ -1175,12 +1176,14 @@ export async function saveBehavioralAnswer(req: AuthenticatedRequest, res: Respo
 }
 
 // Accepts whichever fields are relevant to the question's subType — answerText (Written),
-// selectedOptions (Listening/Reading), or audioAssetId (Speaking, wired up in a later phase) —
-// same upsert-on-save-per-keystroke pattern as saveBehavioralAnswer.
+// selectedOptions (Listening/Reading), or a base64 audio recording (Speaking) — same
+// upsert-on-save pattern as saveBehavioralAnswer. Speaking is the odd one out: it stores the
+// recording and synchronously transcribes it via the Python speech service before responding,
+// since there's nothing to grade later without a transcript.
 export async function saveCommunicationAnswer(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { attemptId } = req.candidate!;
-    const { questionId, answerText, selectedOptions, replayCount } = req.body;
+    const { questionId, answerText, selectedOptions, replayCount, audio, audioMimeType } = req.body;
 
     const attempt = await prisma.testAttempt.findUnique({
       where: { id: attemptId }
@@ -1195,10 +1198,53 @@ export async function saveCommunicationAnswer(req: AuthenticatedRequest, res: Re
       answerText?: string;
       selectedOptions?: string;
       replayCount?: number;
+      audioAssetId?: string;
+      transcript?: string;
+      gradingDetail?: string;
     } = {};
     if (typeof answerText === 'string') data.answerText = answerText;
     if (Array.isArray(selectedOptions)) data.selectedOptions = JSON.stringify(selectedOptions);
     if (typeof replayCount === 'number' && Number.isFinite(replayCount)) data.replayCount = Math.max(0, Math.floor(replayCount));
+
+    if (typeof audio === 'string' && audio.trim()) {
+      if (!isSpeechServiceConfigured()) {
+        res.status(503).json({ error: 'Speech transcription is not configured on this server yet. Please contact your administrator.' });
+        return;
+      }
+
+      let buffer: Buffer;
+      try {
+        buffer = Buffer.from(audio, 'base64');
+      } catch {
+        res.status(400).json({ error: 'audio must be valid base64' });
+        return;
+      }
+      if (!buffer.length) {
+        res.status(400).json({ error: 'audio payload is empty' });
+        return;
+      }
+
+      const mimeType = typeof audioMimeType === 'string' && audioMimeType.trim() ? audioMimeType.trim() : 'audio/webm';
+      const uploadResult = await uploadRecording(buffer, attemptId, 'audio', mimeType);
+      if (!uploadResult.success || !uploadResult.fileId) {
+        res.status(500).json({ error: uploadResult.error || 'Failed to store recording' });
+        return;
+      }
+      data.audioAssetId = uploadResult.fileId;
+
+      const transcription = await transcribeAudio(audio, mimeType);
+      if (!transcription) {
+        res.status(502).json({ error: 'Transcription failed. Please try recording again.' });
+        return;
+      }
+      data.transcript = transcription.transcript;
+      data.gradingDetail = JSON.stringify({
+        wordsPerMinute: transcription.wordsPerMinute,
+        pauseCount: transcription.pauseCount,
+        longestPauseSec: transcription.longestPauseSec,
+        durationSec: transcription.durationSec,
+      });
+    }
 
     await prisma.communicationAnswer.upsert({
       where: {
@@ -1218,7 +1264,7 @@ export async function saveCommunicationAnswer(req: AuthenticatedRequest, res: Re
       }
     });
 
-    res.json({ message: 'Communication answer saved' });
+    res.json({ message: 'Communication answer saved', transcript: data.transcript, audioAssetId: data.audioAssetId });
   } catch (error) {
     console.error('Save communication answer error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1934,7 +1980,8 @@ export async function getSavedAnswers(req: AuthenticatedRequest, res: Response):
           questionId: true,
           answerText: true,
           selectedOptions: true,
-          replayCount: true
+          replayCount: true,
+          audioAssetId: true
         }
       })
     ]);
@@ -1950,7 +1997,8 @@ export async function getSavedAnswers(req: AuthenticatedRequest, res: Response):
         questionId: a.questionId,
         answerText: a.answerText,
         selectedOptions: a.selectedOptions ? JSON.parse(a.selectedOptions) : null,
-        replayCount: a.replayCount
+        replayCount: a.replayCount,
+        audioAssetId: a.audioAssetId
       }))
     });
   } catch (error) {

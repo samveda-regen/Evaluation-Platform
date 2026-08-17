@@ -4,7 +4,7 @@ import prisma from '../utils/db.js';
 import { sendResultEmail } from '../services/emailService.js';
 import { getTestGradingPreferences } from '../utils/testPreferences.js';
 import { scoreBehavioralAnswer } from '../services/behavioralScoringService.js';
-import { scoreWrittenAnswer } from '../services/communicationScoringService.js';
+import { scoreWrittenAnswer, scoreSpeakingAnswer } from '../services/communicationScoringService.js';
 
 async function resolveCompanyName(companyId: string | null): Promise<string> {
   if (!companyId) return 'Our Team';
@@ -272,6 +272,7 @@ export async function getAttemptDetails(req: AuthenticatedRequest, res: Response
       correctAnswers: a.question.correctAnswers ? JSON.parse(a.question.correctAnswers) : null,
       isCorrect: a.isCorrect,
       transcript: a.transcript,
+      audioAssetId: a.audioAssetId,
       replayCount: a.replayCount,
       gradingDetail: a.gradingDetail ? JSON.parse(a.gradingDetail) : null,
       marks: a.question.marks,
@@ -703,8 +704,9 @@ export async function gradeCommunicationAnswer(req: AuthenticatedRequest, res: R
   }
 }
 
-// Auto-grades a Written answer via the LLM (Speaking auto-grading lands in a later phase once
-// Whisper transcription is wired up). Mirrors autoGradeBehavioralAnswer's contract.
+// Auto-grades a Written or Speaking answer via the LLM. Written uses the raw typed text;
+// Speaking uses the Whisper transcript plus the timing-derived fluency signals captured at
+// save time. Mirrors autoGradeBehavioralAnswer's contract.
 export async function autoGradeCommunicationAnswer(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { attemptId, questionId } = req.params;
@@ -718,6 +720,8 @@ export async function autoGradeCommunicationAnswer(req: AuthenticatedRequest, re
           select: {
             id: true,
             answerText: true,
+            transcript: true,
+            gradingDetail: true,
             question: { select: { subType: true, title: true, description: true, evaluationNotes: true, marks: true } }
           }
         }
@@ -739,8 +743,45 @@ export async function autoGradeCommunicationAnswer(req: AuthenticatedRequest, re
       res.status(404).json({ error: 'Communication answer not found' });
       return;
     }
-    if (communicationAnswer.question.subType !== 'WRITTEN') {
-      res.status(400).json({ error: 'AI auto-grading is currently only available for Written answers.' });
+    if (communicationAnswer.question.subType !== 'WRITTEN' && communicationAnswer.question.subType !== 'SPEAKING') {
+      res.status(400).json({ error: 'AI auto-grading is only available for Written and Speaking answers.' });
+      return;
+    }
+
+    if (communicationAnswer.question.subType === 'SPEAKING') {
+      const priorDetail = communicationAnswer.gradingDetail ? JSON.parse(communicationAnswer.gradingDetail) as Record<string, unknown> : {};
+      const result = await scoreSpeakingAnswer({
+        title: communicationAnswer.question.title,
+        description: communicationAnswer.question.description,
+        evaluationNotes: communicationAnswer.question.evaluationNotes,
+        maxMarks: communicationAnswer.question.marks,
+        transcript: communicationAnswer.transcript ?? '',
+        wordsPerMinute: Number(priorDetail.wordsPerMinute) || 0,
+        pauseCount: Number(priorDetail.pauseCount) || 0,
+        longestPauseSec: Number(priorDetail.longestPauseSec) || 0,
+      });
+
+      await prisma.communicationAnswer.update({
+        where: { id: communicationAnswer.id },
+        data: {
+          marksObtained: result.marksObtained,
+          gradingDetail: JSON.stringify({
+            ...priorDetail,
+            contentScore: result.contentScore,
+            fluencyScore: result.fluencyScore,
+            reasoning: result.reasoning,
+          }),
+        },
+      });
+
+      const newScore = await recalculateAttemptScore(attemptId);
+      res.json({
+        questionId,
+        marksObtained: result.marksObtained,
+        maxMarks: communicationAnswer.question.marks,
+        reasoning: result.reasoning,
+        score: newScore
+      });
       return;
     }
 

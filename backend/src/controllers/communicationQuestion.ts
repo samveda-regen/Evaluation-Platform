@@ -155,10 +155,12 @@ async function buildCreateData(
 
   // SPEAKING
   const recordingTimeLimit = Number.isFinite(Number(req.body.recordingTimeLimit)) ? Math.max(10, Math.floor(Number(req.body.recordingTimeLimit))) : 120;
+  const speakingEvaluationNotes = typeof req.body.evaluationNotes === 'string' ? req.body.evaluationNotes.trim() : '';
   return {
     data: {
       ...shared,
       description: description ? sanitizeInput(description) : null,
+      evaluationNotes: speakingEvaluationNotes ? sanitizeInput(speakingEvaluationNotes) : null,
       recordingTimeLimit
     }
   };
