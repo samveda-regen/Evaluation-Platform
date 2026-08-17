@@ -57,11 +57,25 @@ export default function TestComplete() {
       )
     : 'Pending review';
 
+  // SEB's user agent always includes "SEB" as its own token alongside the underlying
+  // engine's UA string (e.g. "...SEB/3.6.0 (...)..."). Used to only redirect to the SEB
+  // quit link when actually running inside SEB — a candidate testing in a normal browser
+  // should just go back to the login page like before.
+  const isRunningInSEB = () => /SEB[/ ]/i.test(navigator.userAgent) || navigator.userAgent.includes('SafeExamBrowser');
+
   const handleClose = () => {
     resetTest();
     logoutCandidate();
     localStorage.removeItem('attemptId');
     localStorage.removeItem('attemptStartTime');
+    if (isRunningInSEB()) {
+      // SEB watches for navigation to this exact URL (configured as the quit link in the
+      // backend's sebConfigService.ts quitURL key, derived from the same origin) and
+      // intercepts it to quit the browser instead of loading it — must be a real
+      // navigation, not client-side routing, for SEB to see it.
+      window.location.href = `${window.location.origin}/test/seb-quit`;
+      return;
+    }
     navigate('/test/login');
   };
 

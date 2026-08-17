@@ -18,6 +18,13 @@ function xmlEscape(value: string): string {
 
 export function buildSebConfigXml(startUrl: string): string {
   const escapedStartUrl = xmlEscape(startUrl);
+  // Same origin as startUrl, not hardcoded, so this stays correct across environments
+  // (staging/production) this config might be generated for. TestComplete.tsx's "Close"
+  // button navigates here — real navigation, not client-side routing — for SEB to detect
+  // and quit instead of loading the page. Needs verification on a real exam session that
+  // the quit link actually fires before this depends on it in production.
+  const quitUrl = `${new URL(startUrl).origin}/test/seb-quit`;
+  const escapedQuitUrl = xmlEscape(quitUrl);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -60,6 +67,8 @@ export function buildSebConfigXml(startUrl: string): string {
 
   <key>allowQuit</key>
   <true/>
+  <key>quitURL</key>
+  <string>${escapedQuitUrl}</string>
   <key>quitURLConfirm</key>
   <true/>
   <key>hashedQuitPassword</key>

@@ -47,6 +47,13 @@
   <!-- Per your call: no quit password, candidates can exit normally. -->
   <key>allowQuit</key>
   <true/>
+  <!-- TestComplete.tsx's "Close" button navigates here (real navigation, not client-side
+       routing) when running inside SEB; SEB is supposed to detect this exact URL and quit
+       instead of loading it. Needs verification on a real exam session -- unconfirmed
+       whether this bypasses URLFilterEnable's same-startURL-only default or needs an
+       explicit allow rule added below. -->
+  <key>quitURL</key>
+  <string>https://experiment.talentstaq.ai/test/seb-quit</string>
   <key>quitURLConfirm</key>
   <true/>
   <key>hashedQuitPassword</key>
