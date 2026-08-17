@@ -120,6 +120,10 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
   const processingVideoRef = useRef<HTMLVideoElement | null>(null);
   const screenProcessingVideoRef = useRef<HTMLVideoElement | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
+  // Exposed to the UI purely as a temporary, on-screen diagnostic — so whoever's testing
+  // on a machine we have no remote access to (no SSH, no devtools clipboard) can just
+  // screenshot the actual reason instead of us only ever seeing "Camera unavailable".
+  const cameraDiagnosticsRef = useRef<CameraDiagnostics | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
   const audioAnalyzerRef = useRef<AudioAnalyzer | null>(null);
@@ -409,6 +413,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
         // to redo the device check on the one path that's actually proven reliable.
         const cameraStream = cached.cameraStream;
         cameraDiagnostics = cached.cameraDiagnostics || null;
+        cameraDiagnosticsRef.current = cameraDiagnostics;
 
         if (!cameraStream) {
           traceLog('camera_cache_miss', { attemptId });
@@ -1316,6 +1321,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     reportViolation: reportManualViolation,
     endSession,
     cameraStream: cameraStreamRef.current,
+    cameraDiagnostics: cameraDiagnosticsRef.current,
     runAudioAnalysis,
     capturePreviewFrame,
     captureEvidenceFrame,

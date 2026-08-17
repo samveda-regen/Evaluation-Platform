@@ -200,7 +200,7 @@ export default function TestInterface() {
   const {
     status: proctorStatus, endSession: endProctoringSession,
     error: proctorError, capturePreviewFrame, captureEvidenceFrame,
-    cameraStream, resumeScreenShare, screenStream,
+    cameraStream, cameraDiagnostics, resumeScreenShare, screenStream,
   } = useProctoring(attemptId || '', {
     enabled: proctorEnabled,
     enableCamera: requireCamera,
@@ -1594,8 +1594,33 @@ export default function TestInterface() {
               style={{ display: 'block', transform: 'scaleX(-1)', maxHeight: '180px', objectFit: 'cover' }}
             />
             {!cameraStream && (
-              <div className="absolute inset-0 flex items-center justify-center">
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-2 overflow-auto">
                 <span className="text-xs" style={{ color: '#64748B' }}>Camera unavailable</span>
+                {/* TEMPORARY diagnostic dump — remove once the exam-time camera issue is
+                    confirmed fixed. Lets anyone testing on a machine we have no remote
+                    access to just screenshot the actual reason instead of us only ever
+                    seeing this generic message. */}
+                <div
+                  className="text-left w-full rounded px-2 py-1.5 mt-1"
+                  style={{ background: 'rgba(0,0,0,0.4)', fontSize: '9px', lineHeight: 1.4, color: '#F59E0B', fontFamily: 'monospace' }}
+                >
+                  <div>error: {proctorError || '(none)'}</div>
+                  {cameraDiagnostics ? (
+                    <>
+                      <div>devicesFound: {cameraDiagnostics.devicesFound}</div>
+                      <div>framesVerified: {String(cameraDiagnostics.framesVerified)}</div>
+                      <div>chosenLabel: {cameraDiagnostics.chosenLabel || '(none)'}</div>
+                      {cameraDiagnostics.attempts.map((a, i) => (
+                        <div key={i}>
+                          #{i} {a.label} framesOk={String(a.framesOk)} color={a.colorfulness.toFixed(1)}
+                          {a.error ? ` error=${a.error}` : ''}
+                        </div>
+                      ))}
+                    </>
+                  ) : (
+                    <div>diagnostics: (none — cache had nothing at all)</div>
+                  )}
+                </div>
               </div>
             )}
           </div>
