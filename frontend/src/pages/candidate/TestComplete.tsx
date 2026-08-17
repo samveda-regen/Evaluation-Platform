@@ -255,6 +255,17 @@ export default function TestComplete() {
         </button>
       </div>
 
+      {/* TEMPORARY diagnostic — remove once the SEB quit-on-Close issue is confirmed
+          fixed. Shows why Close isn't exiting SEB instead of us only being able to guess. */}
+      <div
+        className="text-left w-full rounded px-3 py-2 mb-6"
+        style={{ background: '#1E293B', fontSize: '10px', lineHeight: 1.5, color: '#F59E0B', fontFamily: 'monospace', wordBreak: 'break-all' }}
+      >
+        <div>userAgent: {navigator.userAgent}</div>
+        <div>isRunningInSEB: {String(isRunningInSEB())}</div>
+        <div>sebQuitUrl: {localStorage.getItem('sebQuitUrl') || '(none)'}</div>
+      </div>
+
       {/* Footer */}
       <p className="text-xs text-gray-400 text-center">
         You may now safely close this window.{' '}
