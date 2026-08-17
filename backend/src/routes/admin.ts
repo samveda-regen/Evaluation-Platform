@@ -182,12 +182,14 @@ router.get('/behavioral', adminAuth, paginationValidation, handleValidationError
 // Communication question routes (Written / Listening / Reading / Speaking)
 router.post('/communication', adminAuth, createCommunicationQuestion);
 router.get('/communication', adminAuth, paginationValidation, handleValidationErrors, getCommunicationQuestions);
-router.get('/communication/:questionId', adminAuth, getCommunicationQuestionById);
-router.delete('/communication/:questionId', adminAuth, deleteCommunicationQuestion);
 
-// Reading passages (shared by Reading-subtype Communication questions)
+// Reading passages (shared by Reading-subtype Communication questions) — registered before the
+// /communication/:questionId routes below, otherwise Express matches "reading-passages" as a questionId.
 router.post('/communication/reading-passages', adminAuth, createReadingPassage);
 router.get('/communication/reading-passages', adminAuth, getReadingPassages);
+
+router.get('/communication/:questionId', adminAuth, getCommunicationQuestionById);
+router.delete('/communication/:questionId', adminAuth, deleteCommunicationQuestion);
 
 // Results routes
 router.get('/attempts', adminAuth, getAllAttempts);

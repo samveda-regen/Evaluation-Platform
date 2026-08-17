@@ -27,10 +27,16 @@ type Difficulty = 'easy' | 'medium' | 'hard';
 const SUB_TYPES: { value: CommunicationSubType; label: string; blurb: string; ready: boolean }[] = [
   { value: 'WRITTEN', label: 'Written', blurb: 'Candidate types a response to a prompt — graded by AI on grammar, wording, and coherence.', ready: true },
   { value: 'LISTENING', label: 'Listening', blurb: 'Candidate listens to an audio clip and answers multiple choice — auto-scored, with playback guardrails.', ready: true },
-  { value: 'READING', label: 'Reading', blurb: 'Passage-based multiple choice — coming soon.', ready: false },
+  { value: 'READING', label: 'Reading', blurb: 'Candidate reads a shared passage and answers multiple choice — auto-scored.', ready: true },
   { value: 'SPEAKING', label: 'Speaking', blurb: 'Recorded spoken response, AI-transcribed and graded — coming soon.', ready: false },
 ];
-const READY_SUB_TYPES: CommunicationSubType[] = ['WRITTEN', 'LISTENING'];
+const READY_SUB_TYPES: CommunicationSubType[] = ['WRITTEN', 'LISTENING', 'READING'];
+
+interface ReadingPassage {
+  id: string;
+  title: string;
+  passageText: string;
+}
 
 export default function CommunicationForm() {
   const navigate = useNavigate();
@@ -82,6 +88,21 @@ export default function CommunicationForm() {
     allowSpeedChange: true,
     fixedPlaybackSpeed: 1,
   });
+  // Reading-only fields
+  const [readingData, setReadingData] = useState({
+    description: '',
+    passageId: '',
+    options: ['', '', '', ''],
+    correctAnswers: [] as number[],
+    isMultipleChoice: false,
+    explanation: '',
+  });
+  const [passages, setPassages] = useState<ReadingPassage[]>([]);
+  const [loadingPassages, setLoadingPassages] = useState(false);
+  const [showNewPassage, setShowNewPassage] = useState(false);
+  const [newPassageTitle, setNewPassageTitle] = useState('');
+  const [newPassageText, setNewPassageText] = useState('');
+  const [savingPassage, setSavingPassage] = useState(false);
   const [tagInput, setTagInput] = useState('');
   const [showTagInput, setShowTagInput] = useState(false);
   const [mediaAssets, setMediaAssets] = useState<MediaAsset[]>([]);
@@ -119,9 +140,48 @@ export default function CommunicationForm() {
           fixedPlaybackSpeed: typeof editQuestion.fixedPlaybackSpeed === 'number' ? editQuestion.fixedPlaybackSpeed : 1,
         });
       }
+      if (editQuestion.subType === 'READING') {
+        const passage = editQuestion.passage as { id: string } | null | undefined;
+        setReadingData({
+          description: typeof editQuestion.description === 'string' ? editQuestion.description : '',
+          passageId: passage?.id ?? (typeof editQuestion.passageId === 'string' ? editQuestion.passageId : ''),
+          options: Array.isArray(editQuestion.options) && editQuestion.options.length >= 2
+            ? editQuestion.options.filter((o): o is string => typeof o === 'string')
+            : ['', '', '', ''],
+          correctAnswers: Array.isArray(editQuestion.correctAnswers)
+            ? editQuestion.correctAnswers.filter((a): a is number => typeof a === 'number')
+            : [],
+          isMultipleChoice: typeof editQuestion.isMultipleChoice === 'boolean' ? editQuestion.isMultipleChoice : false,
+          explanation: typeof editQuestion.explanation === 'string' ? editQuestion.explanation : '',
+        });
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    setLoadingPassages(true);
+    adminApi.getReadingPassages()
+      .then(({ data }) => setPassages(data.passages || []))
+      .catch(() => toast.error('Failed to load reading passages'))
+      .finally(() => setLoadingPassages(false));
+  }, []);
+
+  const handleCreatePassage = async () => {
+    if (!newPassageTitle.trim() || !newPassageText.trim()) { toast.error('Title and passage text are required'); return; }
+    setSavingPassage(true);
+    try {
+      const { data } = await adminApi.createReadingPassage({ title: newPassageTitle.trim(), passageText: newPassageText.trim() });
+      setPassages(prev => [data.passage, ...prev]);
+      setReadingData(prev => ({ ...prev, passageId: data.passage.id }));
+      setShowNewPassage(false);
+      setNewPassageTitle('');
+      setNewPassageText('');
+      toast.success('Passage created');
+    } catch (err: unknown) {
+      toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to create passage');
+    } finally { setSavingPassage(false); }
+  };
 
   /* --- Media helpers (mirrors MCQForm.tsx's pattern) --- */
   const loadImage = (file: File): Promise<HTMLImageElement> =>
@@ -206,6 +266,30 @@ export default function CommunicationForm() {
     }
   };
 
+  /* --- Reading option handlers (mirrors MCQForm's pattern) --- */
+  const setReadingOpt = (i: number, v: string) => {
+    const opts = [...readingData.options]; opts[i] = v; setReadingData({ ...readingData, options: opts });
+  };
+  const addReadingOption = () => {
+    if (readingData.options.length < 6) setReadingData({ ...readingData, options: [...readingData.options, ''] });
+  };
+  const removeReadingOption = (i: number) => {
+    if (readingData.options.length <= 2) return;
+    const opts = readingData.options.filter((_, idx) => idx !== i);
+    const correct = readingData.correctAnswers.filter(x => x !== i).map(x => x > i ? x - 1 : x);
+    setReadingData({ ...readingData, options: opts, correctAnswers: correct });
+  };
+  const toggleReadingCorrect = (i: number) => {
+    if (readingData.isMultipleChoice) {
+      const next = readingData.correctAnswers.includes(i)
+        ? readingData.correctAnswers.filter(x => x !== i)
+        : [...readingData.correctAnswers, i];
+      setReadingData({ ...readingData, correctAnswers: next });
+    } else {
+      setReadingData({ ...readingData, correctAnswers: [i] });
+    }
+  };
+
   /* --- Submit --- */
   const handleSubmit = async () => {
     if (!READY_SUB_TYPES.includes(subType)) { toast.error('This question type is coming soon'); return; }
@@ -216,8 +300,7 @@ export default function CommunicationForm() {
     if (subType === 'WRITTEN') {
       if (!formData.description.trim()) { toast.error('Description/prompt is required — the AI uses it to evaluate the candidate\'s answer'); return; }
       payload = { subType, ...formData };
-    } else {
-      // LISTENING
+    } else if (subType === 'LISTENING') {
       const nonEmpty = listeningData.options.filter(o => o.trim() !== '');
       if (nonEmpty.length < 2) { toast.error('At least 2 options required'); return; }
       const optionIsFilled = (index: number) => Boolean(listeningData.options[index]?.trim());
@@ -242,6 +325,30 @@ export default function CommunicationForm() {
         allowRewind: listeningData.allowRewind,
         allowSpeedChange: listeningData.allowSpeedChange,
         fixedPlaybackSpeed: listeningData.fixedPlaybackSpeed,
+      };
+    } else {
+      // READING
+      if (!readingData.passageId) { toast.error('Select or create a reading passage'); return; }
+      const nonEmpty = readingData.options.filter(o => o.trim() !== '');
+      if (nonEmpty.length < 2) { toast.error('At least 2 options required'); return; }
+      const optionIsFilled = (index: number) => Boolean(readingData.options[index]?.trim());
+      if (!readingData.correctAnswers.length || readingData.correctAnswers.some(index => !optionIsFilled(index))) {
+        toast.error('Select a filled option as the correct answer');
+        return;
+      }
+      payload = {
+        subType,
+        title: formData.title,
+        marks: formData.marks,
+        difficulty: formData.difficulty,
+        topic: formData.topic,
+        tags: formData.tags,
+        description: readingData.description,
+        passageId: readingData.passageId,
+        options: nonEmpty,
+        correctAnswers: readingData.correctAnswers,
+        explanation: readingData.explanation,
+        isMultipleChoice: readingData.isMultipleChoice,
       };
     }
 
@@ -346,7 +453,7 @@ export default function CommunicationForm() {
         <div className="max-w-6xl mx-auto">
           <div className="rounded-2xl p-8 text-center" style={{ backgroundColor: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
             <p className="text-sm" style={{ color: 'var(--admin-text-muted)' }}>
-              {SUB_TYPES.find(s => s.value === subType)?.label} questions aren't available to create yet — select Written or Listening above, or check back soon.
+              {SUB_TYPES.find(s => s.value === subType)?.label} questions aren't available to create yet — select another category above, or check back soon.
             </p>
           </div>
         </div>
@@ -391,7 +498,7 @@ export default function CommunicationForm() {
                   placeholder="Write the full prompt shown to the candidate…"
                 />
               </div>
-            ) : (
+            ) : subType === 'LISTENING' ? (
               <div>
                 <label className="block text-sm font-medium mb-2" style={{ color: 'var(--admin-text-muted)' }}>
                   Instructions <span style={{ color: 'var(--admin-text-subtle)', fontWeight: 400 }}>(optional — shown above the audio player)</span>
@@ -402,6 +509,19 @@ export default function CommunicationForm() {
                   rows={3}
                   style={inputSx}
                   placeholder="e.g. Listen to the recording and choose the best answer…"
+                />
+              </div>
+            ) : (
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--admin-text-muted)' }}>
+                  Instructions <span style={{ color: 'var(--admin-text-subtle)', fontWeight: 400 }}>(optional — shown above the passage)</span>
+                </label>
+                <textarea
+                  value={readingData.description}
+                  onChange={e => setReadingData({ ...readingData, description: e.target.value })}
+                  rows={3}
+                  style={inputSx}
+                  placeholder="e.g. Read the passage and choose the best answer…"
                 />
               </div>
             )}
@@ -452,7 +572,7 @@ export default function CommunicationForm() {
                   </div>
                 )}
               </div>
-            ) : (
+            ) : subType === 'LISTENING' ? (
               /* Audio clip (mandatory for Listening) */
               <div className="mt-6 pt-4" style={{ borderTop: '1px solid var(--admin-border)' }}>
                 <label className="block text-xs font-semibold mb-2 uppercase tracking-wide" style={{ color: 'var(--admin-text-muted)' }}>
@@ -484,6 +604,55 @@ export default function CommunicationForm() {
                   </div>
                 )}
               </div>
+            ) : (
+              /* Passage picker (mandatory for Reading) */
+              <div className="mt-6 pt-4" style={{ borderTop: '1px solid var(--admin-border)' }}>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--admin-text-muted)' }}>
+                    Passage <span style={{ color: '#EF4444', textTransform: 'none' }}>*</span>
+                  </label>
+                  <button type="button" onClick={() => setShowNewPassage(v => !v)} className="text-xs font-semibold" style={{ color: 'var(--admin-accent)' }}>
+                    {showNewPassage ? 'Cancel' : '+ New passage'}
+                  </button>
+                </div>
+
+                {showNewPassage ? (
+                  <div className="space-y-3 mb-3 p-4 rounded-xl" style={{ backgroundColor: '#FAFAFA', border: '1px solid var(--admin-border)' }}>
+                    <input
+                      type="text" value={newPassageTitle}
+                      onChange={e => setNewPassageTitle(e.target.value)}
+                      style={{ ...inputSx, resize: undefined }}
+                      placeholder="Passage title"
+                    />
+                    <textarea
+                      value={newPassageText}
+                      onChange={e => setNewPassageText(e.target.value)}
+                      rows={6}
+                      style={inputSx}
+                      placeholder="Paste or write the full passage text…"
+                    />
+                    <button type="button" onClick={handleCreatePassage} disabled={savingPassage} className="btn btn-primary" style={{ width: 'auto' }}>
+                      {savingPassage ? 'Saving…' : 'Save passage'}
+                    </button>
+                  </div>
+                ) : (
+                  <select
+                    value={readingData.passageId}
+                    onChange={e => setReadingData({ ...readingData, passageId: e.target.value })}
+                    style={{ ...inputSx, resize: undefined }}
+                    disabled={loadingPassages}
+                  >
+                    <option value="">{loadingPassages ? 'Loading passages…' : 'Select a passage…'}</option>
+                    {passages.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                  </select>
+                )}
+
+                {!showNewPassage && readingData.passageId && (
+                  <div className="mt-3 p-3 rounded-xl text-xs leading-relaxed max-h-40 overflow-y-auto" style={{ backgroundColor: '#F9FAFB', border: '1px solid var(--admin-border)', color: 'var(--admin-text-muted)', whiteSpace: 'pre-wrap' }}>
+                    {passages.find(p => p.id === readingData.passageId)?.passageText}
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -499,6 +668,67 @@ export default function CommunicationForm() {
                 style={inputSx}
                 placeholder="e.g. Focus on grammar and vocabulary range; length is not a factor…"
               />
+            </div>
+          ) : subType === 'READING' ? (
+            /* Answer options (no guardrails — Reading has no audio) */
+            <div className="rounded-2xl p-6" style={{ backgroundColor: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--admin-text-subtle)' }}>ANSWER OPTIONS</p>
+                <label className="flex items-center gap-1.5 text-xs cursor-pointer" style={{ color: 'var(--admin-text-muted)' }}>
+                  <input type="checkbox" checked={readingData.isMultipleChoice}
+                    onChange={e => setReadingData({
+                      ...readingData,
+                      isMultipleChoice: e.target.checked,
+                      correctAnswers: e.target.checked ? readingData.correctAnswers : readingData.correctAnswers.slice(0, 1),
+                    })}
+                    className="h-3.5 w-3.5 rounded" style={{ accentColor: 'var(--admin-button-primary)' }} />
+                  Multiple correct
+                </label>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {readingData.options.map((opt, i) => {
+                  const isCorrect = readingData.correctAnswers.includes(i);
+                  return (
+                    <div key={i} className="flex items-center gap-3 px-4 py-3 rounded-xl"
+                      style={{
+                        border: `1.5px solid ${isCorrect ? 'var(--admin-accent)' : 'var(--admin-border)'}`,
+                        backgroundColor: isCorrect ? 'var(--admin-accent-soft)' : 'white',
+                        transition: 'all 0.15s',
+                      }}>
+                      <button type="button" onClick={() => toggleReadingCorrect(i)} className="admin-circle-toggle" data-state={isCorrect ? 'on' : 'off'}>
+                        {isCorrect && <Check width={9} height={9} stroke="white" strokeWidth={3} />}
+                      </button>
+                      <input type="text" value={opt}
+                        onChange={e => setReadingOpt(i, e.target.value)}
+                        className="flex-1 text-sm outline-none bg-transparent"
+                        style={{ color: 'var(--admin-text)' }}
+                        placeholder={`Option ${LETTERS[i]}`}
+                      />
+                      <span className="text-xs font-semibold flex-shrink-0" style={{ color: 'var(--admin-text-subtle)' }}>{LETTERS[i]}</span>
+                      {readingData.options.length > 2 && (
+                        <button type="button" onClick={() => removeReadingOption(i)} className="flex-shrink-0 p-1 rounded-lg hover:bg-red-50 transition-colors">
+                          <Trash2 width={14} height={14} stroke="#D1D5DB" strokeWidth={1.5} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {readingData.options.length < 6 && (
+                <button type="button" onClick={addReadingOption} className="mt-3 flex items-center gap-1.5 text-sm font-medium" style={{ color: 'var(--admin-accent)' }}>
+                  <span className="text-base font-bold">+</span> Add option
+                </button>
+              )}
+              <div className="mt-5 pt-4" style={{ borderTop: '1px solid var(--admin-border)' }}>
+                <p className="text-xs mb-2" style={{ color: 'var(--admin-text-subtle)' }}>Explanation (optional, shown in review)</p>
+                <textarea
+                  value={readingData.explanation}
+                  onChange={e => setReadingData({ ...readingData, explanation: e.target.value })}
+                  rows={3}
+                  style={inputSx}
+                  placeholder="Explain why the correct answer is right…"
+                />
+              </div>
             </div>
           ) : (
             <>
@@ -697,7 +927,9 @@ export default function CommunicationForm() {
             <p className="text-xs leading-relaxed" style={{ color: '#78350F' }}>
               {subType === 'WRITTEN'
                 ? "Title and description are compulsory — the AI grader only has these (plus your evaluation notes) as its reference when scoring the candidate's typed answer."
-                : 'Listening answers are scored automatically by exact match, same as MCQ — no manual grading needed. The replay limit and rewind/speed locks are enforced live during the test.'}
+                : subType === 'LISTENING'
+                ? 'Listening answers are scored automatically by exact match, same as MCQ — no manual grading needed. The replay limit and rewind/speed locks are enforced live during the test.'
+                : 'Reading answers are scored automatically by exact match, same as MCQ. Passages are shared across questions — pick an existing one or create a new one, then reuse it for multiple questions.'}
             </p>
           </div>
         </div>
