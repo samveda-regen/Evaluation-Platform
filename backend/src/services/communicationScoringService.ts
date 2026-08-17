@@ -70,6 +70,9 @@ Respond with strict JSON only:
   return { marksObtained: rounded, reasoning };
 }
 
+const CEFR_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'] as const;
+type CefrLevel = typeof CEFR_LEVELS[number];
+
 interface ScoreSpeakingAnswerInput {
   title: string;
   description: string | null;
@@ -79,27 +82,36 @@ interface ScoreSpeakingAnswerInput {
   wordsPerMinute: number;
   pauseCount: number;
   longestPauseSec: number;
+  // Phone Error Rate (0 = perfect match to expected pronunciation, 1 = no overlap) from the
+  // wav2vec2 phoneme-CTC model vs. the espeak-G2P'd transcript — null when the Python speech
+  // service's pronunciation model isn't available on this deployment.
+  phoneErrorRate: number | null;
 }
 
 interface ScoreSpeakingAnswerResult {
   marksObtained: number;
   contentScore: number;
   fluencyScore: number;
+  cefrLevel: CefrLevel | null;
   reasoning: string;
 }
 
-// Auto-grades a Speaking communication answer from its Whisper transcript plus rough timing-derived
-// fluency signals (words/minute, pause count/length) — not acoustic pronunciation, which is a
-// separate, harder problem (see the Communication question category plan's Phase 4b note). Marks
-// are the primary score; content and fluency sub-scores are informational context for the reviewer.
+// Auto-grades a Speaking communication answer from its Whisper transcript, timing-derived fluency
+// signals (words/minute, pause count/length), and — when available — a phone-level pronunciation
+// accuracy signal (Phone Error Rate) computed separately from the transcript by the Python speech
+// service, since ASR transcripts are often robust to mispronunciation in ways a phoneme-level
+// acoustic check should not be. Marks are the primary score (drives scoring like every other
+// question type); cefrLevel is supplementary context for the reviewer, not the primary output.
 export async function scoreSpeakingAnswer(input: ScoreSpeakingAnswerInput): Promise<ScoreSpeakingAnswerResult> {
-  const { title, description, evaluationNotes, maxMarks, transcript, wordsPerMinute, pauseCount, longestPauseSec } = input;
+  const { title, description, evaluationNotes, maxMarks, transcript, wordsPerMinute, pauseCount, longestPauseSec, phoneErrorRate } = input;
 
   if (!transcript || !transcript.trim()) {
-    return { marksObtained: 0, contentScore: 0, fluencyScore: 0, reasoning: 'No speech was detected in the recording.' };
+    return { marksObtained: 0, contentScore: 0, fluencyScore: 0, cefrLevel: null, reasoning: 'No speech was detected in the recording.' };
   }
 
-  const systemPrompt = 'You are an expert spoken-English examiner, grading a transcribed spoken response in the style of IELTS Speaking band descriptors (fluency and coherence, lexical resource, grammatical range and accuracy, task response). You only have the transcript and rough timing signals (words per minute, pause count/length) — not the audio itself, so do not comment on pronunciation, accent, or intonation. Respond with JSON only, no markdown.';
+  const hasPronunciation = typeof phoneErrorRate === 'number' && Number.isFinite(phoneErrorRate);
+
+  const systemPrompt = `You are an expert spoken-English examiner, grading a transcribed spoken response in the style of IELTS Speaking band descriptors (fluency and coherence, lexical resource, grammatical range and accuracy, task response)${hasPronunciation ? ', with an additional phone-level pronunciation accuracy signal' : ''}. You only have the transcript, rough timing signals (words per minute, pause count/length)${hasPronunciation ? ', and a Phone Error Rate score' : ''} — not the audio itself, so do not comment on accent, intonation, or anything pronunciation-related beyond what the Phone Error Rate signal tells you${hasPronunciation ? '' : ' (none was provided for this answer)'}. Respond with JSON only, no markdown.`;
 
   const userPrompt = `## Speaking Topic
 Title: ${title}
@@ -116,9 +128,10 @@ ${transcript}
 Words per minute: ${wordsPerMinute}
 Long pauses (>0.6s) detected: ${pauseCount}
 Longest pause: ${longestPauseSec}s
+${hasPronunciation ? `\n## Pronunciation signal\nPhone Error Rate: ${(phoneErrorRate as number).toFixed(3)} (0 = phonemes matched the expected pronunciation of the transcript exactly, 1 = essentially no match — computed separately from a phoneme-recognition model, not from the transcript, so it can catch mispronunciation the transcript alone would not reveal)` : '\n## Pronunciation signal\nNot available for this answer — do not estimate or guess a CEFR level that implies pronunciation was assessed; base cefrLevel only on fluency, vocabulary, and grammar visible in the transcript, or return null if you cannot responsibly estimate it without any acoustic signal.'}
 
 ## Instructions
-Judge content (does it directly and substantively address the topic) and fluency/coherence (sentence structure, filler-word-like disfluencies visible in the transcript, and whether the pacing/pause signals suggest hesitant speech) separately, then combine into a single overall score. Do not penalize for things you cannot know from a transcript (accent, pronunciation, tone).
+Judge content (does it directly and substantively address the topic) and fluency/coherence (sentence structure, filler-word-like disfluencies visible in the transcript, and whether the pacing/pause signals suggest hesitant speech) separately, then combine into a single overall score. marksObtained is the primary result and must be driven mainly by content and fluency/coherence — do not let the Phone Error Rate dominate it (a candidate can answer well with an accent that raises PER without being wrong). Use the pronunciation signal only as one input toward the supplementary cefrLevel estimate (A1-C2), alongside vocabulary range and grammatical accuracy from the transcript.
 
 Score on a continuous scale from 0 to ${maxMarks}, one decimal place. Content and fluency sub-scores are on a 0-10 scale each, for reviewer context only — they do not need to average to the marks value.
 
@@ -127,16 +140,17 @@ Respond with strict JSON only:
   "marksObtained": <number between 0 and ${maxMarks}, one decimal place>,
   "contentScore": <0-10>,
   "fluencyScore": <0-10>,
-  "reasoning": "<2-3 sentence justification covering content and fluency>"
+  "cefrLevel": <one of "A1","A2","B1","B2","C1","C2", or null if you cannot responsibly estimate it>,
+  "reasoning": "<2-3 sentence justification covering content and fluency, and pronunciation only if a Phone Error Rate signal was provided>"
 }`;
 
   const response = await callLLM([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: userPrompt }
-  ], { temperature: 0.2, maxTokens: 450 });
+  ], { temperature: 0.2, maxTokens: 500 });
 
   const parsed = parseJSONFromLLM(response.content) as {
-    marksObtained?: unknown; contentScore?: unknown; fluencyScore?: unknown; reasoning?: unknown;
+    marksObtained?: unknown; contentScore?: unknown; fluencyScore?: unknown; cefrLevel?: unknown; reasoning?: unknown;
   };
 
   const rawMarks = Number(parsed.marksObtained);
@@ -154,10 +168,15 @@ Respond with strict JSON only:
     ? parsed.reasoning.trim()
     : 'No reasoning provided.';
 
+  const cefrLevel = (CEFR_LEVELS as readonly string[]).includes(String(parsed.cefrLevel))
+    ? (parsed.cefrLevel as CefrLevel)
+    : null;
+
   return {
     marksObtained: clampedMarks,
     contentScore: clampScore10(parsed.contentScore),
     fluencyScore: clampScore10(parsed.fluencyScore),
+    cefrLevel,
     reasoning,
   };
 }

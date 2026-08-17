@@ -1243,6 +1243,8 @@ export async function saveCommunicationAnswer(req: AuthenticatedRequest, res: Re
         pauseCount: transcription.pauseCount,
         longestPauseSec: transcription.longestPauseSec,
         durationSec: transcription.durationSec,
+        pronunciationAvailable: transcription.pronunciationAvailable,
+        phoneErrorRate: transcription.phoneErrorRate,
       });
     }
 

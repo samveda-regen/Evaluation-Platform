@@ -14,6 +14,12 @@ export interface TranscriptionResult {
   wordsPerMinute: number;
   pauseCount: number;
   longestPauseSec: number;
+  // Pronunciation scoring — optional, null when the Python service's phoneme model
+  // isn't available (degrades gracefully; transcript/fluency signals above still work).
+  pronunciationAvailable: boolean;
+  expectedPhonemes: string | null;
+  recognizedPhonemes: string | null;
+  phoneErrorRate: number | null;
 }
 
 function getSpeechServiceUrl(): string | null {
@@ -61,6 +67,10 @@ export async function transcribeAudio(audioBase64: string, mimeType?: string): P
       wordsPerMinute: Number(data.wordsPerMinute) || 0,
       pauseCount: Number(data.pauseCount) || 0,
       longestPauseSec: Number(data.longestPauseSec) || 0,
+      pronunciationAvailable: Boolean(data.pronunciationAvailable),
+      expectedPhonemes: typeof data.expectedPhonemes === 'string' ? data.expectedPhonemes : null,
+      recognizedPhonemes: typeof data.recognizedPhonemes === 'string' ? data.recognizedPhonemes : null,
+      phoneErrorRate: typeof data.phoneErrorRate === 'number' ? data.phoneErrorRate : null,
     };
   } catch (error) {
     clearTimeout(timeout);

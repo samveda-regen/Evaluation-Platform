@@ -63,7 +63,11 @@ interface AttemptData {
     questionId: string; subType: string; title: string; description?: string | null; answerText: string | null;
     selectedOptions: number[] | null; options: string[] | null; correctAnswers: number[] | null; isCorrect: boolean | null;
     transcript: string | null; audioAssetId: string | null;
-    gradingDetail: { wordsPerMinute?: number; pauseCount?: number; longestPauseSec?: number; contentScore?: number; fluencyScore?: number; reasoning?: string } | null;
+    gradingDetail: {
+      wordsPerMinute?: number; pauseCount?: number; longestPauseSec?: number;
+      contentScore?: number; fluencyScore?: number; reasoning?: string;
+      pronunciationAvailable?: boolean; phoneErrorRate?: number | null; cefrLevel?: string | null;
+    } | null;
     marks: number; marksObtained?: number | null;
   }>;
   activityLogs: Array<{
@@ -989,6 +993,17 @@ export default function AttemptDetails() {
                               <p style={{ fontSize:'11px', color:'var(--admin-text-subtle)', margin:'8px 0 0' }}>
                                 {ans.gradingDetail.wordsPerMinute} wpm · {ans.gradingDetail.pauseCount} long pause{ans.gradingDetail.pauseCount === 1 ? '' : 's'}
                                 {ans.gradingDetail.contentScore !== undefined && ` · content ${ans.gradingDetail.contentScore}/10 · fluency ${ans.gradingDetail.fluencyScore}/10`}
+                                {typeof ans.gradingDetail.phoneErrorRate === 'number' && ` · pronunciation match ${Math.round((1 - ans.gradingDetail.phoneErrorRate) * 100)}%`}
+                              </p>
+                            )}
+                            {ans.gradingDetail?.cefrLevel && (
+                              <span style={{ display:'inline-block', marginTop:'8px', fontSize:'11px', fontWeight:700, padding:'2px 9px', borderRadius:'20px', backgroundColor:'var(--admin-accent-disabled)', color:'#92400E' }}>
+                                CEFR {ans.gradingDetail.cefrLevel}
+                              </span>
+                            )}
+                            {ans.gradingDetail && ans.gradingDetail.pronunciationAvailable === false && (
+                              <p style={{ fontSize:'10px', color:'var(--admin-text-subtle)', fontStyle:'italic', margin:'6px 0 0' }}>
+                                Pronunciation scoring wasn't available for this answer.
                               </p>
                             )}
                           </div>

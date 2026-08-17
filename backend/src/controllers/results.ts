@@ -759,6 +759,7 @@ export async function autoGradeCommunicationAnswer(req: AuthenticatedRequest, re
         wordsPerMinute: Number(priorDetail.wordsPerMinute) || 0,
         pauseCount: Number(priorDetail.pauseCount) || 0,
         longestPauseSec: Number(priorDetail.longestPauseSec) || 0,
+        phoneErrorRate: typeof priorDetail.phoneErrorRate === 'number' ? priorDetail.phoneErrorRate : null,
       });
 
       await prisma.communicationAnswer.update({
@@ -769,6 +770,7 @@ export async function autoGradeCommunicationAnswer(req: AuthenticatedRequest, re
             ...priorDetail,
             contentScore: result.contentScore,
             fluencyScore: result.fluencyScore,
+            cefrLevel: result.cefrLevel,
             reasoning: result.reasoning,
           }),
         },
