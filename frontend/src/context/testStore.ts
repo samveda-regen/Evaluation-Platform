@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { TestQuestion, MCQAnswer, CodingAnswer, BehavioralAnswer, SubmissionResult } from '../types';
+import { TestQuestion, MCQAnswer, CodingAnswer, BehavioralAnswer, CommunicationAnswer, SubmissionResult } from '../types';
 import { DEFAULT_CUSTOM_AI_VIOLATIONS, normalizeCustomAIViolationSelection } from '../constants/customAIViolations';
 
 interface TestState {
@@ -23,6 +23,7 @@ interface TestState {
   mcqAnswers: Record<string, number[]>;
   codingAnswers: Record<string, { code: string; language: string }>;
   behavioralAnswers: Record<string, string>;
+  communicationAnswers: Record<string, string>;
   violations: number;
   isSubmitted: boolean;
   submissionResult: SubmissionResult | null;
@@ -55,10 +56,11 @@ interface TestState {
   saveMCQAnswer: (questionId: string, selectedOptions: number[]) => void;
   saveCodingAnswer: (questionId: string, code: string, language: string) => void;
   saveBehavioralAnswer: (questionId: string, answerText: string) => void;
+  saveCommunicationAnswer: (questionId: string, answerText: string) => void;
   incrementViolations: () => number;
   setSubmitted: (result?: SubmissionResult) => void;
   resetTest: () => void;
-  loadSavedAnswers: (mcq: MCQAnswer[], coding: CodingAnswer[], behavioral: BehavioralAnswer[]) => void;
+  loadSavedAnswers: (mcq: MCQAnswer[], coding: CodingAnswer[], behavioral: BehavioralAnswer[], communication: CommunicationAnswer[]) => void;
 }
 
 export const useTestStore = create<TestState>((set, get) => ({
@@ -82,6 +84,7 @@ export const useTestStore = create<TestState>((set, get) => ({
   mcqAnswers: {},
   codingAnswers: {},
   behavioralAnswers: {},
+  communicationAnswers: {},
   violations: 0,
   isSubmitted: false,
   submissionResult: null,
@@ -109,6 +112,7 @@ export const useTestStore = create<TestState>((set, get) => ({
     mcqAnswers: {},
     codingAnswers: {},
     behavioralAnswers: {},
+    communicationAnswers: {},
     violations: data.initialViolations ?? 0,
     isSubmitted: false,
     showTimer: data.showTimer ?? true,
@@ -134,6 +138,13 @@ export const useTestStore = create<TestState>((set, get) => ({
   saveBehavioralAnswer: (questionId, answerText) => set((state) => ({
     behavioralAnswers: {
       ...state.behavioralAnswers,
+      [questionId]: answerText
+    }
+  })),
+
+  saveCommunicationAnswer: (questionId, answerText) => set((state) => ({
+    communicationAnswers: {
+      ...state.communicationAnswers,
       [questionId]: answerText
     }
   })),
@@ -167,6 +178,7 @@ export const useTestStore = create<TestState>((set, get) => ({
     mcqAnswers: {},
     codingAnswers: {},
     behavioralAnswers: {},
+    communicationAnswers: {},
     violations: 0,
     isSubmitted: false,
     submissionResult: null,
@@ -174,10 +186,11 @@ export const useTestStore = create<TestState>((set, get) => ({
     autoSubmitOnTimeout: true
   }),
 
-  loadSavedAnswers: (mcq, coding, behavioral) => set((state) => {
+  loadSavedAnswers: (mcq, coding, behavioral, communication) => set((state) => {
     const mcqAnswers: Record<string, number[]> = { ...state.mcqAnswers };
     const codingAnswers: Record<string, { code: string; language: string }> = { ...state.codingAnswers };
     const behavioralAnswers: Record<string, string> = { ...state.behavioralAnswers };
+    const communicationAnswers: Record<string, string> = { ...state.communicationAnswers };
 
     mcq.forEach((a) => {
       mcqAnswers[a.questionId] = a.selectedOptions;
@@ -191,6 +204,10 @@ export const useTestStore = create<TestState>((set, get) => ({
       behavioralAnswers[a.questionId] = a.answerText;
     });
 
-    return { mcqAnswers, codingAnswers, behavioralAnswers };
+    communication.forEach((a) => {
+      communicationAnswers[a.questionId] = a.answerText ?? '';
+    });
+
+    return { mcqAnswers, codingAnswers, behavioralAnswers, communicationAnswers };
   })
 }));

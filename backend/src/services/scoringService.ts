@@ -43,12 +43,14 @@ function getAssignedQuestionIds(
       mcqQuestionId: string | null;
       codingQuestionId: string | null;
       behavioralQuestionId: string | null;
+      communicationQuestionId: string | null;
     };
   }>,
   fallback: Array<{
     mcqQuestionId: string | null;
     codingQuestionId: string | null;
     behavioralQuestionId: string | null;
+    communicationQuestionId: string | null;
   }>
 ): Set<string> {
   const source = attemptQuestions.length > 0
@@ -60,9 +62,22 @@ function getAssignedQuestionIds(
       .flatMap((question) => [
         question.mcqQuestionId,
         question.codingQuestionId,
-        question.behavioralQuestionId
+        question.behavioralQuestionId,
+        question.communicationQuestionId
       ])
       .filter((id): id is string => typeof id === 'string')
+  );
+}
+
+// Listening/Reading communication questions are MCQ-shaped (options/correctAnswers/isMultipleChoice)
+// and auto-score with the same exact-match rule as MCQAnswer — this is the shared comparison so the
+// rule only lives in one place.
+function isMcqShapedAnswerCorrect(correctAnswersJson: string | null, selectedOptionsJson: string): boolean {
+  const correctAnswers = correctAnswersJson ? (JSON.parse(correctAnswersJson) as number[]) : [];
+  const selectedOptions = JSON.parse(selectedOptionsJson) as number[];
+  return (
+    correctAnswers.length === selectedOptions.length &&
+    correctAnswers.every((answer: number) => selectedOptions.includes(answer))
   );
 }
 
@@ -76,7 +91,8 @@ export async function scoreAttemptAnswers(attemptId: string): Promise<ScoreAttem
             include: {
               mcqQuestion: { select: { marks: true } },
               codingQuestion: { select: { marks: true, autoEvaluate: true } },
-              behavioralQuestion: { select: { marks: true } }
+              behavioralQuestion: { select: { marks: true } },
+              communicationQuestion: { select: { marks: true, subType: true } }
             }
           }
         }
@@ -102,6 +118,11 @@ export async function scoreAttemptAnswers(attemptId: string): Promise<ScoreAttem
         include: {
           question: true
         }
+      },
+      communicationAnswers: {
+        include: {
+          question: true
+        }
       }
     }
   });
@@ -112,11 +133,12 @@ export async function scoreAttemptAnswers(attemptId: string): Promise<ScoreAttem
 
   const assignedQuestionIds = getAssignedQuestionIds(attempt.attemptQuestions, attempt.test.questions);
   const assignedTotalMarks = attempt.test.questions.reduce((sum, question) => {
-    const questionId = question.mcqQuestionId ?? question.codingQuestionId ?? question.behavioralQuestionId;
+    const questionId = question.mcqQuestionId ?? question.codingQuestionId ?? question.behavioralQuestionId ?? question.communicationQuestionId;
     const marks =
       question.mcqQuestion?.marks ??
       question.codingQuestion?.marks ??
       question.behavioralQuestion?.marks ??
+      question.communicationQuestion?.marks ??
       0;
     return sum + (questionId && assignedQuestionIds.has(questionId) ? marks : 0);
   }, 0);
@@ -124,6 +146,7 @@ export async function scoreAttemptAnswers(attemptId: string): Promise<ScoreAttem
   let pendingManualMarks = 0;
   const answeredCodingQuestionIds = new Set<string>();
   const answeredBehavioralQuestionIds = new Set<string>();
+  const answeredCommunicationQuestionIds = new Set<string>();
 
   const mcqUpdates: Array<{ id: string; isCorrect: boolean; marksObtained: number }> = [];
   for (const mcqAnswer of attempt.mcqAnswers) {
@@ -215,6 +238,33 @@ export async function scoreAttemptAnswers(attemptId: string): Promise<ScoreAttem
     }
   }
 
+  // Listening/Reading auto-score like MCQ (exact match, computed fresh here); Written/Speaking
+  // behave like Behavioral — a null marksObtained means "not yet AI/manually graded", counted as
+  // pending manual rather than scored as zero.
+  const communicationUpdates: Array<{ id: string; isCorrect: boolean | null; marksObtained: number | null }> = [];
+  for (const communicationAnswer of attempt.communicationAnswers) {
+    if (!assignedQuestionIds.has(communicationAnswer.questionId)) continue;
+    answeredCommunicationQuestionIds.add(communicationAnswer.questionId);
+
+    const question = communicationAnswer.question;
+    if (question.subType === 'LISTENING' || question.subType === 'READING') {
+      const isCorrect = communicationAnswer.selectedOptions
+        ? isMcqShapedAnswerCorrect(question.correctAnswers, communicationAnswer.selectedOptions)
+        : false;
+      const marks = isCorrect ? question.marks : 0;
+      totalScore += marks;
+      communicationUpdates.push({ id: communicationAnswer.id, isCorrect, marksObtained: marks });
+    } else {
+      // WRITTEN or SPEAKING
+      if (communicationAnswer.marksObtained != null) {
+        totalScore += communicationAnswer.marksObtained;
+      } else {
+        pendingManualMarks += question.marks;
+        communicationUpdates.push({ id: communicationAnswer.id, isCorrect: null, marksObtained: null });
+      }
+    }
+  }
+
   for (const question of attempt.test.questions) {
     if (question.codingQuestionId && question.codingQuestion && assignedQuestionIds.has(question.codingQuestionId)) {
       if (!question.codingQuestion.autoEvaluate && !answeredCodingQuestionIds.has(question.codingQuestionId)) {
@@ -225,6 +275,14 @@ export async function scoreAttemptAnswers(attemptId: string): Promise<ScoreAttem
     if (question.behavioralQuestionId && assignedQuestionIds.has(question.behavioralQuestionId)) {
       if (!answeredBehavioralQuestionIds.has(question.behavioralQuestionId)) {
         pendingManualMarks += question.behavioralQuestion?.marks ?? 0;
+      }
+    }
+
+    if (question.communicationQuestionId && assignedQuestionIds.has(question.communicationQuestionId)) {
+      const subType = question.communicationQuestion?.subType;
+      const needsManualGrading = subType === 'WRITTEN' || subType === 'SPEAKING';
+      if (needsManualGrading && !answeredCommunicationQuestionIds.has(question.communicationQuestionId)) {
+        pendingManualMarks += question.communicationQuestion?.marks ?? 0;
       }
     }
   }
@@ -247,6 +305,12 @@ export async function scoreAttemptAnswers(attemptId: string): Promise<ScoreAttem
         where: { id: update.id },
         data: { marksObtained: update.marksObtained }
       })
+    ),
+    ...communicationUpdates.map((update) =>
+      prisma.communicationAnswer.update({
+        where: { id: update.id },
+        data: { isCorrect: update.isCorrect, marksObtained: update.marksObtained }
+      })
     )
   ]);
 
@@ -264,7 +328,8 @@ export async function recalculateTestTotalMarks(testId: string): Promise<number>
     include: {
       mcqQuestion: { select: { marks: true } },
       codingQuestion: { select: { marks: true } },
-      behavioralQuestion: { select: { marks: true } }
+      behavioralQuestion: { select: { marks: true } },
+      communicationQuestion: { select: { marks: true } }
     }
   });
 
@@ -272,7 +337,8 @@ export async function recalculateTestTotalMarks(testId: string): Promise<number>
     return sum +
       (question.mcqQuestion?.marks ?? 0) +
       (question.codingQuestion?.marks ?? 0) +
-      (question.behavioralQuestion?.marks ?? 0);
+      (question.behavioralQuestion?.marks ?? 0) +
+      (question.communicationQuestion?.marks ?? 0);
   }, 0);
 
   await prisma.test.update({
@@ -313,7 +379,7 @@ export async function recalculateTestTotalMarksAndScores(
 }
 
 export async function recalculateTestsUsingQuestion(
-  questionType: 'mcq' | 'coding' | 'behavioral',
+  questionType: 'mcq' | 'coding' | 'behavioral' | 'communication',
   questionId: string
 ): Promise<void> {
   const where =
@@ -321,7 +387,9 @@ export async function recalculateTestsUsingQuestion(
       ? { mcqQuestionId: questionId }
       : questionType === 'coding'
         ? { codingQuestionId: questionId }
-        : { behavioralQuestionId: questionId };
+        : questionType === 'behavioral'
+          ? { behavioralQuestionId: questionId }
+          : { communicationQuestionId: questionId };
 
   const testQuestions = await prisma.testQuestion.findMany({
     where,

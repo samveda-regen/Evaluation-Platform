@@ -269,6 +269,25 @@ export const adminApi = {
   getBehaviorals: (page = 1, limit = 20, search = '') =>
     api.get(`/admin/behavioral?page=${page}&limit=${limit}${search ? `&search=${search}` : ''}`),
 
+  // Communication Questions (Written / Listening / Reading / Speaking)
+  createCommunication: (data: Record<string, unknown>) =>
+    api.post('/admin/communication', data),
+
+  getCommunications: (page = 1, limit = 20, search = '', subType = '') =>
+    api.get(`/admin/communication?page=${page}&limit=${limit}${search ? `&search=${search}` : ''}${subType ? `&subType=${subType}` : ''}`),
+
+  getCommunicationById: (questionId: string) =>
+    api.get(`/admin/communication/${questionId}`),
+
+  deleteCommunication: (questionId: string) =>
+    api.delete(`/admin/communication/${questionId}`),
+
+  createReadingPassage: (data: { title: string; passageText: string }) =>
+    api.post('/admin/communication/reading-passages', data),
+
+  getReadingPassages: (search = '') =>
+    api.get(`/admin/communication/reading-passages${search ? `?search=${search}` : ''}`),
+
   // Question Repository
   getQuestionBankQuestions: (params: RepositoryQueryParams) =>
     api.get<RepositoryListResponse>(`/admin/repository/question-bank?${buildRepositoryQuery(params)}`),
@@ -291,6 +310,15 @@ export const adminApi = {
     topic?: string;
     tags?: string[];
   }) => api.post('/admin/repository/custom/behavioral', data),
+
+  createCustomCommunication: (data: Record<string, unknown>) =>
+    api.post('/admin/repository/custom/communication', data),
+
+  updateCustomCommunication: (questionId: string, data: Record<string, unknown>) =>
+    api.put(`/admin/repository/custom/communication/${questionId}`, data),
+
+  updateQuestionBankCommunication: (questionId: string, data: Record<string, unknown>) =>
+    api.put(`/admin/repository/question-bank/communication/${questionId}`, data),
 
   updateCustomMCQ: (questionId: string, data: {
     questionText?: string;
@@ -411,6 +439,17 @@ export const adminApi = {
   autoGradeBehavioralAnswer: (attemptId: string, questionId: string) =>
     api.post<{ questionId: string; marksObtained: number; maxMarks: number; reasoning: string; score: number }>(
       `/admin/attempts/${attemptId}/behavioral/${questionId}/auto-grade`
+    ),
+
+  gradeCommunicationAnswer: (attemptId: string, questionId: string, marksObtained: number) =>
+    api.post<{ message: string; questionId: string; marksObtained: number; score: number }>(
+      `/admin/attempts/${attemptId}/communication/${questionId}/grade`,
+      { marksObtained }
+    ),
+
+  autoGradeCommunicationAnswer: (attemptId: string, questionId: string) =>
+    api.post<{ questionId: string; marksObtained: number; maxMarks: number; reasoning: string; score: number }>(
+      `/admin/attempts/${attemptId}/communication/${questionId}/auto-grade`
     ),
 
   reEvaluateAttempt: (attemptId: string) =>
@@ -548,8 +587,8 @@ export const adminApi = {
   deleteMedia: (assetId: string) =>
     api.delete(`/media/${assetId}`),
 
-  assignMediaToQuestion: (questionId: string, assetIds: string[]) =>
-    api.post(`/media/question/${questionId}/assign`, { assetIds }),
+  assignMediaToQuestion: (questionId: string, assetIds: string[], questionType?: 'mcq' | 'communication') =>
+    api.post(`/media/question/${questionId}/assign`, { assetIds, questionType }),
 
   getQuestionMedia: (questionId: string) =>
     api.get<{ success: boolean; assets: Array<{ id: string; filename: string; originalName: string; mimeType: string; fileSize: number; storageUrl: string; mediaType: string; width?: number; height?: number; duration?: number; thumbnailUrl?: string }> }>(`/media/question/${questionId}`),
@@ -617,6 +656,9 @@ export const candidateApi = {
 
   saveBehavioralAnswer: (data: { questionId: string; answerText: string }) =>
     api.post('/candidate/answer/behavioral', data),
+
+  saveCommunicationAnswer: (data: { questionId: string; answerText?: string; selectedOptions?: number[]; replayCount?: number }) =>
+    api.post('/candidate/answer/communication', data),
 
   runCode: (data: { questionId: string; code: string; language: string; input?: string }) =>
     api.post('/candidate/code/run', data),

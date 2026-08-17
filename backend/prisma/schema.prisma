@@ -16,6 +16,20 @@ enum QuestionRepositoryCategory {
   CODING
   MCQ
   BEHAVIORAL
+  COMMUNICATION
+}
+
+enum CommunicationSubType {
+  WRITTEN
+  LISTENING
+  READING
+  SPEAKING
+}
+
+enum WrittenStimulusType {
+  NONE
+  IMAGE
+  AUDIO
 }
 
 enum InvitationStatus {
@@ -42,6 +56,8 @@ model Admin {
   mcqQuestions    MCQQuestion[]
   codingQuestions CodingQuestion[]
   behavioralQuestions BehavioralQuestion[]
+  communicationQuestions CommunicationQuestion[]
+  readingPassages ReadingPassage[]
 
   @@index([companyId])
   @@index([resetPasswordTokenHash])
@@ -324,6 +340,81 @@ model BehavioralQuestion {
   @@index([adminId])
 }
 
+model ReadingPassage {
+  id          String   @id @default(uuid())
+  title       String
+  passageText String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  adminId String?
+  admin   Admin? @relation(fields: [adminId], references: [id])
+
+  questions CommunicationQuestion[]
+
+  @@index([adminId])
+}
+
+model CommunicationQuestion {
+  id String @id @default(uuid())
+
+  // Repository classification
+  source             QuestionSource             @default(CUSTOM)
+  repositoryCategory QuestionRepositoryCategory @default(COMMUNICATION)
+  isEnabled          Boolean                    @default(true)
+  subType            CommunicationSubType
+
+  // Shared fields
+  title       String
+  description String? // prompt (Written/Listening) or topic text (Speaking); unused for Reading (passage carries text)
+  marks       Int
+  difficulty  String  @default("medium")
+  topic       String?
+  tags        String? // JSON array
+
+  // Written-only
+  stimulusType    WrittenStimulusType? // NONE | IMAGE | AUDIO — recruiter's per-question choice
+  evaluationNotes String? // optional extra grading rubric beyond title+description
+
+  // Listening & Reading (MCQ-shaped)
+  options          String? // JSON array
+  correctAnswers   String? // JSON array
+  explanation      String?
+  isMultipleChoice Boolean @default(false)
+
+  // Listening-only guardrails
+  replayLimit        Int?     @default(1)
+  allowRewind        Boolean? @default(true)
+  allowSpeedChange   Boolean? @default(true)
+  fixedPlaybackSpeed Float?   @default(1.0) // used when allowSpeedChange = false
+
+  // Reading-only
+  passageId String?
+  passage   ReadingPassage? @relation(fields: [passageId], references: [id])
+
+  // Speaking-only
+  recordingTimeLimit Int? // seconds
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  adminId String?
+  admin   Admin? @relation(fields: [adminId], references: [id])
+
+  mediaAssets   MediaAsset[]
+  testQuestions TestQuestion[]
+  answers       CommunicationAnswer[]
+
+  @@index([source])
+  @@index([repositoryCategory])
+  @@index([subType])
+  @@index([difficulty])
+  @@index([isEnabled])
+  @@index([adminId])
+  @@index([passageId])
+}
+
 model TestCase {
   id             String  @id @default(uuid())
   input          String
@@ -339,22 +430,24 @@ model TestQuestion {
   id String @id @default(uuid())
 
   testId       String
-  questionType String // "mcq", "coding", "behavioral"
+  questionType String // "mcq", "coding", "behavioral", "communication"
 
   sectionId String?
 
-  mcqQuestionId        String?
-  codingQuestionId     String?
-  behavioralQuestionId String?
+  mcqQuestionId           String?
+  codingQuestionId        String?
+  behavioralQuestionId    String?
+  communicationQuestionId String?
 
   orderIndex Int
 
   test Test @relation(fields: [testId], references: [id], onDelete: Cascade)
   section TestSection? @relation(fields: [sectionId], references: [id], onDelete: Cascade)
 
-  mcqQuestion        MCQQuestion?        @relation(fields: [mcqQuestionId], references: [id])
-  codingQuestion     CodingQuestion?     @relation(fields: [codingQuestionId], references: [id])
-  behavioralQuestion BehavioralQuestion? @relation(fields: [behavioralQuestionId], references: [id])
+  mcqQuestion           MCQQuestion?           @relation(fields: [mcqQuestionId], references: [id])
+  codingQuestion        CodingQuestion?        @relation(fields: [codingQuestionId], references: [id])
+  behavioralQuestion    BehavioralQuestion?    @relation(fields: [behavioralQuestionId], references: [id])
+  communicationQuestion CommunicationQuestion? @relation(fields: [communicationQuestionId], references: [id])
 
   attemptQuestions TestAttemptQuestion[]
 
@@ -401,11 +494,12 @@ model TestAttempt {
   test      Test      @relation(fields: [testId], references: [id])
   candidate Candidate @relation(fields: [candidateId], references: [id])
 
-  mcqAnswers        MCQAnswer[]
-  codingAnswers     CodingAnswer[]
-  behavioralAnswers BehavioralAnswer[]
-  activityLogs      ActivityLog[]
-  attemptQuestions  TestAttemptQuestion[]
+  mcqAnswers           MCQAnswer[]
+  codingAnswers        CodingAnswer[]
+  behavioralAnswers    BehavioralAnswer[]
+  communicationAnswers CommunicationAnswer[]
+  activityLogs         ActivityLog[]
+  attemptQuestions     TestAttemptQuestion[]
 
   // Proctoring and Analytics relations
   proctorSession ProctorSession?
@@ -472,6 +566,29 @@ model BehavioralAnswer {
 
   attempt  TestAttempt        @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   question BehavioralQuestion @relation(fields: [questionId], references: [id])
+
+  @@unique([attemptId, questionId])
+}
+
+model CommunicationAnswer {
+  id         String @id @default(uuid())
+  attemptId  String
+  questionId String
+
+  answerText      String? // Written typed response
+  selectedOptions String? // JSON — Listening/Reading MCQ selection
+  audioAssetId    String? // Speaking recording (via MediaAsset)
+  transcript      String? // Speaking — Whisper output
+  replayCount     Int?    @default(0) // Listening — guardrail telemetry
+
+  isCorrect     Boolean? // Listening/Reading
+  marksObtained Float?
+  gradingDetail String? // JSON — {contentScore, fluencyScore, pronunciationScore, cefrLevel, reasoning}
+
+  submittedAt DateTime @default(now())
+
+  attempt  TestAttempt           @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question CommunicationQuestion @relation(fields: [questionId], references: [id])
 
   @@unique([attemptId, questionId])
 }
@@ -698,6 +815,9 @@ model MediaAsset {
   // Relations
   mcqQuestionId String?
   mcqQuestion   MCQQuestion? @relation(fields: [mcqQuestionId], references: [id], onDelete: SetNull)
+
+  communicationQuestionId String?
+  communicationQuestion   CommunicationQuestion? @relation(fields: [communicationQuestionId], references: [id], onDelete: SetNull)
 
   // Metadata
   uploadedBy String? // Admin ID

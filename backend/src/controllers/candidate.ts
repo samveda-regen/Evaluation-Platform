@@ -689,7 +689,13 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
                 }
               }
             },
-            behavioralQuestion: true
+            behavioralQuestion: true,
+            communicationQuestion: {
+              include: {
+                mediaAssets: true,
+                passage: true
+              }
+            }
           },
           orderBy: { orderIndex: 'asc' }
         },
@@ -709,7 +715,13 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
                     }
                   }
                 },
-                behavioralQuestion: true
+                behavioralQuestion: true,
+                communicationQuestion: {
+                  include: {
+                    mediaAssets: true,
+                    passage: true
+                  }
+                }
               },
               orderBy: { orderIndex: 'asc' }
             }
@@ -741,7 +753,13 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
                 }
               }
             },
-            behavioralQuestion: true
+            behavioralQuestion: true,
+            communicationQuestion: {
+              include: {
+                mediaAssets: true,
+                passage: true
+              }
+            }
           }
         }
       },
@@ -872,15 +890,58 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
           description: q.behavioralQuestion.description,
           marks: q.behavioralQuestion.marks
         };
+      } else if (q.questionType === 'communication' && q.communicationQuestion) {
+        const cq = q.communicationQuestion;
+        const mediaAssets = (cq.mediaAssets || []).map((asset) => ({
+          ...asset,
+          storageUrl: normalizeMediaUrl(asset.storageUrl, asset.storageKey),
+        }));
+        const base = {
+          id: q.id,
+          type: 'communication',
+          subType: cq.subType,
+          questionId: cq.id,
+          title: cq.title,
+          description: cq.description,
+          marks: cq.marks,
+          mediaAssets
+        };
+
+        if (cq.subType === 'WRITTEN') {
+          return { ...base, stimulusType: cq.stimulusType };
+        }
+
+        if (cq.subType === 'LISTENING' || cq.subType === 'READING') {
+          const options = cq.options ? (JSON.parse(cq.options) as string[]) : [];
+          const optionsWithIndex = options.map((text, index) => ({ originalIndex: index, text }));
+          return {
+            ...base,
+            options: optionsWithIndex,
+            isMultipleChoice: cq.isMultipleChoice,
+            ...(cq.subType === 'LISTENING'
+              ? {
+                  replayLimit: cq.replayLimit,
+                  allowRewind: cq.allowRewind,
+                  allowSpeedChange: cq.allowSpeedChange,
+                  fixedPlaybackSpeed: cq.fixedPlaybackSpeed
+                }
+              : {
+                  passage: cq.passage ? { id: cq.passage.id, title: cq.passage.title, passageText: cq.passage.passageText } : null
+                })
+          };
+        }
+
+        // SPEAKING
+        return { ...base, recordingTimeLimit: cq.recordingTimeLimit };
       }
       return null;
     }).filter(Boolean);
 
     if (test.shuffleOptions) {
       for (const q of questions) {
-        if (q && q.type === 'mcq' && Array.isArray(q.options)) {
+        if (q && (q.type === 'mcq' || q.type === 'communication') && Array.isArray((q as { options?: unknown }).options)) {
           // Shuffle options in place while preserving originalIndex
-          q.options.sort(() => Math.random() - 0.5);
+          (q as { options: unknown[] }).options.sort(() => Math.random() - 0.5);
         }
       }
     }
@@ -1109,6 +1170,57 @@ export async function saveBehavioralAnswer(req: AuthenticatedRequest, res: Respo
     res.json({ message: 'Behavioral answer saved' });
   } catch (error) {
     console.error('Save behavioral answer error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// Accepts whichever fields are relevant to the question's subType — answerText (Written),
+// selectedOptions (Listening/Reading), or audioAssetId (Speaking, wired up in a later phase) —
+// same upsert-on-save-per-keystroke pattern as saveBehavioralAnswer.
+export async function saveCommunicationAnswer(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { attemptId } = req.candidate!;
+    const { questionId, answerText, selectedOptions, replayCount } = req.body;
+
+    const attempt = await prisma.testAttempt.findUnique({
+      where: { id: attemptId }
+    });
+
+    if (!attempt || attempt.status !== 'in_progress') {
+      res.status(400).json({ error: 'Cannot save answer - test not in progress' });
+      return;
+    }
+
+    const data: {
+      answerText?: string;
+      selectedOptions?: string;
+      replayCount?: number;
+    } = {};
+    if (typeof answerText === 'string') data.answerText = answerText;
+    if (Array.isArray(selectedOptions)) data.selectedOptions = JSON.stringify(selectedOptions);
+    if (typeof replayCount === 'number' && Number.isFinite(replayCount)) data.replayCount = Math.max(0, Math.floor(replayCount));
+
+    await prisma.communicationAnswer.upsert({
+      where: {
+        attemptId_questionId: {
+          attemptId,
+          questionId
+        }
+      },
+      create: {
+        attemptId,
+        questionId,
+        ...data
+      },
+      update: {
+        ...data,
+        submittedAt: new Date()
+      }
+    });
+
+    res.json({ message: 'Communication answer saved' });
+  } catch (error) {
+    console.error('Save communication answer error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }
@@ -1363,6 +1475,7 @@ async function performSubmission(attemptId: string, testId: string, autoSubmit: 
           mcqAnswers: true,
           codingAnswers: true,
           behavioralAnswers: true,
+          communicationAnswers: true,
           candidate: { select: { name: true, email: true } }
         }
       }),
@@ -1375,7 +1488,8 @@ async function performSubmission(attemptId: string, testId: string, autoSubmit: 
               codingQuestion: {
                 include: { testCases: true }
               },
-              behavioralQuestion: true
+              behavioralQuestion: true,
+              communicationQuestion: true
             }
           }
         }
@@ -1402,6 +1516,7 @@ async function performSubmission(attemptId: string, testId: string, autoSubmit: 
       partialScoring: boolean;
       testCases: Array<{ id: string; input: string; expectedOutput: string }>;
     }>();
+    const communicationQuestionsMap = new Map<string, { subType: string; correctAnswers: string | null; marks: number }>();
 
     for (const eq of test.questions) {
       if (eq.mcqQuestion) {
@@ -1416,6 +1531,13 @@ async function performSubmission(attemptId: string, testId: string, autoSubmit: 
           marks: eq.codingQuestion.marks,
           partialScoring: eq.codingQuestion.partialScoring,
           testCases: eq.codingQuestion.testCases
+        });
+      }
+      if (eq.communicationQuestion) {
+        communicationQuestionsMap.set(eq.communicationQuestion.id, {
+          subType: eq.communicationQuestion.subType,
+          correctAnswers: eq.communicationQuestion.correctAnswers,
+          marks: eq.communicationQuestion.marks
         });
       }
     }
@@ -1499,6 +1621,29 @@ async function performSubmission(attemptId: string, testId: string, autoSubmit: 
       totalScore += behavioralAnswer.marksObtained ?? 0;
     }
 
+    // Communication: Listening/Reading are MCQ-shaped and auto-score here; Written/Speaking can't
+    // be auto-graded at submission time (LLM grading happens afterward), so fold in whatever's
+    // already assigned (normally none yet), mirroring the behavioral handling above.
+    const communicationUpdates: Array<{ id: string; isCorrect: boolean; marksObtained: number }> = [];
+    for (const communicationAnswer of attempt.communicationAnswers) {
+      const question = communicationQuestionsMap.get(communicationAnswer.questionId);
+      if (!question) continue;
+
+      if (question.subType === 'LISTENING' || question.subType === 'READING') {
+        const correctAnswers = question.correctAnswers ? (JSON.parse(question.correctAnswers) as number[]) : [];
+        const selectedOptions = communicationAnswer.selectedOptions ? (JSON.parse(communicationAnswer.selectedOptions) as number[]) : [];
+        const isCorrect =
+          correctAnswers.length === selectedOptions.length &&
+          correctAnswers.every((a: number) => selectedOptions.includes(a));
+        const marks = isCorrect ? question.marks : 0;
+
+        totalScore += marks;
+        communicationUpdates.push({ id: communicationAnswer.id, isCorrect, marksObtained: marks });
+      } else {
+        totalScore += communicationAnswer.marksObtained ?? 0;
+      }
+    }
+
     // Execute all database updates in a transaction for consistency
     const attemptStatus = autoSubmit ? 'auto_submitted' : 'submitted';
     const webhookStatus = attemptStatus === 'submitted' || attemptStatus === 'auto_submitted'
@@ -1522,6 +1667,13 @@ async function performSubmission(attemptId: string, testId: string, autoSubmit: 
         prisma.codingAnswer.update({
           where: { id: update.id },
           data: { testResults: update.testResults, marksObtained: update.marksObtained }
+        })
+      ),
+      // Batch update auto-scored (Listening/Reading) communication answers
+      ...communicationUpdates.map(update =>
+        prisma.communicationAnswer.update({
+          where: { id: update.id },
+          data: { isCorrect: update.isCorrect, marksObtained: update.marksObtained }
         })
       ),
       // Update attempt status
@@ -1753,7 +1905,7 @@ export async function getSavedAnswers(req: AuthenticatedRequest, res: Response):
   try {
     const { attemptId } = req.candidate!;
 
-    const [mcqAnswers, codingAnswers, behavioralAnswers] = await Promise.all([
+    const [mcqAnswers, codingAnswers, behavioralAnswers, communicationAnswers] = await Promise.all([
       prisma.mCQAnswer.findMany({
         where: { attemptId },
         select: {
@@ -1775,6 +1927,15 @@ export async function getSavedAnswers(req: AuthenticatedRequest, res: Response):
           questionId: true,
           answerText: true
         }
+      }),
+      prisma.communicationAnswer.findMany({
+        where: { attemptId },
+        select: {
+          questionId: true,
+          answerText: true,
+          selectedOptions: true,
+          replayCount: true
+        }
       })
     ]);
 
@@ -1784,7 +1945,13 @@ export async function getSavedAnswers(req: AuthenticatedRequest, res: Response):
         selectedOptions: JSON.parse(a.selectedOptions)
       })),
       codingAnswers,
-      behavioralAnswers
+      behavioralAnswers,
+      communicationAnswers: communicationAnswers.map(a => ({
+        questionId: a.questionId,
+        answerText: a.answerText,
+        selectedOptions: a.selectedOptions ? JSON.parse(a.selectedOptions) : null,
+        replayCount: a.replayCount
+      }))
     });
   } catch (error) {
     console.error('Get saved answers error:', error);

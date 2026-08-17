@@ -202,6 +202,7 @@ interface TestQuestionLike {
   mcqQuestion?: QuestionWithTags | null;
   codingQuestion?: QuestionWithTags | null;
   behavioralQuestion?: QuestionWithTags | null;
+  communicationQuestion?: QuestionWithTags | null;
   [key: string]: unknown;
 }
 
@@ -213,6 +214,9 @@ function withParsedQuestionTags<T extends TestQuestionLike>(testQuestion: T): T 
       : testQuestion.mcqQuestion,
     codingQuestion: testQuestion.codingQuestion ? { ...testQuestion.codingQuestion, tags: parseJsonArrayField(testQuestion.codingQuestion.tags) } : testQuestion.codingQuestion,
     behavioralQuestion: testQuestion.behavioralQuestion ? { ...testQuestion.behavioralQuestion, tags: parseJsonArrayField(testQuestion.behavioralQuestion.tags) } : testQuestion.behavioralQuestion,
+    communicationQuestion: testQuestion.communicationQuestion
+      ? { ...testQuestion.communicationQuestion, tags: parseJsonArrayField(testQuestion.communicationQuestion.tags), options: parseJsonArrayField(testQuestion.communicationQuestion.options) }
+      : testQuestion.communicationQuestion,
   };
 }
 
@@ -422,7 +426,8 @@ export async function getTestById(req: AuthenticatedRequest, res: Response): Pro
                 testCases: true
               }
             },
-            behavioralQuestion: true
+            behavioralQuestion: true,
+            communicationQuestion: true
           },
           orderBy: { orderIndex: 'asc' }
         },
@@ -436,7 +441,8 @@ export async function getTestById(req: AuthenticatedRequest, res: Response): Pro
                     testCases: true
                   }
                 },
-                behavioralQuestion: true
+                behavioralQuestion: true,
+                communicationQuestion: true
               },
               orderBy: { orderIndex: 'asc' }
             }
@@ -1073,6 +1079,17 @@ export async function addQuestionToTest(req: AuthenticatedRequest, res: Response
         res.status(404).json({ error: 'Behavioral question not found' });
         return;
       }
+    } else if (questionType === 'communication') {
+      const communication = await prisma.communicationQuestion.findFirst({
+        where: {
+          id: questionId,
+          OR: [{ adminId: req.admin!.id }, { adminId: null }]
+        }
+      });
+      if (!communication) {
+        res.status(404).json({ error: 'Communication question not found' });
+        return;
+      }
     } else {
       res.status(400).json({ error: 'Invalid question type' });
       return;
@@ -1085,12 +1102,15 @@ export async function addQuestionToTest(req: AuthenticatedRequest, res: Response
           ? { mcqQuestionId: questionId }
           : questionType === 'coding'
             ? { codingQuestionId: questionId }
-            : { behavioralQuestionId: questionId })
+            : questionType === 'behavioral'
+              ? { behavioralQuestionId: questionId }
+              : { communicationQuestionId: questionId })
       },
       include: {
         mcqQuestion: true,
         codingQuestion: true,
-        behavioralQuestion: true
+        behavioralQuestion: true,
+        communicationQuestion: true
       }
     });
 
@@ -1127,13 +1147,15 @@ export async function addQuestionToTest(req: AuthenticatedRequest, res: Response
         mcqQuestionId: questionType === 'mcq' ? questionId : null,
         codingQuestionId: questionType === 'coding' ? questionId : null,
         behavioralQuestionId: questionType === 'behavioral' ? questionId : null,
+        communicationQuestionId: questionType === 'communication' ? questionId : null,
         orderIndex: order,
         sectionId: sectionId ?? null
       },
       include: {
         mcqQuestion: true,
         codingQuestion: true,
-        behavioralQuestion: true
+        behavioralQuestion: true,
+        communicationQuestion: true
       }
     });
 

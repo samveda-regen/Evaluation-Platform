@@ -17,6 +17,7 @@ import {
   saveMCQAnswer,
   saveCodingAnswer,
   saveBehavioralAnswer,
+  saveCommunicationAnswer,
   runCode,
   logActivity,
   submitTest,
@@ -38,6 +39,7 @@ router.get('/test/answers', candidateAuth, getSavedAnswers);
 router.post('/answer/mcq', candidateAuth, submitMCQAnswerValidation, handleValidationErrors, saveMCQAnswer);
 router.post('/answer/coding', candidateAuth, submitCodingAnswerValidation, handleValidationErrors, saveCodingAnswer);
 router.post('/answer/behavioral', candidateAuth, submitBehavioralAnswerValidation, handleValidationErrors, saveBehavioralAnswer);
+router.post('/answer/communication', candidateAuth, saveCommunicationAnswer);
 router.post('/code/run', candidateAuth, runCode);
 
 // Activity logging

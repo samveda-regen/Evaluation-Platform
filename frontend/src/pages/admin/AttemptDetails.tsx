@@ -59,6 +59,10 @@ interface AttemptData {
     questionId: string; title: string; description: string; answerText: string;
     marks: number; marksObtained?: number | null;
   }>;
+  communicationAnswers: Array<{
+    questionId: string; subType: string; title: string; description?: string | null; answerText: string | null;
+    marks: number; marksObtained?: number | null;
+  }>;
   activityLogs: Array<{
     id: string; eventType: string; eventData?: string; timestamp: string;
   }>;
@@ -155,10 +159,12 @@ export default function AttemptDetails() {
   const [releasing,     setReleasing]     = useState(false);
   const [emailingResult,setEmailingResult]= useState(false);
   const [behavioralDrafts, setBehavioralDrafts] = useState<Record<string, string>>({});
+  const [communicationDrafts, setCommunicationDrafts] = useState<Record<string, string>>({});
   const [gradingQuestionId, setGradingQuestionId] = useState<string | null>(null);
   const [aiScoringQuestionIds, setAiScoringQuestionIds] = useState<Set<string>>(new Set());
   const [aiSuggestions, setAiSuggestions] = useState<Record<string, { marksObtained: number; reasoning: string }>>({});
   const autoGradedRef = useRef<Set<string>>(new Set());
+  const autoGradedCommRef = useRef<Set<string>>(new Set());
 
   useEffect(() => { void loadAttempt(); }, [attemptId]);
 
@@ -177,6 +183,20 @@ export default function AttemptDetails() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.attempt.id, data?.behavioralAnswers]);
+
+  // Same auto-scoring behavior as behavioral, but only for Written answers — Listening/Reading
+  // are auto-scored server-side at submission time, and Speaking AI grading lands in a later phase.
+  useEffect(() => {
+    if (!data) return;
+    data.communicationAnswers.forEach(a => {
+      const needsScore = a.subType === 'WRITTEN' && (a.marksObtained === null || a.marksObtained === undefined) && a.answerText?.trim();
+      if (needsScore && !autoGradedCommRef.current.has(a.questionId)) {
+        autoGradedCommRef.current.add(a.questionId);
+        void handleAutoGradeCommunication(a.questionId);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.attempt.id, data?.communicationAnswers]);
 
   const loadAttempt = async () => {
     try {
@@ -302,6 +322,55 @@ export default function AttemptDetails() {
     }
   };
 
+  const handleGradeCommunication = async (questionId: string, maxMarks: number) => {
+    if (!data) return;
+    const raw = communicationDrafts[questionId];
+    const parsed = Number(raw);
+    if (raw === undefined || raw.trim() === '' || Number.isNaN(parsed)) {
+      toast.error('Enter a valid number');
+      return;
+    }
+    const clamped = Math.min(maxMarks, Math.max(0, parsed));
+    setGradingQuestionId(questionId);
+    try {
+      const { data: gradeData } = await adminApi.gradeCommunicationAnswer(attemptId!, questionId, clamped);
+      setData(prev => prev ? {
+        ...prev,
+        attempt: { ...prev.attempt, score: gradeData.score },
+        communicationAnswers: prev.communicationAnswers.map(a =>
+          a.questionId === questionId ? { ...a, marksObtained: gradeData.marksObtained } : a
+        ),
+      } : prev);
+      setCommunicationDrafts(prev => { const next = { ...prev }; delete next[questionId]; return next; });
+      setAiSuggestions(prev => { const next = { ...prev }; delete next[questionId]; return next; });
+      toast.success('Marks saved');
+    } catch {
+      toast.error('Failed to save marks');
+    } finally {
+      setGradingQuestionId(null);
+    }
+  };
+
+  const handleAutoGradeCommunication = async (questionId: string) => {
+    setAiScoringQuestionIds(prev => new Set(prev).add(questionId));
+    try {
+      const { data: aiData } = await adminApi.autoGradeCommunicationAnswer(attemptId!, questionId);
+      setData(prev => prev ? {
+        ...prev,
+        attempt: { ...prev.attempt, score: aiData.score },
+        communicationAnswers: prev.communicationAnswers.map(a =>
+          a.questionId === questionId ? { ...a, marksObtained: aiData.marksObtained } : a
+        ),
+      } : prev);
+      setAiSuggestions(prev => ({ ...prev, [questionId]: { marksObtained: aiData.marksObtained, reasoning: aiData.reasoning } }));
+    } catch (err: unknown) {
+      const message = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      toast.error(message || 'AI scoring failed for a written answer. Please grade it manually.');
+    } finally {
+      setAiScoringQuestionIds(prev => { const next = new Set(prev); next.delete(questionId); return next; });
+    }
+  };
+
   const handleReviewToggle = async () => {
     const nextReviewed = !reviewed;
     setReviewSaving(true);
@@ -333,7 +402,7 @@ export default function AttemptDetails() {
   );
   if (!data) return null;
 
-  const { attempt, test, candidate, mcqAnswers, codingAnswers, behavioralAnswers, activityLogs } = data;
+  const { attempt, test, candidate, mcqAnswers, codingAnswers, behavioralAnswers, communicationAnswers, activityLogs } = data;
 
   /* -- Score calculations -- */
   const scoreRaw   = attempt.score ?? 0;
@@ -359,6 +428,11 @@ export default function AttemptDetails() {
   const behPct     = safeDiv(behObtained, behTotal);
   const behRating  = behPct >= 80 ? 'Strong' : behPct >= 60 ? 'Good' : behPct >= 40 ? 'Fair' : 'Weak';
 
+  const commTotal   = communicationAnswers.reduce((s, a) => s + a.marks, 0);
+  const commObtained= communicationAnswers.reduce((s, a) => s + (a.marksObtained ?? 0), 0);
+  const commPct     = safeDiv(commObtained, commTotal);
+  const commRating  = commPct >= 80 ? 'Strong' : commPct >= 60 ? 'Good' : commPct >= 40 ? 'Fair' : 'Weak';
+
   /* -- Per-type filtered answer lists -- */
   const filteredMCQ = mcqAnswers.filter(a => {
     if (reviewFilter === 'correct')   return a.isCorrect;
@@ -375,7 +449,12 @@ export default function AttemptDetails() {
     if (reviewFilter === 'incorrect') return (a.marksObtained ?? 0) === 0;
     return true;
   });
-  const totalFiltered = filteredMCQ.length + filteredCoding.length + filteredBehavioral.length;
+  const filteredCommunication = communicationAnswers.filter(a => {
+    if (reviewFilter === 'correct')   return (a.marksObtained ?? 0) > 0;
+    if (reviewFilter === 'incorrect') return (a.marksObtained ?? 0) === 0;
+    return true;
+  });
+  const totalFiltered = filteredMCQ.length + filteredCoding.length + filteredBehavioral.length + filteredCommunication.length;
 
   /* -- Integrity: violation tag summary -- */
   const violationCounts: Record<string, number> = {};
@@ -403,7 +482,7 @@ export default function AttemptDetails() {
 
   /* -- Duration -- */
   const duration = fmtDuration(attempt.startTime, attempt.submittedAt || attempt.endTime);
-  const totalQs  = mcqAnswers.length + codingAnswers.length + behavioralAnswers.length;
+  const totalQs  = mcqAnswers.length + codingAnswers.length + behavioralAnswers.length + communicationAnswers.length;
 
   /* -- Test info subtitle -- */
   const submittedStr = attempt.submittedAt
@@ -570,7 +649,10 @@ export default function AttemptDetails() {
               {behavioralAnswers.length > 0 && (
                 <QuestionDonut pct={behPct} color="var(--admin-data-blue)" label="Behavioral" sub={behRating} />
               )}
-              {mcqAnswers.length === 0 && codingAnswers.length === 0 && behavioralAnswers.length === 0 && (
+              {communicationAnswers.length > 0 && (
+                <QuestionDonut pct={commPct} color="var(--admin-data-blue)" label="Communication" sub={commRating} />
+              )}
+              {mcqAnswers.length === 0 && codingAnswers.length === 0 && behavioralAnswers.length === 0 && communicationAnswers.length === 0 && (
                 <p style={{ fontSize:'13px', color:'var(--admin-text-subtle)' }}>No answers recorded</p>
               )}
             </div>
@@ -813,6 +895,104 @@ export default function AttemptDetails() {
                             {isAiScoring ? 'Scoring…' : aiSuggestion ? 'Re-score with AI' : 'Score with AI'}
                           </button>
                         </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* -- Communication (Written) cards -- */}
+                {filteredCommunication.map((ans, i) => {
+                  const score = ans.marksObtained ?? 0;
+                  const draft = communicationDrafts[ans.questionId];
+                  const isGrading = gradingQuestionId === ans.questionId;
+                  const isAiScoring = aiScoringQuestionIds.has(ans.questionId);
+                  const aiSuggestion = aiSuggestions[ans.questionId];
+                  const isUngraded = ans.marksObtained === null || ans.marksObtained === undefined;
+                  return (
+                    <div key={ans.questionId} style={{ borderRadius:'12px', border:'1.5px solid var(--admin-accent-disabled)', overflow:'hidden' }}>
+                      {/* Communication header */}
+                      <div style={{ padding:'13px 16px', backgroundColor:'var(--admin-accent-soft)', display:'flex', alignItems:'flex-start', gap:'10px' }}>
+                        <span style={{ fontSize:'11px', fontWeight:700, padding:'3px 8px', borderRadius:'20px', backgroundColor:'var(--admin-accent-disabled)', color:'#92400E', flexShrink:0, whiteSpace:'nowrap' }}>
+                          {ans.subType.charAt(0) + ans.subType.slice(1).toLowerCase()} {i + 1}
+                        </span>
+                        <div style={{ flex:1 }}>
+                          <p style={{ fontSize:'13px', fontWeight:600, color:'var(--admin-text)', margin:'0 0 2px' }}>{ans.title}</p>
+                          {ans.description && <p style={{ fontSize:'12px', color:'var(--admin-text-muted)', margin:0 }}>{ans.description}</p>}
+                        </div>
+                        <div style={{ flexShrink:0, textAlign:'right' }}>
+                          {isAiScoring && isUngraded ? (
+                            <span style={{ display:'flex', alignItems:'center', gap:'5px', fontSize:'12px', fontWeight:600, color:'var(--admin-accent-hover)' }}>
+                              <Sparkles size={13} /> AI scoring…
+                            </span>
+                          ) : isUngraded ? (
+                            <span style={{ fontSize:'12px', fontWeight:600, color:'var(--admin-text-subtle)', fontStyle:'italic' }}>
+                              Not graded yet
+                            </span>
+                          ) : (
+                            <>
+                              <span style={{ fontSize:'13px', fontWeight:700, color: score > 0 ? 'var(--admin-accent-hover)' : '#DC2626' }}>
+                                {score} / {ans.marks}
+                              </span>
+                              <p style={{ fontSize:'10px', color:'var(--admin-text-subtle)', margin:'1px 0 0' }}>marks</p>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      {/* Answer text */}
+                      <div style={{ padding:'14px 16px' }}>
+                        <p style={{ fontSize:'11px', fontWeight:600, color:'var(--admin-text-subtle)', textTransform:'uppercase', letterSpacing:'0.05em', margin:'0 0 8px' }}>
+                          Candidate's answer
+                        </p>
+                        <p style={{ fontSize:'13px', color:'var(--admin-text-muted)', margin:'0 0 14px', lineHeight:'1.7', whiteSpace:'pre-wrap' }}>
+                          {ans.answerText || '(No answer provided)'}
+                        </p>
+                        {aiSuggestion && (
+                          <div style={{ display:'flex', gap:'8px', padding:'10px 12px', marginBottom:'12px', borderRadius:'8px', backgroundColor:'var(--admin-accent-soft)', border:'1px solid var(--admin-accent-disabled)' }}>
+                            <Sparkles size={14} color="var(--admin-accent-hover)" style={{ flexShrink:0, marginTop:'2px' }} />
+                            <div>
+                              <p style={{ fontSize:'11px', fontWeight:700, color:'var(--admin-accent-hover)', margin:'0 0 3px' }}>
+                                AI scored {aiSuggestion.marksObtained} / {ans.marks} — override below if needed
+                              </p>
+                              <p style={{ fontSize:'12px', color:'var(--admin-text-muted)', margin:0, lineHeight:'1.5' }}>{aiSuggestion.reasoning}</p>
+                            </div>
+                          </div>
+                        )}
+                        {ans.subType === 'WRITTEN' ? (
+                          <div style={{ display:'flex', alignItems:'center', gap:'8px', paddingTop:'12px', borderTop:'1px solid var(--admin-border)', flexWrap:'wrap' }}>
+                            <p style={{ fontSize:'11px', fontWeight:600, color:'var(--admin-text-subtle)', margin:0 }}>Grade this answer:</p>
+                            <input
+                              type="number"
+                              min={0}
+                              max={ans.marks}
+                              step="0.1"
+                              placeholder={String(score)}
+                              value={draft ?? ''}
+                              onChange={e => setCommunicationDrafts(prev => ({ ...prev, [ans.questionId]: e.target.value }))}
+                              style={{ width:'70px', padding:'6px 8px', borderRadius:'6px', border:'1px solid var(--admin-border)', fontSize:'12px', color:'var(--admin-text)' }}
+                            />
+                            <span style={{ fontSize:'12px', color:'var(--admin-text-subtle)' }}>/ {ans.marks}</span>
+                            <button
+                              onClick={() => handleGradeCommunication(ans.questionId, ans.marks)}
+                              disabled={isGrading || draft === undefined}
+                              style={{ padding:'6px 12px', borderRadius:'6px', border:'none', backgroundColor:'var(--admin-accent)', color:'#fff', fontSize:'12px', fontWeight:600, cursor: isGrading || draft === undefined ? 'not-allowed' : 'pointer', opacity: isGrading || draft === undefined ? 0.6 : 1 }}
+                            >
+                              {isGrading ? 'Saving…' : 'Save marks'}
+                            </button>
+                            <button
+                              onClick={() => handleAutoGradeCommunication(ans.questionId)}
+                              disabled={isAiScoring || !ans.answerText}
+                              title={!ans.answerText ? 'No candidate answer to score' : 'Re-run AI scoring for this answer'}
+                              style={{ display:'flex', alignItems:'center', gap:'4px', padding:'6px 10px', borderRadius:'6px', border:'none', backgroundColor:'transparent', color:'var(--admin-text-subtle)', fontSize:'11px', fontWeight:600, cursor: isAiScoring || !ans.answerText ? 'not-allowed' : 'pointer', opacity: isAiScoring || !ans.answerText ? 0.5 : 1, textDecoration: 'underline' }}
+                            >
+                              <Sparkles size={12} />
+                              {isAiScoring ? 'Scoring…' : aiSuggestion ? 'Re-score with AI' : 'Score with AI'}
+                            </button>
+                          </div>
+                        ) : (
+                          <p style={{ fontSize:'11px', color:'var(--admin-text-subtle)', fontStyle:'italic', margin:0 }}>
+                            {score} / {ans.marks} — scored automatically
+                          </p>
+                        )}
                       </div>
                     </div>
                   );

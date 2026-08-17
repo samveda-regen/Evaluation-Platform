@@ -4,6 +4,7 @@ import prisma from '../utils/db.js';
 import { sendResultEmail } from '../services/emailService.js';
 import { getTestGradingPreferences } from '../utils/testPreferences.js';
 import { scoreBehavioralAnswer } from '../services/behavioralScoringService.js';
+import { scoreWrittenAnswer } from '../services/communicationScoringService.js';
 
 async function resolveCompanyName(companyId: string | null): Promise<string> {
   if (!companyId) return 'Our Team';
@@ -203,6 +204,11 @@ export async function getAttemptDetails(req: AuthenticatedRequest, res: Response
             question: true
           }
         },
+        communicationAnswers: {
+          include: {
+            question: true
+          }
+        },
         activityLogs: {
           orderBy: { timestamp: 'asc' }
         },
@@ -255,6 +261,23 @@ export async function getAttemptDetails(req: AuthenticatedRequest, res: Response
       marksObtained: a.marksObtained
     }));
 
+    const communicationAnswers = attempt.communicationAnswers.map((a: typeof attempt.communicationAnswers[number]) => ({
+      questionId: a.questionId,
+      subType: a.question.subType,
+      title: a.question.title,
+      description: a.question.description,
+      answerText: a.answerText,
+      selectedOptions: a.selectedOptions ? JSON.parse(a.selectedOptions) : null,
+      options: a.question.options ? JSON.parse(a.question.options) : null,
+      correctAnswers: a.question.correctAnswers ? JSON.parse(a.question.correctAnswers) : null,
+      isCorrect: a.isCorrect,
+      transcript: a.transcript,
+      replayCount: a.replayCount,
+      gradingDetail: a.gradingDetail ? JSON.parse(a.gradingDetail) : null,
+      marks: a.question.marks,
+      marksObtained: a.marksObtained
+    }));
+
     const reviewState = await getAttemptReviewState(attempt.id);
 
     res.json({
@@ -283,6 +306,7 @@ export async function getAttemptDetails(req: AuthenticatedRequest, res: Response
       mcqAnswers,
       codingAnswers,
       behavioralAnswers,
+      communicationAnswers,
       activityLogs: attempt.activityLogs
     });
   } catch (error) {
@@ -467,22 +491,24 @@ export async function sendAttemptResultEmail(req: AuthenticatedRequest, res: Res
   }
 }
 
-// Recomputes a TestAttempt's total score from its current mcq/coding/behavioral marksObtained
-// values and persists it. Shared by manual and AI behavioral grading so both stay in sync.
+// Recomputes a TestAttempt's total score from its current mcq/coding/behavioral/communication
+// marksObtained values and persists it. Shared by manual and AI grading so both stay in sync.
 async function recalculateAttemptScore(attemptId: string): Promise<number> {
   const attempt = await prisma.testAttempt.findUnique({
     where: { id: attemptId },
     select: {
       mcqAnswers: { select: { marksObtained: true } },
       codingAnswers: { select: { marksObtained: true } },
-      behavioralAnswers: { select: { marksObtained: true } }
+      behavioralAnswers: { select: { marksObtained: true } },
+      communicationAnswers: { select: { marksObtained: true } }
     }
   });
 
   const mcqTotal = attempt?.mcqAnswers.reduce((sum, a) => sum + (a.marksObtained ?? 0), 0) ?? 0;
   const codingTotal = attempt?.codingAnswers.reduce((sum, a) => sum + (a.marksObtained ?? 0), 0) ?? 0;
   const behavioralTotal = attempt?.behavioralAnswers.reduce((sum, a) => sum + (a.marksObtained ?? 0), 0) ?? 0;
-  const newScore = mcqTotal + codingTotal + behavioralTotal;
+  const communicationTotal = attempt?.communicationAnswers.reduce((sum, a) => sum + (a.marksObtained ?? 0), 0) ?? 0;
+  const newScore = mcqTotal + codingTotal + behavioralTotal + communicationTotal;
 
   await prisma.testAttempt.update({ where: { id: attemptId }, data: { score: newScore } });
   return newScore;
@@ -614,6 +640,138 @@ export async function autoGradeBehavioralAnswer(req: AuthenticatedRequest, res: 
   }
 }
 
+// Admin manually assigns/overrides marks for a Written/Speaking communication answer. Listening
+// and Reading are auto-scored elsewhere (they're MCQ-shaped) and are not gradable through this
+// endpoint — mirrors gradeBehavioralAnswer above.
+export async function gradeCommunicationAnswer(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { attemptId, questionId } = req.params;
+    const { marksObtained } = req.body;
+
+    if (typeof marksObtained !== 'number' || Number.isNaN(marksObtained)) {
+      res.status(400).json({ error: 'marksObtained must be a number' });
+      return;
+    }
+
+    const attempt = await prisma.testAttempt.findUnique({
+      where: { id: attemptId },
+      include: {
+        test: { select: { adminId: true } },
+        communicationAnswers: { select: { id: true, questionId: true, question: { select: { marks: true, subType: true } } } }
+      }
+    });
+
+    if (!attempt) {
+      res.status(404).json({ error: 'Attempt not found' });
+      return;
+    }
+
+    if (attempt.test.adminId !== req.admin!.id) {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    const communicationAnswer = attempt.communicationAnswers.find(a => a.questionId === questionId);
+    if (!communicationAnswer) {
+      res.status(404).json({ error: 'Communication answer not found' });
+      return;
+    }
+    if (communicationAnswer.question.subType !== 'WRITTEN' && communicationAnswer.question.subType !== 'SPEAKING') {
+      res.status(400).json({ error: 'Listening/Reading answers are scored automatically and cannot be graded manually.' });
+      return;
+    }
+
+    const maxMarks = communicationAnswer.question.marks;
+    const clampedMarks = Math.min(maxMarks, Math.max(0, marksObtained));
+
+    await prisma.communicationAnswer.update({
+      where: { id: communicationAnswer.id },
+      data: { marksObtained: clampedMarks }
+    });
+
+    const newScore = await recalculateAttemptScore(attemptId);
+
+    res.json({
+      message: 'Communication answer graded',
+      questionId,
+      marksObtained: clampedMarks,
+      score: newScore
+    });
+  } catch (error) {
+    console.error('Grade communication answer error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// Auto-grades a Written answer via the LLM (Speaking auto-grading lands in a later phase once
+// Whisper transcription is wired up). Mirrors autoGradeBehavioralAnswer's contract.
+export async function autoGradeCommunicationAnswer(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { attemptId, questionId } = req.params;
+
+    const attempt = await prisma.testAttempt.findUnique({
+      where: { id: attemptId },
+      include: {
+        test: { select: { adminId: true } },
+        communicationAnswers: {
+          where: { questionId },
+          select: {
+            id: true,
+            answerText: true,
+            question: { select: { subType: true, title: true, description: true, evaluationNotes: true, marks: true } }
+          }
+        }
+      }
+    });
+
+    if (!attempt) {
+      res.status(404).json({ error: 'Attempt not found' });
+      return;
+    }
+
+    if (attempt.test.adminId !== req.admin!.id) {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    const communicationAnswer = attempt.communicationAnswers[0];
+    if (!communicationAnswer) {
+      res.status(404).json({ error: 'Communication answer not found' });
+      return;
+    }
+    if (communicationAnswer.question.subType !== 'WRITTEN') {
+      res.status(400).json({ error: 'AI auto-grading is currently only available for Written answers.' });
+      return;
+    }
+
+    const result = await scoreWrittenAnswer({
+      title: communicationAnswer.question.title,
+      description: communicationAnswer.question.description ?? '',
+      evaluationNotes: communicationAnswer.question.evaluationNotes,
+      maxMarks: communicationAnswer.question.marks,
+      answerText: communicationAnswer.answerText ?? ''
+    });
+
+    await prisma.communicationAnswer.update({
+      where: { id: communicationAnswer.id },
+      data: { marksObtained: result.marksObtained, gradingDetail: JSON.stringify({ reasoning: result.reasoning }) }
+    });
+
+    const newScore = await recalculateAttemptScore(attemptId);
+
+    res.json({
+      questionId,
+      marksObtained: result.marksObtained,
+      maxMarks: communicationAnswer.question.marks,
+      reasoning: result.reasoning,
+      score: newScore
+    });
+  } catch (error) {
+    console.error('Auto grade communication answer error:', error);
+    res.status(500).json({ error: 'Failed to generate AI score. Please grade manually.' });
+  }
+}
+
 export async function flagAttempt(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { attemptId } = req.params;
@@ -704,6 +862,9 @@ export async function reEvaluateAttempt(req: AuthenticatedRequest, res: Response
         },
         behavioralAnswers: {
           select: { marksObtained: true }
+        },
+        communicationAnswers: {
+          include: { question: true }
         }
       }
     });
@@ -797,6 +958,29 @@ export async function reEvaluateAttempt(req: AuthenticatedRequest, res: Response
     // auto-grading and must not silently drop manually-graded behavioral scores.
     for (const behavioralAnswer of attempt.behavioralAnswers) {
       totalScore += behavioralAnswer.marksObtained ?? 0;
+    }
+
+    // Communication: Listening/Reading are MCQ-shaped and re-auto-score here (same exact-match
+    // rule); Written/Speaking are LLM/manually graded elsewhere, so their already-set marksObtained
+    // is simply folded in, mirroring the behavioral fold-in above.
+    for (const communicationAnswer of attempt.communicationAnswers) {
+      const question = communicationAnswer.question;
+      if (question.subType === 'LISTENING' || question.subType === 'READING') {
+        const correctAnswers = question.correctAnswers ? (JSON.parse(question.correctAnswers) as number[]) : [];
+        const selectedOptions = communicationAnswer.selectedOptions ? (JSON.parse(communicationAnswer.selectedOptions) as number[]) : [];
+        const isCorrect =
+          correctAnswers.length === selectedOptions.length &&
+          correctAnswers.every((a: number) => selectedOptions.includes(a));
+        const marks = isCorrect ? question.marks : 0;
+        totalScore += marks;
+
+        await prisma.communicationAnswer.update({
+          where: { id: communicationAnswer.id },
+          data: { isCorrect, marksObtained: marks }
+        });
+      } else {
+        totalScore += communicationAnswer.marksObtained ?? 0;
+      }
     }
 
     // Update attempt score

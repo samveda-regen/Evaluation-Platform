@@ -38,7 +38,8 @@ const ALLOWED_CANDIDATE_VIOLATIONS = new Set([
 // Enrich TestQuestion with fields the backend returns but aren't typed
 interface RichQuestion {
   id: string;
-  type: 'mcq' | 'coding' | 'behavioral';
+  type: 'mcq' | 'coding' | 'behavioral' | 'communication';
+  subType?: 'WRITTEN' | 'LISTENING' | 'READING' | 'SPEAKING';
   questionId: string;
   questionText?: string;
   options?: Array<{ originalIndex: number; text: string }>;
@@ -61,6 +62,8 @@ interface RichQuestion {
   marks?: number;
   difficulty?: 'easy' | 'medium' | 'hard';
   partialScoring?: boolean;
+  // Communication (Written) — stimulusType only meaningful for subType WRITTEN
+  stimulusType?: 'NONE' | 'IMAGE' | 'AUDIO';
 }
 
 export default function TestInterface() {
@@ -69,8 +72,8 @@ export default function TestInterface() {
     testId, testCode, testName, duration, attemptId, maxViolations,
     proctorEnabled, requireCamera, requireMicrophone, requireScreenShare,
     customAIViolations, startTime, questions, currentQuestionIndex,
-    mcqAnswers, codingAnswers, behavioralAnswers, isSubmitted,
-    setCurrentQuestion, saveMCQAnswer, saveCodingAnswer, saveBehavioralAnswer,
+    mcqAnswers, codingAnswers, behavioralAnswers, communicationAnswers, isSubmitted,
+    setCurrentQuestion, saveMCQAnswer, saveCodingAnswer, saveBehavioralAnswer, saveCommunicationAnswer,
     incrementViolations, setSubmitted, violationPopupSettings,
     showTimer, autoSubmitOnTimeout,
   } = useTestStore();
@@ -537,6 +540,8 @@ export default function TestInterface() {
         if (answer && answer.code) await candidateApi.saveCodingAnswer({ questionId: currentQuestion.questionId, code: answer.code, language: answer.language });
       } else if (currentQuestion.type === 'behavioral') {
         await candidateApi.saveBehavioralAnswer({ questionId: currentQuestion.questionId, answerText: behavioralAnswers[currentQuestion.questionId] || '' });
+      } else if (currentQuestion.type === 'communication' && currentQuestion.subType === 'WRITTEN') {
+        await candidateApi.saveCommunicationAnswer({ questionId: currentQuestion.questionId, answerText: communicationAnswers[currentQuestion.questionId] || '' });
       }
       if (silent) {
         setAutoSaved(true);
@@ -624,6 +629,11 @@ export default function TestInterface() {
     saveBehavioralAnswer(currentQuestion!.questionId, value);
   };
 
+  const handleCommunicationChange = (value: string) => {
+    if (isSubmitted || timeUp) return;
+    saveCommunicationAnswer(currentQuestion!.questionId, value);
+  };
+
   // The server also auto-submits attempts whose time has run out (a safety net that
   // fires even if this tab is closed/inactive), so it can beat this client to the
   // punch. Treat "already submitted" as success rather than an error in that race.
@@ -681,6 +691,7 @@ export default function TestInterface() {
       if (q.type === 'mcq' && mcqAnswers[q.questionId]?.length > 0) count++;
       if (q.type === 'coding' && codingAnswers[q.questionId]?.code) count++;
       if (q.type === 'behavioral' && (behavioralAnswers[q.questionId] || '').trim().length > 0) count++;
+      if (q.type === 'communication' && (communicationAnswers[q.questionId] || '').trim().length > 0) count++;
     });
     return count;
   };
@@ -711,6 +722,7 @@ export default function TestInterface() {
     if (!q) return false;
     if (q.type === 'mcq') return (mcqAnswers[q.questionId]?.length || 0) > 0;
     if (q.type === 'coding') return !!codingAnswers[q.questionId]?.code;
+    if (q.type === 'communication') return (communicationAnswers[q.questionId] || '').trim().length > 0;
     return (behavioralAnswers[q.questionId] || '').trim().length > 0;
   };
 
@@ -718,17 +730,18 @@ export default function TestInterface() {
     easy: 'var(--admin-accent-hover)', medium: 'var(--admin-accent-hover)', hard: 'var(--admin-accent-hover)',
   };
   const typeColor: Record<string, string> = {
-    mcq: 'var(--admin-accent-hover)', coding: 'var(--admin-accent-hover)', behavioral: 'var(--admin-accent-hover)',
+    mcq: 'var(--admin-accent-hover)', coding: 'var(--admin-accent-hover)', behavioral: 'var(--admin-accent-hover)', communication: 'var(--admin-accent-hover)',
   };
   const typeLabel: Record<string, string> = {
-    mcq: 'Multiple choice', coding: 'Coding', behavioral: 'Behavioral',
+    mcq: 'Multiple choice', coding: 'Coding', behavioral: 'Behavioral', communication: 'Written',
   };
 
   const totalTestCases = currentQuestion.testCases?.length ?? 0;
   const hiddenTestCases = currentQuestion.testCases?.filter((tc) => tc.isHidden).length ?? 0;
 
   const behavioralText = currentQuestion.type === 'behavioral' ? (behavioralAnswers[currentQuestion.questionId] || '') : '';
-  const wordCount = getWordCount(behavioralText);
+  const communicationText = currentQuestion.type === 'communication' ? (communicationAnswers[currentQuestion.questionId] || '') : '';
+  const wordCount = getWordCount(currentQuestion.type === 'communication' ? communicationText : behavioralText);
 
   // -- Question Palette --------------------------------------------------
   const Palette = () => (
@@ -1349,6 +1362,62 @@ export default function TestInterface() {
                           ? 'Multiple answers · your selections are saved automatically.'
                           : 'Single answer · your selection is saved automatically.'}
                       </span>
+                    </div>
+                  </>
+                ) : currentQuestion.type === 'communication' ? (
+                  // -- Communication (Written) --
+                  <>
+                    <h2 className="text-xl font-bold text-gray-900 mb-2 leading-snug">
+                      {currentQuestion.title}
+                    </h2>
+                    {currentQuestion.description && (
+                      <p className="text-sm mb-5" style={{ color: 'var(--admin-accent)' }}>
+                        {currentQuestion.description}
+                      </p>
+                    )}
+
+                    {/* Stimulus (image or audio) */}
+                    {currentQuestion.mediaAssets && currentQuestion.mediaAssets.length > 0 && (
+                      <div className="mb-6 space-y-3">
+                        {currentQuestion.mediaAssets.map((asset) => (
+                          <div key={asset.id} className="rounded-xl overflow-hidden border" style={{ borderColor: 'var(--admin-border)' }}>
+                            {asset.mediaType === 'image' && <img src={asset.storageUrl} alt={asset.originalName} className="w-full h-auto object-contain max-h-80" />}
+                            {asset.mediaType === 'audio' && (
+                              <div className="p-4 bg-gray-50">
+                                <audio src={asset.storageUrl} controls className="w-full" preload="metadata" />
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="relative">
+                      <textarea
+                        value={communicationText}
+                        onChange={(e) => handleCommunicationChange(e.target.value)}
+                        disabled={isSubmitted || timeUp}
+                        rows={12}
+                        placeholder="Write your response here..."
+                        className="w-full rounded-xl border px-4 py-4 text-sm text-gray-700 resize-none outline-none transition-colors"
+                        style={{ borderColor: 'var(--admin-border)', background: '#FFFFFF', lineHeight: '1.6' }}
+                        onFocus={(e) => (e.target.style.borderColor = 'var(--admin-accent)')}
+                        onBlur={(e) => (e.target.style.borderColor = 'var(--admin-border)')}
+                      />
+                      {/* Word count + auto-saved */}
+                      <div className="flex items-center justify-between mt-2 px-1">
+                        <span className="text-xs text-gray-400">
+                          {wordCount} {wordCount === 1 ? 'word' : 'words'} · {communicationText.length} characters
+                        </span>
+                        {autoSaved && (
+                          <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--admin-accent)' }}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                            Auto-saved
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </>
                 ) : (

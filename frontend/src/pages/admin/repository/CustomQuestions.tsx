@@ -42,6 +42,13 @@ function isCodingQuestion(question: RepositoryQuestion): question is RepositoryC
   return question.repositoryCategory === 'CODING';
 }
 
+// This page's category selector only offers MCQ/CODING/BEHAVIORAL (Communication questions are
+// managed from the main Question Bank page instead) — this guard exists purely so the shared
+// RepositoryQuestion union (which now also includes Communication) still type-checks here.
+function isBehavioralQuestion(question: RepositoryQuestion): question is RepositoryBehavioralQuestion {
+  return question.repositoryCategory === 'BEHAVIORAL';
+}
+
 // ── Behavioral form ──────────────────────────────────────────────────────────
 
 interface BehavioralFormState {
@@ -642,7 +649,7 @@ export default function CustomQuestions() {
                           Memory: {question.memoryLimit}MB
                         </p>
                       </div>
-                    ) : (
+                    ) : isBehavioralQuestion(question) ? (
                       <div>
                         <h3 className="font-semibold text-gray-800">{question.title}</h3>
                         <p className="text-gray-600 mt-1">{question.description}</p>
@@ -652,7 +659,7 @@ export default function CustomQuestions() {
                           </p>
                         )}
                       </div>
-                    )}
+                    ) : null}
 
                     {question.tags.length > 0 && (
                       <div className="flex flex-wrap gap-2 mt-3">
