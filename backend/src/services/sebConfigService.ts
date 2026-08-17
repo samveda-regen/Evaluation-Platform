@@ -18,13 +18,13 @@ function xmlEscape(value: string): string {
 
 export function buildSebConfigXml(startUrl: string): string {
   const escapedStartUrl = xmlEscape(startUrl);
-  // Same origin as startUrl, not hardcoded, so this stays correct across environments
-  // (staging/production) this config might be generated for. TestComplete.tsx's "Close"
-  // button navigates here — real navigation, not client-side routing — for SEB to detect
-  // and quit instead of loading the page. Needs verification on a real exam session that
-  // the quit link actually fires before this depends on it in production.
-  const quitUrl = `${new URL(startUrl).origin}/test/seb-quit`;
-  const escapedQuitUrl = xmlEscape(quitUrl);
+  // Exactly startUrl, unmodified — the one URL guaranteed to be allowed, since
+  // URLFilterEnable's auto-generated rule is generated from this exact string. Any other
+  // path (even same-origin) gets hard-blocked, confirmed in testing (a "Page Blocked"
+  // dialog). CandidateLogin.tsx stores this same exact URL (window.location.href at
+  // login, which is this page) to localStorage so TestComplete.tsx's Close button can
+  // navigate back to the identical string later.
+  const escapedQuitUrl = escapedStartUrl;
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

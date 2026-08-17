@@ -86,6 +86,12 @@ export default function CandidateLogin() {
       setCandidate(data.candidate, data.token);
       localStorage.setItem('attemptId',        data.attempt.id);
       localStorage.setItem('attemptStartTime', data.attempt.startTime);
+      // Exact URL SEB was launched with (this page, at this moment) — same string
+      // sebConfigService.ts used to build the .seb file's quitURL, since the URL filter
+      // only auto-allows an exact match to that one URL. TestComplete.tsx's Close button
+      // navigates back to this identical string so SEB recognizes it as the quit trigger
+      // instead of blocking it.
+      localStorage.setItem('sebQuitUrl', window.location.href);
       toast.success(data.message || 'Invitation accepted');
       navigate('/test/instructions');
     } catch (err: unknown) {

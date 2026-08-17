@@ -64,16 +64,19 @@ export default function TestComplete() {
   const isRunningInSEB = () => /SEB[/ ]/i.test(navigator.userAgent) || navigator.userAgent.includes('SafeExamBrowser');
 
   const handleClose = () => {
+    // Read before resetTest()/logoutCandidate() clear things out below.
+    const sebQuitUrl = localStorage.getItem('sebQuitUrl');
     resetTest();
     logoutCandidate();
     localStorage.removeItem('attemptId');
     localStorage.removeItem('attemptStartTime');
-    if (isRunningInSEB()) {
-      // SEB watches for navigation to this exact URL (configured as the quit link in the
-      // backend's sebConfigService.ts quitURL key, derived from the same origin) and
-      // intercepts it to quit the browser instead of loading it — must be a real
-      // navigation, not client-side routing, for SEB to see it.
-      window.location.href = `${window.location.origin}/test/seb-quit`;
+    localStorage.removeItem('sebQuitUrl');
+    if (isRunningInSEB() && sebQuitUrl) {
+      // SEB watches for navigation to this exact URL (the same string sebConfigService.ts
+      // used as the .seb file's quitURL — anything else gets hard-blocked by the URL
+      // filter's auto-allow-only-the-startURL rule) and intercepts it to quit the browser
+      // instead of loading it — must be a real navigation, not client-side routing.
+      window.location.href = sebQuitUrl;
       return;
     }
     navigate('/test/login');
