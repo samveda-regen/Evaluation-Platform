@@ -5,7 +5,7 @@ import { sanitizeInput } from '../utils/sanitize.js';
 import prisma from '../utils/db.js';
 
 const TEST_SCOPED_TAG_MARKER = '"__test_scoped__"';
-const VALID_SUB_TYPES: CommunicationSubType[] = ['WRITTEN', 'LISTENING', 'READING', 'SPEAKING'];
+export const VALID_SUB_TYPES: CommunicationSubType[] = ['WRITTEN', 'LISTENING', 'READING', 'SPEAKING'];
 const VALID_STIMULUS_TYPES: WrittenStimulusType[] = ['NONE', 'IMAGE', 'AUDIO'];
 
 function parseTags(tags: string | null): string[] {
@@ -46,7 +46,7 @@ export function serializeCommunicationQuestion<T extends {
 // Validates and normalizes the subType-specific fields, returning either the ready-to-persist
 // Prisma create data or a client-facing error message — kept as a single switch so every subType's
 // required-field rules live in one place instead of scattered validation checks.
-async function buildCreateData(
+export async function buildCreateData(
   req: AuthenticatedRequest,
   subType: CommunicationSubType
 ): Promise<{ data: Record<string, unknown> } | { error: string }> {

@@ -47,11 +47,14 @@ export default function CommunicationForm() {
     question?: Record<string, unknown>;
     returnTo?: string;
     activeCategory?: string;
+    addToTestId?: string;
+    initialSubType?: CommunicationSubType;
   } | null;
   const editQuestion = routeState?.question;
   const editSource = editQuestion?.source === 'QUESTION_BANK' ? 'QUESTION_BANK' : 'CUSTOM';
   const returnTo = routeState?.returnTo ?? '/admin/repository/question-bank';
   const returnCategory = routeState?.activeCategory ?? (editSource === 'CUSTOM' ? 'CUSTOM' : 'all');
+  const addToTestId = routeState?.addToTestId;
   const finishNavigation = () => {
     navigate(returnTo, {
       state: returnTo.includes('/admin/repository/question-bank')
@@ -62,7 +65,7 @@ export default function CommunicationForm() {
 
   const [loading, setLoading] = useState(false);
   const [subType, setSubType] = useState<CommunicationSubType>(
-    (editQuestion?.subType as CommunicationSubType) || 'WRITTEN'
+    (editQuestion?.subType as CommunicationSubType) || routeState?.initialSubType || 'WRITTEN'
   );
 
   // Written-only fields
@@ -393,11 +396,13 @@ export default function CommunicationForm() {
         toast.success('Question updated');
         finishNavigation();
       } else {
-        const res = await adminApi.createCustomCommunication(payload);
+        const res = addToTestId
+          ? await adminApi.addCustomQuestionToTest(addToTestId, { questionType: 'communication', ...payload })
+          : await adminApi.createCustomCommunication(payload);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const id: string | undefined = (res?.data as any)?.question?.id;
         if (id && mediaAssets.length) await adminApi.assignMediaToQuestion(id, mediaAssets.map(a => a.id), 'communication');
-        toast.success('Question created');
+        toast.success(addToTestId ? 'Question created and added to test' : 'Question created');
         finishNavigation();
       }
     } catch (err: unknown) {
