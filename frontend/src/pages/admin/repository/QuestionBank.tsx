@@ -107,33 +107,40 @@ function TypeIcon({
     flexShrink: 0,
   };
 
+  const iconColor = isCustom ? 'var(--admin-accent)' : 'var(--admin-accent-hover)';
+
+  // Communication's sub-type icon (Written/Listening/Reading/Speaking) is the useful signal here
+  // — shown even for custom questions, unlike the other types below, where "custom" is the only
+  // distinction worth an icon since there's no finer breakdown to show. The orange "custom" tint
+  // still comes through via iconColor/boxStyle.
+  if (cat === 'COMMUNICATION') {
+    const SubIcon = subType ? COMMUNICATION_SUB_TYPE_CFG[subType].Icon : MessagesSquare;
+    return (
+      <div style={boxStyle}>
+        <SubIcon width={iconSize} height={iconSize} stroke={iconColor} strokeWidth={2} />
+      </div>
+    );
+  }
+
   if (isCustom) return (
     <div style={boxStyle}>
-      <FolderCode width={iconSize} height={iconSize} stroke="var(--admin-accent)" strokeWidth={2} />
+      <FolderCode width={iconSize} height={iconSize} stroke={iconColor} strokeWidth={2} />
     </div>
   );
 
   if (cat === 'MCQ') return (
     <div style={boxStyle}>
-      <CheckSquare width={iconSize} height={iconSize} stroke="var(--admin-accent-hover)" strokeWidth={2} />
+      <CheckSquare width={iconSize} height={iconSize} stroke={iconColor} strokeWidth={2} />
     </div>
   );
   if (cat === 'CODING') return (
     <div style={boxStyle}>
-      <Braces width={iconSize} height={iconSize} stroke="var(--admin-accent-hover)" strokeWidth={2} />
+      <Braces width={iconSize} height={iconSize} stroke={iconColor} strokeWidth={2} />
     </div>
   );
-  if (cat === 'COMMUNICATION') {
-    const SubIcon = subType ? COMMUNICATION_SUB_TYPE_CFG[subType].Icon : MessagesSquare;
-    return (
-      <div style={boxStyle}>
-        <SubIcon width={iconSize} height={iconSize} stroke="var(--admin-accent-hover)" strokeWidth={2} />
-      </div>
-    );
-  }
   return (
     <div style={boxStyle}>
-      <Brain width={iconSize} height={iconSize} stroke="var(--admin-accent-hover)" strokeWidth={2} />
+      <Brain width={iconSize} height={iconSize} stroke={iconColor} strokeWidth={2} />
     </div>
   );
 }
