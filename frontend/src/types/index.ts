@@ -84,7 +84,8 @@ export interface TestCase {
 
 export interface TestQuestion {
   id: string;
-  type: 'mcq' | 'coding' | 'behavioral';
+  type: 'mcq' | 'coding' | 'behavioral' | 'communication';
+  subType?: 'WRITTEN' | 'LISTENING' | 'READING' | 'SPEAKING';
   questionId: string;
   // MCQ fields
   questionText?: string;
@@ -153,6 +154,14 @@ export interface BehavioralAnswer {
   answerText: string;
 }
 
+export interface CommunicationAnswer {
+  questionId: string;
+  answerText: string | null;
+  selectedOptions: number[] | null;
+  replayCount?: number | null;
+  audioAssetId?: string | null;
+}
+
 export interface ActivityLog {
   id: string;
   eventType: string;
@@ -174,9 +183,11 @@ export interface Pagination {
   totalPages: number;
 }
 
-export type RepositoryCategory = 'MCQ' | 'CODING' | 'BEHAVIORAL';
+export type RepositoryCategory = 'MCQ' | 'CODING' | 'BEHAVIORAL' | 'COMMUNICATION';
 export type RepositorySource = 'QUESTION_BANK' | 'CUSTOM';
 export type QuestionDifficulty = 'easy' | 'medium' | 'hard';
+export type CommunicationSubType = 'WRITTEN' | 'LISTENING' | 'READING' | 'SPEAKING';
+export type WrittenStimulusType = 'NONE' | 'IMAGE' | 'AUDIO';
 
 interface RepositoryQuestionBase {
   id: string;
@@ -224,10 +235,36 @@ export interface RepositoryBehavioralQuestion extends RepositoryQuestionBase {
   expectedAnswer?: string | null;
 }
 
+export interface RepositoryCommunicationQuestion extends RepositoryQuestionBase {
+  repositoryCategory: 'COMMUNICATION';
+  subType: CommunicationSubType;
+  title: string;
+  description?: string | null;
+  // Written
+  stimulusType?: WrittenStimulusType | null;
+  evaluationNotes?: string | null;
+  // Listening & Reading
+  options?: string[];
+  correctAnswers?: number[];
+  explanation?: string | null;
+  isMultipleChoice?: boolean;
+  // Listening-only guardrails
+  replayLimit?: number | null;
+  allowRewind?: boolean | null;
+  allowSpeedChange?: boolean | null;
+  fixedPlaybackSpeed?: number | null;
+  // Reading-only
+  passageId?: string | null;
+  passage?: { id: string; title: string; passageText: string } | null;
+  // Speaking-only
+  recordingTimeLimit?: number | null;
+}
+
 export type RepositoryQuestion =
   | RepositoryMCQQuestion
   | RepositoryCodingQuestion
-  | RepositoryBehavioralQuestion;
+  | RepositoryBehavioralQuestion
+  | RepositoryCommunicationQuestion;
 
 export interface RepositoryQueryParams {
   category: RepositoryCategory;

@@ -328,7 +328,8 @@ export const getUnassignedMedia = async (req: Request, res: Response): Promise<v
 export const assignMediaToQuestion = async (req: Request, res: Response): Promise<void> => {
   try {
     const { questionId } = req.params;
-    const { assetIds } = req.body;
+    const { assetIds, questionType } = req.body;
+    const isCommunication = questionType === 'communication';
 
     if (!assetIds || !Array.isArray(assetIds)) {
       res.status(400).json({ error: 'Asset IDs array is required' });
@@ -336,9 +337,9 @@ export const assignMediaToQuestion = async (req: Request, res: Response): Promis
     }
 
     // Verify question exists
-    const question = await prisma.mCQQuestion.findUnique({
-      where: { id: questionId },
-    });
+    const question = isCommunication
+      ? await prisma.communicationQuestion.findUnique({ where: { id: questionId } })
+      : await prisma.mCQQuestion.findUnique({ where: { id: questionId } });
 
     if (!question) {
       res.status(404).json({ error: 'Question not found' });
@@ -348,11 +349,11 @@ export const assignMediaToQuestion = async (req: Request, res: Response): Promis
     // Update all assets
     await prisma.mediaAsset.updateMany({
       where: { id: { in: assetIds } },
-      data: { mcqQuestionId: questionId },
+      data: isCommunication ? { communicationQuestionId: questionId } : { mcqQuestionId: questionId },
     });
 
     const assets = await prisma.mediaAsset.findMany({
-      where: { mcqQuestionId: questionId },
+      where: isCommunication ? { communicationQuestionId: questionId } : { mcqQuestionId: questionId },
     });
 
     res.json({

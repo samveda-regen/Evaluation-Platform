@@ -198,7 +198,8 @@ export default function TestInstructions() {
       if (
         savedAnswers.data.mcqAnswers.length > 0 ||
         savedAnswers.data.codingAnswers.length > 0 ||
-        savedAnswers.data.behavioralAnswers.length > 0
+        savedAnswers.data.behavioralAnswers.length > 0 ||
+        (savedAnswers.data.communicationAnswers?.length ?? 0) > 0
       ) {
         useTestStore
           .getState()
@@ -206,6 +207,7 @@ export default function TestInstructions() {
             savedAnswers.data.mcqAnswers,
             savedAnswers.data.codingAnswers,
             savedAnswers.data.behavioralAnswers,
+            savedAnswers.data.communicationAnswers ?? [],
           );
       }
       navigate('/test/start');

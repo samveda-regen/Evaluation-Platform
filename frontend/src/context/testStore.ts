@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { TestQuestion, MCQAnswer, CodingAnswer, BehavioralAnswer, SubmissionResult } from '../types';
+import { TestQuestion, MCQAnswer, CodingAnswer, BehavioralAnswer, CommunicationAnswer, SubmissionResult } from '../types';
 import { DEFAULT_CUSTOM_AI_VIOLATIONS, normalizeCustomAIViolationSelection } from '../constants/customAIViolations';
 
 interface TestState {
@@ -23,6 +23,10 @@ interface TestState {
   mcqAnswers: Record<string, number[]>;
   codingAnswers: Record<string, { code: string; language: string }>;
   behavioralAnswers: Record<string, string>;
+  communicationAnswers: Record<string, string>;
+  communicationSelectedAnswers: Record<string, number[]>;
+  communicationReplayCounts: Record<string, number>;
+  communicationAudioAnswers: Record<string, { audioAssetId: string; transcript?: string | null }>;
   violations: number;
   isSubmitted: boolean;
   submissionResult: SubmissionResult | null;
@@ -55,10 +59,14 @@ interface TestState {
   saveMCQAnswer: (questionId: string, selectedOptions: number[]) => void;
   saveCodingAnswer: (questionId: string, code: string, language: string) => void;
   saveBehavioralAnswer: (questionId: string, answerText: string) => void;
+  saveCommunicationAnswer: (questionId: string, answerText: string) => void;
+  saveCommunicationSelectedAnswer: (questionId: string, selectedOptions: number[]) => void;
+  setCommunicationReplayCount: (questionId: string, count: number) => void;
+  saveCommunicationAudioAnswer: (questionId: string, audioAssetId: string, transcript?: string | null) => void;
   incrementViolations: () => number;
   setSubmitted: (result?: SubmissionResult) => void;
   resetTest: () => void;
-  loadSavedAnswers: (mcq: MCQAnswer[], coding: CodingAnswer[], behavioral: BehavioralAnswer[]) => void;
+  loadSavedAnswers: (mcq: MCQAnswer[], coding: CodingAnswer[], behavioral: BehavioralAnswer[], communication: CommunicationAnswer[]) => void;
 }
 
 export const useTestStore = create<TestState>((set, get) => ({
@@ -82,6 +90,10 @@ export const useTestStore = create<TestState>((set, get) => ({
   mcqAnswers: {},
   codingAnswers: {},
   behavioralAnswers: {},
+  communicationAnswers: {},
+  communicationSelectedAnswers: {},
+  communicationReplayCounts: {},
+  communicationAudioAnswers: {},
   violations: 0,
   isSubmitted: false,
   submissionResult: null,
@@ -109,6 +121,10 @@ export const useTestStore = create<TestState>((set, get) => ({
     mcqAnswers: {},
     codingAnswers: {},
     behavioralAnswers: {},
+    communicationAnswers: {},
+    communicationSelectedAnswers: {},
+    communicationReplayCounts: {},
+    communicationAudioAnswers: {},
     violations: data.initialViolations ?? 0,
     isSubmitted: false,
     showTimer: data.showTimer ?? true,
@@ -135,6 +151,34 @@ export const useTestStore = create<TestState>((set, get) => ({
     behavioralAnswers: {
       ...state.behavioralAnswers,
       [questionId]: answerText
+    }
+  })),
+
+  saveCommunicationAnswer: (questionId, answerText) => set((state) => ({
+    communicationAnswers: {
+      ...state.communicationAnswers,
+      [questionId]: answerText
+    }
+  })),
+
+  saveCommunicationSelectedAnswer: (questionId, selectedOptions) => set((state) => ({
+    communicationSelectedAnswers: {
+      ...state.communicationSelectedAnswers,
+      [questionId]: selectedOptions
+    }
+  })),
+
+  setCommunicationReplayCount: (questionId, count) => set((state) => ({
+    communicationReplayCounts: {
+      ...state.communicationReplayCounts,
+      [questionId]: count
+    }
+  })),
+
+  saveCommunicationAudioAnswer: (questionId, audioAssetId, transcript) => set((state) => ({
+    communicationAudioAnswers: {
+      ...state.communicationAudioAnswers,
+      [questionId]: { audioAssetId, transcript }
     }
   })),
 
@@ -167,6 +211,10 @@ export const useTestStore = create<TestState>((set, get) => ({
     mcqAnswers: {},
     codingAnswers: {},
     behavioralAnswers: {},
+    communicationAnswers: {},
+    communicationSelectedAnswers: {},
+    communicationReplayCounts: {},
+    communicationAudioAnswers: {},
     violations: 0,
     isSubmitted: false,
     submissionResult: null,
@@ -174,10 +222,14 @@ export const useTestStore = create<TestState>((set, get) => ({
     autoSubmitOnTimeout: true
   }),
 
-  loadSavedAnswers: (mcq, coding, behavioral) => set((state) => {
+  loadSavedAnswers: (mcq, coding, behavioral, communication) => set((state) => {
     const mcqAnswers: Record<string, number[]> = { ...state.mcqAnswers };
     const codingAnswers: Record<string, { code: string; language: string }> = { ...state.codingAnswers };
     const behavioralAnswers: Record<string, string> = { ...state.behavioralAnswers };
+    const communicationAnswers: Record<string, string> = { ...state.communicationAnswers };
+    const communicationSelectedAnswers: Record<string, number[]> = { ...state.communicationSelectedAnswers };
+    const communicationReplayCounts: Record<string, number> = { ...state.communicationReplayCounts };
+    const communicationAudioAnswers: Record<string, { audioAssetId: string; transcript?: string | null }> = { ...state.communicationAudioAnswers };
 
     mcq.forEach((a) => {
       mcqAnswers[a.questionId] = a.selectedOptions;
@@ -191,6 +243,13 @@ export const useTestStore = create<TestState>((set, get) => ({
       behavioralAnswers[a.questionId] = a.answerText;
     });
 
-    return { mcqAnswers, codingAnswers, behavioralAnswers };
+    communication.forEach((a) => {
+      communicationAnswers[a.questionId] = a.answerText ?? '';
+      if (a.selectedOptions) communicationSelectedAnswers[a.questionId] = a.selectedOptions;
+      if (typeof a.replayCount === 'number') communicationReplayCounts[a.questionId] = a.replayCount;
+      if (a.audioAssetId) communicationAudioAnswers[a.questionId] = { audioAssetId: a.audioAssetId };
+    });
+
+    return { mcqAnswers, codingAnswers, behavioralAnswers, communicationAnswers, communicationSelectedAnswers, communicationReplayCounts, communicationAudioAnswers };
   })
 }));

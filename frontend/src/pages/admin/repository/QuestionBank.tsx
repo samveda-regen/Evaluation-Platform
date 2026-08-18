@@ -6,6 +6,7 @@ import {
   CheckSquare,
   Braces,
   Brain,
+  MessagesSquare,
   FolderCode,
   ToggleLeft,
   ToggleRight,
@@ -25,6 +26,7 @@ import type {
   RepositoryCategory,
   RepositoryCodingQuestion,
   RepositoryMCQQuestion,
+  RepositoryCommunicationQuestion,
   RepositoryQuestion,
   Test,
 } from '../../../types';
@@ -43,17 +45,19 @@ const SIDEBAR_ITEMS: SidebarItem[] = [
   { id:'MCQ',       label:'MCQ',           category:'MCQ' },
   { id:'CODING',    label:'Coding',        category:'CODING' },
   { id:'BEHAVIORAL',label:'Behavioral',    category:'BEHAVIORAL' },
+  { id:'COMMUNICATION', label:'Communication', category:'COMMUNICATION' },
   { id:'CUSTOM',    label:'Custom Questions', category:'CUSTOM' },
 ];
 
 type Difficulty = 'easy' | 'medium' | 'hard';
-const CUSTOM_CATEGORIES: RepositoryCategory[] = ['MCQ', 'CODING', 'BEHAVIORAL'];
+const CUSTOM_CATEGORIES: RepositoryCategory[] = ['MCQ', 'CODING', 'BEHAVIORAL', 'COMMUNICATION'];
 const CUSTOM_FETCH_LIMIT = 100;
 const PAGE_SIZE = 20;
 
 /* -- Type helpers -- */
 function isMCQ(q: RepositoryQuestion): q is RepositoryMCQQuestion { return q.repositoryCategory === 'MCQ'; }
 function isCoding(q: RepositoryQuestion): q is RepositoryCodingQuestion { return q.repositoryCategory === 'CODING'; }
+function isCommunication(q: RepositoryQuestion): q is RepositoryCommunicationQuestion { return q.repositoryCategory === 'COMMUNICATION'; }
 
 /* -- Question title -- */
 function qTitle(q: RepositoryQuestion): string {
@@ -104,6 +108,11 @@ function TypeIcon({
       <Braces width={iconSize} height={iconSize} stroke="var(--admin-accent-hover)" strokeWidth={2} />
     </div>
   );
+  if (cat === 'COMMUNICATION') return (
+    <div style={boxStyle}>
+      <MessagesSquare width={iconSize} height={iconSize} stroke="var(--admin-accent-hover)" strokeWidth={2} />
+    </div>
+  );
   return (
     <div style={boxStyle}>
       <Brain width={iconSize} height={iconSize} stroke="var(--admin-accent-hover)" strokeWidth={2} />
@@ -117,6 +126,7 @@ function SidebarIcon({ category, active }: { category: SidebarCategory; active: 
   if (category === 'MCQ') return <CheckSquare {...common} />;
   if (category === 'CODING') return <Braces {...common} />;
   if (category === 'BEHAVIORAL') return <Brain {...common} />;
+  if (category === 'COMMUNICATION') return <MessagesSquare {...common} />;
   if (category === 'CUSTOM') return <FolderCode {...common} />;
   return <LibraryBig {...common} />;
 }
@@ -340,24 +350,29 @@ export default function QuestionBank() {
 
   const loadCounts = async () => {
     try {
-      const [mcq, coding, beh, customMcq, customCoding, customBeh] = await Promise.all([
+      const [mcq, coding, beh, comm, customMcq, customCoding, customBeh, customComm] = await Promise.all([
         adminApi.getQuestionBankQuestions({ category:'MCQ',       page:1, limit:1 }),
         adminApi.getQuestionBankQuestions({ category:'CODING',    page:1, limit:1 }),
         adminApi.getQuestionBankQuestions({ category:'BEHAVIORAL',page:1, limit:1 }),
+        adminApi.getQuestionBankQuestions({ category:'COMMUNICATION',page:1, limit:1 }),
         adminApi.getCustomRepositoryQuestions({ category:'MCQ',       page:1, limit:1 }),
         adminApi.getCustomRepositoryQuestions({ category:'CODING',    page:1, limit:1 }),
         adminApi.getCustomRepositoryQuestions({ category:'BEHAVIORAL',page:1, limit:1 }),
+        adminApi.getCustomRepositoryQuestions({ category:'COMMUNICATION',page:1, limit:1 }),
       ]);
       const bankMcq = mcq.data.pagination.total;
       const bankCoding = coding.data.pagination.total;
       const bankBeh = beh.data.pagination.total;
+      const bankComm = comm.data.pagination.total;
       const customM = customMcq.data.pagination.total;
       const customC = customCoding.data.pagination.total;
       const customB = customBeh.data.pagination.total;
+      const customCm = customComm.data.pagination.total;
       const m = bankMcq + customM;
       const c = bankCoding + customC;
       const b = bankBeh + customB;
-      setCounts({ all: m+c+b, MCQ: m, CODING: c, BEHAVIORAL: b, CUSTOM: customM+customC+customB });
+      const comm2 = bankComm + customCm;
+      setCounts({ all: m+c+b+comm2, MCQ: m, CODING: c, BEHAVIORAL: b, COMMUNICATION: comm2, CUSTOM: customM+customC+customB+customCm });
     } catch { /* silent */ }
   };
 
@@ -454,15 +469,17 @@ export default function QuestionBank() {
     setLoading(true);
     try {
       if (activeItem.category === 'all') {
-        const [mcq, coding, behavioral] = await Promise.all([
+        const [mcq, coding, behavioral, communication] = await Promise.all([
           fetchMergedCategoryQuestions('MCQ', { search: search || undefined }),
           fetchMergedCategoryQuestions('CODING', { search: search || undefined }),
           fetchMergedCategoryQuestions('BEHAVIORAL', { search: search || undefined }),
+          fetchMergedCategoryQuestions('COMMUNICATION', { search: search || undefined }),
         ]);
         const availableMcq = filterAlreadyAddedQuestions(mcq.questions);
         const availableCoding = filterAlreadyAddedQuestions(coding.questions);
         const availableBehavioral = filterAlreadyAddedQuestions(behavioral.questions);
-        const combined = [...availableMcq, ...availableCoding, ...availableBehavioral].sort(byNewestFirst);
+        const availableCommunication = filterAlreadyAddedQuestions(communication.questions);
+        const combined = [...availableMcq, ...availableCoding, ...availableBehavioral, ...availableCommunication].sort(byNewestFirst);
         const total = combined.length;
         const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
         if (page > totalPages) {
@@ -478,6 +495,7 @@ export default function QuestionBank() {
           MCQ: availableMcq.length,
           CODING: availableCoding.length,
           BEHAVIORAL: availableBehavioral.length,
+          COMMUNICATION: availableCommunication.length,
         }));
       } else if (activeItem.category === 'CUSTOM') {
         const { questions: custom } = await fetchCustomQuestions({ search: search || undefined });
@@ -569,6 +587,8 @@ export default function QuestionBank() {
       navigate(`/admin/mcq/${q.id}/edit`, { state: editState });
     } else if (isCoding(q)) {
       navigate(`/admin/coding/${q.id}/edit`, { state: editState });
+    } else if (isCommunication(q)) {
+      navigate(`/admin/communication/${q.id}/edit`, { state: editState });
     } else {
       navigate(`/admin/behavioral/${q.id}/edit`, { state: editState });
     }
@@ -697,6 +717,7 @@ export default function QuestionBank() {
     { label:'MCQ question',        category:'MCQ' as RepositoryCategory, path:'/admin/mcq/new' },
     { label:'Coding question',     category:'CODING' as RepositoryCategory, path:'/admin/coding/new' },
     { label:'Behavioral question', category:'BEHAVIORAL' as RepositoryCategory, path:'/admin/behavioral/new' },
+    { label:'Communication question', category:'COMMUNICATION' as RepositoryCategory, path:'/admin/communication/new' },
   ];
   const activateNewQuestionOption = (index: number) => {
     const option = newQuestionOptions[index];
@@ -986,7 +1007,7 @@ export default function QuestionBank() {
                 const cat  = q.repositoryCategory;
                 const diff = q.difficulty as Difficulty;
                 const rate = correctRate(q);
-                const catLabel = cat === 'MCQ' ? 'MCQ' : cat === 'CODING' ? 'Coding' : 'Behavioral';
+                const catLabel = cat === 'MCQ' ? 'MCQ' : cat === 'CODING' ? 'Coding' : cat === 'COMMUNICATION' ? 'Communication' : 'Behavioral';
                 const isCustomQuestion = q.source === 'CUSTOM';
                 return (
                   <div key={q.id} style={{

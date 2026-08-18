@@ -54,6 +54,14 @@ import {
 } from '../controllers/codingQuestion.js';
 import { getBehavioralQuestions } from '../controllers/behavioralQuestion.js';
 import {
+  createCommunicationQuestion,
+  getCommunicationQuestions,
+  getCommunicationQuestionById,
+  deleteCommunicationQuestion,
+  createReadingPassage,
+  getReadingPassages
+} from '../controllers/communicationQuestion.js';
+import {
   getTestResults,
   getAttemptDetails,
   flagAttempt,
@@ -62,6 +70,8 @@ import {
   sendAttemptResultEmail,
   gradeBehavioralAnswer,
   autoGradeBehavioralAnswer,
+  gradeCommunicationAnswer,
+  autoGradeCommunicationAnswer,
   deleteAttempt,
   reEvaluateAttempt,
   exportResults,
@@ -93,12 +103,15 @@ import {
   createCustomMCQ,
   createCustomCoding,
   createCustomBehavioral,
+  createCustomCommunication,
   updateCustomMCQ,
   updateCustomCoding,
   updateCustomBehavioral,
+  updateCustomCommunication,
   updateQuestionBankMCQ,
   updateQuestionBankCoding,
-  updateQuestionBankBehavioral
+  updateQuestionBankBehavioral,
+  updateQuestionBankCommunication
 } from '../controllers/repository.js';
 import {
   getNotifications,
@@ -166,6 +179,18 @@ router.delete('/coding/:questionId', adminAuth, deleteCodingQuestion);
 // Behavioral question routes
 router.get('/behavioral', adminAuth, paginationValidation, handleValidationErrors, getBehavioralQuestions);
 
+// Communication question routes (Written / Listening / Reading / Speaking)
+router.post('/communication', adminAuth, createCommunicationQuestion);
+router.get('/communication', adminAuth, paginationValidation, handleValidationErrors, getCommunicationQuestions);
+
+// Reading passages (shared by Reading-subtype Communication questions) — registered before the
+// /communication/:questionId routes below, otherwise Express matches "reading-passages" as a questionId.
+router.post('/communication/reading-passages', adminAuth, createReadingPassage);
+router.get('/communication/reading-passages', adminAuth, getReadingPassages);
+
+router.get('/communication/:questionId', adminAuth, getCommunicationQuestionById);
+router.delete('/communication/:questionId', adminAuth, deleteCommunicationQuestion);
+
 // Results routes
 router.get('/attempts', adminAuth, getAllAttempts);
 router.get('/tests/:testId/results', adminAuth, paginationValidation, handleValidationErrors, getTestResults);
@@ -176,6 +201,8 @@ router.post('/attempts/:attemptId/release', adminAuth, releaseAttemptResult);
 router.post('/attempts/:attemptId/send-result-email', adminAuth, sendAttemptResultEmail);
 router.post('/attempts/:attemptId/behavioral/:questionId/grade', adminAuth, gradeBehavioralAnswer);
 router.post('/attempts/:attemptId/behavioral/:questionId/auto-grade', adminAuth, autoGradeBehavioralAnswer);
+router.post('/attempts/:attemptId/communication/:questionId/grade', adminAuth, gradeCommunicationAnswer);
+router.post('/attempts/:attemptId/communication/:questionId/auto-grade', adminAuth, autoGradeCommunicationAnswer);
 router.delete('/attempts/:attemptId', adminAuth, deleteAttempt);
 router.post('/attempts/:attemptId/reevaluate', adminAuth, reEvaluateAttempt);
 router.get('/tests/:testId/export', adminAuth, exportResults);
@@ -218,6 +245,7 @@ router.put('/repository/question-bank/:questionId/disable', adminAuth, async (re
 router.put('/repository/question-bank/mcq/:questionId', adminAuth, updateQuestionBankMCQ);
 router.put('/repository/question-bank/coding/:questionId', adminAuth, updateQuestionBankCoding);
 router.put('/repository/question-bank/behavioral/:questionId', adminAuth, updateQuestionBankBehavioral);
+router.put('/repository/question-bank/communication/:questionId', adminAuth, updateQuestionBankCommunication);
 
 // Custom Questions (create/enable/disable/delete)
 router.get(
@@ -234,9 +262,11 @@ router.get(
 router.post('/repository/custom/mcq', adminAuth, createMCQValidation, handleValidationErrors, createCustomMCQ);
 router.post('/repository/custom/coding', adminAuth, createCodingValidation, handleValidationErrors, createCustomCoding);
 router.post('/repository/custom/behavioral', adminAuth, createCustomBehavioral);
+router.post('/repository/custom/communication', adminAuth, createCustomCommunication);
 router.put('/repository/custom/mcq/:questionId', adminAuth, updateCustomMCQ);
 router.put('/repository/custom/coding/:questionId', adminAuth, updateCustomCoding);
 router.put('/repository/custom/behavioral/:questionId', adminAuth, updateCustomBehavioral);
+router.put('/repository/custom/communication/:questionId', adminAuth, updateCustomCommunication);
 router.put('/repository/custom/:questionId/enable', adminAuth, async (req, res) => {
   return toggleRepositoryQuestion(req, res, true);
 });
