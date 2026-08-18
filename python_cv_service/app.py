@@ -232,10 +232,7 @@ if YOLO is not None:
         _model = None
         logger.exception("[PROCTOR_CV] Failed to load YOLO model")
 
-_face_detector = mp.solutions.face_detection.FaceDetection(
-    model_selection=1,
-    min_detection_confidence=max(FACE_MIN_CONF, 0.65),
-)
+
 _face_mesh = mp.solutions.face_mesh.FaceMesh(
     static_image_mode=False,
     max_num_faces=3,
@@ -267,45 +264,7 @@ def _enhance_frame(img_bgr: np.ndarray) -> np.ndarray:
         return img_bgr
 
 
-def _face_count_with_details(img_bgr: np.ndarray) -> Tuple[int, Dict[str, int], Any]:
-    """Returns (face_count, detail_dict, mesh_result).
 
-    Face count uses consensus between FaceDetection and FaceMesh:
-    - For presence (0 vs >=1): either model seeing a face is enough (avoid false negatives).
-    - For multiple faces: BOTH models must agree count > 1 (avoids Haar/scale false positives).
-    Haar Cascade is intentionally excluded — it double-detects the same face at different
-    scales and is the primary source of single-person false multi-face violations.
-    """
-    try:
-        img = _enhance_frame(img_bgr)
-        rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        det_count = 0
-        mesh_count = 0
-
-        result = _face_detector.process(rgb)
-        if result and result.detections:
-            det_count = len(result.detections)
-
-        mesh = _face_mesh.process(rgb)
-        if mesh and mesh.multi_face_landmarks:
-            mesh_count = len(mesh.multi_face_landmarks)
-
-        # Presence: if either model sees a face, a face is there.
-        # Count: use the lower of the two to avoid false multi-face triggers.
-        # If one model says 1 and the other says 2, we trust the conservative answer (1).
-        if det_count == 0 and mesh_count == 0:
-            face_count = 0
-        elif det_count == 0 or mesh_count == 0:
-            # One model sees a face, the other doesn't — a face is present but count is 1.
-            face_count = max(det_count, mesh_count)
-            face_count = min(face_count, 1)
-        else:
-            # Both models agree a face exists; take the minimum to avoid false multiples.
-            face_count = min(det_count, mesh_count)
-
-        return face_count, {"mediapipeFaceDetection": det_count, "mediapipeFaceMesh": mesh_count}, mesh
-    except Exception:
-        return 0, {"mediapipeFaceDetection": 0, "mediapipeFaceMesh": 0}, None
 
 
 def _gaze_signal(img_bgr: np.ndarray, mesh_result: Any = None) -> Tuple[bool, str, float]:
@@ -342,12 +301,15 @@ UNAUTHORIZED_OBJECT_LABELS = {
 }
 
 
-def _object_detections(img_bgr: np.ndarray) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+def _object_detections(
+    img_bgr: np.ndarray,
+) -> Tuple[int, List[Dict[str, Any]], List[Dict[str, Any]]]:
     """Single YOLO pass, split into (phone_objects, unauthorized_objects).
     Returns two lists instead of running predict() twice per frame — a second
     inference call would blow the per-frame time budget under a 2s cadence."""
     if _model is None:
-        return [], []
+        return 0,[], []
+    person_count = 0
     phones: List[Dict[str, Any]] = []
     unauthorized: List[Dict[str, Any]] = []
     try:
@@ -368,6 +330,9 @@ def _object_detections(img_bgr: np.ndarray) -> Tuple[List[Dict[str, Any]], List[
                 cls_idx = int(b.cls.item())
                 conf = float(b.conf.item())
                 label = str(model_names.get(cls_idx, "")).lower().strip()
+                if label in {"person", "people"}:
+                    person_count += 1
+                    continue
                 x1, y1, x2, y2 = [float(v) for v in b.xyxy[0].tolist()]
                 area_ratio = max(0.0, (x2 - x1) * (y2 - y1)) / frame_area
 
@@ -398,8 +363,8 @@ def _object_detections(img_bgr: np.ndarray) -> Tuple[List[Dict[str, Any]], List[
                         }
                     )
     except Exception:
-        return [], []
-    return phones, unauthorized
+        return 0,[], []
+    return person_count,phones, unauthorized
 
 
 def _camera_blocked_signal(img_bgr: np.ndarray) -> Tuple[bool, str, float]:
@@ -514,26 +479,58 @@ def analyze_request(req: AnalyzeRequest) -> Dict[str, Any]:
     camera_blocked, blocked_reason, blocked_confidence = _camera_blocked_signal(img)
     mediapipe_ms = 0.0
     yolo_ms = 0.0
-    if camera_blocked:
-        face_count, face_details, mesh_result = 0, {"mediapipeFaceDetection": 0, "mediapipeFaceMesh": 0}, None
-        looking_at_screen, gaze_direction, gaze_confidence = True, "unknown", 0.0
-        phone_objects: List[Dict[str, Any]] = []
-        unauthorized_objects: List[Dict[str, Any]] = []
-    else:
-        # FaceMesh is computed once here and reused by _gaze_signal to eliminate duplicate inference.
-        t0 = time.perf_counter()
-        face_count, face_details, mesh_result = _face_count_with_details(img)
-        looking_at_screen, gaze_direction, gaze_confidence = _gaze_signal(img, mesh_result)
-        mediapipe_ms = (time.perf_counter() - t0) * 1000.0
 
+    if camera_blocked:
+        person_count = 0
+        phone_objects = []
+        unauthorized_objects = []
+
+        mesh_result = None
+
+        looking_at_screen = True
+        gaze_direction = "unknown"
+        gaze_confidence = 0.0
+
+    else:
+        # --------------------------------------------------
+        # YOLO: Person + Phone + Unauthorized Object detection
+        # --------------------------------------------------
         t0 = time.perf_counter()
-        phone_objects, unauthorized_objects = _object_detections(img)
+
+        person_count, phone_objects, unauthorized_objects = _object_detections(img)
+
         yolo_ms = (time.perf_counter() - t0) * 1000.0
 
-        logger.info(
-            "[PROCTOR_CV][timing] session=%s mediapipeMs=%.2f yoloMs=%.2f totalMs=%.2f",
-            sid, mediapipe_ms, yolo_ms, mediapipe_ms + yolo_ms,
+        # --------------------------------------------------
+        # MediaPipe FaceMesh: Gaze only
+        # --------------------------------------------------
+        t0 = time.perf_counter()
+
+        rgb = cv2.cvtColor(
+            _enhance_frame(img),
+            cv2.COLOR_BGR2RGB,
         )
+
+        mesh_result = _face_mesh.process(rgb)
+
+        looking_at_screen, gaze_direction, gaze_confidence = _gaze_signal(
+            img,
+            mesh_result,
+        )
+
+        mediapipe_ms = (time.perf_counter() - t0) * 1000.0
+
+        logger.info(
+            "[PROCTOR_CV][timing] "
+            "session=%s personCount=%d "
+            "mediapipeGazeMs=%.2f yoloMs=%.2f totalInferenceMs=%.2f",
+            sid,
+            person_count,
+            mediapipe_ms,
+            yolo_ms,
+            mediapipe_ms + yolo_ms,
+        )
+        
     phone_count = len(phone_objects)
     objects.extend(phone_objects)
     objects.extend(unauthorized_objects)
@@ -562,7 +559,7 @@ def analyze_request(req: AnalyzeRequest) -> Dict[str, Any]:
         state["blocked_start"] = None
 
     # NO FACE > NO_FACE_SECONDS
-    if face_count == 0:
+    if person_count == 0:
         if state["no_face_start"] is None:
             state["no_face_start"] = now
         elif now - float(state["no_face_start"]) > NO_FACE_SECONDS:
@@ -584,7 +581,7 @@ def analyze_request(req: AnalyzeRequest) -> Dict[str, Any]:
         state["no_face_start"] = None
 
     # MULTI FACE > MULTI_FACE_SECONDS
-    if face_count > 1:
+    if person_count > 1:
         if state["multi_face_start"] is None:
             state["multi_face_start"] = now
         elif now - float(state["multi_face_start"]) > MULTI_FACE_SECONDS:
@@ -594,8 +591,8 @@ def analyze_request(req: AnalyzeRequest) -> Dict[str, Any]:
                 "multiple_faces",
                 "critical",
                 90.0,
-                f"Multiple faces detected (faces={face_count})",
-                {"faceCount": face_count},
+                f"Multiple persons detected (faces={person_count})",
+                {"PersonCount": person_count},
             )
             if emitted:
                 state["multi_face_start"] = now
