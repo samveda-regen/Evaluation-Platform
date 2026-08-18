@@ -7,6 +7,10 @@ import {
   Braces,
   Brain,
   MessagesSquare,
+  PenLine,
+  Headphones,
+  BookOpen,
+  Mic,
   FolderCode,
   ToggleLeft,
   ToggleRight,
@@ -28,8 +32,17 @@ import type {
   RepositoryMCQQuestion,
   RepositoryCommunicationQuestion,
   RepositoryQuestion,
+  CommunicationSubType,
   Test,
 } from '../../../types';
+
+/* -- Communication sub-type display config, shared by the card icon and the type badge -- */
+const COMMUNICATION_SUB_TYPE_CFG: Record<CommunicationSubType, { label: string; Icon: typeof PenLine }> = {
+  WRITTEN:   { label: 'Written',   Icon: PenLine },
+  LISTENING: { label: 'Listening', Icon: Headphones },
+  READING:   { label: 'Reading',   Icon: BookOpen },
+  SPEAKING:  { label: 'Speaking',  Icon: Mic },
+};
 
 /* -- Sidebar item types -- */
 type SidebarCategory = RepositoryCategory | 'all' | 'CUSTOM';
@@ -75,11 +88,13 @@ function TypeIcon({
   size = 32,
   iconSize = 14,
   isCustom = false,
+  subType,
 }: {
   cat: RepositoryCategory;
   size?: number;
   iconSize?: number;
   isCustom?: boolean;
+  subType?: CommunicationSubType;
 }) {
   const boxStyle = {
     width: `${size}px`,
@@ -108,11 +123,14 @@ function TypeIcon({
       <Braces width={iconSize} height={iconSize} stroke="var(--admin-accent-hover)" strokeWidth={2} />
     </div>
   );
-  if (cat === 'COMMUNICATION') return (
-    <div style={boxStyle}>
-      <MessagesSquare width={iconSize} height={iconSize} stroke="var(--admin-accent-hover)" strokeWidth={2} />
-    </div>
-  );
+  if (cat === 'COMMUNICATION') {
+    const SubIcon = subType ? COMMUNICATION_SUB_TYPE_CFG[subType].Icon : MessagesSquare;
+    return (
+      <div style={boxStyle}>
+        <SubIcon width={iconSize} height={iconSize} stroke="var(--admin-accent-hover)" strokeWidth={2} />
+      </div>
+    );
+  }
   return (
     <div style={boxStyle}>
       <Brain width={iconSize} height={iconSize} stroke="var(--admin-accent-hover)" strokeWidth={2} />
@@ -1007,7 +1025,9 @@ export default function QuestionBank() {
                 const cat  = q.repositoryCategory;
                 const diff = q.difficulty as Difficulty;
                 const rate = correctRate(q);
-                const catLabel = cat === 'MCQ' ? 'MCQ' : cat === 'CODING' ? 'Coding' : cat === 'COMMUNICATION' ? 'Communication' : 'Behavioral';
+                const catLabel = cat === 'MCQ' ? 'MCQ' : cat === 'CODING' ? 'Coding'
+                  : cat === 'COMMUNICATION' ? (isCommunication(q) ? COMMUNICATION_SUB_TYPE_CFG[q.subType].label : 'Communication')
+                  : 'Behavioral';
                 const isCustomQuestion = q.source === 'CUSTOM';
                 return (
                   <div key={q.id} style={{
@@ -1033,7 +1053,7 @@ export default function QuestionBank() {
                     }} />
 
                     {/* Type icon */}
-                    <TypeIcon cat={cat} isCustom={isCustomQuestion} />
+                    <TypeIcon cat={cat} isCustom={isCustomQuestion} subType={isCommunication(q) ? q.subType : undefined} />
 
                     {/* Question content */}
                     <div style={{ flex:1, minWidth:0 }}>
