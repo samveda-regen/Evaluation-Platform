@@ -488,6 +488,9 @@ export const adminApi = {
     mcqCount: number;
     codingCount: number;
     behavioralCount: number;
+    writtenCount?: number;
+    readingCount?: number;
+    speakingCount?: number;
     duration?: number;
   }) => api.post('/admin/agent/generate-test', data),
 
@@ -496,6 +499,9 @@ export const adminApi = {
       mcqQuestionIds: string[];
       codingQuestionIds: string[];
       behavioralQuestionIds: string[];
+      writtenQuestionIds?: string[];
+      readingQuestionIds?: string[];
+      speakingQuestionIds?: string[];
       reasoning?: string;
       suggestedDuration?: number;
       suggestedTestName?: string;
@@ -514,12 +520,18 @@ export const adminApi = {
     mcqCount: number;
     codingCount: number;
     behavioralCount: number;
+    writtenCount?: number;
+    readingCount?: number;
+    speakingCount?: number;
   }) => api.post('/admin/agent/suggest-questions', data),
 
   getAgentReviewDetails: (data: {
     mcqQuestionIds: string[];
     codingQuestionIds: string[];
     behavioralQuestionIds: string[];
+    writtenQuestionIds?: string[];
+    readingQuestionIds?: string[];
+    speakingQuestionIds?: string[];
   }) => api.post('/admin/agent/review-details', data),
 
   // Proctoring - Admin
