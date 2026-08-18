@@ -100,6 +100,7 @@ VIOLATION_COOLDOWN_SECONDS = _env_float("VIOLATION_COOLDOWN_SECONDS", 3.0)
 # Books/Head Phones/gaze classes) — only Person, Laptop, and Mobile Phones are
 # actually mapped to violations below; everything else is ignored by label.
 PHONE_CONF = _env_float("PHONE_CONF", 0.10)
+PERSON_CONF = _env_float("PERSON_CONF", 0.30)
 PHONE_MIN_AREA_RATIO = _env_float("PHONE_MIN_AREA_RATIO", 0.00005)
 UNAUTHORIZED_OBJECT_CONF = _env_float("UNAUTHORIZED_OBJECT_CONF", 0.25)
 UNAUTHORIZED_OBJECT_MIN_AREA_RATIO = _env_float("UNAUTHORIZED_OBJECT_MIN_AREA_RATIO", 0.001)
@@ -330,8 +331,24 @@ def _object_detections(
                 cls_idx = int(b.cls.item())
                 conf = float(b.conf.item())
                 label = str(model_names.get(cls_idx, "")).lower().strip()
+                logger.info(
+                    "[PROCTOR_CV][YOLO_DEBUG] class=%s confidence=%.4f",
+                    label,
+                    conf,
+                )
                 if label in {"person", "people"}:
-                    person_count += 1
+                    logger.info(
+                        "[PROCTOR_CV][PERSON_DEBUG] "
+                        "session=%s confidence=%.4f threshold=%.4f accepted=%s",
+                        
+                        conf,
+                        PERSON_CONF,
+                        conf >= PERSON_CONF,
+                    )
+
+                    if conf >= PERSON_CONF:
+                        person_count += 1
+
                     continue
                 x1, y1, x2, y2 = [float(v) for v in b.xyxy[0].tolist()]
                 area_ratio = max(0.0, (x2 - x1) * (y2 - y1)) / frame_area
@@ -364,6 +381,11 @@ def _object_detections(
                     )
     except Exception:
         return 0,[], []
+    logger.info(
+        "[PROCTOR_CV][PERSON_DEBUG] session=%s acceptedPersonCount=%d",
+    
+        person_count,
+    )
     return person_count,phones, unauthorized
 
 
