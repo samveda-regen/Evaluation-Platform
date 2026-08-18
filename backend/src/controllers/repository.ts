@@ -5,7 +5,7 @@ import prisma from '../utils/db.js';
 import { sanitizeInput } from '../utils/sanitize.js';
 import { createMCQQuestion } from './mcqQuestion.js';
 import { createCodingQuestion } from './codingQuestion.js';
-import { createCommunicationQuestion, serializeCommunicationQuestion } from './communicationQuestion.js';
+import { createCommunicationQuestion, serializeCommunicationQuestion, MAX_RECORDING_TIME_LIMIT_SEC } from './communicationQuestion.js';
 
 type RepositoryCategory = 'MCQ' | 'CODING' | 'BEHAVIORAL' | 'COMMUNICATION';
 type Difficulty = 'easy' | 'medium' | 'hard';
@@ -976,7 +976,7 @@ async function updateCommunicationBySource(
 
     if (existing.subType === 'SPEAKING') {
       if (req.body.recordingTimeLimit !== undefined && Number.isFinite(Number(req.body.recordingTimeLimit))) {
-        data.recordingTimeLimit = Math.max(10, Math.floor(Number(req.body.recordingTimeLimit)));
+        data.recordingTimeLimit = Math.min(MAX_RECORDING_TIME_LIMIT_SEC, Math.max(10, Math.floor(Number(req.body.recordingTimeLimit))));
       }
       if (req.body.retakeLimit !== undefined) {
         data.retakeLimit = req.body.retakeLimit === null || req.body.retakeLimit === ''
