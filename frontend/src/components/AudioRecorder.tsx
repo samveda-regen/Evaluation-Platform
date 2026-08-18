@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Mic, Square, RotateCcw, Loader2 } from 'lucide-react';
+import { getCachedStreams } from '../services/devicePermissionService';
 
 interface AudioRecorderProps {
   maxDurationSec: number;
@@ -49,7 +50,15 @@ export default function AudioRecorder({ maxDurationSec, onSubmitRecording, disab
   const startRecording = async () => {
     setError('');
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Reuse the mic already granted/cached on the pre-exam device-check page when available,
+      // instead of prompting again mid-exam. Clone the tracks rather than reusing them directly —
+      // stopStream() below calls .stop() on this component's own tracks after every recording,
+      // and MediaStreamTrack.stop() affects the underlying track everywhere it's referenced, which
+      // would otherwise kill the cached stream for subsequent Speaking questions.
+      const cachedMic = getCachedStreams().microphoneStream;
+      const stream = cachedMic
+        ? new MediaStream(cachedMic.getAudioTracks().map(t => t.clone()))
+        : await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       const mimeType = pickSupportedMimeType();
       const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
