@@ -99,7 +99,7 @@ VIOLATION_COOLDOWN_SECONDS = _env_float("VIOLATION_COOLDOWN_SECONDS", 3.0)
 # exp-1.onnx is a custom-trained model (Person/Laptop/Mobile Phones/TV/Note
 # Books/Head Phones/gaze classes) — only Person, Laptop, and Mobile Phones are
 # actually mapped to violations below; everything else is ignored by label.
-PHONE_CONF = _env_float("PHONE_CONF", 0.01)
+PHONE_CONF = _env_float("PHONE_CONF", 0.10)
 PHONE_MIN_AREA_RATIO = _env_float("PHONE_MIN_AREA_RATIO", 0.00005)
 UNAUTHORIZED_OBJECT_CONF = _env_float("UNAUTHORIZED_OBJECT_CONF", 0.25)
 UNAUTHORIZED_OBJECT_MIN_AREA_RATIO = _env_float("UNAUTHORIZED_OBJECT_MIN_AREA_RATIO", 0.001)
@@ -205,15 +205,32 @@ def _add_violation(
 _model = None
 if YOLO is not None:
     try:
+        model_load_start = time.perf_counter()
+
+        logger.info(
+            "[PROCTOR_CV][timing] YOLO model loading started model=%s",
+            YOLO_MODEL_PATH,
+        )
+
         _model = YOLO(YOLO_MODEL_PATH, task="detect")
+
+        model_load_ms = (time.perf_counter() - model_load_start) * 1000.0
+
+        logger.info(
+            "[PROCTOR_CV][timing] YOLO model loaded model=%s loadMs=%.2f",
+            YOLO_MODEL_PATH,
+            model_load_ms,
+        )
+
         if YOLO_MODEL_PATH.endswith(".onnx") and ort is not None:
-            # ONNX Runtime's CPU execution provider (MLAS) doesn't carry PyTorch's
-            # MKL-on-non-Intel-CPU penalty -- see benchmark_single_frame.py findings.
-            # Logged so a provider mismatch (e.g. falling back to a slow default)
-            # is visible in production logs instead of only showing up as latency.
-            logger.info("[PROCTOR_CV] onnxruntime available providers: %s", ort.get_available_providers())
+            logger.info(
+                "[PROCTOR_CV] onnxruntime available providers: %s",
+                ort.get_available_providers(),
+            )
+
     except Exception:
         _model = None
+        logger.exception("[PROCTOR_CV] Failed to load YOLO model")
 
 _face_detector = mp.solutions.face_detection.FaceDetection(
     model_selection=1,
@@ -439,13 +456,22 @@ async def analyze(req: AnalyzeRequest) -> Dict[str, Any]:
 
 
 def analyze_request(req: AnalyzeRequest) -> Dict[str, Any]:
+    request_start = time.perf_counter()
+    decode_start = time.perf_counter()
+
     img = decode_frame(req.frame)
+
+    decode_ms = (time.perf_counter() - decode_start) * 1000.0
     if img is None:
         return {"violations": []}
 
     # Downscale to inference resolution before running any model.
     # 640px is YOLO's native input size — no accuracy loss, ~3x faster on 1080p+ frames.
+    resize_start = time.perf_counter()
+
     img = _resize_for_inference(img)
+
+    resize_ms = (time.perf_counter() - resize_start) * 1000.0
 
     sid = req.sessionId or "default"
     state = _session_state[sid]
@@ -681,5 +707,17 @@ def analyze_request(req: AnalyzeRequest) -> Dict[str, Any]:
         )
     except Exception:
         pass
+    total_ms = (time.perf_counter() - request_start) * 1000.0
 
+    logger.info(
+        "[PROCTOR_CV][timing] "
+        "session=%s decodeMs=%.2f resizeMs=%.2f "
+        "mediapipeMs=%.2f yoloMs=%.2f totalMs=%.2f",
+        sid,
+        decode_ms,
+        resize_ms,
+        mediapipe_ms,
+        yolo_ms,
+        total_ms,
+    )
     return response
