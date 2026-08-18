@@ -928,12 +928,12 @@ export default function CommunicationForm() {
               {/* Recording limit */}
               <div className="rounded-2xl p-6" style={{ backgroundColor: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
                 <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--admin-text-subtle)' }}>RECORDING LIMIT</p>
-                <p className="text-xs mb-4" style={{ color: 'var(--admin-text-subtle)' }}>Maximum length of the candidate's spoken response. Recording auto-stops at this limit.</p>
+                <p className="text-xs mb-4" style={{ color: 'var(--admin-text-subtle)' }}>Maximum length of the candidate's spoken response. Recording auto-stops at this limit. Capped at 10 minutes.</p>
                 <div className="flex items-center gap-2">
                   <input
-                    type="number" min={10}
+                    type="number" min={10} max={600}
                     value={speakingData.recordingTimeLimit}
-                    onChange={e => setSpeakingData({ ...speakingData, recordingTimeLimit: Math.max(10, Number(e.target.value) || 10) })}
+                    onChange={e => setSpeakingData({ ...speakingData, recordingTimeLimit: Math.min(600, Math.max(10, Number(e.target.value) || 10)) })}
                     style={{ ...inputSx, resize: undefined, width: '120px' }}
                   />
                   <span className="text-sm" style={{ color: 'var(--admin-text-subtle)' }}>seconds</span>

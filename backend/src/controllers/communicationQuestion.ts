@@ -7,6 +7,9 @@ import prisma from '../utils/db.js';
 const TEST_SCOPED_TAG_MARKER = '"__test_scoped__"';
 export const VALID_SUB_TYPES: CommunicationSubType[] = ['WRITTEN', 'LISTENING', 'READING', 'SPEAKING'];
 const VALID_STIMULUS_TYPES: WrittenStimulusType[] = ['NONE', 'IMAGE', 'AUDIO'];
+// Upper bound on Speaking recordingTimeLimit — without this an admin could configure a recording
+// long enough to push the base64-encoded upload past the JSON body size limit (see index.ts).
+export const MAX_RECORDING_TIME_LIMIT_SEC = 600;
 
 function parseTags(tags: string | null): string[] {
   if (!tags) return [];
@@ -154,7 +157,7 @@ export async function buildCreateData(
   }
 
   // SPEAKING
-  const recordingTimeLimit = Number.isFinite(Number(req.body.recordingTimeLimit)) ? Math.max(10, Math.floor(Number(req.body.recordingTimeLimit))) : 120;
+  const recordingTimeLimit = Number.isFinite(Number(req.body.recordingTimeLimit)) ? Math.min(MAX_RECORDING_TIME_LIMIT_SEC, Math.max(10, Math.floor(Number(req.body.recordingTimeLimit)))) : 120;
   const speakingEvaluationNotes = typeof req.body.evaluationNotes === 'string' ? req.body.evaluationNotes.trim() : '';
   // Blank/absent means unlimited re-records (null), not a fallback number — this is an opt-in
   // guardrail, unlike recordingTimeLimit which always has a sane default.
