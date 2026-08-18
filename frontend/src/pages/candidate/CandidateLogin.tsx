@@ -255,7 +255,7 @@ localStorage.setItem('sebQuitUrl', sebQuitUrl);
         {/* Secure Exam Browser launch */}
         {invitationToken && (
           <div style={{ marginBottom: '20px' }}>
-            <button
+            {/*<button
               type="button"
               onClick={handleOpenInSeb}
               style={{
@@ -265,7 +265,7 @@ localStorage.setItem('sebQuitUrl', sebQuitUrl);
               }}
             >
               Open in Secure Exam Browser
-            </button>
+            </button>*/}
             {sebMissing && (
               <p style={{ fontSize: '12px', color: '#B45309', backgroundColor: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: '8px', padding: '10px 12px', margin: '10px 0 0' }}>
                 Secure Exam Browser doesn't seem to be installed on this device.{' '}
@@ -436,6 +436,7 @@ localStorage.setItem('sebQuitUrl', sebQuitUrl);
           {/* Submit */}
           <button
             type="submit"
+            
             disabled={loading || !accessCode.trim() || !consented}
             style={{
               width: '100%', padding: '14px', borderRadius: '12px', border: 'none',

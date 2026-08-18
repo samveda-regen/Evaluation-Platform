@@ -2,6 +2,7 @@ import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { useAuthStore } from './context/authStore';
 
 // Admin pages
+import SebLaunch from './pages/candidate/SebLaunch';
 import SebQuit from './pages/candidate/SebQuit';
 import AdminLogin from './pages/admin/AdminLogin';
 import ImpersonationAccept from './pages/admin/ImpersonationAccept';
@@ -130,6 +131,10 @@ export default function App() {
       </Route>
 
       {/* Candidate routes */}
+      <Route
+  path="/test/seb-launch"
+  element={<SebLaunch />}
+/>
       <Route path="/test/login" element={<CandidateLogin />} />
       <Route path="/test/invite/:token" element={<TestInvitation />} />
       <Route

@@ -10,11 +10,9 @@ This test is designed to evaluate your skills and experience.
 
 Exam date: {{exam_start}} to {{exam_end}}
 
-Click the button below to get started:
+Click the Continue button below to get started.
 
-{{test_link}}
-
-Or go to the login page and enter your access code: {{access_code}}
+Access code: {{access_code}}
 
 The test will take approximately {{estimated_time}} to complete.
 If you have any questions, feel free to reach out to us.
@@ -29,18 +27,15 @@ This is a reminder that you haven't started your test yet: {{test_name}}.
 
 Your access to this test closes on {{closes_at}}. Please make sure to complete it before then.
 
-Click the button below to get started:
+Click the Continue button below to get started.
 
-{{test_link}}
-
-Or go to the login page and enter your access code: {{access_code}}
+Access code: {{access_code}}
 
 The test will take approximately {{estimated_time}} to complete.
 If you have any questions, feel free to reach out to us.
 
 Best regards,
 {{company_name}} Team`;
-
 export const DEFAULT_CONFIRM_SUBJECT = "Thanks for completing {{test_name}}";
 export const DEFAULT_CONFIRM_BODY = `Hello {{candidate_name}},
 
@@ -101,17 +96,28 @@ function deriveSebLaunchLink(testLink: string): string | null {
 // triggers the sebs:// handoff itself once it's running in a real browser,
 // where custom protocol links work fine.
 function buildSebLandingLink(testLink: string): string {
-  return `${testLink}${testLink.includes('?') ? '&' : '?'}seb=1`;
+  try {
+    const parsed = new URL(testLink);
+    const token = parsed.searchParams.get('token');
+
+    if (!token) return testLink;
+
+    return `${parsed.origin}/test/seb-launch?token=${encodeURIComponent(token)}`;
+  } catch {
+    return testLink;
+  }
 }
 
 function buildSebButtonsHtml(testLink: string): string {
-  const sebLink = deriveSebLaunchLink(testLink);
-  if (!sebLink) return '';
+  const launchLink = buildSebLandingLink(testLink);
 
   return `<div style="margin:20px 0">
-  <a href="${escapeHtml(buildSebLandingLink(testLink))}" style="display:inline-block;background:#111827;color:#ffffff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;margin-right:10px">Open in Secure Exam Browser</a>
-  <a href="${escapeHtml(testLink)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;background:#F3F4F6;color:#111827;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600">Continue in your browser</a>
-  <p style="margin:10px 0 0;font-size:12px;color:#6B7280">Don't have Secure Exam Browser installed? <a href="https://safeexambrowser.org/download_en.html" style="color:#6B7280">Download it here</a>, then use the first button above.</p>
+  <a
+    href="${escapeHtml(launchLink)}"
+    style="display:inline-block;background:#111827;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600"
+  >
+    Continue
+  </a>
 </div>`;
 }
 
