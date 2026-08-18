@@ -27,6 +27,7 @@ interface TestDetails {
     requireCamera: boolean;
     requireMicrophone: boolean;
     requireScreenShare: boolean;
+    hasSpeakingQuestion: boolean;
     customAIViolations?: string[];
     questionCounts?: { mcq?: number; coding?: number; behavioral?: number };
   };
@@ -71,6 +72,15 @@ export default function TestInstructions() {
   const navigate = useNavigate();
   const setTestData = useTestStore((state) => state.setTestData);
   const candidate = useAuthStore((state) => state.candidate);
+
+  // Speaking questions need mic access independent of the (currently disabled) audio-proctoring
+  // toggle — these are computed once here and reused everywhere the old inline
+  // `test.requireMicrophone && !TEMP_DISABLE_AUDIO_PROCTORING` / `test.proctorEnabled` checks
+  // used to gate the device-check flow, so a non-proctored test with a Speaking question still
+  // asks for the mic upfront instead of the candidate hitting a prompt mid-exam.
+  const needsSpeakingMic = testDetails?.test.hasSpeakingQuestion ?? false;
+  const microphoneRequired = (!!testDetails?.test.requireMicrophone && !TEMP_DISABLE_AUDIO_PROCTORING) || needsSpeakingMic;
+  const deviceCheckNeeded = !!testDetails?.test.proctorEnabled || needsSpeakingMic;
 
   const setCameraPreviewVideo = useCallback(
     (el: HTMLVideoElement | null) => {
@@ -136,14 +146,13 @@ export default function TestInstructions() {
       toast.error('Identity verification is required before starting this test');
       return;
     }
-    if (testDetails?.test.proctorEnabled && !deviceReady) {
+    if (deviceCheckNeeded && !deviceReady) {
       toast.error('Complete required device permission checks before starting');
       return;
     }
-    if (testDetails?.test.proctorEnabled) {
+    if (deviceCheckNeeded && testDetails) {
       const cached = getCachedStreams();
       const missingCamera = testDetails.test.requireCamera && !cached.cameraStream;
-      const microphoneRequired = testDetails.test.requireMicrophone && !TEMP_DISABLE_AUDIO_PROCTORING;
       const missingMic = microphoneRequired && !cached.microphoneStream;
       const missingScreen = testDetails.test.requireScreenShare && !cached.screenStream;
       if (missingCamera || missingMic || missingScreen) {
@@ -168,7 +177,7 @@ export default function TestInstructions() {
         maxViolations: data.test.maxViolations,
         proctorEnabled: data.test.proctorEnabled,
         requireCamera: data.test.requireCamera,
-        requireMicrophone: data.test.requireMicrophone && !TEMP_DISABLE_AUDIO_PROCTORING,
+        requireMicrophone: microphoneRequired,
         requireScreenShare: data.test.requireScreenShare,
         customAIViolations: normalizeCustomAIViolationSelection(
           data.test.customAIViolations || DEFAULT_CUSTOM_AI_VIOLATIONS,
@@ -219,13 +228,12 @@ export default function TestInstructions() {
   };
 
   const checkDevicePermissions = async () => {
-    if (!testDetails?.test.proctorEnabled) {
+    if (!deviceCheckNeeded || !testDetails) {
       setDeviceReady(true);
       return;
     }
     setCheckingDevices(true);
     const required = testDetails.test;
-    const microphoneRequired = required.requireMicrophone && !TEMP_DISABLE_AUDIO_PROCTORING;
     let cameraOk = !required.requireCamera;
     let microphoneOk = !microphoneRequired;
     let screenOk = !required.requireScreenShare;
@@ -290,7 +298,6 @@ export default function TestInstructions() {
   if (!testDetails) return null;
 
   const { test } = testDetails;
-  const microphoneRequired = test.requireMicrophone && !TEMP_DISABLE_AUDIO_PROCTORING;
   const initials = getInitials(candidate?.name);
   const totalQuestions =
     (test.questionCounts?.mcq ?? 0) +
@@ -302,7 +309,7 @@ export default function TestInstructions() {
     accepted &&
     !starting &&
     (!verificationRequired || verificationComplete) &&
-    (!test.proctorEnabled || deviceReady);
+    (!deviceCheckNeeded || deviceReady);
 
   const allChecksOk =
     (!test.requireCamera || deviceStatus.camera) &&
@@ -637,8 +644,8 @@ export default function TestInstructions() {
                 />
               </div>
 
-              {/* Device check button (only shown when proctoring required and not yet ready) */}
-              {test.proctorEnabled && !deviceReady && (
+              {/* Device check button (shown when proctoring or a Speaking question needs a device check, and not yet ready) */}
+              {deviceCheckNeeded && !deviceReady && (
                 <button
                   type="button"
                   onClick={checkDevicePermissions}

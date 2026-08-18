@@ -550,6 +550,13 @@ export async function getTestDetails(req: AuthenticatedRequest, res: Response): 
       return;
     }
 
+    // Speaking questions need mic access regardless of the proctoring mic toggle (which governs
+    // audio-based cheating detection, a separate concern) — the pre-exam device check uses this
+    // to ask for the mic upfront instead of the candidate hitting a browser prompt mid-exam.
+    const hasSpeakingQuestion = (await prisma.testQuestion.count({
+      where: { testId, questionType: 'communication', communicationQuestion: { subType: 'SPEAKING' } }
+    })) > 0;
+
     // Derive device requirements from proctoringSettings JSON when available.
     // This ensures the candidate "Before you begin" page always reflects what
     // the admin actually configured in the AI Proctoring tab, even if the
@@ -578,6 +585,7 @@ export async function getTestDetails(req: AuthenticatedRequest, res: Response): 
         requireCamera,
         requireMicrophone,
         requireScreenShare,
+        hasSpeakingQuestion,
         customAIViolations: parseStoredCustomAIViolationEvents(test.customAIViolations),
       },
       attempt: {
