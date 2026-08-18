@@ -104,6 +104,15 @@ localStorage.setItem('sebQuitUrl', sebQuitUrl);
     } finally { setLoading(false); }
   };
 
+  const handleSebExit = () => {
+  if (!invitationToken) return;
+
+  const sebQuitUrl =
+    `${window.location.origin}/test/quit-seb?token=${encodeURIComponent(invitationToken)}`;
+
+  window.location.href = sebQuitUrl;
+};
+
   const handleOpenInSeb = () => {
     if (!invitationToken) return;
     setSebMissing(false);
@@ -206,7 +215,37 @@ localStorage.setItem('sebQuitUrl', sebQuitUrl);
   };
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: 'var(--admin-border)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+    <div
+  style={{
+    minHeight: '100vh',
+    backgroundColor: 'var(--admin-border)',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '24px',
+    position: 'relative',
+  }}
+>
+  <button
+  type="button"
+  onClick={handleSebExit}
+  style={{
+    position: 'absolute',
+    top: '20px',
+    left: '24px',
+    padding: '9px 16px',
+    borderRadius: '9px',
+    border: '1px solid #D1D5DB',
+    backgroundColor: 'white',
+    color: '#374151',
+    fontSize: '13px',
+    fontWeight: 600,
+    cursor: 'pointer',
+  }}
+>
+  Exit
+</button>
 
       {/* -- Logo -- */}
       <div style={{ marginBottom: '24px' }}>

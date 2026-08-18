@@ -76,7 +76,13 @@ export default function TestInstructions() {
   const navigate = useNavigate();
   const setTestData = useTestStore((state) => state.setTestData);
   const candidate = useAuthStore((state) => state.candidate);
+  const handleSebExit = () => {
+    const sebQuitUrl = localStorage.getItem('sebQuitUrl');
 
+    if (sebQuitUrl) {
+      window.location.href = sebQuitUrl;
+    }
+  };
   const setCameraPreviewVideo = useCallback(
     (el: HTMLVideoElement | null) => {
       cameraPreviewRef.current = el;
@@ -361,17 +367,15 @@ export default function TestInstructions() {
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => navigate(-1)}
-              className="flex items-center gap-1.5 text-sm font-medium transition-colors"
-              style={{ color: '#6B7280' }}
-              onMouseEnter={e => (e.currentTarget.style.color = '#111827')}
-              onMouseLeave={e => (e.currentTarget.style.color = '#6B7280')}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-              </svg>
-              Back
-            </button>
+  type="button"
+  onClick={handleSebExit}
+  className="flex items-center gap-1.5 text-sm font-medium transition-colors"
+  style={{ color: '#6B7280' }}
+  onMouseEnter={e => (e.currentTarget.style.color = '#111827')}
+  onMouseLeave={e => (e.currentTarget.style.color = '#6B7280')}
+>
+  Exit
+</button>
             <div className="h-5 w-px bg-gray-200" />
             <div className="flex items-center gap-3">
               <img src={talentstaQLogo} alt="TalentstaQ" style={{ height: '34px', width: 'auto' }} />
