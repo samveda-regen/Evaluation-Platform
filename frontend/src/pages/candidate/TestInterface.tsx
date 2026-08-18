@@ -75,6 +75,7 @@ interface RichQuestion {
   passage?: { id: string; title: string; passageText: string } | null;
   // Communication (Speaking)
   recordingTimeLimit?: number | null;
+  retakeLimit?: number | null;
 }
 
 export default function TestInterface() {
@@ -84,9 +85,9 @@ export default function TestInterface() {
     proctorEnabled, requireCamera, requireMicrophone, requireScreenShare,
     customAIViolations, startTime, questions, currentQuestionIndex,
     mcqAnswers, codingAnswers, behavioralAnswers, communicationAnswers,
-    communicationSelectedAnswers, communicationReplayCounts, communicationAudioAnswers, isSubmitted,
+    communicationSelectedAnswers, communicationReplayCounts, communicationRetakeCounts, communicationAudioAnswers, isSubmitted,
     setCurrentQuestion, saveMCQAnswer, saveCodingAnswer, saveBehavioralAnswer, saveCommunicationAnswer,
-    saveCommunicationSelectedAnswer, setCommunicationReplayCount, saveCommunicationAudioAnswer,
+    saveCommunicationSelectedAnswer, setCommunicationReplayCount, setCommunicationRetakeCount, saveCommunicationAudioAnswer,
     incrementViolations, setSubmitted, violationPopupSettings,
     showTimer, autoSubmitOnTimeout,
   } = useTestStore();
@@ -666,6 +667,12 @@ export default function TestInterface() {
     const questionId = currentQuestion!.questionId;
     setCommunicationReplayCount(questionId, count);
     candidateApi.saveCommunicationAnswer({ questionId, replayCount: count }).catch(() => {});
+  };
+
+  const handleRetakeCountChange = (count: number) => {
+    const questionId = currentQuestion!.questionId;
+    setCommunicationRetakeCount(questionId, count);
+    candidateApi.saveCommunicationAnswer({ questionId, retakeCount: count }).catch(() => {});
   };
 
   const handleSpeakingRecordingComplete = async (base64: string, mimeType: string) => {
@@ -1579,6 +1586,9 @@ export default function TestInterface() {
                           ? `/api/files/${communicationAudioAnswers[currentQuestion.questionId].audioAssetId}`
                           : null
                       }
+                      maxRetakes={currentQuestion.retakeLimit ?? null}
+                      initialRetakeCount={communicationRetakeCounts[currentQuestion.questionId] || 0}
+                      onRetakeCountChange={handleRetakeCountChange}
                     />
 
                     <div className="flex items-center gap-2 mt-5">

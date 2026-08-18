@@ -941,7 +941,7 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
         }
 
         // SPEAKING
-        return { ...base, recordingTimeLimit: cq.recordingTimeLimit };
+        return { ...base, recordingTimeLimit: cq.recordingTimeLimit, retakeLimit: cq.retakeLimit };
       }
       return null;
     }).filter(Boolean);
@@ -1191,7 +1191,7 @@ export async function saveBehavioralAnswer(req: AuthenticatedRequest, res: Respo
 export async function saveCommunicationAnswer(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { attemptId } = req.candidate!;
-    const { questionId, answerText, selectedOptions, replayCount, audio, audioMimeType } = req.body;
+    const { questionId, answerText, selectedOptions, replayCount, retakeCount, audio, audioMimeType } = req.body;
 
     const attempt = await prisma.testAttempt.findUnique({
       where: { id: attemptId }
@@ -1206,6 +1206,7 @@ export async function saveCommunicationAnswer(req: AuthenticatedRequest, res: Re
       answerText?: string;
       selectedOptions?: string;
       replayCount?: number;
+      retakeCount?: number;
       audioAssetId?: string;
       transcript?: string;
       gradingDetail?: string;
@@ -1213,6 +1214,7 @@ export async function saveCommunicationAnswer(req: AuthenticatedRequest, res: Re
     if (typeof answerText === 'string') data.answerText = answerText;
     if (Array.isArray(selectedOptions)) data.selectedOptions = JSON.stringify(selectedOptions);
     if (typeof replayCount === 'number' && Number.isFinite(replayCount)) data.replayCount = Math.max(0, Math.floor(replayCount));
+    if (typeof retakeCount === 'number' && Number.isFinite(retakeCount)) data.retakeCount = Math.max(0, Math.floor(retakeCount));
 
     if (typeof audio === 'string' && audio.trim()) {
       if (!isSpeechServiceConfigured()) {
@@ -1991,6 +1993,7 @@ export async function getSavedAnswers(req: AuthenticatedRequest, res: Response):
           answerText: true,
           selectedOptions: true,
           replayCount: true,
+          retakeCount: true,
           audioAssetId: true
         }
       })
@@ -2008,6 +2011,7 @@ export async function getSavedAnswers(req: AuthenticatedRequest, res: Response):
         answerText: a.answerText,
         selectedOptions: a.selectedOptions ? JSON.parse(a.selectedOptions) : null,
         replayCount: a.replayCount,
+        retakeCount: a.retakeCount,
         audioAssetId: a.audioAssetId
       }))
     });

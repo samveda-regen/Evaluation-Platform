@@ -156,12 +156,19 @@ export async function buildCreateData(
   // SPEAKING
   const recordingTimeLimit = Number.isFinite(Number(req.body.recordingTimeLimit)) ? Math.max(10, Math.floor(Number(req.body.recordingTimeLimit))) : 120;
   const speakingEvaluationNotes = typeof req.body.evaluationNotes === 'string' ? req.body.evaluationNotes.trim() : '';
+  // Blank/absent means unlimited re-records (null), not a fallback number — this is an opt-in
+  // guardrail, unlike recordingTimeLimit which always has a sane default.
+  const retakeLimitRaw = req.body.retakeLimit;
+  const retakeLimit = retakeLimitRaw === '' || retakeLimitRaw === null || retakeLimitRaw === undefined
+    ? null
+    : (Number.isFinite(Number(retakeLimitRaw)) ? Math.max(1, Math.floor(Number(retakeLimitRaw))) : null);
   return {
     data: {
       ...shared,
       description: description ? sanitizeInput(description) : null,
       evaluationNotes: speakingEvaluationNotes ? sanitizeInput(speakingEvaluationNotes) : null,
-      recordingTimeLimit
+      recordingTimeLimit,
+      retakeLimit
     }
   };
 }

@@ -978,6 +978,11 @@ async function updateCommunicationBySource(
       if (req.body.recordingTimeLimit !== undefined && Number.isFinite(Number(req.body.recordingTimeLimit))) {
         data.recordingTimeLimit = Math.max(10, Math.floor(Number(req.body.recordingTimeLimit)));
       }
+      if (req.body.retakeLimit !== undefined) {
+        data.retakeLimit = req.body.retakeLimit === null || req.body.retakeLimit === ''
+          ? null
+          : (Number.isFinite(Number(req.body.retakeLimit)) ? Math.max(1, Math.floor(Number(req.body.retakeLimit))) : null);
+      }
       const evaluationNotes = toStringOrUndefined(req.body.evaluationNotes);
       if (evaluationNotes !== undefined) data.evaluationNotes = sanitizeInput(evaluationNotes);
     }
