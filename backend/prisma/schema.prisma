@@ -395,6 +395,7 @@ model CommunicationQuestion {
 
   // Speaking-only
   recordingTimeLimit Int? // seconds
+  retakeLimit        Int? // max re-records allowed; null/unset = unlimited
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -580,6 +581,7 @@ model CommunicationAnswer {
   audioAssetId    String? // Speaking recording (via MediaAsset)
   transcript      String? // Speaking — Whisper output
   replayCount     Int?    @default(0) // Listening — guardrail telemetry
+  retakeCount     Int?    @default(0) // Speaking — guardrail telemetry
 
   isCorrect     Boolean? // Listening/Reading
   marksObtained Float?

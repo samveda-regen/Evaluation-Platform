@@ -8,6 +8,9 @@ interface AudioRecorderProps {
   disabled?: boolean;
   alreadyRecorded?: boolean;
   existingAudioUrl?: string | null;
+  maxRetakes?: number | null;
+  initialRetakeCount?: number;
+  onRetakeCountChange?: (count: number) => void;
 }
 
 type Status = 'idle' | 'recording' | 'recorded' | 'saving' | 'saved';
@@ -21,11 +24,13 @@ function pickSupportedMimeType(): string {
   return '';
 }
 
-export default function AudioRecorder({ maxDurationSec, onSubmitRecording, disabled, alreadyRecorded, existingAudioUrl }: AudioRecorderProps) {
+export default function AudioRecorder({ maxDurationSec, onSubmitRecording, disabled, alreadyRecorded, existingAudioUrl, maxRetakes, initialRetakeCount, onRetakeCountChange }: AudioRecorderProps) {
   const [status, setStatus] = useState<Status>(alreadyRecorded ? 'saved' : 'idle');
   const [elapsedSec, setElapsedSec] = useState(0);
   const [error, setError] = useState('');
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [retakeCount, setRetakeCount] = useState(initialRetakeCount ?? 0);
+  const retakesExhausted = maxRetakes != null && retakeCount >= maxRetakes;
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -104,6 +109,9 @@ export default function AudioRecorder({ maxDurationSec, onSubmitRecording, disab
     setStatus('idle');
     setElapsedSec(0);
     setError('');
+    const next = retakeCount + 1;
+    setRetakeCount(next);
+    onRetakeCountChange?.(next);
   };
 
   const submit = async () => {
@@ -164,7 +172,7 @@ export default function AudioRecorder({ maxDurationSec, onSubmitRecording, disab
           <audio src={previewUrl} controls className="w-full" preload="metadata" />
           <div className="flex items-center gap-3">
             <button
-              type="button" onClick={reRecord} disabled={status === 'saving'}
+              type="button" onClick={reRecord} disabled={status === 'saving' || retakesExhausted}
               className="flex items-center gap-1.5 text-sm font-medium disabled:opacity-40"
               style={{ color: 'var(--admin-text-muted)' }}
             >
@@ -178,15 +186,22 @@ export default function AudioRecorder({ maxDurationSec, onSubmitRecording, disab
               {status === 'saving' ? (<><Loader2 size={14} className="animate-spin" /> Transcribing…</>) : 'Submit recording'}
             </button>
           </div>
+          {retakesExhausted && (
+            <p className="text-xs" style={{ color: 'var(--admin-text-subtle)' }}>No re-records remaining</p>
+          )}
         </div>
       )}
 
       {status === 'saved' && (
         <div className="flex items-center justify-between py-1">
           <p className="text-sm font-semibold" style={{ color: 'var(--admin-accent-hover)' }}>✓ Recording saved</p>
-          <button type="button" onClick={reRecord} disabled={disabled} className="flex items-center gap-1.5 text-sm font-medium disabled:opacity-40" style={{ color: 'var(--admin-text-muted)' }}>
-            <RotateCcw size={14} /> Re-record
-          </button>
+          {retakesExhausted ? (
+            <p className="text-xs" style={{ color: 'var(--admin-text-subtle)' }}>No re-records remaining</p>
+          ) : (
+            <button type="button" onClick={reRecord} disabled={disabled} className="flex items-center gap-1.5 text-sm font-medium disabled:opacity-40" style={{ color: 'var(--admin-text-muted)' }}>
+              <RotateCcw size={14} /> Re-record
+            </button>
+          )}
         </div>
       )}
       {status === 'saved' && (previewUrl || existingAudioUrl) && (

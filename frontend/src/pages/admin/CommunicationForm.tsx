@@ -105,6 +105,7 @@ export default function CommunicationForm() {
     description: '',
     evaluationNotes: '',
     recordingTimeLimit: 120,
+    retakeLimit: '' as number | '', // '' = unlimited re-records
   });
   const [passages, setPassages] = useState<ReadingPassage[]>([]);
   const [loadingPassages, setLoadingPassages] = useState(false);
@@ -169,6 +170,7 @@ export default function CommunicationForm() {
           description: typeof editQuestion.description === 'string' ? editQuestion.description : '',
           evaluationNotes: typeof editQuestion.evaluationNotes === 'string' ? editQuestion.evaluationNotes : '',
           recordingTimeLimit: typeof editQuestion.recordingTimeLimit === 'number' ? editQuestion.recordingTimeLimit : 120,
+          retakeLimit: typeof editQuestion.retakeLimit === 'number' ? editQuestion.retakeLimit : '',
         });
       }
     }
@@ -381,6 +383,7 @@ export default function CommunicationForm() {
         description: speakingData.description,
         evaluationNotes: speakingData.evaluationNotes,
         recordingTimeLimit: speakingData.recordingTimeLimit,
+        retakeLimit: speakingData.retakeLimit === '' ? null : speakingData.retakeLimit,
       };
     }
 
@@ -935,6 +938,18 @@ export default function CommunicationForm() {
                   />
                   <span className="text-sm" style={{ color: 'var(--admin-text-subtle)' }}>seconds</span>
                 </div>
+              </div>
+
+              {/* Max re-record attempts */}
+              <div className="rounded-2xl p-6" style={{ backgroundColor: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
+                <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--admin-text-subtle)' }}>MAX RE-RECORD ATTEMPTS</p>
+                <p className="text-xs mb-4" style={{ color: 'var(--admin-text-subtle)' }}>How many times the candidate may re-record before submitting. Leave blank for unlimited.</p>
+                <input
+                  type="number" min={1} placeholder="Unlimited"
+                  value={speakingData.retakeLimit}
+                  onChange={e => setSpeakingData({ ...speakingData, retakeLimit: e.target.value === '' ? '' : Math.max(1, Number(e.target.value) || 1) })}
+                  style={{ ...inputSx, resize: undefined, width: '120px' }}
+                />
               </div>
             </>
           )}
