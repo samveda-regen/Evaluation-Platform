@@ -571,7 +571,7 @@ def analyze_request(req: AnalyzeRequest) -> Dict[str, Any]:
                 "high",
                 92.0,
                 "No candidate detected in camera frame",
-                {"faceCount": face_count, "durationSeconds": round(no_face_duration, 2)},
+                {"PersonCount": person_count, "durationSeconds": round(no_face_duration, 2)},
             )
             # Reset start only when we actually emitted so the next interval
             # re-measures from now (avoids spamming back-to-back violations).
@@ -600,7 +600,7 @@ def analyze_request(req: AnalyzeRequest) -> Dict[str, Any]:
         state["multi_face_start"] = None
 
     # LOOK AWAY > LOOK_AWAY_SECONDS (only when a face exists)
-    if face_count > 0 and not looking_at_screen:
+    if person_count > 0 and not looking_at_screen:
         if state["away_start"] is None:
             state["away_start"] = now
         elif now - float(state["away_start"]) > LOOK_AWAY_SECONDS:
@@ -660,16 +660,16 @@ def analyze_request(req: AnalyzeRequest) -> Dict[str, Any]:
         "violations": violations,
         "objects": objects,
         "face": {
-            "detected": face_count > 0,
-            "count": face_count,
-            "confidence": 80.0 if face_count > 0 else 0.0,
+            "detected": person_count > 0,
+            "count": person_count,
+            "confidence": 80.0 if person_count > 0 else 0.0,
             "lookingAtScreen": looking_at_screen,
             "gazeDirection": gaze_direction,
             "gazeConfidence": gaze_confidence,
             "cameraBlocked": camera_blocked,
         },
         "stats": {
-            "personCount": face_count,
+            "personCount": person_count,
             "phoneCount": phone_count,
             "displayCount": 0,
             "bookCount": sum(1 for o in unauthorized_objects if o["label"] == "book"),
@@ -681,9 +681,16 @@ def analyze_request(req: AnalyzeRequest) -> Dict[str, Any]:
     }
     if CV_DEBUG:
         response["debug"] = {
-            "faceDetectors": face_details,
-            "frame": {"height": int(img.shape[0]), "width": int(img.shape[1])},
-        }
+        "personCount": person_count,
+        "gaze": {
+            "direction": gaze_direction,
+            "confidence": gaze_confidence,
+        },
+        "frame": {
+            "height": int(img.shape[0]),
+            "width": int(img.shape[1]),
+        },
+}
 
     try:
         for violation in violations:
@@ -695,11 +702,11 @@ def analyze_request(req: AnalyzeRequest) -> Dict[str, Any]:
                 float(violation.get("confidence", 0.0)),
             )
         logger.info(
-            "[PROCTOR_TRACE][adapter][analyze] session=%s violations=%d types=%s faceCount=%d phone=%d",
+            "[PROCTOR_TRACE][adapter][analyze] session=%s violations=%d types=%s PersonCount=%d phone=%d",
             sid,
             len(violations),
             [v.get("eventType") for v in violations],
-            face_count,
+            person_count,
             phone_count,
         )
     except Exception:
