@@ -6,7 +6,8 @@ import {
   InvitationServiceError,
   getPublicInvitationDetails,
   sendBulkTestInvitations,
-  buildInviteLink
+  buildInviteLink,
+  buildSebQuitLink
 } from '../services/invitationService.js';
 import { buildSebConfigXml } from '../services/sebConfigService.js';
 
@@ -76,7 +77,10 @@ export async function getInvitationSebConfig(req: AuthenticatedRequest, res: Res
     // candidate continues inside SEB, same as the normal browser flow.
     await getPublicInvitationDetails(token);
 
-    const xml = buildSebConfigXml(buildInviteLink(token));
+    const startUrl = buildInviteLink(token);
+const quitUrl = buildSebQuitLink(token);
+
+const xml = buildSebConfigXml(startUrl, quitUrl);
 
     res.setHeader('Content-Type', 'application/seb');
     res.setHeader('Content-Disposition', 'inline; filename="talentstaq-exam.seb"');

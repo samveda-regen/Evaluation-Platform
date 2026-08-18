@@ -2,6 +2,7 @@ import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { useAuthStore } from './context/authStore';
 
 // Admin pages
+import SebQuit from './pages/candidate/SebQuit';
 import AdminLogin from './pages/admin/AdminLogin';
 import ImpersonationAccept from './pages/admin/ImpersonationAccept';
 import ForgotPassword from './pages/admin/ForgotPassword';
@@ -158,7 +159,10 @@ export default function App() {
 
       {/* Public: phone camera capture for ID verification */}
       <Route path="/phone-capture/:sessionId" element={<PhoneCapture />} />
-
+<Route
+  path="/test/quit-seb"
+  element={<SebQuit />}
+/>
       {/* 404 */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -13,6 +13,7 @@ const BATCH_DELAY_MS = 1000;
 const EMAIL_SEND_MAX_ATTEMPTS = 3;
 const EMAIL_SEND_RETRY_DELAY_MS = 1500;
 const CANDIDATE_LOGIN_PATH = '/test/login';
+const CANDIDATE_SEB_QUIT_PATH = '/test/quit-seb';
 
 export function formatExamDate(startTime: Date | null | undefined): string | undefined {
   if (!startTime) return undefined;
@@ -156,6 +157,9 @@ function getFrontendInviteBaseUrl(): string {
 
 export function buildInviteLink(token: string): string {
   return `${normalizeBaseUrl(getFrontendInviteBaseUrl())}${CANDIDATE_LOGIN_PATH}?token=${encodeURIComponent(token)}`;
+}
+export function buildSebQuitLink(token: string): string {
+  return `${normalizeBaseUrl(getFrontendInviteBaseUrl())}${CANDIDATE_SEB_QUIT_PATH}?token=${encodeURIComponent(token)}`;
 }
 
 function isValidEmail(email: string): boolean {

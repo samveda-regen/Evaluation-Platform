@@ -91,7 +91,11 @@ export default function CandidateLogin() {
       // only auto-allows an exact match to that one URL. TestComplete.tsx's Close button
       // navigates back to this identical string so SEB recognizes it as the quit trigger
       // instead of blocking it.
-      localStorage.setItem('sebQuitUrl', window.location.href);
+      const sebQuitToken = usingLinkToken ? invitationToken : codeOrToken;
+const sebQuitUrl =
+  `${window.location.origin}/test/quit-seb?token=${encodeURIComponent(sebQuitToken)}`;
+
+localStorage.setItem('sebQuitUrl', sebQuitUrl);
       toast.success(data.message || 'Invitation accepted');
       navigate('/test/instructions');
     } catch (err: unknown) {

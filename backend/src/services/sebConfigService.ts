@@ -16,15 +16,9 @@ function xmlEscape(value: string): string {
     .replace(/'/g, '&apos;');
 }
 
-export function buildSebConfigXml(startUrl: string): string {
-  const escapedStartUrl = xmlEscape(startUrl);
-  // Exactly startUrl, unmodified — the one URL guaranteed to be allowed, since
-  // URLFilterEnable's auto-generated rule is generated from this exact string. Any other
-  // path (even same-origin) gets hard-blocked, confirmed in testing (a "Page Blocked"
-  // dialog). CandidateLogin.tsx stores this same exact URL (window.location.href at
-  // login, which is this page) to localStorage so TestComplete.tsx's Close button can
-  // navigate back to the identical string later.
-  const escapedQuitUrl = escapedStartUrl;
+export function buildSebConfigXml(startUrl: string, quitUrl: string): string {
+ const escapedStartUrl = xmlEscape(startUrl);
+ const escapedQuitUrl = xmlEscape(quitUrl);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

@@ -63,24 +63,23 @@ export default function TestComplete() {
   // should just go back to the login page like before.
   const isRunningInSEB = () => /SEB[/ ]/i.test(navigator.userAgent) || navigator.userAgent.includes('SafeExamBrowser');
 
-  const handleClose = () => {
-    // Read before resetTest()/logoutCandidate() clear things out below.
-    const sebQuitUrl = localStorage.getItem('sebQuitUrl');
-    resetTest();
-    logoutCandidate();
-    localStorage.removeItem('attemptId');
-    localStorage.removeItem('attemptStartTime');
-    localStorage.removeItem('sebQuitUrl');
-    if (isRunningInSEB() && sebQuitUrl) {
-      // SEB watches for navigation to this exact URL (the same string sebConfigService.ts
-      // used as the .seb file's quitURL — anything else gets hard-blocked by the URL
-      // filter's auto-allow-only-the-startURL rule) and intercepts it to quit the browser
-      // instead of loading it — must be a real navigation, not client-side routing.
-      window.location.href = sebQuitUrl;
-      return;
-    }
-    navigate('/test/login');
-  };
+ const handleClose = () => {
+  const sebQuitUrl = localStorage.getItem('sebQuitUrl');
+
+  resetTest();
+  logoutCandidate();
+  localStorage.removeItem('attemptId');
+  localStorage.removeItem('attemptStartTime');
+  localStorage.removeItem('sebQuitUrl');
+
+  if (isRunningInSEB() && sebQuitUrl) {
+    // A real navigation is required so SEB can detect its configured quitURL.
+    window.location.href = sebQuitUrl;
+    return;
+  }
+
+  navigate('/test/login');
+};
 
   const handleDownloadReceipt = () => {
     const lines = [
