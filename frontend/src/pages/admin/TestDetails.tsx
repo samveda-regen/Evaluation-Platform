@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { Test, MCQQuestion, CodingQuestion } from '../../types';
+import type { CommunicationSubType } from '../../types';
 import TestCandidatesPanel from './TestCandidatesPanel';
 import TestAIProctoring from './TestAIProctoring';
 import TestSettings from './TestSettings';
@@ -33,6 +34,10 @@ import {
   Link2,
   Upload,
   Pencil,
+  PenLine,
+  Headphones,
+  BookOpen,
+  Mic,
 } from 'lucide-react';
 
 interface InvitationSummary {
@@ -56,13 +61,32 @@ interface BehavioralQuestion {
   expectedAnswer?: string;
 }
 
+interface CommunicationQuestion {
+  id: string;
+  subType: CommunicationSubType;
+  title: string;
+  description?: string | null;
+  marks: number;
+  difficulty?: string;
+  topic?: string | null;
+  tags?: string[];
+  options?: string[];
+  correctAnswers?: number[];
+  explanation?: string | null;
+  passage?: { title: string; passageText: string } | null;
+  recordingTimeLimit?: number | null;
+  stimulusType?: string | null;
+  evaluationNotes?: string | null;
+}
+
 interface TestQuestion {
   id: string;
-  questionType: 'mcq' | 'coding' | 'behavioral' | string;
+  questionType: 'mcq' | 'coding' | 'behavioral' | 'communication' | string;
   orderIndex: number;
   mcqQuestion?: MCQQuestion;
   codingQuestion?: CodingQuestion;
   behavioralQuestion?: BehavioralQuestion;
+  communicationQuestion?: CommunicationQuestion;
 }
 
 type EditableQuestionPayload = Record<string, unknown> & {
@@ -430,6 +454,7 @@ export default function TestDetails() {
       type === 'mcq' ? q.mcqQuestion
       : type === 'coding' ? q.codingQuestion
       : type === 'behavioral' ? q.behavioralQuestion
+      : type === 'communication' ? q.communicationQuestion
       : null
     ) as EditableQuestionPayload | null;
 
@@ -470,6 +495,19 @@ export default function TestDetails() {
         tags: parseJsonArray(rawQuestion.tags),
       };
       navigate(`/admin/behavioral/${rawQuestion.id}/edit`, {
+        state: { question, returnTo: `/admin/tests/${testId}?tab=questions` },
+      });
+      return;
+    }
+
+    if (type === 'communication') {
+      const question = {
+        ...rawQuestion,
+        options: parseJsonArray(rawQuestion.options),
+        correctAnswers: parseJsonArray(rawQuestion.correctAnswers),
+        tags: parseJsonArray(rawQuestion.tags),
+      };
+      navigate(`/admin/communication/${rawQuestion.id}/edit`, {
         state: { question, returnTo: `/admin/tests/${testId}?tab=questions` },
       });
       return;
@@ -574,20 +612,21 @@ export default function TestDetails() {
   /* -- Questions-tab computed values -- */
   const existingLibraryQuestionIds = Array.from(new Set(
     questions
-      .map(q => q.mcqQuestion?.id || q.codingQuestion?.id || q.behavioralQuestion?.id)
+      .map(q => q.mcqQuestion?.id || q.codingQuestion?.id || q.behavioralQuestion?.id || q.communicationQuestion?.id)
       .filter((id): id is string => Boolean(id))
   ));
   const qTextOf = (q: TestQuestion): string =>
     (q.questionType === 'mcq' ? q.mcqQuestion?.questionText
       : q.questionType === 'coding' ? q.codingQuestion?.title
+      : q.questionType === 'communication' ? q.communicationQuestion?.title
       : q.behavioralQuestion?.title) || '';
   const qDiffOf = (q: TestQuestion): string =>
-    (((q.mcqQuestion as any)?.difficulty || (q.codingQuestion as any)?.difficulty || (q.behavioralQuestion as any)?.difficulty) || 'medium').toLowerCase();
+    (((q.mcqQuestion as any)?.difficulty || (q.codingQuestion as any)?.difficulty || (q.behavioralQuestion as any)?.difficulty || (q.communicationQuestion as any)?.difficulty) || 'medium').toLowerCase();
   const qTagsOf = (q: TestQuestion): string[] =>
-    (((q.mcqQuestion as any)?.tags || (q.codingQuestion as any)?.tags || (q.behavioralQuestion as any)?.tags || []) as string[])
+    (((q.mcqQuestion as any)?.tags || (q.codingQuestion as any)?.tags || (q.behavioralQuestion as any)?.tags || (q.communicationQuestion as any)?.tags || []) as string[])
       .filter(Boolean);
   const qMarksOf = (q: TestQuestion): number =>
-    q.mcqQuestion?.marks || q.codingQuestion?.marks || q.behavioralQuestion?.marks || 0;
+    q.mcqQuestion?.marks || q.codingQuestion?.marks || q.behavioralQuestion?.marks || q.communicationQuestion?.marks || 0;
   const qTagOptions = Array.from(new Set(questions.flatMap(qTagsOf))).sort((a, b) => a.localeCompare(b));
   const filteredQs = questions.filter(q => {
     const matchSearch = !qSearch || qTextOf(q).toLowerCase().includes(qSearch.toLowerCase());
@@ -613,7 +652,8 @@ export default function TestDetails() {
   const mcqCount       = questions.filter(q => q.questionType === 'mcq').length;
   const codingCount    = questions.filter(q => q.questionType === 'coding').length;
   const behavioralCount = questions.filter(q => q.questionType === 'behavioral').length;
-  const compMax        = Math.max(mcqCount, codingCount, behavioralCount, 1);
+  const communicationCount = questions.filter(q => q.questionType === 'communication').length;
+  const compMax        = Math.max(mcqCount, codingCount, behavioralCount, communicationCount, 1);
 
   const totalAttempts = analytics?.totalAttempts ?? test._count?.attempts ?? 0;
   const completionPct = analytics && analytics.totalAttempts > 0
@@ -650,10 +690,14 @@ export default function TestDetails() {
     { id: 'ai-proctoring', label: 'AI Proctoring', icon: <ShieldCheck     size={15} /> },
     { id: 'settings',      label: 'Settings',      icon: <Settings2       size={15} /> },
   ];
-  const newQuestionItems = [
+  const newQuestionItems: { label: string; path: string; initialSubType?: CommunicationSubType }[] = [
     { label: 'MCQ', path: '/admin/mcq/new' },
     { label: 'Coding', path: '/admin/coding/new' },
     { label: 'Behavioral', path: '/admin/behavioral/new' },
+    { label: 'Written', path: '/admin/communication/new', initialSubType: 'WRITTEN' },
+    { label: 'Listening', path: '/admin/communication/new', initialSubType: 'LISTENING' },
+    { label: 'Reading', path: '/admin/communication/new', initialSubType: 'READING' },
+    { label: 'Speaking', path: '/admin/communication/new', initialSubType: 'SPEAKING' },
   ];
   const activateNewQuestionItem = (index: number) => {
     const item = newQuestionItems[index];
@@ -663,6 +707,7 @@ export default function TestDetails() {
       state: {
         addToTestId: testId,
         returnTo: `/admin/tests/${testId}?tab=questions`,
+        ...(item.initialSubType ? { initialSubType: item.initialSubType } : {}),
       },
     });
   };
@@ -839,9 +884,10 @@ export default function TestDetails() {
             <div className="p-5" style={{ backgroundColor: 'white', borderRadius: 'var(--admin-card-radius)', boxShadow: 'var(--admin-card-shadow)' }}>
               <h3 className="text-sm font-semibold mb-4" style={{ color: 'var(--admin-text)' }}>Composition</h3>
               {[
-                { label: 'MCQ',        count: mcqCount,        color: 'var(--admin-accent)' },
-                { label: 'Coding',     count: codingCount,     color: 'var(--admin-accent-hover)' },
-                { label: 'Behavioral', count: behavioralCount, color: 'var(--admin-accent-hover)' },
+                { label: 'MCQ',           count: mcqCount,           color: 'var(--admin-accent)' },
+                { label: 'Coding',        count: codingCount,        color: 'var(--admin-accent-hover)' },
+                { label: 'Behavioral',    count: behavioralCount,    color: 'var(--admin-accent-hover)' },
+                { label: 'Communication', count: communicationCount, color: 'var(--admin-accent-hover)' },
               ].map(item => (
                 <div key={item.label} className="mb-3">
                   <div className="flex items-center justify-between mb-1.5">
@@ -909,6 +955,7 @@ export default function TestDetails() {
                 { value: 'mcq', label: 'MCQ' },
                 { value: 'coding', label: 'Coding' },
                 { value: 'behavioral', label: 'Behavioral' },
+                { value: 'communication', label: 'Communication' },
               ]}
               style={{ width: '150px', minWidth: '150px' }}
             />
@@ -964,8 +1011,8 @@ export default function TestDetails() {
                 <ChevronDown size={12} color="white" />
               </button>
               {showNewQMenu && (
-                <div className="absolute right-0 top-full mt-1 w-40 rounded-xl border py-1 z-20"
-                  style={{ backgroundColor: 'white', borderColor: 'var(--admin-border)', boxShadow: '0 4px 16px rgba(0,0,0,0.10)' }}>
+                <div className="absolute right-0 top-full mt-1 w-40 rounded-xl border py-1 z-20 overflow-y-auto"
+                  style={{ backgroundColor: 'white', borderColor: 'var(--admin-border)', boxShadow: '0 4px 16px rgba(0,0,0,0.10)', maxHeight: '280px' }}>
                   {newQuestionItems.map((item, index) => (
                     <button key={item.label} onClick={() => activateNewQuestionItem(index)}
                       onMouseEnter={() => setNewQMenuIndex(index)}
@@ -1044,6 +1091,16 @@ export default function TestDetails() {
                       const marks = qMarksOf(q);
                       const isSelected = selectedQIds.has(q.id);
 
+                      const communicationTypeMap: Record<CommunicationSubType, { label: string; bg: string; color: string; icon: JSX.Element }> = {
+                        WRITTEN: { label: 'Written', bg: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)',
+                          icon: <PenLine size={11} color="var(--admin-accent-hover)" /> },
+                        LISTENING: { label: 'Listening', bg: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)',
+                          icon: <Headphones size={11} color="var(--admin-accent-hover)" /> },
+                        READING: { label: 'Reading', bg: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)',
+                          icon: <BookOpen size={11} color="var(--admin-accent-hover)" /> },
+                        SPEAKING: { label: 'Speaking', bg: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)',
+                          icon: <Mic size={11} color="var(--admin-accent-hover)" /> },
+                      };
                       const typeMap: Record<string, { label: string; bg: string; color: string; icon: JSX.Element }> = {
                         mcq: { label: 'MCQ', bg: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)',
                           icon: <CheckSquare size={11} color="var(--admin-accent-hover)" /> },
@@ -1051,6 +1108,9 @@ export default function TestDetails() {
                           icon: <Code2 size={11} color="#C2410C" /> },
                         behavioral: { label: 'Behavioral', bg: 'var(--admin-accent-disabled)', color: 'var(--admin-accent-hover)',
                           icon: <Brain size={11} color="var(--admin-accent-hover)" /> },
+                        communication: q.communicationQuestion
+                          ? communicationTypeMap[q.communicationQuestion.subType]
+                          : communicationTypeMap.WRITTEN,
                       };
                       const tc = typeMap[q.questionType] || typeMap.mcq;
 
@@ -1078,6 +1138,15 @@ export default function TestDetails() {
                               const arr = typeof raw === 'string' ? JSON.parse(raw) : raw;
                               return Array.isArray(arr) ? arr[0] : String(raw).split(',')[0];
                             } catch { return 'Code'; }
+                          })()
+                        : q.questionType === 'communication'
+                        ? (() => {
+                            const cq = q.communicationQuestion;
+                            if (!cq) return 'Communication';
+                            if (cq.subType === 'WRITTEN') return 'Free text response';
+                            if (cq.subType === 'SPEAKING') return `${cq.recordingTimeLimit ?? 120}s recording`;
+                            if (cq.subType === 'READING') return cq.passage?.title || 'Reading passage';
+                            return `Audio · ${cq.options?.length ?? 0} options`; // LISTENING
                           })()
                         : 'Free text';
 

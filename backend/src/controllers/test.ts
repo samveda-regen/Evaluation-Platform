@@ -18,6 +18,7 @@ import {
   normalizeCustomAIViolationEvents,
   parseStoredCustomAIViolationEvents,
 } from '../utils/proctoringConfig.js';
+import { buildCreateData as buildCommunicationCreateData, VALID_SUB_TYPES as VALID_COMMUNICATION_SUB_TYPES, serializeCommunicationQuestion } from './communicationQuestion.js';
 
 const TEST_SCOPED_TAG = '__test_scoped__';
 const MAX_TEST_VIOLATIONS = 150;
@@ -1533,7 +1534,63 @@ export async function addCustomQuestionToTest(req: AuthenticatedRequest, res: Re
       return;
     }
 
-    res.status(400).json({ error: 'Invalid questionType. Use mcq, coding, or behavioral.' });
+    if (questionType === 'communication') {
+      const subType = VALID_COMMUNICATION_SUB_TYPES.includes(req.body.subType) ? req.body.subType : null;
+      if (!subType) {
+        res.status(400).json({ error: 'Valid subType is required (WRITTEN, LISTENING, READING, or SPEAKING).' });
+        return;
+      }
+
+      const result = await buildCommunicationCreateData(req, subType);
+      if ('error' in result) {
+        res.status(400).json({ error: result.error });
+        return;
+      }
+
+      // Test-scoped custom questions use the same "__test_scoped__" tag marker as the mcq/coding/
+      // behavioral branches above (toTestScopedTagJson) so they don't clutter the general library
+      // search — this intentionally overrides buildCommunicationCreateData's own plain tag handling.
+      const data = { ...result.data, tags: toTestScopedTagJson(testId, req.body.tags) };
+
+      const [question, testQuestion] = await prisma.$transaction(async (tx) => {
+        const createdQuestion = await tx.communicationQuestion.create({
+          data: {
+            ...data,
+            source: QuestionSource.CUSTOM,
+            repositoryCategory: QuestionRepositoryCategory.COMMUNICATION,
+            isEnabled: true,
+            adminId: req.admin!.id
+          } as Parameters<typeof tx.communicationQuestion.create>[0]['data']
+        });
+
+        const createdTestQuestion = await tx.testQuestion.create({
+          data: {
+            testId,
+            questionType: 'communication',
+            communicationQuestionId: createdQuestion.id,
+            orderIndex: resolvedOrder,
+            sectionId: sectionId ?? null
+          },
+          include: {
+            mcqQuestion: true,
+            codingQuestion: true,
+            behavioralQuestion: true,
+            communicationQuestion: true
+          }
+        });
+
+        return [createdQuestion, createdTestQuestion];
+      });
+
+      res.status(201).json({
+        message: 'Custom communication question created and added to test.',
+        testQuestion,
+        question: serializeCommunicationQuestion(question)
+      });
+      return;
+    }
+
+    res.status(400).json({ error: 'Invalid questionType. Use mcq, coding, behavioral, or communication.' });
   } catch (error) {
     console.error('Add custom question to test error:', error);
     res.status(500).json({ error: 'Internal server error' });

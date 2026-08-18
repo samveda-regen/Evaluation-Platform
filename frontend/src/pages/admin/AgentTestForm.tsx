@@ -9,6 +9,7 @@ import AgentLibraryPickerModal from './AgentLibraryPickerModal';
 import AgentNewQuestionModal from './AgentNewQuestionModal';
 import type {
   JobProfile, QuestionSelection, SuggestedMCQ, SuggestedCoding, SuggestedBehavioral,
+  SuggestedWritten, SuggestedSpeaking, SuggestedReadingGroup,
   QuestionSuggestions, PreviewEntry, LibraryPicks, SuggestionType, QuestionSectionKey, ReviewDetails,
 } from './agentTestForm.types';
 import { QUESTION_SECTIONS } from './agentTestForm.types';
@@ -207,6 +208,9 @@ export default function AgentTestForm() {
   const [mcqCount,    setMcqCount]    = useState(10);
   const [codingCount, setCodingCount] = useState(2);
   const [behavioralCount, setBehavioralCount] = useState(2);
+  const [writtenCount, setWrittenCount] = useState(0);
+  const [readingCount, setReadingCount] = useState(0);
+  const [speakingCount, setSpeakingCount] = useState(0);
   // Empty until the recruiter explicitly picks which question types to include (or Analyze
   // pre-picks whichever ones it suggested a count > 0 for) — nothing is shown/counted otherwise.
   const [selectedSections, setSelectedSections] = useState<Set<QuestionSectionKey>>(new Set());
@@ -263,6 +267,9 @@ export default function AgentTestForm() {
       mcqQuestionIds: selection.mcqQuestionIds,
       codingQuestionIds: selection.codingQuestionIds,
       behavioralQuestionIds: selection.behavioralQuestionIds,
+      writtenQuestionIds: selection.writtenQuestionIds,
+      readingQuestionIds: selection.readingQuestionIds,
+      speakingQuestionIds: selection.speakingQuestionIds,
     })
       .then(({ data }) => { if (data.success && data.data) setReviewDetails(data.data); })
       .catch(() => toast.error('Failed to load full question details for review'))
@@ -310,11 +317,17 @@ export default function AgentTestForm() {
         if (key === 'mcq') setMcqCount(0);
         if (key === 'coding') setCodingCount(0);
         if (key === 'behavioral') setBehavioralCount(0);
+        if (key === 'written') setWrittenCount(0);
+        if (key === 'reading') setReadingCount(0);
+        if (key === 'speaking') setSpeakingCount(0);
       } else {
         next.add(key);
         if (key === 'mcq' && mcqCount === 0) setMcqCount(10);
         if (key === 'coding' && codingCount === 0) setCodingCount(2);
         if (key === 'behavioral' && behavioralCount === 0) setBehavioralCount(2);
+        if (key === 'written' && writtenCount === 0) setWrittenCount(2);
+        if (key === 'reading' && readingCount === 0) setReadingCount(2);
+        if (key === 'speaking' && speakingCount === 0) setSpeakingCount(2);
       }
       return next;
     });
@@ -393,12 +406,12 @@ export default function AgentTestForm() {
   /* -- Step 2 -> 3 -- */
   const handleGenerateTest = async () => {
     if (!skills.length)                              { toast.error('At least one skill is required'); return; }
-    if (selectedSections.size === 0) { toast.error('No section is selected. Choose at least one question type (MCQ, Coding, or Behavioral) to continue.'); return; }
-    if (mcqCount < 0 || codingCount < 0 || behavioralCount < 0) { toast.error('Question counts cannot be negative'); return; }
-    if (!mcqCount && !codingCount && !behavioralCount) { toast.error('Enter at least one question for the selected section(s)'); return; }
+    if (selectedSections.size === 0) { toast.error('No section is selected. Choose at least one question type to continue.'); return; }
+    if (mcqCount < 0 || codingCount < 0 || behavioralCount < 0 || writtenCount < 0 || readingCount < 0 || speakingCount < 0) { toast.error('Question counts cannot be negative'); return; }
+    if (!mcqCount && !codingCount && !behavioralCount && !writtenCount && !readingCount && !speakingCount) { toast.error('Enter at least one question for the selected section(s)'); return; }
     setLoading(true);
     try {
-      const { data } = await adminApi.generateTest({ jobProfile, skills, difficulty, mcqCount, codingCount, behavioralCount });
+      const { data } = await adminApi.generateTest({ jobProfile, skills, difficulty, mcqCount, codingCount, behavioralCount, writtenCount, readingCount, speakingCount });
       if (data.success && data.data) {
         const sel: QuestionSelection = data.data;
         setSelection(sel);
@@ -406,6 +419,9 @@ export default function AgentTestForm() {
           mcq: (sel.mcqPreviews ?? []).map(p => ({ ...p, topic: p.topic ?? null, selected: true })),
           coding: (sel.codingPreviews ?? []).map(p => ({ ...p, topic: p.topic ?? null, selected: true })),
           behavioral: (sel.behavioralPreviews ?? []).map(p => ({ ...p, topic: p.topic ?? null, selected: true })),
+          written: (sel.writtenPreviews ?? []).map(p => ({ ...p, topic: p.topic ?? null, selected: true })),
+          reading: (sel.readingPreviews ?? []).map(p => ({ ...p, topic: p.topic ?? null, selected: true })),
+          speaking: (sel.speakingPreviews ?? []).map(p => ({ ...p, topic: p.topic ?? null, selected: true })),
         });
         setSuggestions(null);
         setTestSettings(p => ({
@@ -415,7 +431,8 @@ export default function AgentTestForm() {
           duration:    sel.suggestedDuration    || 60,
           startTime:   p.startTime || toLocalDateTimeValue(new Date(Date.now() + 60_000)),
         }));
-        const total = sel.mcqQuestionIds.length + sel.codingQuestionIds.length + sel.behavioralQuestionIds.length;
+        const total = sel.mcqQuestionIds.length + sel.codingQuestionIds.length + sel.behavioralQuestionIds.length
+          + sel.writtenQuestionIds.length + sel.readingQuestionIds.length + sel.speakingQuestionIds.length;
         if (total === 0) {
           toast.error('No matching questions found in the library. Add questions first.');
         } else {
@@ -439,12 +456,15 @@ export default function AgentTestForm() {
     setSuggesting(true);
     setSuggestions(null); // clear any stale set (e.g. from Regenerate) so the loading state is unambiguous
     try {
-      const { data } = await adminApi.suggestNewQuestions({ jobProfile, skills, difficulty, mcqCount, codingCount, behavioralCount });
+      const { data } = await adminApi.suggestNewQuestions({ jobProfile, skills, difficulty, mcqCount, codingCount, behavioralCount, writtenCount, readingCount, speakingCount });
       if (data.success && data.data) {
         setSuggestions({
           mcq: (data.data.mcq || []).map((q: SuggestedMCQ) => ({ ...q, selected: false })),
           coding: (data.data.coding || []).map((q: SuggestedCoding) => ({ ...q, selected: false })),
           behavioral: (data.data.behavioral || []).map((q: SuggestedBehavioral) => ({ ...q, selected: false })),
+          written: (data.data.written || []).map((q: SuggestedWritten) => ({ ...q, selected: false })),
+          reading: data.data.reading ? { ...(data.data.reading as SuggestedReadingGroup), selected: false } : null,
+          speaking: (data.data.speaking || []).map((q: SuggestedSpeaking) => ({ ...q, selected: false })),
         });
       } else {
         toast.error('Unexpected response from server');
@@ -469,15 +489,45 @@ export default function AgentTestForm() {
   // it caps the COMBINED total of library picks + AI suggestions for that type, never either
   // list on its own, since both lists feed the same final question set.
   const getLimit = (type: SuggestionType) =>
-    type === 'mcq' ? mcqCount : type === 'coding' ? codingCount : behavioralCount;
+    type === 'mcq' ? mcqCount
+    : type === 'coding' ? codingCount
+    : type === 'behavioral' ? behavioralCount
+    : type === 'written' ? writtenCount
+    : type === 'reading' ? readingCount
+    : speakingCount;
 
-  const getSelectedCount = (type: SuggestionType) =>
-    (libraryPicks?.[type] ?? []).filter(q => q.selected).length + (suggestions?.[type] ?? []).filter(q => q.selected).length;
+  // Reading is the one type where an AI suggestion isn't a flat list of independently-selectable
+  // items — it's a single shared-passage group, and selecting it all at once counts as its
+  // `questions.length` toward the Reading limit (it can't be persisted question-by-question, see
+  // SuggestedReadingGroup's doc comment in agentTestForm.types.ts).
+  const getSelectedCount = (type: SuggestionType) => {
+    const libraryCount = (libraryPicks?.[type] ?? []).filter(q => q.selected).length;
+    if (type === 'reading') {
+      return libraryCount + (suggestions?.reading?.selected ? suggestions.reading.questions.length : 0);
+    }
+    const list = type === 'mcq' ? suggestions?.mcq
+      : type === 'coding' ? suggestions?.coding
+      : type === 'behavioral' ? suggestions?.behavioral
+      : type === 'written' ? suggestions?.written
+      : suggestions?.speaking;
+    return libraryCount + (list ?? []).filter(q => q.selected).length;
+  };
 
-  const typeLabel = (type: SuggestionType) => (type === 'mcq' ? 'MCQ' : type === 'coding' ? 'coding' : 'behavioral');
+  const typeLabel = (type: SuggestionType) =>
+    type === 'mcq' ? 'MCQ'
+    : type === 'coding' ? 'coding'
+    : type === 'behavioral' ? 'behavioral'
+    : type === 'written' ? 'written'
+    : type === 'reading' ? 'reading'
+    : 'speaking';
 
-  const toggleSuggestion = (type: SuggestionType, index: number) => {
-    const item = suggestions?.[type]?.[index];
+  const toggleSuggestion = (type: Exclude<SuggestionType, 'reading'>, index: number) => {
+    const list = type === 'mcq' ? suggestions?.mcq
+      : type === 'coding' ? suggestions?.coding
+      : type === 'behavioral' ? suggestions?.behavioral
+      : type === 'written' ? suggestions?.written
+      : suggestions?.speaking;
+    const item = list?.[index];
     if (!item) return;
     if (!item.selected && getSelectedCount(type) >= getLimit(type)) {
       const limit = getLimit(type);
@@ -486,9 +536,26 @@ export default function AgentTestForm() {
     }
     setSuggestions(prev => {
       if (!prev) return prev;
-      const list = [...prev[type]];
-      list[index] = { ...list[index], selected: !list[index].selected };
-      return { ...prev, [type]: list };
+      if (type === 'mcq') { const l = [...prev.mcq]; l[index] = { ...l[index], selected: !l[index].selected }; return { ...prev, mcq: l }; }
+      if (type === 'coding') { const l = [...prev.coding]; l[index] = { ...l[index], selected: !l[index].selected }; return { ...prev, coding: l }; }
+      if (type === 'behavioral') { const l = [...prev.behavioral]; l[index] = { ...l[index], selected: !l[index].selected }; return { ...prev, behavioral: l }; }
+      if (type === 'written') { const l = [...prev.written]; l[index] = { ...l[index], selected: !l[index].selected }; return { ...prev, written: l }; }
+      const l = [...prev.speaking]; l[index] = { ...l[index], selected: !l[index].selected }; return { ...prev, speaking: l };
+    });
+  };
+
+  const toggleReadingSuggestionGroup = () => {
+    setSuggestions(prev => {
+      if (!prev || !prev.reading) return prev;
+      const group = prev.reading;
+      if (!group.selected) {
+        const libraryCount = (libraryPicks?.reading ?? []).filter(q => q.selected).length;
+        if (libraryCount + group.questions.length > readingCount) {
+          toast.error(`This passage has ${group.questions.length} question(s), which would exceed the Reading limit (${readingCount}) set in Step 2 — increase the limit or uncheck some library picks first`);
+          return prev;
+        }
+      }
+      return { ...prev, reading: { ...group, selected: !group.selected } };
     });
   };
 
@@ -551,7 +618,7 @@ export default function AgentTestForm() {
   const setAllSuggestionsSelected = (value: boolean) => {
     // Generic over the list's element type so TS keeps mcq/coding/behavioral's distinct shapes
     // intact — indexing `prev[type]` with a union `type` would otherwise collapse them into one.
-    const applyLimit = <T extends { selected: boolean }>(list: T[], type: SuggestionType): T[] => {
+    const applyLimit = <T extends { selected: boolean }>(list: T[], type: Exclude<SuggestionType, 'reading'>): T[] => {
       if (!value) return list.map(q => ({ ...q, selected: false }));
       const libraryCount = (libraryPicks?.[type] ?? []).filter(q => q.selected).length;
       let remaining = Math.max(0, getLimit(type) - libraryCount);
@@ -560,11 +627,19 @@ export default function AgentTestForm() {
         return { ...q, selected: false };
       });
     };
-    setSuggestions(prev => prev ? {
-      mcq: applyLimit(prev.mcq, 'mcq'),
-      coding: applyLimit(prev.coding, 'coding'),
-      behavioral: applyLimit(prev.behavioral, 'behavioral'),
-    } : prev);
+    setSuggestions(prev => {
+      if (!prev) return prev;
+      const libraryReadingCount = (libraryPicks?.reading ?? []).filter(q => q.selected).length;
+      const readingFits = !!prev.reading && (libraryReadingCount + prev.reading.questions.length) <= readingCount;
+      return {
+        mcq: applyLimit(prev.mcq, 'mcq'),
+        coding: applyLimit(prev.coding, 'coding'),
+        behavioral: applyLimit(prev.behavioral, 'behavioral'),
+        written: applyLimit(prev.written, 'written'),
+        speaking: applyLimit(prev.speaking, 'speaking'),
+        reading: prev.reading ? { ...prev.reading, selected: value && readingFits } : prev.reading,
+      };
+    });
   };
 
   /* -- Step 3 -> 4: persist any checked AI suggestions as real custom questions (same procedure
@@ -575,6 +650,9 @@ export default function AgentTestForm() {
     const selectedLibraryMcq = libraryPicks?.mcq.filter(q => q.selected) ?? [];
     const selectedLibraryCoding = libraryPicks?.coding.filter(q => q.selected) ?? [];
     const selectedLibraryBehavioral = libraryPicks?.behavioral.filter(q => q.selected) ?? [];
+    const selectedLibraryWritten = libraryPicks?.written.filter(q => q.selected) ?? [];
+    const selectedLibraryReading = libraryPicks?.reading.filter(q => q.selected) ?? [];
+    const selectedLibrarySpeaking = libraryPicks?.speaking.filter(q => q.selected) ?? [];
 
     // Carry the original index so an already-persisted suggestion (savedId set below) can be
     // re-marked in place — this is what lets a second "Continue" after Back-ing from Step 4 reuse
@@ -582,6 +660,9 @@ export default function AgentTestForm() {
     const selectedMcq = (suggestions?.mcq ?? []).map((q, i) => ({ q, i })).filter(({ q }) => q.selected);
     const selectedCoding = (suggestions?.coding ?? []).map((q, i) => ({ q, i })).filter(({ q }) => q.selected);
     const selectedBehavioral = (suggestions?.behavioral ?? []).map((q, i) => ({ q, i })).filter(({ q }) => q.selected);
+    const selectedWritten = (suggestions?.written ?? []).map((q, i) => ({ q, i })).filter(({ q }) => q.selected);
+    const selectedSpeaking = (suggestions?.speaking ?? []).map((q, i) => ({ q, i })).filter(({ q }) => q.selected);
+    const selectedReadingGroup = suggestions?.reading?.selected ? suggestions.reading : null;
 
     setSavingSuggestions(true);
     let failures = 0;
@@ -592,6 +673,12 @@ export default function AgentTestForm() {
     const persistedCodingPreviews: PreviewEntry[] = [];
     const persistedBehavioralIds: string[] = [];
     const persistedBehavioralPreviews: PreviewEntry[] = [];
+    const persistedWrittenIds: string[] = [];
+    const persistedWrittenPreviews: PreviewEntry[] = [];
+    const persistedSpeakingIds: string[] = [];
+    const persistedSpeakingPreviews: PreviewEntry[] = [];
+    const persistedReadingIds: string[] = [];
+    const persistedReadingPreviews: PreviewEntry[] = [];
 
     try {
       for (const { q, i } of selectedMcq) {
@@ -691,18 +778,133 @@ export default function AgentTestForm() {
         } catch { failures++; }
       }
 
+      for (const { q, i } of selectedWritten) {
+        if (q.savedId) {
+          persistedWrittenIds.push(q.savedId);
+          persistedWrittenPreviews.push({ id: q.savedId, text: `${q.title}: ${q.description}`.slice(0, 200), difficulty: q.difficulty, topic: q.topic || null });
+          continue;
+        }
+        try {
+          const { data } = await adminApi.createCustomCommunication({
+            subType: 'WRITTEN',
+            title: q.title,
+            description: q.description,
+            evaluationNotes: q.evaluationNotes,
+            marks: q.marks,
+            difficulty: q.difficulty,
+            topic: q.topic,
+            tags: [...q.tags, 'AI Generated'],
+          });
+          const created = data.question;
+          persistedWrittenIds.push(created.id);
+          persistedWrittenPreviews.push({ id: created.id, text: `${created.title}: ${created.description || ''}`.slice(0, 200), difficulty: created.difficulty, topic: created.topic });
+          newlyCreatedCount++;
+          setSuggestions(prev => {
+            if (!prev || !prev.written[i]) return prev;
+            const list = [...prev.written];
+            list[i] = { ...list[i], savedId: created.id };
+            return { ...prev, written: list };
+          });
+        } catch { failures++; }
+      }
+
+      for (const { q, i } of selectedSpeaking) {
+        if (q.savedId) {
+          persistedSpeakingIds.push(q.savedId);
+          persistedSpeakingPreviews.push({ id: q.savedId, text: `${q.title}: ${q.description}`.slice(0, 200), difficulty: q.difficulty, topic: q.topic || null });
+          continue;
+        }
+        try {
+          const { data } = await adminApi.createCustomCommunication({
+            subType: 'SPEAKING',
+            title: q.title,
+            description: q.description,
+            evaluationNotes: q.evaluationNotes,
+            recordingTimeLimit: q.recordingTimeLimit,
+            marks: q.marks,
+            difficulty: q.difficulty,
+            topic: q.topic,
+            tags: [...q.tags, 'AI Generated'],
+          });
+          const created = data.question;
+          persistedSpeakingIds.push(created.id);
+          persistedSpeakingPreviews.push({ id: created.id, text: `${created.title}: ${created.description || ''}`.slice(0, 200), difficulty: created.difficulty, topic: created.topic });
+          newlyCreatedCount++;
+          setSuggestions(prev => {
+            if (!prev || !prev.speaking[i]) return prev;
+            const list = [...prev.speaking];
+            list[i] = { ...list[i], savedId: created.id };
+            return { ...prev, speaking: list };
+          });
+        } catch { failures++; }
+      }
+
+      // Reading is a group: create the shared passage once (or reuse it if already saved from a
+      // prior "Continue" that got Back-ed out of), then create each linked question against it.
+      if (selectedReadingGroup) {
+        if (selectedReadingGroup.savedPassageId && selectedReadingGroup.savedQuestionIds) {
+          persistedReadingIds.push(...selectedReadingGroup.savedQuestionIds);
+          persistedReadingPreviews.push(...selectedReadingGroup.questions.map((q, qi) => ({
+            id: selectedReadingGroup.savedQuestionIds![qi], text: `${selectedReadingGroup.passage.title}: ${q.title}`.slice(0, 200), difficulty: q.difficulty, topic: q.topic || null
+          })));
+        } else {
+          try {
+            const { data: passageData } = await adminApi.createReadingPassage({
+              title: selectedReadingGroup.passage.title,
+              passageText: selectedReadingGroup.passage.passageText,
+            });
+            const passageId = passageData.passage.id;
+            const savedQuestionIds: string[] = [];
+            for (const q of selectedReadingGroup.questions) {
+              try {
+                const { data } = await adminApi.createCustomCommunication({
+                  subType: 'READING',
+                  title: q.title,
+                  passageId,
+                  options: q.options,
+                  correctAnswers: q.correctAnswers,
+                  explanation: q.explanation,
+                  isMultipleChoice: q.correctAnswers.length > 1,
+                  marks: q.marks,
+                  difficulty: q.difficulty,
+                  topic: q.topic,
+                  tags: [...q.tags, 'AI Generated'],
+                });
+                const created = data.question;
+                savedQuestionIds.push(created.id);
+                persistedReadingIds.push(created.id);
+                persistedReadingPreviews.push({ id: created.id, text: `${selectedReadingGroup.passage.title}: ${created.title}`.slice(0, 200), difficulty: created.difficulty, topic: created.topic });
+                newlyCreatedCount++;
+              } catch { failures++; }
+            }
+            setSuggestions(prev => {
+              if (!prev || !prev.reading) return prev;
+              return { ...prev, reading: { ...prev.reading, savedPassageId: passageId, savedQuestionIds } };
+            });
+          } catch { failures += selectedReadingGroup.questions.length; }
+        }
+      }
+
       setSelection(prev => prev ? {
         ...prev,
         mcqQuestionIds: [...selectedLibraryMcq.map(q => q.id), ...persistedMcqIds],
         codingQuestionIds: [...selectedLibraryCoding.map(q => q.id), ...persistedCodingIds],
         behavioralQuestionIds: [...selectedLibraryBehavioral.map(q => q.id), ...persistedBehavioralIds],
+        writtenQuestionIds: [...selectedLibraryWritten.map(q => q.id), ...persistedWrittenIds],
+        readingQuestionIds: [...selectedLibraryReading.map(q => q.id), ...persistedReadingIds],
+        speakingQuestionIds: [...selectedLibrarySpeaking.map(q => q.id), ...persistedSpeakingIds],
         mcqPreviews: [...selectedLibraryMcq, ...persistedMcqPreviews],
         codingPreviews: [...selectedLibraryCoding, ...persistedCodingPreviews],
         behavioralPreviews: [...selectedLibraryBehavioral, ...persistedBehavioralPreviews],
+        writtenPreviews: [...selectedLibraryWritten, ...persistedWrittenPreviews],
+        readingPreviews: [...selectedLibraryReading, ...persistedReadingPreviews],
+        speakingPreviews: [...selectedLibrarySpeaking, ...persistedSpeakingPreviews],
       } : prev);
 
       const totalCount = selectedLibraryMcq.length + selectedLibraryCoding.length + selectedLibraryBehavioral.length
-        + persistedMcqIds.length + persistedCodingIds.length + persistedBehavioralIds.length;
+        + selectedLibraryWritten.length + selectedLibraryReading.length + selectedLibrarySpeaking.length
+        + persistedMcqIds.length + persistedCodingIds.length + persistedBehavioralIds.length
+        + persistedWrittenIds.length + persistedReadingIds.length + persistedSpeakingIds.length;
       toast.success(`${totalCount} question${totalCount === 1 ? '' : 's'} selected for this test${newlyCreatedCount ? ` (${newlyCreatedCount} newly created)` : ''}`);
       if (failures > 0) {
         toast.error(`${failures} question${failures === 1 ? '' : 's'} failed to save`);
@@ -1114,6 +1316,39 @@ export default function AgentTestForm() {
                         />
                       </div>
                     )}
+                    {selectedSections.has('written') && (
+                      <div>
+                        <label style={lbl}>Written Questions</label>
+                        <input type="number"
+                          value={writtenCount}
+                          onChange={e => setWrittenCount(parseNum(e.target.value, 0))}
+                          min={0} max={5}
+                          style={inp} onFocus={focus} onBlur={blur}
+                        />
+                      </div>
+                    )}
+                    {selectedSections.has('reading') && (
+                      <div>
+                        <label style={lbl}>Reading Questions</label>
+                        <input type="number"
+                          value={readingCount}
+                          onChange={e => setReadingCount(parseNum(e.target.value, 0))}
+                          min={0} max={5}
+                          style={inp} onFocus={focus} onBlur={blur}
+                        />
+                      </div>
+                    )}
+                    {selectedSections.has('speaking') && (
+                      <div>
+                        <label style={lbl}>Speaking Questions</label>
+                        <input type="number"
+                          value={speakingCount}
+                          onChange={e => setSpeakingCount(parseNum(e.target.value, 0))}
+                          min={0} max={5}
+                          style={inp} onFocus={focus} onBlur={blur}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1159,7 +1394,7 @@ export default function AgentTestForm() {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                {suggestions && (suggestions.mcq.length + suggestions.coding.length + suggestions.behavioral.length > 0) && (
+                {suggestions && (suggestions.mcq.length + suggestions.coding.length + suggestions.behavioral.length + suggestions.written.length + suggestions.speaking.length + (suggestions.reading ? suggestions.reading.questions.length : 0) > 0) && (
                   <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
                     <button type="button" onClick={() => setAllSuggestionsSelected(true)} style={{ ...btnSecondary, padding: '8px 14px', fontSize: '13px' }}>
                       Select all suggestions
@@ -1184,7 +1419,7 @@ export default function AgentTestForm() {
               <>
               {/* Live per-type running count against the Step 2 limit */}
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', margin: '12px 0 20px' }}>
-                {(['mcq', 'coding', 'behavioral'] as const).filter(t => getLimit(t) > 0).map(t => {
+                {(['mcq', 'coding', 'behavioral', 'written', 'reading', 'speaking'] as const).filter(t => getLimit(t) > 0).map(t => {
                   const count = getSelectedCount(t);
                   const limit = getLimit(t);
                   const atLimit = count >= limit;
@@ -1195,7 +1430,7 @@ export default function AgentTestForm() {
                       color: atLimit ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)',
                       border: `1px solid ${atLimit ? 'var(--admin-accent-disabled)' : 'var(--admin-border)'}`,
                     }}>
-                      {t === 'mcq' ? 'MCQ' : t === 'coding' ? 'Coding' : 'Behavioral'}: {count} / {limit} selected
+                      {t === 'mcq' ? 'MCQ' : t === 'coding' ? 'Coding' : t === 'behavioral' ? 'Behavioral' : t === 'written' ? 'Written' : t === 'reading' ? 'Reading' : 'Speaking'}: {count} / {limit} selected
                     </span>
                   );
                 })}
@@ -1413,6 +1648,214 @@ export default function AgentTestForm() {
                     )}
                   </div>
                 )}
+
+                {/* ---- Written ---- */}
+                {writtenCount > 0 && (
+                  <div>
+                    <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--admin-text)', margin: '0 0 12px' }}>Written</p>
+
+                    {(libraryPicks?.written.length ?? 0) > 0 && (
+                      <div style={{ marginBottom: '14px' }}>
+                        <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>
+                          From Your Question Library ({libraryPicks!.written.length})
+                        </p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {libraryPicks!.written.map((q, i) => {
+                            const atLimit = !q.selected && getSelectedCount('written') >= getLimit('written');
+                            return (
+                              <label key={q.id} style={pickRow(q.selected, atLimit)}>
+                                <input type="checkbox" checked={q.selected} disabled={atLimit} onChange={() => toggleLibraryPick('written', i)}
+                                  style={{ marginTop: '3px', width: '16px', height: '16px', cursor: atLimit ? 'not-allowed' : 'pointer', accentColor: 'var(--admin-button-primary)', flexShrink: 0 }} />
+                                <span style={{ flex: 1, fontSize: '13px', color: 'var(--admin-text)', lineHeight: '1.5' }}>{q.text}</span>
+                                <span style={{ flexShrink: 0, fontSize: '11px', fontWeight: 600, color: 'var(--admin-text-subtle)', textTransform: 'capitalize' }}>{q.difficulty}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>
+                      AI Suggested (New){suggestions && suggestions.written.length > 0 ? ` (${suggestions.written.length})` : ''}
+                    </p>
+                    {suggestions && suggestions.written.length === 0 && (
+                      <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: 0 }}>No new written suggestions.</p>
+                    )}
+                    {suggestions && suggestions.written.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {suggestions.written.map((q, i) => {
+                          const atLimit = !q.selected && getSelectedCount('written') >= getLimit('written');
+                          return (
+                            <label key={i} style={pickRow(q.selected, atLimit)}>
+                              <input type="checkbox" checked={q.selected} disabled={atLimit} onChange={() => toggleSuggestion('written', i)}
+                                style={{ marginTop: '3px', width: '16px', height: '16px', cursor: atLimit ? 'not-allowed' : 'pointer', accentColor: 'var(--admin-button-primary)', flexShrink: 0 }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 4px' }}>{q.title}</p>
+                                <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: '0 0 8px', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{q.description}</p>
+                                {q.evaluationNotes && (
+                                  <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 8px', lineHeight: '1.5' }}><strong>Evaluation notes:</strong> {q.evaluationNotes}</p>
+                                )}
+                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--admin-text-subtle)' }}>
+                                  <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{q.difficulty}</span>
+                                  <span>·</span>
+                                  <span>{q.marks} pts</span>
+                                  <span>·</span>
+                                  <span>~{q.suggestedTimeEstimateSec}s</span>
+                                  {q.topic && (<><span>·</span><span>{q.topic}</span></>)}
+                                  {q.tags.map(t => (
+                                    <span key={t} style={{ padding: '1px 8px', borderRadius: '999px', backgroundColor: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)' }}>{t}</span>
+                                  ))}
+                                </div>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ---- Reading ---- */}
+                {readingCount > 0 && (
+                  <div>
+                    <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--admin-text)', margin: '0 0 12px' }}>Reading</p>
+
+                    {(libraryPicks?.reading.length ?? 0) > 0 && (
+                      <div style={{ marginBottom: '14px' }}>
+                        <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>
+                          From Your Question Library ({libraryPicks!.reading.length})
+                        </p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {libraryPicks!.reading.map((q, i) => {
+                            const atLimit = !q.selected && getSelectedCount('reading') >= getLimit('reading');
+                            return (
+                              <label key={q.id} style={pickRow(q.selected, atLimit)}>
+                                <input type="checkbox" checked={q.selected} disabled={atLimit} onChange={() => toggleLibraryPick('reading', i)}
+                                  style={{ marginTop: '3px', width: '16px', height: '16px', cursor: atLimit ? 'not-allowed' : 'pointer', accentColor: 'var(--admin-button-primary)', flexShrink: 0 }} />
+                                <span style={{ flex: 1, fontSize: '13px', color: 'var(--admin-text)', lineHeight: '1.5' }}>{q.text}</span>
+                                <span style={{ flexShrink: 0, fontSize: '11px', fontWeight: 600, color: 'var(--admin-text-subtle)', textTransform: 'capitalize' }}>{q.difficulty}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>
+                      AI Suggested (New){suggestions?.reading ? ` (1 passage, ${suggestions.reading.questions.length} questions)` : ''}
+                    </p>
+                    {suggestions && !suggestions.reading && (
+                      <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: 0 }}>No new reading passage suggested.</p>
+                    )}
+                    {suggestions?.reading && (() => {
+                      const group = suggestions.reading;
+                      const atLimit = !group.selected && (getSelectedCount('reading') + group.questions.length) > getLimit('reading');
+                      return (
+                        <label style={pickRow(group.selected, atLimit)}>
+                          <input type="checkbox" checked={group.selected} disabled={atLimit} onChange={toggleReadingSuggestionGroup}
+                            style={{ marginTop: '3px', width: '16px', height: '16px', cursor: atLimit ? 'not-allowed' : 'pointer', accentColor: 'var(--admin-button-primary)', flexShrink: 0 }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p style={{ fontSize: '14px', fontWeight: 700, color: 'var(--admin-text)', margin: '0 0 4px' }}>{group.passage.title}</p>
+                            <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: '0 0 12px', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{group.passage.passageText}</p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                              {group.questions.map((q, qi) => (
+                                <div key={qi} style={{ padding: '10px 12px', borderRadius: '8px', backgroundColor: '#F9FAFB', border: '1px solid var(--admin-border)' }}>
+                                  <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 8px' }}>{qi + 1}. {q.title}</p>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '8px' }}>
+                                    {q.options.map((opt, oi) => (
+                                      <div key={oi} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: q.correctAnswers.includes(oi) ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)', fontWeight: q.correctAnswers.includes(oi) ? 600 : 400 }}>
+                                        <span>{q.correctAnswers.includes(oi) ? '✓' : '○'}</span>
+                                        <span>{opt}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {q.explanation && (
+                                    <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 8px', lineHeight: '1.5' }}><strong>Explanation:</strong> {q.explanation}</p>
+                                  )}
+                                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--admin-text-subtle)' }}>
+                                    <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{q.difficulty}</span>
+                                    <span>·</span>
+                                    <span>{q.marks} pts</span>
+                                    {q.topic && (<><span>·</span><span>{q.topic}</span></>)}
+                                    {q.tags.map(t => (
+                                      <span key={t} style={{ padding: '1px 8px', borderRadius: '999px', backgroundColor: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)' }}>{t}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    })()}
+                  </div>
+                )}
+
+                {/* ---- Speaking ---- */}
+                {speakingCount > 0 && (
+                  <div>
+                    <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--admin-text)', margin: '0 0 12px' }}>Speaking</p>
+
+                    {(libraryPicks?.speaking.length ?? 0) > 0 && (
+                      <div style={{ marginBottom: '14px' }}>
+                        <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>
+                          From Your Question Library ({libraryPicks!.speaking.length})
+                        </p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {libraryPicks!.speaking.map((q, i) => {
+                            const atLimit = !q.selected && getSelectedCount('speaking') >= getLimit('speaking');
+                            return (
+                              <label key={q.id} style={pickRow(q.selected, atLimit)}>
+                                <input type="checkbox" checked={q.selected} disabled={atLimit} onChange={() => toggleLibraryPick('speaking', i)}
+                                  style={{ marginTop: '3px', width: '16px', height: '16px', cursor: atLimit ? 'not-allowed' : 'pointer', accentColor: 'var(--admin-button-primary)', flexShrink: 0 }} />
+                                <span style={{ flex: 1, fontSize: '13px', color: 'var(--admin-text)', lineHeight: '1.5' }}>{q.text}</span>
+                                <span style={{ flexShrink: 0, fontSize: '11px', fontWeight: 600, color: 'var(--admin-text-subtle)', textTransform: 'capitalize' }}>{q.difficulty}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <p style={{ fontSize: '11px', fontWeight: 700, color: 'var(--admin-text-subtle)', textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 8px' }}>
+                      AI Suggested (New){suggestions && suggestions.speaking.length > 0 ? ` (${suggestions.speaking.length})` : ''}
+                    </p>
+                    {suggestions && suggestions.speaking.length === 0 && (
+                      <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: 0 }}>No new speaking suggestions.</p>
+                    )}
+                    {suggestions && suggestions.speaking.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {suggestions.speaking.map((q, i) => {
+                          const atLimit = !q.selected && getSelectedCount('speaking') >= getLimit('speaking');
+                          return (
+                            <label key={i} style={pickRow(q.selected, atLimit)}>
+                              <input type="checkbox" checked={q.selected} disabled={atLimit} onChange={() => toggleSuggestion('speaking', i)}
+                                style={{ marginTop: '3px', width: '16px', height: '16px', cursor: atLimit ? 'not-allowed' : 'pointer', accentColor: 'var(--admin-button-primary)', flexShrink: 0 }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <p style={{ fontSize: '14px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 4px' }}>{q.title}</p>
+                                <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: '0 0 8px', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{q.description}</p>
+                                {q.evaluationNotes && (
+                                  <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 8px', lineHeight: '1.5' }}><strong>Grading benchmark:</strong> {q.evaluationNotes}</p>
+                                )}
+                                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--admin-text-subtle)' }}>
+                                  <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>{q.difficulty}</span>
+                                  <span>·</span>
+                                  <span>{q.marks} pts</span>
+                                  <span>·</span>
+                                  <span>{q.recordingTimeLimit}s recording limit</span>
+                                  {q.topic && (<><span>·</span><span>{q.topic}</span></>)}
+                                  {q.tags.map(t => (
+                                    <span key={t} style={{ padding: '1px 8px', borderRadius: '999px', backgroundColor: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)' }}>{t}</span>
+                                  ))}
+                                </div>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               </>
               )}
@@ -1559,6 +2002,20 @@ export default function AgentTestForm() {
             const mcqDetailById = new Map((reviewDetails?.mcq ?? []).map(q => [q.id, q]));
             const codingDetailById = new Map((reviewDetails?.coding ?? []).map(q => [q.id, q]));
             const behavioralDetailById = new Map((reviewDetails?.behavioral ?? []).map(q => [q.id, q]));
+            const communicationDetailById = new Map((reviewDetails?.communication ?? []).map(q => [q.id, q]));
+            const writtenIds = selection.writtenQuestionIds ?? [];
+            const readingIds = selection.readingQuestionIds ?? [];
+            const speakingIds = selection.speakingQuestionIds ?? [];
+            // Reading questions are grouped under their shared passage for display — one heading
+            // per distinct passage encountered, in the order its first question appears.
+            const readingGroups: Array<{ passage: { title: string; passageText: string } | null; ids: string[] }> = [];
+            for (const id of readingIds) {
+              const detail = communicationDetailById.get(id);
+              const passageKey = detail?.passage?.title ?? null;
+              const last = readingGroups[readingGroups.length - 1];
+              if (last && last.passage?.title === passageKey) { last.ids.push(id); }
+              else { readingGroups.push({ passage: detail?.passage ?? null, ids: [id] }); }
+            }
             return (
             <div style={card}>
               <h2 style={{ fontSize: '15px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 4px' }}>Step 5: Review Selection</h2>
@@ -1567,8 +2024,8 @@ export default function AgentTestForm() {
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-                {/* MCQ / Coding / Behavioral counts */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
+                {/* MCQ / Coding / Behavioral / Written / Reading / Speaking counts */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '14px' }}>
                   <div style={{ borderRadius: '10px', padding: '20px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
                     <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--admin-accent-hover)', margin: '0 0 8px' }}>MCQ Questions</p>
                     <p style={{ fontSize: '44px', fontWeight: 700, color: 'var(--admin-accent)', margin: '0 0 2px', lineHeight: 1 }}>{selection.mcqQuestionIds.length}</p>
@@ -1582,6 +2039,21 @@ export default function AgentTestForm() {
                   <div style={{ borderRadius: '10px', padding: '20px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
                     <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--admin-accent-hover)', margin: '0 0 8px' }}>Behavioral Questions</p>
                     <p style={{ fontSize: '44px', fontWeight: 700, color: 'var(--admin-accent-hover)', margin: '0 0 2px', lineHeight: 1 }}>{selection.behavioralQuestionIds.length}</p>
+                    <p style={{ fontSize: '12px', color: 'var(--admin-text-muted)', margin: 0, fontWeight: 500 }}>selected for this test</p>
+                  </div>
+                  <div style={{ borderRadius: '10px', padding: '20px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
+                    <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--admin-accent-hover)', margin: '0 0 8px' }}>Written Questions</p>
+                    <p style={{ fontSize: '44px', fontWeight: 700, color: 'var(--admin-accent-hover)', margin: '0 0 2px', lineHeight: 1 }}>{writtenIds.length}</p>
+                    <p style={{ fontSize: '12px', color: 'var(--admin-text-muted)', margin: 0, fontWeight: 500 }}>selected for this test</p>
+                  </div>
+                  <div style={{ borderRadius: '10px', padding: '20px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
+                    <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--admin-accent-hover)', margin: '0 0 8px' }}>Reading Questions</p>
+                    <p style={{ fontSize: '44px', fontWeight: 700, color: 'var(--admin-accent-hover)', margin: '0 0 2px', lineHeight: 1 }}>{readingIds.length}</p>
+                    <p style={{ fontSize: '12px', color: 'var(--admin-text-muted)', margin: 0, fontWeight: 500 }}>selected for this test</p>
+                  </div>
+                  <div style={{ borderRadius: '10px', padding: '20px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
+                    <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--admin-accent-hover)', margin: '0 0 8px' }}>Speaking Questions</p>
+                    <p style={{ fontSize: '44px', fontWeight: 700, color: 'var(--admin-accent-hover)', margin: '0 0 2px', lineHeight: 1 }}>{speakingIds.length}</p>
                     <p style={{ fontSize: '12px', color: 'var(--admin-text-muted)', margin: 0, fontWeight: 500 }}>selected for this test</p>
                   </div>
                 </div>
@@ -1763,8 +2235,124 @@ export default function AgentTestForm() {
                   </div>
                 )}
 
+                {writtenIds.length > 0 && (
+                  <div>
+                    <p style={sectionHeading}>Written Questions ({writtenIds.length})</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {writtenIds.map((id, idx) => {
+                        const detail = communicationDetailById.get(id);
+                        const preview = selection.writtenPreviews?.find(p => p.id === id);
+                        return (
+                          <div key={id} style={reviewCard}>
+                            {detail ? (
+                              <>
+                                <p style={qTitle}>{idx + 1}. {detail.title}</p>
+                                <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: '0 0 8px', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{detail.description}</p>
+                                {detail.evaluationNotes && (
+                                  <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 8px', lineHeight: '1.5' }}><strong>Evaluation notes:</strong> {detail.evaluationNotes}</p>
+                                )}
+                                {metaRow(detail.difficulty, detail.marks, detail.topic, detail.tags)}
+                              </>
+                            ) : (
+                              <>
+                                <p style={qTitle}>{idx + 1}. {preview?.text ?? 'Loading…'}</p>
+                                {preview && metaRow(preview.difficulty, undefined, preview.topic, [])}
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {readingGroups.length > 0 && (
+                  <div>
+                    <p style={sectionHeading}>Reading Questions ({readingIds.length})</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      {readingGroups.map((group, gi) => (
+                        <div key={gi} style={reviewCard}>
+                          {group.passage && (
+                            <>
+                              <p style={qTitle}>{group.passage.title}</p>
+                              <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: '0 0 12px', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{group.passage.passageText}</p>
+                            </>
+                          )}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {group.ids.map((id, idx) => {
+                              const detail = communicationDetailById.get(id);
+                              const preview = selection.readingPreviews?.find(p => p.id === id);
+                              return (
+                                <div key={id} style={{ padding: '10px 12px', borderRadius: '8px', backgroundColor: '#F9FAFB', border: '1px solid var(--admin-border)' }}>
+                                  {detail ? (
+                                    <>
+                                      <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 8px' }}>{idx + 1}. {detail.title}</p>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', margin: '0 0 8px' }}>
+                                        {detail.options.map((opt, oi) => (
+                                          <div key={oi} style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: detail.correctAnswers.includes(oi) ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)', fontWeight: detail.correctAnswers.includes(oi) ? 600 : 400 }}>
+                                            <span>{detail.correctAnswers.includes(oi) ? '✓' : '○'}</span>
+                                            <span>{opt}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                      {detail.explanation && (
+                                        <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 8px', lineHeight: '1.5' }}><strong>Explanation:</strong> {detail.explanation}</p>
+                                      )}
+                                      {metaRow(detail.difficulty, detail.marks, detail.topic, detail.tags)}
+                                    </>
+                                  ) : (
+                                    <>
+                                      <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--admin-text)', margin: '0 0 8px' }}>{idx + 1}. {preview?.text ?? 'Loading…'}</p>
+                                      {preview && metaRow(preview.difficulty, undefined, preview.topic, [])}
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {speakingIds.length > 0 && (
+                  <div>
+                    <p style={sectionHeading}>Speaking Questions ({speakingIds.length})</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {speakingIds.map((id, idx) => {
+                        const detail = communicationDetailById.get(id);
+                        const preview = selection.speakingPreviews?.find(p => p.id === id);
+                        return (
+                          <div key={id} style={reviewCard}>
+                            {detail ? (
+                              <>
+                                <p style={qTitle}>{idx + 1}. {detail.title}</p>
+                                <p style={{ fontSize: '13px', color: 'var(--admin-text-muted)', margin: '0 0 8px', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{detail.description}</p>
+                                {detail.evaluationNotes && (
+                                  <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 8px', lineHeight: '1.5' }}><strong>Grading benchmark:</strong> {detail.evaluationNotes}</p>
+                                )}
+                                {typeof detail.recordingTimeLimit === 'number' && (
+                                  <p style={{ fontSize: '12px', color: 'var(--admin-text-subtle)', margin: '0 0 8px' }}>{detail.recordingTimeLimit}s recording limit</p>
+                                )}
+                                {metaRow(detail.difficulty, detail.marks, detail.topic, detail.tags)}
+                              </>
+                            ) : (
+                              <>
+                                <p style={qTitle}>{idx + 1}. {preview?.text ?? 'Loading…'}</p>
+                                {preview && metaRow(preview.difficulty, undefined, preview.topic, [])}
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Warnings */}
-                {selection.mcqQuestionIds.length + selection.codingQuestionIds.length + selection.behavioralQuestionIds.length === 0 && (
+                {selection.mcqQuestionIds.length + selection.codingQuestionIds.length + selection.behavioralQuestionIds.length
+                  + writtenIds.length + readingIds.length + speakingIds.length === 0 && (
                   <div style={{ borderRadius: '10px', padding: '14px 16px', backgroundColor: '#FEF2F2', border: '1px solid #FCA5A5' }}>
                     <p style={{ fontSize: '13px', color: '#991B1B', margin: 0, lineHeight: '1.5', fontWeight: 600 }}>
                       No questions selected.
@@ -1780,8 +2368,9 @@ export default function AgentTestForm() {
                     </p>
                   </div>
                 )}
-                {(selection.mcqQuestionIds.length < mcqCount || selection.codingQuestionIds.length < codingCount || selection.behavioralQuestionIds.length < behavioralCount) &&
-                 selection.mcqQuestionIds.length + selection.codingQuestionIds.length + selection.behavioralQuestionIds.length > 0 && (
+                {(selection.mcqQuestionIds.length < mcqCount || selection.codingQuestionIds.length < codingCount || selection.behavioralQuestionIds.length < behavioralCount
+                  || writtenIds.length < writtenCount || readingIds.length < readingCount || speakingIds.length < speakingCount) &&
+                 selection.mcqQuestionIds.length + selection.codingQuestionIds.length + selection.behavioralQuestionIds.length + writtenIds.length + readingIds.length + speakingIds.length > 0 && (
                   <div style={{ borderRadius: '10px', padding: '14px 16px', backgroundColor: 'var(--admin-accent-soft)', border: '1px solid var(--admin-accent-disabled)' }}>
                     <p style={{ fontSize: '14px', color: '#991B1B', margin: 0 }}>
                       <strong>Note:</strong> Fewer questions were selected than requested. Consider adding more questions with relevant tags to your library.
@@ -1792,7 +2381,8 @@ export default function AgentTestForm() {
                 <div style={{ display: 'flex', gap: '10px', paddingTop: '4px' }}>
                   <button onClick={() => setStep(4)} style={btnSecondary}>Back</button>
                   {(() => {
-                    const noQuestions = selection.mcqQuestionIds.length + selection.codingQuestionIds.length + selection.behavioralQuestionIds.length === 0;
+                    const noQuestions = selection.mcqQuestionIds.length + selection.codingQuestionIds.length + selection.behavioralQuestionIds.length
+                      + writtenIds.length + readingIds.length + speakingIds.length === 0;
                     const disabled = noQuestions || loading;
                     return (
                       <button

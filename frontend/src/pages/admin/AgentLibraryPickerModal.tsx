@@ -14,7 +14,13 @@ interface Props {
   onClose: () => void;
 }
 
-const TYPE_LABELS: Record<SuggestionType, string> = { mcq: 'MCQ', coding: 'Coding', behavioral: 'Behavioral' };
+const TYPE_LABELS: Record<SuggestionType, string> = {
+  mcq: 'MCQ', coding: 'Coding', behavioral: 'Behavioral',
+  written: 'Written', reading: 'Reading', speaking: 'Speaking',
+};
+const COMMUNICATION_SUB_TYPE: Partial<Record<SuggestionType, 'WRITTEN' | 'READING' | 'SPEAKING'>> = {
+  written: 'WRITTEN', reading: 'READING', speaking: 'SPEAKING',
+};
 const PAGE_SIZE = 20;
 
 export default function AgentLibraryPickerModal({ allowedTypes, libraryPicks, getLimit, getSelectedCount, onTogglePick, onClose }: Props) {
@@ -38,21 +44,31 @@ export default function AgentLibraryPickerModal({ allowedTypes, libraryPicks, ge
     setLoading(true);
     const load = async () => {
       try {
+        const communicationSubType = COMMUNICATION_SUB_TYPE[activeType];
         const { data } = activeType === 'mcq'
           ? await adminApi.getMCQs(page, PAGE_SIZE, debouncedSearch)
           : activeType === 'coding'
           ? await adminApi.getCodings(page, PAGE_SIZE, debouncedSearch)
-          : await adminApi.getBehaviorals(page, PAGE_SIZE, debouncedSearch);
+          : activeType === 'behavioral'
+          ? await adminApi.getBehaviorals(page, PAGE_SIZE, debouncedSearch)
+          : await adminApi.getCommunications(page, PAGE_SIZE, debouncedSearch, communicationSubType);
         if (cancelled) return;
         const rawQuestions: Array<Record<string, unknown>> = data.questions || [];
-        const mapped: RawItem[] = rawQuestions.map(q => ({
-          id: q.id as string,
-          text: activeType === 'mcq'
-            ? (q.questionText as string)
-            : `${q.title as string}: ${q.description as string}`.slice(0, 200),
-          difficulty: (q.difficulty as string) || 'medium',
-          topic: (q.topic as string | null) ?? null,
-        }));
+        const mapped: RawItem[] = rawQuestions.map(q => {
+          const passage = q.passage as { title?: string } | null | undefined;
+          return {
+            id: q.id as string,
+            text: activeType === 'mcq'
+              ? (q.questionText as string)
+              : activeType === 'reading'
+              ? `${passage?.title ? `${passage.title}: ` : ''}${q.title as string}`.slice(0, 200)
+              : activeType === 'written' || activeType === 'speaking'
+              ? `${q.title as string}${q.description ? `: ${q.description as string}` : ''}`.slice(0, 200)
+              : `${q.title as string}: ${q.description as string}`.slice(0, 200),
+            difficulty: (q.difficulty as string) || 'medium',
+            topic: (q.topic as string | null) ?? null,
+          };
+        });
         setItems(mapped);
         setTotalPages(Math.max(1, data.pagination?.totalPages ?? 1));
       } catch {

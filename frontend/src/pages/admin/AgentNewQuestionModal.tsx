@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import { X, Trash2 } from 'lucide-react';
 import { adminApi } from '../../services/api';
@@ -10,7 +10,10 @@ interface Props {
   onCreated: (type: SuggestionType, id: string, preview: PreviewEntry) => void;
 }
 
-const TYPE_LABELS: Record<SuggestionType, string> = { mcq: 'MCQ', coding: 'Coding', behavioral: 'Behavioral' };
+const TYPE_LABELS: Record<SuggestionType, string> = {
+  mcq: 'MCQ', coding: 'Coding', behavioral: 'Behavioral',
+  written: 'Written', reading: 'Reading', speaking: 'Speaking',
+};
 const TAG_REGEX = /^[a-z0-9][a-z0-9_\- ]*$/;
 const CODING_LANGUAGES = ['python', 'javascript', 'java', 'cpp', 'c'];
 const LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
@@ -90,6 +93,20 @@ interface BehavioralFormState {
   title: string; description: string; expectedAnswer: string; marks: number;
   difficulty: 'easy' | 'medium' | 'hard'; topic: string; tags: string[];
 }
+interface WrittenFormState {
+  title: string; description: string; evaluationNotes: string; marks: number;
+  difficulty: 'easy' | 'medium' | 'hard'; topic: string; tags: string[];
+}
+interface SpeakingFormState {
+  title: string; description: string; evaluationNotes: string; recordingTimeLimit: number; marks: number;
+  difficulty: 'easy' | 'medium' | 'hard'; topic: string; tags: string[];
+}
+interface ReadingFormState {
+  title: string; passageId: string; options: string[]; correctAnswers: number[];
+  isMultipleChoice: boolean; explanation: string; marks: number;
+  difficulty: 'easy' | 'medium' | 'hard'; topic: string; tags: string[];
+}
+interface ReadingPassage { id: string; title: string; passageText: string }
 
 export default function AgentNewQuestionModal({ allowedTypes, onClose, onCreated }: Props) {
   const [activeType, setActiveType] = useState<SuggestionType>(allowedTypes[0] ?? 'mcq');
@@ -109,6 +126,66 @@ export default function AgentNewQuestionModal({ allowedTypes, onClose, onCreated
   const [behavioral, setBehavioral] = useState<BehavioralFormState>({
     title: '', description: '', expectedAnswer: '', marks: 5, difficulty: 'medium', topic: '', tags: [],
   });
+  const [written, setWritten] = useState<WrittenFormState>({
+    title: '', description: '', evaluationNotes: '', marks: 10, difficulty: 'medium', topic: '', tags: [],
+  });
+  const [speaking, setSpeaking] = useState<SpeakingFormState>({
+    title: '', description: '', evaluationNotes: '', recordingTimeLimit: 120, marks: 10, difficulty: 'medium', topic: '', tags: [],
+  });
+  const [reading, setReading] = useState<ReadingFormState>({
+    title: '', passageId: '', options: ['', '', '', ''], correctAnswers: [], isMultipleChoice: false, explanation: '',
+    marks: 5, difficulty: 'medium', topic: '', tags: [],
+  });
+  const [passages, setPassages] = useState<ReadingPassage[]>([]);
+  const [loadingPassages, setLoadingPassages] = useState(false);
+  const [showNewPassage, setShowNewPassage] = useState(false);
+  const [newPassageTitle, setNewPassageTitle] = useState('');
+  const [newPassageText, setNewPassageText] = useState('');
+  const [savingPassage, setSavingPassage] = useState(false);
+
+  useEffect(() => {
+    if (!allowedTypes.includes('reading')) return;
+    setLoadingPassages(true);
+    adminApi.getReadingPassages()
+      .then(({ data }) => setPassages(data.passages || []))
+      .catch(() => toast.error('Failed to load reading passages'))
+      .finally(() => setLoadingPassages(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleCreatePassage = async () => {
+    if (!newPassageTitle.trim() || !newPassageText.trim()) { toast.error('Title and passage text are required'); return; }
+    setSavingPassage(true);
+    try {
+      const { data } = await adminApi.createReadingPassage({ title: newPassageTitle.trim(), passageText: newPassageText.trim() });
+      setPassages(prev => [data.passage, ...prev]);
+      setReading(prev => ({ ...prev, passageId: data.passage.id }));
+      setShowNewPassage(false);
+      setNewPassageTitle('');
+      setNewPassageText('');
+      toast.success('Passage created');
+    } catch (err: unknown) {
+      toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to create passage');
+    } finally { setSavingPassage(false); }
+  };
+
+  /* -- Reading option handlers (same shape as MCQ's) -- */
+  const setReadingOpt = (i: number, v: string) => { const opts = [...reading.options]; opts[i] = v; setReading({ ...reading, options: opts }); };
+  const addReadingOption = () => { if (reading.options.length < 6) setReading({ ...reading, options: [...reading.options, ''] }); };
+  const removeReadingOption = (i: number) => {
+    if (reading.options.length <= 2) return;
+    const opts = reading.options.filter((_, idx) => idx !== i);
+    const correct = reading.correctAnswers.filter(x => x !== i).map(x => x > i ? x - 1 : x);
+    setReading({ ...reading, options: opts, correctAnswers: correct });
+  };
+  const toggleReadingCorrect = (i: number) => {
+    if (reading.isMultipleChoice) {
+      const next = reading.correctAnswers.includes(i) ? reading.correctAnswers.filter(x => x !== i) : [...reading.correctAnswers, i];
+      setReading({ ...reading, correctAnswers: next });
+    } else {
+      setReading({ ...reading, correctAnswers: [i] });
+    }
+  };
 
   /* -- MCQ handlers -- */
   const setOpt = (i: number, v: string) => { const opts = [...mcq.options]; opts[i] = v; setMcq({ ...mcq, options: opts }); };
@@ -213,7 +290,71 @@ export default function AgentNewQuestionModal({ allowedTypes, onClose, onCreated
     } finally { setSaving(false); }
   };
 
-  const handleSubmit = activeType === 'mcq' ? handleSubmitMcq : activeType === 'coding' ? handleSubmitCoding : handleSubmitBehavioral;
+  /* -- Written handlers -- */
+  const handleSubmitWritten = async () => {
+    if (!written.title.trim()) { toast.error('Title is required'); return; }
+    if (!written.description.trim()) { toast.error('Description/prompt is required'); return; }
+    if (!Number.isFinite(written.marks) || written.marks <= 0) { toast.error('Marks must be greater than 0'); return; }
+    setSaving(true);
+    try {
+      const { data } = await adminApi.createCustomCommunication({ subType: 'WRITTEN', stimulusType: 'NONE', ...written });
+      const created = data.question;
+      onCreated('written', created.id, { id: created.id, text: `${created.title}: ${created.description || ''}`.slice(0, 200), difficulty: created.difficulty, topic: created.topic });
+      toast.success('Written question created');
+      onClose();
+    } catch (err: unknown) {
+      toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to create question');
+    } finally { setSaving(false); }
+  };
+
+  /* -- Speaking handlers -- */
+  const handleSubmitSpeaking = async () => {
+    if (!speaking.title.trim()) { toast.error('Title is required'); return; }
+    if (!speaking.description.trim()) { toast.error('Topic prompt is required'); return; }
+    if (!Number.isFinite(speaking.marks) || speaking.marks <= 0) { toast.error('Marks must be greater than 0'); return; }
+    setSaving(true);
+    try {
+      const { data } = await adminApi.createCustomCommunication({ subType: 'SPEAKING', ...speaking });
+      const created = data.question;
+      onCreated('speaking', created.id, { id: created.id, text: `${created.title}: ${created.description || ''}`.slice(0, 200), difficulty: created.difficulty, topic: created.topic });
+      toast.success('Speaking question created');
+      onClose();
+    } catch (err: unknown) {
+      toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to create question');
+    } finally { setSaving(false); }
+  };
+
+  /* -- Reading handlers -- */
+  const handleSubmitReading = async () => {
+    if (!reading.title.trim()) { toast.error('Enter the question text'); return; }
+    if (!reading.passageId) { toast.error('Select or create a passage first'); return; }
+    if (!Number.isFinite(reading.marks) || reading.marks <= 0) { toast.error('Marks must be greater than 0'); return; }
+    const nonEmpty = reading.options.filter(o => o.trim() !== '');
+    if (nonEmpty.length < 2) { toast.error('At least 2 options required'); return; }
+    const optionIsFilled = (index: number) => Boolean(reading.options[index]?.trim());
+    if (!reading.correctAnswers.length || reading.correctAnswers.some(index => !optionIsFilled(index))) {
+      toast.error('Select a filled option as the correct answer');
+      return;
+    }
+    setSaving(true);
+    try {
+      const { data } = await adminApi.createCustomCommunication({ subType: 'READING', ...reading, options: nonEmpty });
+      const created = data.question;
+      const passageTitle = passages.find(p => p.id === reading.passageId)?.title;
+      onCreated('reading', created.id, { id: created.id, text: `${passageTitle ? `${passageTitle}: ` : ''}${created.title}`.slice(0, 200), difficulty: created.difficulty, topic: created.topic });
+      toast.success('Reading question created');
+      onClose();
+    } catch (err: unknown) {
+      toast.error((err as { response?: { data?: { error?: string } } })?.response?.data?.error || 'Failed to create question');
+    } finally { setSaving(false); }
+  };
+
+  const handleSubmit = activeType === 'mcq' ? handleSubmitMcq
+    : activeType === 'coding' ? handleSubmitCoding
+    : activeType === 'behavioral' ? handleSubmitBehavioral
+    : activeType === 'written' ? handleSubmitWritten
+    : activeType === 'reading' ? handleSubmitReading
+    : handleSubmitSpeaking;
 
   return (
     <div className="ui-modal-backdrop" onClick={onClose}>
@@ -400,6 +541,116 @@ export default function AgentNewQuestionModal({ allowedTypes, onClose, onCreated
                 <div><label style={lbl}>Difficulty</label><DifficultyPicker value={behavioral.difficulty} onChange={d => setBehavioral({ ...behavioral, difficulty: d })} /></div>
               </div>
               <div><label style={lbl}>Tags</label><TagEditor tags={behavioral.tags} onAdd={t => setBehavioral({ ...behavioral, tags: [...behavioral.tags, t] })} onRemove={t => setBehavioral({ ...behavioral, tags: behavioral.tags.filter(x => x !== t) })} /></div>
+            </div>
+          )}
+
+          {activeType === 'written' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div><label style={lbl}>Title <span style={{ color: '#EF4444' }}>*</span></label><input type="text" value={written.title} onChange={e => setWritten({ ...written, title: e.target.value })} style={inp} placeholder="e.g. Describe your ideal work environment" /></div>
+              <div><label style={lbl}>Description / Prompt <span style={{ color: '#EF4444' }}>*</span> <span style={{ fontWeight: 400, color: 'var(--admin-text-subtle)' }}>— the AI evaluates the candidate's answer against this</span></label><textarea value={written.description} onChange={e => setWritten({ ...written, description: e.target.value })} rows={5} style={{ ...inp, resize: 'vertical' }} placeholder="Write the full prompt shown to the candidate…" /></div>
+              <div><label style={lbl}>Evaluation Notes <span style={{ fontWeight: 400, color: 'var(--admin-text-subtle)' }}>(optional)</span></label><textarea value={written.evaluationNotes} onChange={e => setWritten({ ...written, evaluationNotes: e.target.value })} rows={3} style={{ ...inp, resize: 'vertical' }} placeholder="Extra grading guidance beyond the prompt above…" /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
+                <div><label style={lbl}>Category</label><input type="text" value={written.topic} onChange={e => setWritten({ ...written, topic: e.target.value })} style={inp} /></div>
+                <div><label style={lbl}>Points</label><input type="number" value={written.marks} onChange={e => setWritten({ ...written, marks: Number(e.target.value) })} style={inp} /></div>
+                <div><label style={lbl}>Difficulty</label><DifficultyPicker value={written.difficulty} onChange={d => setWritten({ ...written, difficulty: d })} /></div>
+              </div>
+              <div><label style={lbl}>Tags</label><TagEditor tags={written.tags} onAdd={t => setWritten({ ...written, tags: [...written.tags, t] })} onRemove={t => setWritten({ ...written, tags: written.tags.filter(x => x !== t) })} /></div>
+            </div>
+          )}
+
+          {activeType === 'speaking' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div><label style={lbl}>Title <span style={{ color: '#EF4444' }}>*</span></label><input type="text" value={speaking.title} onChange={e => setSpeaking({ ...speaking, title: e.target.value })} style={inp} placeholder="e.g. Handling a scheduling conflict" /></div>
+              <div><label style={lbl}>Topic Prompt <span style={{ color: '#EF4444' }}>*</span> <span style={{ fontWeight: 400, color: 'var(--admin-text-subtle)' }}>— the AI uses this as its grading reference</span></label><textarea value={speaking.description} onChange={e => setSpeaking({ ...speaking, description: e.target.value })} rows={4} style={{ ...inp, resize: 'vertical' }} placeholder="What should the candidate speak about…" /></div>
+              <div><label style={lbl}>Evaluation Notes <span style={{ fontWeight: 400, color: 'var(--admin-text-subtle)' }}>(optional)</span></label><textarea value={speaking.evaluationNotes} onChange={e => setSpeaking({ ...speaking, evaluationNotes: e.target.value })} rows={3} style={{ ...inp, resize: 'vertical' }} placeholder="What a strong spoken answer covers…" /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '14px' }}>
+                <div><label style={lbl}>Category</label><input type="text" value={speaking.topic} onChange={e => setSpeaking({ ...speaking, topic: e.target.value })} style={inp} /></div>
+                <div><label style={lbl}>Points</label><input type="number" value={speaking.marks} onChange={e => setSpeaking({ ...speaking, marks: Number(e.target.value) })} style={inp} /></div>
+                <div><label style={lbl}>Recording limit (s)</label><input type="number" value={speaking.recordingTimeLimit} onChange={e => setSpeaking({ ...speaking, recordingTimeLimit: Number(e.target.value) })} style={inp} /></div>
+                <div><label style={lbl}>Difficulty</label><DifficultyPicker value={speaking.difficulty} onChange={d => setSpeaking({ ...speaking, difficulty: d })} /></div>
+              </div>
+              <div><label style={lbl}>Tags</label><TagEditor tags={speaking.tags} onAdd={t => setSpeaking({ ...speaking, tags: [...speaking.tags, t] })} onRemove={t => setSpeaking({ ...speaking, tags: speaking.tags.filter(x => x !== t) })} /></div>
+            </div>
+          )}
+
+          {activeType === 'reading' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <label style={{ ...lbl, marginBottom: 0 }}>Passage <span style={{ color: '#EF4444' }}>*</span></label>
+                  <button type="button" onClick={() => setShowNewPassage(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--admin-accent)', fontSize: '13px', fontWeight: 600 }}>
+                    {showNewPassage ? 'Cancel' : '+ New passage'}
+                  </button>
+                </div>
+                {showNewPassage ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', padding: '14px', borderRadius: '10px', backgroundColor: '#FAFAFA', border: '1px solid var(--admin-border)' }}>
+                    <input type="text" value={newPassageTitle} onChange={e => setNewPassageTitle(e.target.value)} style={inp} placeholder="Passage title" />
+                    <textarea value={newPassageText} onChange={e => setNewPassageText(e.target.value)} rows={6} style={{ ...inp, resize: 'vertical' }} placeholder="Paste or write the full passage text…" />
+                    <button type="button" onClick={handleCreatePassage} disabled={savingPassage}
+                      style={{ alignSelf: 'flex-start', padding: '9px 18px', borderRadius: '8px', border: '1px solid var(--admin-accent)', backgroundColor: savingPassage ? 'var(--admin-accent-disabled)' : 'var(--admin-accent)', color: 'white', fontSize: '13px', fontWeight: 600, cursor: savingPassage ? 'not-allowed' : 'pointer' }}>
+                      {savingPassage ? 'Saving…' : 'Save passage'}
+                    </button>
+                  </div>
+                ) : (
+                  <select value={reading.passageId} onChange={e => setReading({ ...reading, passageId: e.target.value })} disabled={loadingPassages} style={inp}>
+                    <option value="">{loadingPassages ? 'Loading passages…' : 'Select a passage…'}</option>
+                    {passages.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                  </select>
+                )}
+                {!showNewPassage && reading.passageId && (
+                  <div style={{ marginTop: '10px', padding: '10px 12px', borderRadius: '8px', backgroundColor: '#F9FAFB', border: '1px solid var(--admin-border)', fontSize: '12px', color: 'var(--admin-text-muted)', lineHeight: '1.5', whiteSpace: 'pre-wrap', maxHeight: '140px', overflowY: 'auto' }}>
+                    {passages.find(p => p.id === reading.passageId)?.passageText}
+                  </div>
+                )}
+              </div>
+              <div>
+                <label style={lbl}>Question <span style={{ color: '#EF4444' }}>*</span></label>
+                <textarea value={reading.title} onChange={e => setReading({ ...reading, title: e.target.value })} rows={2} style={{ ...inp, resize: 'vertical' }} placeholder="e.g. According to the passage, what was the main cause of…" />
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '13px', color: 'var(--admin-text-muted)' }}>Answer options · select the correct one</span>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--admin-text-muted)', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={reading.isMultipleChoice}
+                      onChange={e => setReading({ ...reading, isMultipleChoice: e.target.checked, correctAnswers: e.target.checked ? reading.correctAnswers : reading.correctAnswers.slice(0, 1) })}
+                      style={{ accentColor: 'var(--admin-button-primary)' }} />
+                    Multiple correct
+                  </label>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {reading.options.map((opt, i) => {
+                    const isCorrect = reading.correctAnswers.includes(i);
+                    return (
+                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px', borderRadius: '10px', border: `1.5px solid ${isCorrect ? 'var(--admin-accent)' : 'var(--admin-border)'}`, backgroundColor: isCorrect ? 'var(--admin-accent-soft)' : 'white' }}>
+                        <button type="button" onClick={() => toggleReadingCorrect(i)}
+                          style={{ width: '18px', height: '18px', borderRadius: '999px', flexShrink: 0, border: `1.5px solid ${isCorrect ? 'var(--admin-accent)' : 'var(--admin-border)'}`, backgroundColor: isCorrect ? 'var(--admin-accent)' : 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+                          {isCorrect && <span style={{ width: '7px', height: '7px', borderRadius: '999px', backgroundColor: 'white' }} />}
+                        </button>
+                        <input type="text" value={opt} onChange={e => setReadingOpt(i, e.target.value)} style={{ flex: 1, border: 'none', outline: 'none', fontSize: '13px', background: 'transparent' }} placeholder={`Option ${LETTERS[i]}`} />
+                        <span style={{ fontSize: '11px', fontWeight: 600, color: 'var(--admin-text-subtle)', flexShrink: 0 }}>{LETTERS[i]}</span>
+                        {reading.options.length > 2 && (
+                          <button type="button" onClick={() => removeReadingOption(i)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', flexShrink: 0 }}>
+                            <Trash2 size={14} color="#D1D5DB" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                {reading.options.length < 6 && (
+                  <button type="button" onClick={addReadingOption} style={{ marginTop: '8px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--admin-accent)', fontSize: '13px', fontWeight: 500 }}>+ Add option</button>
+                )}
+              </div>
+              <div>
+                <label style={lbl}>Explanation <span style={{ fontWeight: 400, color: 'var(--admin-text-subtle)' }}>(optional, shown in review)</span></label>
+                <textarea value={reading.explanation} onChange={e => setReading({ ...reading, explanation: e.target.value })} rows={2} style={{ ...inp, resize: 'vertical' }} placeholder="Explain why the correct answer is right…" />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px' }}>
+                <div><label style={lbl}>Category</label><input type="text" value={reading.topic} onChange={e => setReading({ ...reading, topic: e.target.value })} style={inp} /></div>
+                <div><label style={lbl}>Points</label><input type="number" value={reading.marks} onChange={e => setReading({ ...reading, marks: Number(e.target.value) })} style={inp} /></div>
+                <div><label style={lbl}>Difficulty</label><DifficultyPicker value={reading.difficulty} onChange={d => setReading({ ...reading, difficulty: d })} /></div>
+              </div>
+              <div><label style={lbl}>Tags</label><TagEditor tags={reading.tags} onAdd={t => setReading({ ...reading, tags: [...reading.tags, t] })} onRemove={t => setReading({ ...reading, tags: reading.tags.filter(x => x !== t) })} /></div>
             </div>
           )}
         </div>
