@@ -183,7 +183,7 @@ export default function AudioRecorder({ maxDurationSec, onSubmitRecording, disab
               className="btn btn-primary ml-auto"
               style={{ width: 'auto' }}
             >
-              {status === 'saving' ? (<><Loader2 size={14} className="animate-spin" /> Transcribing…</>) : 'Submit recording'}
+              {status === 'saving' ? (<><Loader2 size={14} className="animate-spin" /> Saving…</>) : 'Submit recording'}
             </button>
           </div>
           {retakesExhausted && (
