@@ -64,7 +64,7 @@ export function buildSebConfigXml(startUrl: string, quitUrl: string): string {
   <key>quitURL</key>
   <string>${escapedQuitUrl}</string>
   <key>quitURLConfirm</key>
-  <true/>
+  <false/>
   <key>hashedQuitPassword</key>
   <string></string>
 

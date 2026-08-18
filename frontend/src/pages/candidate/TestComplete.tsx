@@ -66,25 +66,16 @@ export default function TestComplete() {
 const handleClose = () => {
   const sebQuitUrl = localStorage.getItem('sebQuitUrl');
 
-  if (isRunningInSEB() && sebQuitUrl) {
-    const quitWindow = window.open(
-      sebQuitUrl,
-      '_blank',
-      'width=1,height=1,left=-1000,top=-1000'
-    );
-
-    if (!quitWindow) {
-      window.location.href = sebQuitUrl;
-    }
-
-    return;
-  }
-
   resetTest();
   logoutCandidate();
   localStorage.removeItem('attemptId');
   localStorage.removeItem('attemptStartTime');
   localStorage.removeItem('sebQuitUrl');
+
+  if (isRunningInSEB() && sebQuitUrl) {
+    window.location.href = sebQuitUrl;
+    return;
+  }
 
   navigate('/test/login');
 };
