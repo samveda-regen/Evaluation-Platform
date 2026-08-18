@@ -1185,9 +1185,13 @@ export async function saveBehavioralAnswer(req: AuthenticatedRequest, res: Respo
 
 // Accepts whichever fields are relevant to the question's subType — answerText (Written),
 // selectedOptions (Listening/Reading), or a base64 audio recording (Speaking) — same
-// upsert-on-save pattern as saveBehavioralAnswer. Speaking is the odd one out: it stores the
-// recording and synchronously transcribes it via the Python speech service before responding,
-// since there's nothing to grade later without a transcript.
+// upsert-on-save pattern as saveBehavioralAnswer. Speaking stores the recording and responds
+// immediately; transcription runs afterward in the background (see transcribeAndStoreInBackground)
+// instead of blocking the request, since Whisper + phoneme scoring can take longer than the
+// recording itself for longer clips, which was previously eating into exam time and risking
+// proxy/client timeouts on anything much past a minute. Auto-grading only happens later via an
+// admin-triggered action (results.ts's autoGradeCommunicationAnswer), so there's no need for the
+// transcript to exist by the time this request returns.
 export async function saveCommunicationAnswer(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { attemptId } = req.candidate!;
@@ -1208,54 +1212,33 @@ export async function saveCommunicationAnswer(req: AuthenticatedRequest, res: Re
       replayCount?: number;
       retakeCount?: number;
       audioAssetId?: string;
-      transcript?: string;
-      gradingDetail?: string;
     } = {};
     if (typeof answerText === 'string') data.answerText = answerText;
     if (Array.isArray(selectedOptions)) data.selectedOptions = JSON.stringify(selectedOptions);
     if (typeof replayCount === 'number' && Number.isFinite(replayCount)) data.replayCount = Math.max(0, Math.floor(replayCount));
     if (typeof retakeCount === 'number' && Number.isFinite(retakeCount)) data.retakeCount = Math.max(0, Math.floor(retakeCount));
 
+    let audioBuffer: Buffer | null = null;
+    let audioMime = 'audio/webm';
     if (typeof audio === 'string' && audio.trim()) {
-      if (!isSpeechServiceConfigured()) {
-        res.status(503).json({ error: 'Speech transcription is not configured on this server yet. Please contact your administrator.' });
-        return;
-      }
-
-      let buffer: Buffer;
       try {
-        buffer = Buffer.from(audio, 'base64');
+        audioBuffer = Buffer.from(audio, 'base64');
       } catch {
         res.status(400).json({ error: 'audio must be valid base64' });
         return;
       }
-      if (!buffer.length) {
+      if (!audioBuffer.length) {
         res.status(400).json({ error: 'audio payload is empty' });
         return;
       }
 
-      const mimeType = typeof audioMimeType === 'string' && audioMimeType.trim() ? audioMimeType.trim() : 'audio/webm';
-      const uploadResult = await uploadRecording(buffer, attemptId, 'audio', mimeType);
+      audioMime = typeof audioMimeType === 'string' && audioMimeType.trim() ? audioMimeType.trim() : 'audio/webm';
+      const uploadResult = await uploadRecording(audioBuffer, attemptId, 'audio', audioMime);
       if (!uploadResult.success || !uploadResult.fileId) {
         res.status(500).json({ error: uploadResult.error || 'Failed to store recording' });
         return;
       }
       data.audioAssetId = uploadResult.fileId;
-
-      const transcription = await transcribeAudio(audio, mimeType);
-      if (!transcription) {
-        res.status(502).json({ error: 'Transcription failed. Please try recording again.' });
-        return;
-      }
-      data.transcript = transcription.transcript;
-      data.gradingDetail = JSON.stringify({
-        wordsPerMinute: transcription.wordsPerMinute,
-        pauseCount: transcription.pauseCount,
-        longestPauseSec: transcription.longestPauseSec,
-        durationSec: transcription.durationSec,
-        pronunciationAvailable: transcription.pronunciationAvailable,
-        phoneErrorRate: transcription.phoneErrorRate,
-      });
     }
 
     await prisma.communicationAnswer.upsert({
@@ -1276,11 +1259,50 @@ export async function saveCommunicationAnswer(req: AuthenticatedRequest, res: Re
       }
     });
 
-    res.json({ message: 'Communication answer saved', transcript: data.transcript, audioAssetId: data.audioAssetId });
+    res.json({ message: 'Communication answer saved', audioAssetId: data.audioAssetId });
+
+    if (audioBuffer && data.audioAssetId) {
+      transcribeAndStoreInBackground(attemptId, questionId, data.audioAssetId, audio, audioMime);
+    }
   } catch (error) {
     console.error('Save communication answer error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+}
+
+// Fire-and-forget: runs after saveCommunicationAnswer has already responded to the candidate, so
+// a slow or failed transcription never surfaces as a save failure. Swallows all errors itself —
+// nothing awaits this, so an unhandled rejection here would otherwise crash the process. Guards
+// the update with the audioAssetId captured at upload time so that re-recording (which starts a
+// second background job) can't let a slower, now-stale job overwrite the newer recording's
+// transcript once it finally finishes.
+function transcribeAndStoreInBackground(attemptId: string, questionId: string, audioAssetId: string, audioBase64: string, mimeType: string): void {
+  void (async () => {
+    if (!isSpeechServiceConfigured()) return;
+    try {
+      const transcription = await transcribeAudio(audioBase64, mimeType);
+      if (!transcription) {
+        console.error(`Background transcription failed for attempt ${attemptId}, question ${questionId}`);
+        return;
+      }
+      await prisma.communicationAnswer.updateMany({
+        where: { attemptId, questionId, audioAssetId },
+        data: {
+          transcript: transcription.transcript,
+          gradingDetail: JSON.stringify({
+            wordsPerMinute: transcription.wordsPerMinute,
+            pauseCount: transcription.pauseCount,
+            longestPauseSec: transcription.longestPauseSec,
+            durationSec: transcription.durationSec,
+            pronunciationAvailable: transcription.pronunciationAvailable,
+            phoneErrorRate: transcription.phoneErrorRate,
+          }),
+        },
+      });
+    } catch (error) {
+      console.error(`Background transcription error for attempt ${attemptId}, question ${questionId}:`, error);
+    }
+  })();
 }
 
 export async function runCode(req: AuthenticatedRequest, res: Response): Promise<void> {
