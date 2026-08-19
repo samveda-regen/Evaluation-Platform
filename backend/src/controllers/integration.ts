@@ -99,6 +99,14 @@ async function upsertIntegrationAdmin(claims: RecruiterClaims) {
     },
   });
 
+  const linkData = {
+    email: sanitizedEmail,
+    name: sanitizedName,
+    companyId: company.id,
+    externalProvider: INTEGRATION_PROVIDER,
+    externalUserId,
+  };
+
   const adminByExternal = await prisma.admin.findUnique({
     where: {
       externalProvider_externalUserId: {
@@ -111,30 +119,50 @@ async function upsertIntegrationAdmin(claims: RecruiterClaims) {
   if (adminByExternal) {
     const admin = await prisma.admin.update({
       where: { id: adminByExternal.id },
-      data: {
-        email: sanitizedEmail,
-        name: sanitizedName,
-        companyId: company.id,
-      },
+      data: linkData,
     });
 
     return { admin, company };
   }
 
-  const adminByEmail = await prisma.admin.findUnique({
-    where: { email: sanitizedEmail },
+  const adminByEmail = await prisma.admin.findFirst({
+    where: {
+      email: {
+        equals: sanitizedEmail,
+        mode: 'insensitive',
+      },
+    },
   });
 
   if (adminByEmail) {
     const admin = await prisma.admin.update({
       where: { id: adminByEmail.id },
-      data: {
-        name: sanitizedName,
-        companyId: company.id,
-        externalProvider: INTEGRATION_PROVIDER,
-        externalUserId,
-      },
+      data: linkData,
     });
+
+    return { admin, company };
+  }
+
+  const unlinkedCompanyAdmins = await prisma.admin.findMany({
+    where: {
+      companyId: company.id,
+      externalProvider: null,
+      externalUserId: null,
+    },
+    orderBy: {
+      createdAt: 'asc',
+    },
+  });
+
+  if (unlinkedCompanyAdmins.length === 1) {
+    const admin = await prisma.admin.update({
+      where: { id: unlinkedCompanyAdmins[0].id },
+      data: linkData,
+    });
+
+    console.warn(
+      `[integration] linked recruiter JWT to single unlinked company admin by company scope: ${admin.email}`
+    );
 
     return { admin, company };
   }

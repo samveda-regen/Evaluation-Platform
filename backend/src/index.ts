@@ -184,6 +184,9 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
+app.use('/api/media', express.json({ limit: '200mb' }));
+app.use('/api/media', express.urlencoded({ extended: true, limit: '200mb' }));
+
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10000,
