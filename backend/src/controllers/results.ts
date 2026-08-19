@@ -5,6 +5,7 @@ import { sendResultEmail } from '../services/emailService.js';
 import { getTestGradingPreferences } from '../utils/testPreferences.js';
 import { scoreBehavioralAnswer } from '../services/behavioralScoringService.js';
 import { scoreWrittenAnswer, scoreSpeakingAnswer } from '../services/communicationScoringService.js';
+import { performSubmission } from './candidate.js';
 
 async function resolveCompanyName(companyId: string | null): Promise<string> {
   if (!companyId) return 'Our Team';
@@ -876,6 +877,48 @@ export async function deleteAttempt(req: AuthenticatedRequest, res: Response): P
     res.json({ message: 'Attempt deleted successfully' });
   } catch (error) {
     console.error('Delete attempt error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// Admin-triggered equivalent of the candidate hitting "Submit" — for a candidate who closed the
+// tab/left partway through and won't be coming back, this lets an admin grade whatever answers
+// were saved so far instead of waiting for the full test duration to elapse (the only other path
+// to finalization; see testExpiryService.ts's sweep). Reuses performSubmission so grading is
+// identical to a normal or auto-submit.
+export async function forceSubmitAttempt(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { attemptId } = req.params;
+
+    const attempt = await prisma.testAttempt.findUnique({
+      where: { id: attemptId },
+      include: { test: { select: { adminId: true } } }
+    });
+
+    if (!attempt) {
+      res.status(404).json({ error: 'Attempt not found' });
+      return;
+    }
+
+    if (attempt.test.adminId !== req.admin!.id) {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    if (attempt.status !== 'in_progress') {
+      res.status(400).json({ error: 'Attempt is not in progress' });
+      return;
+    }
+
+    const outcome = await performSubmission(attemptId, attempt.testId, true);
+    if (!outcome.ok) {
+      res.status(outcome.statusCode).json({ error: outcome.error });
+      return;
+    }
+
+    res.json({ message: 'Attempt force-submitted successfully', ...outcome.payload });
+  } catch (error) {
+    console.error('Force submit attempt error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }

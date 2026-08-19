@@ -1539,14 +1539,15 @@ export async function logActivity(req: AuthenticatedRequest, res: Response): Pro
   }
 }
 
-type SubmissionOutcome =
+export type SubmissionOutcome =
   | { ok: true; payload: Record<string, unknown> }
   | { ok: false; statusCode: number; error: string };
 
-// Shared by the candidate-facing HTTP endpoint and the server-side expiry sweep
-// (see autoSubmitExpiredAttempts in services/testExpiryService.ts) so both paths
-// grade and finalize an attempt identically, regardless of who triggered the submit.
-async function performSubmission(attemptId: string, testId: string, autoSubmit: boolean): Promise<SubmissionOutcome> {
+// Shared by the candidate-facing HTTP endpoint, the server-side expiry sweep (see
+// autoSubmitExpiredAttempts in services/testExpiryService.ts), and the admin-triggered force-submit
+// (results.ts's forceSubmitAttempt) so all three paths grade and finalize an attempt identically,
+// regardless of who triggered the submit.
+export async function performSubmission(attemptId: string, testId: string, autoSubmit: boolean): Promise<SubmissionOutcome> {
     // Batch fetch: attempt with answers, test with questions - single DB round trip
     const [attempt, test] = await Promise.all([
       prisma.testAttempt.findUnique({

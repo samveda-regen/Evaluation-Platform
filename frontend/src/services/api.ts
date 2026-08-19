@@ -474,6 +474,9 @@ export const adminApi = {
   deleteAttempt: (attemptId: string) =>
     api.delete(`/admin/attempts/${attemptId}`),
 
+  forceSubmitAttempt: (attemptId: string) =>
+    api.post(`/admin/attempts/${attemptId}/force-submit`),
+
   // Agent API - AI-powered test generation
   analyzeJob: (jobTitle: string, jobDescription?: string, experience?: string) =>
     api.post('/admin/agent/analyze-job', { jobTitle, jobDescription, experience }),
