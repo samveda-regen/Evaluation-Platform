@@ -73,6 +73,7 @@ import {
   gradeCommunicationAnswer,
   autoGradeCommunicationAnswer,
   deleteAttempt,
+  forceSubmitAttempt,
   reEvaluateAttempt,
   exportResults,
   getDashboardStats,
@@ -204,6 +205,7 @@ router.post('/attempts/:attemptId/behavioral/:questionId/auto-grade', adminAuth,
 router.post('/attempts/:attemptId/communication/:questionId/grade', adminAuth, gradeCommunicationAnswer);
 router.post('/attempts/:attemptId/communication/:questionId/auto-grade', adminAuth, autoGradeCommunicationAnswer);
 router.delete('/attempts/:attemptId', adminAuth, deleteAttempt);
+router.post('/attempts/:attemptId/force-submit', adminAuth, forceSubmitAttempt);
 router.post('/attempts/:attemptId/reevaluate', adminAuth, reEvaluateAttempt);
 router.get('/tests/:testId/export', adminAuth, exportResults);
 router.get('/trust-reports', adminAuth, getTrustReports);

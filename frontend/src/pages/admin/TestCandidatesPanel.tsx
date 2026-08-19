@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { TestAttempt } from '../../types';
-import { FileDown, Mail, ChevronLeft, ChevronRight, XCircle, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react';
+import { FileDown, Mail, ChevronLeft, ChevronRight, XCircle, CheckCircle2, AlertTriangle, Trash2, Send } from 'lucide-react';
 import Icon from '../../components/Icon';
 import CustomSelect from '../../components/CustomSelect';
 
@@ -90,6 +90,7 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
   const [resLoading, setResLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [forceSubmittingId, setForceSubmittingId] = useState<string | null>(null);
 
   useEffect(() => { load(); }, [testId, refreshKey]);
   useEffect(() => { setPage(1); }, [search, statusFilter]);
@@ -120,6 +121,17 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
       await load();
     } catch { toast.error('Failed to remove candidate'); }
     finally { setDeletingId(null); }
+  };
+
+  const handleForceSubmit = async (attemptId: string, name: string) => {
+    if (!window.confirm(`Force-submit ${name}'s attempt now? Whatever they've answered so far will be graded, and they won't be able to continue the test.`)) return;
+    setForceSubmittingId(attemptId);
+    try {
+      await adminApi.forceSubmitAttempt(attemptId);
+      toast.success(`${name}'s attempt submitted`);
+      await load();
+    } catch { toast.error('Failed to force-submit attempt'); }
+    finally { setForceSubmittingId(null); }
   };
 
   const handleExport = async () => {
@@ -477,6 +489,16 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
                   style={{ backgroundColor: selAttempt?.id ? 'var(--admin-accent)' : 'var(--admin-accent-disabled)', cursor: selAttempt?.id ? 'pointer' : 'not-allowed' }}>
                   View full attempt
                 </button>
+                {selAttempt?.status === 'in_progress' && (
+                  <button
+                    onClick={() => handleForceSubmit(selAttempt.id, selInv.name)}
+                    disabled={forceSubmittingId === selAttempt.id}
+                    className="p-3 rounded-xl border flex items-center justify-center hover:bg-orange-50 transition-colors"
+                    style={{ borderColor:'#FDBA74', backgroundColor:'white', cursor:'pointer' }}
+                    title="Force submit — grade whatever they've answered so far">
+                    <Send width={16} height={16} style={{ color:'#EA580C' }} />
+                  </button>
+                )}
                 <button
                   onClick={() => selAttempt?.id && (async () => {
                     try {
