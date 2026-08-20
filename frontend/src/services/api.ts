@@ -226,6 +226,9 @@ export const adminApi = {
   deleteTestInvitation: (testId: string, invitationId: string) =>
     api.delete(`/admin/tests/${testId}/invitations/${invitationId}`),
 
+  resendTestInvitation: (testId: string, invitationId: string) =>
+    api.post(`/admin/tests/${testId}/invitations/${invitationId}/resend`),
+
   addQuestionToTest: (testId: string, data: { questionId: string; questionType: string; orderIndex?: number }) =>
     api.post(`/admin/tests/${testId}/questions`, data),
 
@@ -680,6 +683,9 @@ export const candidateApi = {
 
   logActivity: (data: { eventType: string; eventData?: Record<string, unknown> }) =>
     api.post('/candidate/activity', data),
+
+  heartbeat: () =>
+    api.post('/candidate/heartbeat'),
 
   submitTest: (data: { autoSubmit?: boolean }) =>
     api.post<SubmissionResult>('/candidate/test/submit', data),

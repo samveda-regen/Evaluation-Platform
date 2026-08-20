@@ -434,6 +434,17 @@ export default function TestInterface() {
     return () => { if (autoSaveRef.current) clearInterval(autoSaveRef.current); };
   }, [currentQuestionIndex, mcqAnswers, codingAnswers, behavioralAnswers]);
 
+  // Lets the server tell an abandoned attempt (tab closed, crash, network loss) apart from
+  // one still genuinely in progress, so it can be auto-submitted well before the full test
+  // duration elapses. Runs regardless of tab visibility — background timers still fire
+  // (Chrome throttles to ~once/min when hidden), comfortably inside the server's grace window.
+  useEffect(() => {
+    if (isSubmitted) return;
+    candidateApi.heartbeat().catch(() => {});
+    const interval = setInterval(() => { candidateApi.heartbeat().catch(() => {}); }, 15000);
+    return () => clearInterval(interval);
+  }, [isSubmitted]);
+
   useEffect(() => {
     if (!currentQuestion || currentQuestion.type !== 'coding') return;
     const questionId = currentQuestion.questionId;

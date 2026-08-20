@@ -492,6 +492,11 @@ model TestAttempt {
   releasedBy        String?
   resultEmailSentAt DateTime?
 
+  // Updated by a periodic client heartbeat while the exam tab is open; lets the expiry
+  // sweep detect an abandoned attempt (tab closed, crash, network loss) and auto-submit
+  // it well before the full test duration would otherwise elapse.
+  lastSeenAt DateTime?
+
   test      Test      @relation(fields: [testId], references: [id])
   candidate Candidate @relation(fields: [candidateId], references: [id])
 

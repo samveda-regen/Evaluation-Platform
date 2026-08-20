@@ -11,7 +11,8 @@ import {
   InvitationServiceError,
   consumeInvitation,
   getInvitationContextForLogin,
-  resolveInvitationTokenFromAccessCode
+  resolveInvitationTokenFromAccessCode,
+  resetAttemptForRetake
 } from '../services/invitationService.js';
 import { uploadSnapshot, uploadRecording } from '../services/fileStorageService.js';
 import { transcribeAudio, isSpeechServiceConfigured } from '../services/speechService.js';
@@ -302,26 +303,7 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
       }
 
       // For allowMultipleAttempts, reset the same attempt row (schema has unique testId+candidateId).
-      await prisma.$transaction([
-        prisma.mCQAnswer.deleteMany({ where: { attemptId: existingAttempt.id } }),
-        prisma.codingAnswer.deleteMany({ where: { attemptId: existingAttempt.id } }),
-        prisma.activityLog.deleteMany({ where: { attemptId: existingAttempt.id } }),
-        prisma.proctorSession.deleteMany({ where: { attemptId: existingAttempt.id } }),
-        prisma.performanceAnalytics.deleteMany({ where: { attemptId: existingAttempt.id } }),
-        prisma.testAttempt.update({
-          where: { id: existingAttempt.id },
-          data: {
-            startTime: new Date(),
-            endTime: null,
-            submittedAt: null,
-            status: 'in_progress',
-            score: null,
-            violations: 0,
-            isFlagged: false,
-            flagReason: null,
-          },
-        }),
-      ]);
+      await resetAttemptForRetake(existingAttempt.id);
 
       const token = generateCandidateToken({
         id: candidate.id,
@@ -666,9 +648,16 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
     if (!priorStart) {
       const startedAttempt = await prisma.testAttempt.update({
         where: { id: attemptId },
-        data: { startTime: new Date() }
+        data: { startTime: new Date(), lastSeenAt: new Date() }
       });
       effectiveStartTime = startedAttempt.startTime;
+    } else {
+      // Resuming (e.g. page refresh) — give the abandonment grace period a fresh baseline
+      // rather than leaving lastSeenAt at whatever it was before the candidate reconnected.
+      await prisma.testAttempt.update({
+        where: { id: attemptId },
+        data: { lastSeenAt: new Date() }
+      });
     }
 
     // Log test start
@@ -1535,6 +1524,24 @@ export async function logActivity(req: AuthenticatedRequest, res: Response): Pro
     res.json({ message: 'Activity logged' });
   } catch (error) {
     console.error('Log activity error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// Periodic keepalive from the exam tab while it's open. Lets the expiry sweep
+// (testExpiryService.ts) tell an abandoned attempt (tab closed, crash, network loss) apart
+// from one that's still genuinely in progress, and auto-submit it after a grace period
+// instead of only expiring once the full test duration has elapsed.
+export async function heartbeat(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { attemptId } = req.candidate!;
+    await prisma.testAttempt.updateMany({
+      where: { id: attemptId, status: 'in_progress' },
+      data: { lastSeenAt: new Date() }
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Heartbeat error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }
