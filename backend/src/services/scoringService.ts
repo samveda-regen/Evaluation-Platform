@@ -353,7 +353,11 @@ export async function recalculateSubmittedAttemptsForTest(testId: string): Promi
   const attempts = await prisma.testAttempt.findMany({
     where: {
       testId,
-      status: { not: 'in_progress' }
+      // Whitelist actually-completed statuses rather than blacklisting 'in_progress' — an
+      // attempt still at 'permission' (candidate never started) has no answers, so scoring it
+      // here would persist a misleading score: 0, showing as "0%" in the admin panel instead
+      // of "—" for a candidate who never touched the exam.
+      status: { in: ['submitted', 'auto_submitted', 'flagged'] }
     },
     select: { id: true }
   });
