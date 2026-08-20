@@ -123,7 +123,7 @@ export interface TestAttempt {
   startTime: string;
   endTime?: string;
   submittedAt?: string;
-  status: 'in_progress' | 'submitted' | 'auto_submitted' | 'flagged';
+  status: 'permission' | 'in_progress' | 'submitted' | 'auto_submitted' | 'flagged';
   score?: number;
   trustScore?: number;
   violations: number;
