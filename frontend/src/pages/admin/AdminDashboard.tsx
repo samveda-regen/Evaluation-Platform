@@ -175,6 +175,7 @@ function IntegrityDonut({ percentage, clean, flagged }: { percentage: number; cl
 
 function StatusBadge({ status }: { status: string }) {
   const config: Record<string, { bg: string; color: string; dot: string; label: string; pulse?: boolean }> = {
+    permission:     { bg: '#EFF6FF', color: '#1D4ED8', dot: '#3B82F6', label: 'Permission' },
     submitted:      { bg: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)', dot: 'var(--admin-accent)', label: 'Submitted' },
     auto_submitted: { bg: '#FFF7ED', color: '#C2410C', dot: '#F97316', label: 'Auto-submitted' },
     in_progress:    { bg: 'var(--admin-accent-soft)', color: 'var(--admin-accent-hover)', dot: 'var(--admin-accent)', label: 'In progress', pulse: true },

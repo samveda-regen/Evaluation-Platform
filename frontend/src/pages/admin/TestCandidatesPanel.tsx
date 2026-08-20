@@ -63,9 +63,10 @@ function fmtAttemptDate(start?: string | null) {
   return format(new Date(start), 'MMM d, yyyy');
 }
 
-type CandStatus = 'Submitted' | 'Started' | 'In progress' | 'Invited' | 'Expired' | 'Failed';
+type CandStatus = 'Submitted' | 'Started' | 'Permission' | 'In progress' | 'Invited' | 'Expired' | 'Failed';
 function getCandStatus(invite: InvitationRow, attempt?: TestAttempt): CandStatus {
   if (attempt?.status === 'submitted' || attempt?.status === 'auto_submitted' || attempt?.status === 'flagged') return 'Submitted';
+  if (attempt?.status === 'permission') return 'Permission';
   if (attempt?.status === 'in_progress') return 'In progress';
   if (invite.lifecycleStatus === 'Completed') return 'Submitted';
   if (invite.lifecycleStatus === 'Started') return 'Started';
@@ -79,6 +80,7 @@ function statusFilterValue(status: CandStatus): string {
 const STATUS_CFG: Record<CandStatus, { bg: string; color: string; dot: string; label: string }> = {
   'Submitted':   { bg:'var(--admin-accent-soft)', color:'var(--admin-accent-hover)', dot:'var(--admin-accent)', label:'Submitted' },
   'Started':     { bg:'var(--admin-accent-soft)', color:'var(--admin-accent-link)', dot:'var(--admin-accent)', label:'Started' },
+  'Permission':  { bg:'#EFF6FF', color:'#1D4ED8', dot:'#3B82F6', label:'Permission' },
   'In progress': { bg:'var(--admin-accent-soft)', color:'var(--admin-accent-link)', dot:'var(--admin-accent)', label:'In progress' },
   'Invited':     { bg:'var(--admin-border)', color:'var(--admin-text-muted)', dot:'var(--admin-text-subtle)', label:'Invited' },
   'Expired':     { bg:'#FEF2F2', color:'#DC2626', dot:'#EF4444', label:'Expired' },

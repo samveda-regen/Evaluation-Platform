@@ -41,6 +41,7 @@ function initials(name: string) {
 /* -- Status badge (same logic as AdminDashboard's StatusBadge) -- */
 function StatusBadge({ status }: { status: string }) {
   const MAP: Record<string, { label: string; dot: string; text: string; bg: string }> = {
+    permission:     { label: 'Permission',     dot: 'var(--admin-accent)', text: '#1D4ED8', bg: '#EFF6FF' },
     submitted:      { label: 'Submitted',      dot: 'var(--admin-accent)', text: 'var(--admin-accent-hover)', bg: 'var(--admin-accent-soft)' },
     auto_submitted: { label: 'Auto-submitted', dot: 'var(--admin-accent)', text: 'var(--admin-accent-hover)', bg: 'var(--admin-accent-soft)' },
     in_progress:    { label: 'Inprogress',     dot: 'var(--admin-accent)', text: '#92400E', bg: 'var(--admin-accent-disabled)' },
@@ -61,6 +62,7 @@ function StatusBadge({ status }: { status: string }) {
 
 const STATUS_OPTIONS = [
   { value: '',               label: 'All statuses' },
+  { value: 'permission',     label: 'Permission' },
   { value: 'submitted',      label: 'Submitted' },
   { value: 'auto_submitted', label: 'Auto-submitted' },
   { value: 'in_progress',    label: 'Inprogress' },

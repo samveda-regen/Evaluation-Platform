@@ -800,7 +800,7 @@ export async function createSilentInvitationForCandidate(input: {
   };
 }
 
-// Wipes an attempt's answers/logs/proctoring/analytics and resets it to a blank in_progress
+// Wipes an attempt's answers/logs/proctoring/analytics and resets it to a blank permission
 // state, so the same TestAttempt row (schema enforces one per test+candidate) can be reused
 // for a genuine retake — either a candidate re-logging in on a test with allowMultipleAttempts,
 // or an admin resending an invitation to a candidate whose earlier attempt needs to be undone
@@ -821,7 +821,7 @@ export async function resetAttemptForRetake(attemptId: string): Promise<void> {
         startTime: new Date(),
         endTime: null,
         submittedAt: null,
-        status: 'in_progress',
+        status: 'permission',
         score: null,
         violations: 0,
         isFlagged: false,

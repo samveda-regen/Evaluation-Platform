@@ -296,6 +296,42 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
         return;
       }
 
+      if (existingAttempt.status === 'permission') {
+        const token = generateCandidateToken({
+          id: candidate.id,
+          email: candidate.email,
+          testId: test.id,
+          attemptId: existingAttempt.id,
+          invitationId,
+          role: 'candidate'
+        });
+
+        await prisma.activityLog.create({
+          data: {
+            attemptId: existingAttempt.id,
+            eventType: 'login_permission',
+            eventData: JSON.stringify({ timestamp: new Date().toISOString() })
+          }
+        });
+
+        res.json({
+          message: 'Permission granted',
+          candidate: {
+            id: candidate.id,
+            email: candidate.email,
+            name: candidate.name
+          },
+          attempt: {
+            id: existingAttempt.id,
+            startTime: existingAttempt.startTime,
+            status: existingAttempt.status,
+            violations: existingAttempt.violations
+          },
+          token
+        });
+        return;
+      }
+
       // Completed attempt exists
       if (!test.allowMultipleAttempts) {
         res.status(400).json({ error: 'You have already completed this test' });
@@ -332,7 +368,7 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
         attempt: {
           id: existingAttempt.id,
           startTime: new Date(),
-          status: 'in_progress',
+          status: 'permission',
           violations: 0
         },
         token
@@ -347,7 +383,8 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
         data: {
           testId: test.id,
           candidateId: candidate.id,
-          startTime: new Date()
+          startTime: new Date(),
+          status: 'permission'
         }
       });
     } catch (error) {
@@ -648,7 +685,7 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
     if (!priorStart) {
       const startedAttempt = await prisma.testAttempt.update({
         where: { id: attemptId },
-        data: { startTime: new Date(), lastSeenAt: new Date() }
+        data: { startTime: new Date(), lastSeenAt: new Date(), status: 'in_progress' }
       });
       effectiveStartTime = startedAttempt.startTime;
     } else {
@@ -656,7 +693,7 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
       // rather than leaving lastSeenAt at whatever it was before the candidate reconnected.
       await prisma.testAttempt.update({
         where: { id: attemptId },
-        data: { lastSeenAt: new Date() }
+        data: { lastSeenAt: new Date(), status: 'in_progress' }
       });
     }
 
