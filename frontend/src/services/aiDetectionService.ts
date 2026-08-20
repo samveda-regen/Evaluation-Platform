@@ -83,14 +83,27 @@ export class AIProctor {
   private isLowEnd = false;
   private noFaceFrameCount = 0;
   private lookAwayFrameCount = 0;
+  private initPromise: Promise<boolean> | null = null;
 
   /**
    * Initialize TensorFlow.js and load models.
    * On low-end devices (< 4 CPU cores or < 4 GB RAM) COCO-SSD is skipped —
    * only BlazeFace is loaded. Phone/object detection falls back to the Python service.
    * Both model loads are wrapped with an 8-second timeout to avoid hanging indefinitely.
+   *
+   * Idempotent: safe to call from multiple places (e.g. an early warm-up on the
+   * instructions page, then again when the assessment page mounts) — a second call
+   * resolves immediately if already initialized, or joins the in-flight load rather
+   * than reloading the models and re-triggering the WebGL shader-compile freeze.
    */
   async initialize(): Promise<boolean> {
+    if (this.isInitialized) return true;
+    if (this.initPromise) return this.initPromise;
+    this.initPromise = this.doInitialize();
+    return this.initPromise;
+  }
+
+  private async doInitialize(): Promise<boolean> {
     try {
       this.isLowEnd = isLowEndDevice();
       console.log(`Initializing AI Proctor (low-end device: ${this.isLowEnd})...`);
@@ -122,9 +135,13 @@ export class AIProctor {
 
       this.isInitialized = this.blazefaceModel !== null;
       console.log(`AI Proctor initialized (coco=${!!this.cocoModel}, blaze=${!!this.blazefaceModel})`);
+      // On failure, clear initPromise so a later call (e.g. TestInterface mount, after
+      // an early warm-up attempt failed) retries instead of replaying the same failure.
+      if (!this.isInitialized) this.initPromise = null;
       return this.isInitialized;
     } catch (error) {
       console.error('Failed to initialize AI Proctor:', error);
+      this.initPromise = null;
       return false;
     }
   }
