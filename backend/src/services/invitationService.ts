@@ -800,6 +800,138 @@ export async function createSilentInvitationForCandidate(input: {
   };
 }
 
+// Wipes an attempt's answers/logs/proctoring/analytics and resets it to a blank in_progress
+// state, so the same TestAttempt row (schema enforces one per test+candidate) can be reused
+// for a genuine retake — either a candidate re-logging in on a test with allowMultipleAttempts,
+// or an admin resending an invitation to a candidate whose earlier attempt needs to be undone
+// (e.g. wrongly auto-submitted). Deliberately leaves TestAttemptQuestion alone so a retake
+// keeps the same assigned question set rather than reshuffling.
+export async function resetAttemptForRetake(attemptId: string): Promise<void> {
+  await prisma.$transaction([
+    prisma.mCQAnswer.deleteMany({ where: { attemptId } }),
+    prisma.codingAnswer.deleteMany({ where: { attemptId } }),
+    prisma.behavioralAnswer.deleteMany({ where: { attemptId } }),
+    prisma.communicationAnswer.deleteMany({ where: { attemptId } }),
+    prisma.activityLog.deleteMany({ where: { attemptId } }),
+    prisma.proctorSession.deleteMany({ where: { attemptId } }),
+    prisma.performanceAnalytics.deleteMany({ where: { attemptId } }),
+    prisma.testAttempt.update({
+      where: { id: attemptId },
+      data: {
+        startTime: new Date(),
+        endTime: null,
+        submittedAt: null,
+        status: 'in_progress',
+        score: null,
+        violations: 0,
+        isFlagged: false,
+        flagReason: null,
+        lastSeenAt: null,
+      },
+    }),
+  ]);
+}
+
+export interface ResendInvitationResult {
+  email: string;
+  name: string;
+  attemptReset: boolean;
+}
+
+// Admin-triggered: regenerates a candidate's invitation token/access code and re-emails it,
+// resetting any existing attempt first so the new link leads to a clean retake rather than
+// landing back on a stale result (e.g. a candidate wrongly auto-submitted by the expiry sweep
+// before ever answering a question).
+export async function resendInvitationForCandidate(input: {
+  testId: string;
+  adminId: string;
+  invitationId: string;
+}): Promise<ResendInvitationResult> {
+  const test = await (prisma.test as any).findFirst({
+    where: { id: input.testId, adminId: input.adminId },
+    select: {
+      id: true,
+      name: true,
+      isActive: true,
+      startTime: true,
+      endTime: true,
+      duration: true,
+      inviteEmailSubject: true,
+      inviteEmailBody: true,
+      admin: { select: { company: { select: { name: true } } } }
+    }
+  });
+
+  if (!test) {
+    throw new InvitationServiceError('Test not found.', 404);
+  }
+  if (!test.isActive) {
+    throw new InvitationServiceError('Cannot resend invitations for an inactive test.', 400);
+  }
+  if (test.endTime && new Date() > test.endTime) {
+    throw new InvitationServiceError('Cannot resend invitations because this test has already ended.', 400);
+  }
+
+  const invitation = await prisma.testInvitation.findFirst({
+    where: { id: input.invitationId, testId: test.id }
+  });
+  if (!invitation) {
+    throw new InvitationServiceError('Invitation not found.', 404);
+  }
+
+  const candidate = await prisma.candidate.findUnique({ where: { email: invitation.email } });
+  let attemptReset = false;
+  if (candidate) {
+    const existingAttempt = await prisma.testAttempt.findUnique({
+      where: { testId_candidateId: { testId: test.id, candidateId: candidate.id } }
+    });
+    if (existingAttempt) {
+      await resetAttemptForRetake(existingAttempt.id);
+      attemptReset = true;
+    }
+  }
+
+  const token = randomBytes(32).toString('hex');
+  const accessCode = await generateUniqueAccessCode();
+  const updated = await prisma.testInvitation.update({
+    where: { id: invitation.id },
+    data: { token, accessCode, status: 'PENDING', sentAt: null, error: null, consumedAt: null }
+  });
+
+  const examStart = formatExamDate((test as any).startTime);
+  const examEnd = formatExamDate((test as any).endTime);
+
+  try {
+    await sendInvitationEmailWithRetry({
+      to: updated.email,
+      candidateName: updated.name,
+      testName: test.name,
+      testLink: buildInviteLink(updated.token),
+      accessCode: updated.accessCode ?? accessCode,
+      companyName: (test as any).admin?.company?.name ?? undefined,
+      estimatedTime: `${(test as any).duration ?? ''} minutes`,
+      examStart,
+      examEnd,
+      inviteEmailSubject: (test as any).inviteEmailSubject ?? undefined,
+      inviteEmailBody: (test as any).inviteEmailBody ?? undefined,
+    }, updated.email);
+
+    await prisma.testInvitation.update({
+      where: { id: updated.id },
+      data: { status: 'SENT', sentAt: new Date(), error: null }
+    });
+  } catch (error) {
+    const failureMessage = extractErrorMessage(error);
+    await prisma.testInvitation.update({
+      where: { id: updated.id },
+      data: { status: 'FAILED', error: failureMessage.slice(0, 500) }
+    });
+    throw new InvitationServiceError(`Failed to send invitation email: ${failureMessage}`, 502);
+  }
+
+  return { email: updated.email, name: updated.name, attemptReset };
+}
+
 export async function getPublicInvitationDetails(token: string): Promise<InvitationDetails> {
   const details = await fetchInvitationByToken(token);
   validateInvitationLifecycle(details, false);

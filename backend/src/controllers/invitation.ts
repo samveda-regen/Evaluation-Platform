@@ -5,7 +5,8 @@ import prisma from '../utils/db.js';
 import {
   InvitationServiceError,
   getPublicInvitationDetails,
-  sendBulkTestInvitations
+  sendBulkTestInvitations,
+  resendInvitationForCandidate
 } from '../services/invitationService.js';
 
 function getErrorMessage(error: unknown): string {
@@ -324,6 +325,33 @@ export async function deleteTestInvitationCandidate(req: AuthenticatedRequest, r
     res.json({ message: 'Candidate removed from test successfully' });
   } catch (error) {
     console.error('Delete test invitation candidate error:', error);
+    res.status(500).json({ error: getErrorMessage(error) });
+  }
+}
+
+// For a candidate who ran into trouble (e.g. wrongly auto-submitted before ever answering a
+// question): regenerates their invitation token/access code, re-emails it, and resets their
+// existing attempt first so the new link leads to a clean retake rather than their old result.
+export async function resendTestInvitationCandidate(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { testId, invitationId } = req.params;
+    const adminId = req.admin!.id;
+
+    const result = await resendInvitationForCandidate({ testId, adminId, invitationId });
+
+    res.json({
+      message: result.attemptReset
+        ? `Invitation resent to ${result.name} and their attempt was reset for a retake.`
+        : `Invitation resent to ${result.name}.`,
+      ...result
+    });
+  } catch (error) {
+    if (error instanceof InvitationServiceError) {
+      res.status(error.statusCode).json({ error: error.message });
+      return;
+    }
+
+    console.error('Resend test invitation candidate error:', error);
     res.status(500).json({ error: getErrorMessage(error) });
   }
 }

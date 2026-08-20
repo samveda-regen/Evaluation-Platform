@@ -94,7 +94,8 @@ import {
   sendTestInvitations,
   getInvitationDashboard,
   getTestInvitationDashboard,
-  deleteTestInvitationCandidate
+  deleteTestInvitationCandidate,
+  resendTestInvitationCandidate
 } from '../controllers/invitation.js';
 
 import {
@@ -153,6 +154,7 @@ router.post('/tests/:testId/try', adminAuth, createAdminPreviewAttempt);
 router.post('/tests/:testId/send-invitations', adminAuth, invitationUpload.single('file'), sendTestInvitations);
 router.get('/tests/:testId/invitations', adminAuth, getTestInvitationDashboard);
 router.delete('/tests/:testId/invitations/:invitationId', adminAuth, deleteTestInvitationCandidate);
+router.post('/tests/:testId/invitations/:invitationId/resend', adminAuth, resendTestInvitationCandidate);
 router.post('/tests/:testId/sections', adminAuth, createTestSection);
 router.delete('/tests/:testId/sections/:sectionId', adminAuth, deleteTestSection);
 

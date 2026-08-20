@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { TestAttempt } from '../../types';
-import { FileDown, Mail, ChevronLeft, ChevronRight, XCircle, CheckCircle2, AlertTriangle, Trash2, Send, Clock } from 'lucide-react';
+import { FileDown, Mail, ChevronLeft, ChevronRight, XCircle, CheckCircle2, AlertTriangle, Trash2, Send, Clock, RotateCcw } from 'lucide-react';
 import Icon from '../../components/Icon';
 import CustomSelect from '../../components/CustomSelect';
 import { violationLabel } from '../../utils/violationLabels';
@@ -99,6 +99,7 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
   const [exporting, setExporting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [forceSubmittingId, setForceSubmittingId] = useState<string | null>(null);
+  const [resendingId, setResendingId] = useState<string | null>(null);
   const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
 
@@ -142,6 +143,20 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
       await load();
     } catch { toast.error('Failed to force-submit attempt'); }
     finally { setForceSubmittingId(null); }
+  };
+
+  const handleResendInvitation = async (invitationId: string, name: string, hasAttempt: boolean) => {
+    const confirmMsg = hasAttempt
+      ? `Resend the invitation to ${name}? Their current attempt (answers, score) will be reset so the new link starts a clean retake.`
+      : `Resend the invitation to ${name}? A new link and access code will be emailed to them.`;
+    if (!window.confirm(confirmMsg)) return;
+    setResendingId(invitationId);
+    try {
+      const { data } = await adminApi.resendTestInvitation(testId, invitationId);
+      toast.success(data?.message || `Invitation resent to ${name}`);
+      await load();
+    } catch (err: any) { toast.error(err?.response?.data?.error || 'Failed to resend invitation'); }
+    finally { setResendingId(null); }
   };
 
   const handleExport = async () => {
@@ -562,6 +577,14 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
                   className="p-3 rounded-xl border flex items-center justify-center"
                   style={{ borderColor:'var(--admin-border)', backgroundColor:'white', cursor: selAttempt?.id ? 'pointer' : 'not-allowed' }}>
                   <FileDown width={16} height={16} style={{ color:'var(--admin-text-muted)' }} />
+                </button>
+                <button
+                  onClick={() => handleResendInvitation(selInv.id, selInv.name, !!selAttempt)}
+                  disabled={resendingId === selInv.id}
+                  className="p-3 rounded-xl border flex items-center justify-center hover:bg-blue-50 transition-colors"
+                  style={{ borderColor:'var(--admin-border)', backgroundColor:'white', cursor:'pointer', opacity: resendingId === selInv.id ? 0.5 : 1 }}
+                  title="Resend invitation — new link, resets their attempt for a clean retake">
+                  <RotateCcw width={16} height={16} style={{ color:'var(--admin-accent-link)' }} />
                 </button>
                 <button
                   onClick={() => handleDeleteCandidate(selInv.id, selInv.name)}

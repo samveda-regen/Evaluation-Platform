@@ -20,6 +20,7 @@ import {
   saveCommunicationAnswer,
   runCode,
   logActivity,
+  heartbeat,
   submitTest,
   getSavedAnswers
 } from '../controllers/candidate.js';
@@ -44,6 +45,7 @@ router.post('/code/run', candidateAuth, runCode);
 
 // Activity logging
 router.post('/activity', candidateAuth, activityLogValidation, handleValidationErrors, logActivity);
+router.post('/heartbeat', candidateAuth, heartbeat);
 
 // Submit test
 router.post('/test/submit', candidateAuth, submitTest);
