@@ -121,7 +121,7 @@ export class AIProctor {
           8000
         );
         if (this.cocoModel) {
-          console.log('COCO-SSD model loaded');
+          console.log('Model loaded successfully');
         } else {
           console.warn('COCO-SSD load timed out — object detection disabled for this session');
         }
