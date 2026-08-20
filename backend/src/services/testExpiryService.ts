@@ -18,12 +18,25 @@ export async function sweepExpiredAttempts(): Promise<void> {
   try {
     const candidates = await prisma.testAttempt.findMany({
       where: { status: 'in_progress' },
-      select: { id: true, testId: true, startTime: true, test: { select: { duration: true } } },
+      select: {
+        id: true,
+        testId: true,
+        startTime: true,
+        test: { select: { duration: true } },
+        activityLogs: { where: { eventType: 'test_start' }, select: { id: true }, take: 1 },
+      },
     });
 
     const now = Date.now();
+    // startTime is stamped at login, before ID verification / "Start Test" is ever clicked
+    // (see startTest's own correction of startTime, candidate.ts). An attempt with no
+    // test_start log yet hasn't actually begun the exam, so it must never be swept as expired
+    // — otherwise a candidate stuck waiting on ID verification approval can get auto-submitted
+    // before seeing a single question.
     const expired = candidates.filter(
-      (attempt) => attempt.startTime.getTime() + attempt.test.duration * 60_000 <= now
+      (attempt) =>
+        attempt.activityLogs.length > 0 &&
+        attempt.startTime.getTime() + attempt.test.duration * 60_000 <= now
     );
 
     for (const attempt of expired) {
