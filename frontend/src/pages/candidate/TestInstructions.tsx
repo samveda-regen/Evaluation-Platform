@@ -8,6 +8,7 @@ import { useAuthStore } from '../../context/authStore';
 import IDVerification from '../../components/IDVerification';
 import { clearCachedStreams, getCachedStreams, setCachedStreams } from '../../services/devicePermissionService';
 import { requestScreenShare, ScreenShareSurfaceError } from '../../services/proctorService';
+import { getAIProctor } from '../../services/aiDetectionService';
 import { DEFAULT_CUSTOM_AI_VIOLATIONS, normalizeCustomAIViolationSelection } from '../../constants/customAIViolations';
 import talentstaQLogo from '../../assets/assessment-icons/icons/Talentstaq logo dark.svg';
 
@@ -107,6 +108,17 @@ export default function TestInstructions() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Warm up the AI proctoring models (TensorFlow.js WebGL backend + COCO-SSD/BlazeFace) while
+  // the candidate is still reading instructions, not after they click Start Test. Loading these
+  // models blocks the main thread for several seconds (WebGL shader compilation) — doing it here
+  // means that freeze either finishes before Start Test is clicked, or is already well underway
+  // by the time the "Setting up your environment" screen (handleStartTest) needs to wait on it.
+  useEffect(() => {
+    if (testDetails?.test.proctorEnabled && testDetails.test.requireCamera) {
+      getAIProctor().initialize().catch(() => {});
+    }
+  }, [testDetails?.test.proctorEnabled, testDetails?.test.requireCamera]);
+
   const measureConnection = async () => {
     const start = performance.now();
     try {
@@ -164,6 +176,15 @@ export default function TestInstructions() {
 
     setStarting(true);
     try {
+      // Finish the AI-proctoring model warm-up (usually already done from the effect above,
+      // triggered while the candidate was reading instructions) before calling startTest(),
+      // which stamps the exam's server-side start time — so environment setup never eats into
+      // the candidate's actual test duration, and the "Setting up your environment" screen
+      // below covers any remaining wait instead of it happening silently once they're timed.
+      if (testDetails?.test.proctorEnabled && testDetails.test.requireCamera) {
+        await getAIProctor().initialize();
+      }
+
       const { data } = await candidateApi.startTest();
       const savedAnswers = await candidateApi.getSavedAnswers();
       setTestData({
@@ -296,6 +317,30 @@ export default function TestInstructions() {
   }
 
   if (!testDetails) return null;
+
+  // Full-page takeover from the moment Start Test is clicked until the candidate lands on the
+  // timed assessment page. Covers the AI-proctoring model warm-up (see handleStartTest) with an
+  // explicit, expected wait instead of the browser silently freezing ("Page Unresponsive") right
+  // as the exam begins — which is what led candidates to close the tab mid-setup.
+  if (starting) {
+    return (
+      <div
+        className="min-h-screen flex flex-col items-center justify-center gap-6 px-4"
+        style={{ background: 'var(--admin-border)' }}
+      >
+        <div className="relative w-16 h-16">
+          <div className="absolute inset-0 rounded-full border-4 border-amber-200" />
+          <div className="absolute inset-0 rounded-full border-4 border-amber-500 border-t-transparent animate-spin" />
+        </div>
+        <div className="text-center">
+          <p className="text-lg font-semibold text-gray-900">Setting up your environment</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Please wait a few moments while we prepare your test session…
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const { test } = testDetails;
   const initials = getInitials(candidate?.name);
