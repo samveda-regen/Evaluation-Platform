@@ -317,6 +317,11 @@ function isEntireScreenCapture(stream: MediaStream): boolean {
   return settings?.displaySurface === 'monitor';
 }
 
+function shouldEnforceEntireScreenCheck(): boolean {
+  const browser = getBrowserInfo();
+  return browser.name === 'Chrome' || browser.name === 'Edge';
+}
+
 // Request screen share
 export async function requestScreenShare(): Promise<MediaStream | null> {
   const stream = await navigator.mediaDevices.getDisplayMedia({
@@ -328,7 +333,7 @@ export async function requestScreenShare(): Promise<MediaStream | null> {
   });
   if (!stream) return null;
 
-  if (!isEntireScreenCapture(stream)) {
+  if (shouldEnforceEntireScreenCheck() && !isEntireScreenCapture(stream)) {
     stream.getTracks().forEach(track => track.stop());
     throw new ScreenShareSurfaceError();
   }
