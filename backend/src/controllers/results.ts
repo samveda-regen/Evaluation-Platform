@@ -5,6 +5,7 @@ import { sendResultEmail } from '../services/emailService.js';
 import { getTestGradingPreferences } from '../utils/testPreferences.js';
 import { scoreBehavioralAnswer } from '../services/behavioralScoringService.js';
 import { scoreWrittenAnswer, scoreSpeakingAnswer } from '../services/communicationScoringService.js';
+import { sendCandidateScoreWebhook } from '../services/candidateScoreWebhookService.js';
 import { performSubmission } from './candidate.js';
 
 async function resolveCompanyName(companyId: string | null): Promise<string> {
@@ -933,7 +934,15 @@ export async function reEvaluateAttempt(req: AuthenticatedRequest, res: Response
         test: {
           select: {
             adminId: true,
-            negativeMarking: true
+            negativeMarking: true,
+            totalMarks: true,
+            passingMarks: true
+          }
+        },
+        candidate: {
+          select: {
+            name: true,
+            email: true
           }
         },
         mcqAnswers: {
@@ -1073,6 +1082,19 @@ export async function reEvaluateAttempt(req: AuthenticatedRequest, res: Response
     await prisma.testAttempt.update({
       where: { id: attemptId },
       data: { score: totalScore }
+    });
+
+    void sendCandidateScoreWebhook({
+      name: attempt.candidate?.name ?? 'Unknown',
+      emailid: attempt.candidate?.email ?? '',
+      score: totalScore,
+      totalMarks: attempt.test.totalMarks,
+      testid: attempt.testId,
+      status: 're_evaluated',
+      passingMarks: attempt.test.passingMarks ?? null,
+      result: attempt.test.passingMarks != null
+        ? (totalScore >= attempt.test.passingMarks ? 'passed' : 'failed')
+        : null,
     });
 
     res.json({
