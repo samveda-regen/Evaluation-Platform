@@ -638,7 +638,11 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
       },
     });
 
-    if (!attempt || attempt.status !== 'in_progress') {
+    // A freshly-logged-in attempt starts at 'permission' (device/ID checks not yet done) and
+    // only reaches 'in_progress' once this function's own update below runs — so it must accept
+    // both, or the very first Start Test click on any new attempt would 400 here before ever
+    // getting the chance to transition the status.
+    if (!attempt || (attempt.status !== 'in_progress' && attempt.status !== 'permission')) {
       res.status(400).json({ error: 'Invalid attempt status' });
       return;
     }
