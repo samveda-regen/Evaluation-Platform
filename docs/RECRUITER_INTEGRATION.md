@@ -355,3 +355,47 @@ with exponential backoff.
 - Use short `exp` values on the recruiter JWT (minutes, not days) — the
   `refresh_token` from `/auth/exchange` is what should live longer.
 - All traffic must be over HTTPS.
+
+---
+
+## 9. End-to-end flow
+
+```text
+HRIA Recruiter Platform
+  |
+  | 1) recruiter signs in
+  | 2) HRIA backend signs a short-lived recruiter JWT
+  v
+Recruiter JWT
+  |
+  | 3) HRIA frontend sends the JWT to
+  v
+ManchesterGlobal /api/integration/auth/exchange
+  |
+  | 4) ManchesterGlobal verifies:
+  |    - signature
+  |    - issuer (iss)
+  |    - audience (aud)
+  |    - required claims
+  | 5) ManchesterGlobal links or creates:
+  |    - Company
+  |    - Admin
+  |    - externalProvider
+  |    - externalUserId
+  v
+Access token + refresh token
+  |
+  | 6) HRIA uses the access token on future calls
+  v
+Protected ManchesterGlobal integration APIs
+  - /api/integration/tests
+  - /api/integration/tests/:testId/invitations
+  - /api/integration/tests/:testId/results
+  - /api/integration/company/webhook
+```
+
+In short:
+
+- HRIA issues the recruiter JWT.
+- ManchesterGlobal verifies it and links the account.
+- ManchesterGlobal returns an access token for the subsequent API calls.

@@ -63,13 +63,13 @@ function fmtAttemptDate(start?: string | null) {
   return format(new Date(start), 'MMM d, yyyy');
 }
 
-type CandStatus = 'Submitted' | 'Started' | 'Permission' | 'In progress' | 'Invited' | 'Expired' | 'Failed';
+type CandStatus = 'Submitted' | 'Permission' | 'In progress' | 'Invited' | 'Expired' | 'Failed';
 function getCandStatus(invite: InvitationRow, attempt?: TestAttempt): CandStatus {
   if (attempt?.status === 'submitted' || attempt?.status === 'auto_submitted' || attempt?.status === 'flagged') return 'Submitted';
   if (attempt?.status === 'permission') return 'Permission';
   if (attempt?.status === 'in_progress') return 'In progress';
   if (invite.lifecycleStatus === 'Completed') return 'Submitted';
-  if (invite.lifecycleStatus === 'Started') return 'Started';
+  if (invite.lifecycleStatus === 'Started') return 'Permission';
   if (invite.lifecycleStatus === 'Expired') return 'Expired';
   if (invite.inviteStatus === 'FAILED') return 'Failed';
   return 'Invited';
@@ -79,7 +79,6 @@ function statusFilterValue(status: CandStatus): string {
 }
 const STATUS_CFG: Record<CandStatus, { bg: string; color: string; dot: string; label: string }> = {
   'Submitted':   { bg:'var(--admin-accent-soft)', color:'var(--admin-accent-hover)', dot:'var(--admin-accent)', label:'Submitted' },
-  'Started':     { bg:'var(--admin-accent-soft)', color:'var(--admin-accent-link)', dot:'var(--admin-accent)', label:'Started' },
   'Permission':  { bg:'#EFF6FF', color:'#1D4ED8', dot:'#3B82F6', label:'Permission' },
   'In progress': { bg:'var(--admin-accent-soft)', color:'var(--admin-accent-link)', dot:'var(--admin-accent)', label:'In progress' },
   'Invited':     { bg:'var(--admin-border)', color:'var(--admin-text-muted)', dot:'var(--admin-text-subtle)', label:'Invited' },
@@ -276,7 +275,7 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
           options={[
             { value:'all',         label:'All status' },
             { value:'submitted',   label:'Submitted' },
-            { value:'started',     label:'Started' },
+            { value:'permission',  label:'Permission' },
             { value:'in_progress', label:'In progress' },
             { value:'invited',     label:'Invited' },
             { value:'expired',     label:'Expired' },
@@ -336,7 +335,7 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
               const scoreCol = scorePct != null ? (scorePct >= 70 ? 'var(--admin-accent)' : scorePct >= 50 ? 'var(--admin-accent)' : '#EF4444') : 'var(--admin-text-muted)';
               const time = fmtDuration(attempt?.startTime, attempt?.endTime);
               const viol = attempt?.violations ?? 0;
-              const integrity = status === 'In progress' || status === 'Started' ? 'Live'
+              const integrity = status === 'In progress' || status === 'Permission' ? 'Live'
                 : status === 'Invited' || status === 'Expired' ? 'Not started'
                 : viol === 0 ? 'Clean' : `${viol} flag${viol > 1 ? 's' : ''}`;
               const integrityCl = integrity === 'Live' ? '#0891B2'
