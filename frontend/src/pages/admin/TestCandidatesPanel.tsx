@@ -4,9 +4,17 @@ import { format } from 'date-fns';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { TestAttempt } from '../../types';
-import { FileDown, Mail, ChevronLeft, ChevronRight, XCircle, CheckCircle2, AlertTriangle, Trash2, Send } from 'lucide-react';
+import { FileDown, Mail, ChevronLeft, ChevronRight, XCircle, CheckCircle2, AlertTriangle, Trash2, Send, Clock } from 'lucide-react';
 import Icon from '../../components/Icon';
 import CustomSelect from '../../components/CustomSelect';
+import { violationLabel } from '../../utils/violationLabels';
+
+interface ActivityLogEntry {
+  id: string;
+  eventType: string;
+  eventData?: string | null;
+  timestamp: string;
+}
 
 /* --- Interfaces --- */
 interface InvitationRow {
@@ -91,6 +99,8 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
   const [exporting, setExporting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [forceSubmittingId, setForceSubmittingId] = useState<string | null>(null);
+  const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
 
   useEffect(() => { load(); }, [testId, refreshKey]);
   useEffect(() => { setPage(1); }, [search, statusFilter]);
@@ -190,6 +200,17 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
     viol >= 2 ? 'Face not detected (8s)' : '',
     viol >= 4 ? `Multiple persons detected ×${viol - 2}` : '',
   ].filter(Boolean) : [];
+
+  useEffect(() => {
+    if (!selAttempt?.id) { setActivityLogs([]); return; }
+    let cancelled = false;
+    setLogsLoading(true);
+    adminApi.getAttemptDetails(selAttempt.id)
+      .then(({ data }) => { if (!cancelled) setActivityLogs(data.activityLogs || []); })
+      .catch(() => { if (!cancelled) setActivityLogs([]); })
+      .finally(() => { if (!cancelled) setLogsLoading(false); });
+    return () => { cancelled = true; };
+  }, [selAttempt?.id]);
 
   const isLoading = invLoading || resLoading;
 
@@ -474,6 +495,33 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
                         style={{ backgroundColor:'#FFF7ED', border:'1px solid #FED7AA' }}>
                         <AlertTriangle width={15} height={15} style={{ flexShrink:0, color:'#F97316' }} />
                         <span className="text-sm font-medium" style={{ color:'#92400E' }}>{flag}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Activity log */}
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color:'var(--admin-text-subtle)' }}>
+                  Activity Log
+                </p>
+                {logsLoading ? (
+                  <div className="flex items-center justify-center py-6">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2" style={{ borderColor:'var(--admin-accent)' }} />
+                  </div>
+                ) : activityLogs.length === 0 ? (
+                  <p className="text-sm py-2" style={{ color:'var(--admin-text-subtle)' }}>No activity recorded yet.</p>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {activityLogs.map(log => (
+                      <div key={log.id} className="flex items-start gap-2.5 px-3 py-2 rounded-xl"
+                        style={{ backgroundColor:'#F9FAFB', border:'1px solid var(--admin-border)' }}>
+                        <Clock width={13} height={13} style={{ flexShrink:0, marginTop:2, color:'var(--admin-text-subtle)' }} />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate" style={{ color:'var(--admin-text)' }}>{violationLabel(log.eventType)}</p>
+                          <p className="text-xs" style={{ color:'var(--admin-text-muted)' }}>{format(new Date(log.timestamp), 'MMM d, yyyy, h:mm:ss a')}</p>
+                        </div>
                       </div>
                     ))}
                   </div>
