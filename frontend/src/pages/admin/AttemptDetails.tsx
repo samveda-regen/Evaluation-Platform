@@ -1124,8 +1124,7 @@ export default function AttemptDetails() {
           </div>
 
           {/* Webcam recording */}
-          {latestRecording && (
-            <div style={{ borderRadius:'14px', padding:'18px 22px', backgroundColor:'var(--admin-surface)', border:'1px solid var(--admin-border)' }}>
+          <div style={{ borderRadius:'14px', padding:'18px 22px', backgroundColor:'var(--admin-surface)', border:'1px solid var(--admin-border)' }}>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'12px', marginBottom:'14px', flexWrap:'wrap' }}>
                 <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
                   <Video size={20} color="var(--admin-accent)" />
@@ -1134,7 +1133,7 @@ export default function AttemptDetails() {
                     <p style={{ margin:'2px 0 0', fontSize:'11px', color:'var(--admin-text-subtle)' }}>Camera and microphone only — screen sharing is not recorded</p>
                   </div>
                 </div>
-                {latestRecording.status === 'ready' && recordingAccess?.downloadUrl && (
+                {latestRecording?.status === 'ready' && recordingAccess?.downloadUrl && (
                   <a
                     href={recordingAccess.downloadUrl}
                     style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'8px 12px', borderRadius:'8px', backgroundColor:'var(--admin-accent)', color:'#fff', fontSize:'12px', fontWeight:600, textDecoration:'none' }}
@@ -1144,7 +1143,7 @@ export default function AttemptDetails() {
                 )}
               </div>
 
-              {latestRecording.status === 'ready' && recordingAccess?.streamUrl ? (
+              {latestRecording?.status === 'ready' && recordingAccess?.streamUrl ? (
                 <video
                   controls
                   preload="metadata"
@@ -1155,6 +1154,8 @@ export default function AttemptDetails() {
                 <div style={{ padding:'28px 16px', borderRadius:'10px', background:'var(--admin-bg)', textAlign:'center', color:'var(--admin-text-muted)', fontSize:'13px' }}>
                   {recordingAccessLoading
                     ? 'Loading recording…'
+                    : !latestRecording
+                      ? 'No webcam recording was created for this attempt.'
                     : latestRecording.status === 'failed'
                       ? `Recording unavailable${latestRecording.processingError ? `: ${latestRecording.processingError}` : ''}`
                       : latestRecording.status === 'recording'
@@ -1164,12 +1165,11 @@ export default function AttemptDetails() {
               )}
 
               <div style={{ display:'flex', gap:'18px', marginTop:'10px', flexWrap:'wrap', fontSize:'11px', color:'var(--admin-text-subtle)' }}>
-                <span>Status: <strong style={{ color:'var(--admin-text-muted)', textTransform:'capitalize' }}>{latestRecording.status}</strong></span>
-                <span>Duration: <strong style={{ color:'var(--admin-text-muted)' }}>{fmtRecordingDuration(latestRecording.duration)}</strong></span>
-                <span>Size: <strong style={{ color:'var(--admin-text-muted)' }}>{fmtFileSize(latestRecording.fileSize)}</strong></span>
+                <span>Status: <strong style={{ color:'var(--admin-text-muted)', textTransform:'capitalize' }}>{latestRecording?.status || 'not created'}</strong></span>
+                <span>Duration: <strong style={{ color:'var(--admin-text-muted)' }}>{fmtRecordingDuration(latestRecording?.duration)}</strong></span>
+                <span>Size: <strong style={{ color:'var(--admin-text-muted)' }}>{fmtFileSize(latestRecording?.fileSize)}</strong></span>
               </div>
-            </div>
-          )}
+          </div>
 
           {/* Integrity summary */}
           <div style={{
