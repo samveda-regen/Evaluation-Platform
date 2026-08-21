@@ -22,6 +22,7 @@ import { sendConfirmationEmail, sendResultEmail } from '../services/emailService
 import { saveNotification, ensureNotificationTable } from './notifications.js';
 import { getTestGradingPreferences } from '../utils/testPreferences.js';
 import { canStoreViolationNow } from './proctoring.js';
+import { stopCandidateEgressRecording } from '../services/liveKitEgressService.js';
 
 export async function candidateLogin(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -1876,6 +1877,10 @@ export async function performSubmission(attemptId: string, testId: string, autoS
         }
       })
     ]);
+
+    // Server-side LiveKit recording is finalized independently of the browser,
+    // covering manual submit, auto-submit, expiry, and admin force-submit.
+    void stopCandidateEgressRecording(attemptId);
 
     const showScore = resultReleased && gradingPreferences.showScoreToCandidate;
 

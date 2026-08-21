@@ -102,6 +102,11 @@ import {
   deleteTestInvitationCandidate,
   resendTestInvitationCandidate
 } from '../controllers/invitation.js';
+import {
+  downloadRecording,
+  getRecordingAccess,
+  streamRecording,
+} from '../controllers/egressRecording.js';
 
 import {
   getRepositoryQuestions,
@@ -283,6 +288,9 @@ router.delete('/communication/:questionId', adminAuth, deleteCommunicationQuesti
 router.get('/attempts', adminAuth, getAllAttempts);
 router.get('/tests/:testId/results', adminAuth, paginationValidation, handleValidationErrors, getTestResults);
 router.get('/attempts/:attemptId', adminAuth, getAttemptDetails);
+router.post('/recordings/:recordingId/access', adminAuth, getRecordingAccess);
+router.get('/recordings/:recordingId/stream', streamRecording);
+router.get('/recordings/:recordingId/download', downloadRecording);
 router.post('/attempts/:attemptId/flag', adminAuth, flagAttempt);
 router.post('/attempts/:attemptId/review', adminAuth, reviewAttempt);
 router.post('/attempts/:attemptId/release', adminAuth, releaseAttemptResult);

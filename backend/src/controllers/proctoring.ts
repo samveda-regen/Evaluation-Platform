@@ -19,6 +19,7 @@ import { emitToProctorTargets } from '../services/socketService';
 import { analyzeFrameWithPythonForSession } from '../services/pythonVisionService';
 import { parseStoredCustomAIViolationEvents } from '../utils/proctoringConfig.js';
 import { recordFrameIntervalSample } from '../services/telemetryRingBuffer.js';
+import { stopCandidateEgressRecording } from '../services/liveKitEgressService.js';
 
 const PROCTOR_TRACE = (process.env.PROCTOR_TRACE || 'false').toLowerCase() === 'true';
 const PROCTOR_AUTO_FLAG_ON_CRITICAL =
@@ -1482,6 +1483,8 @@ export const endSession = async (req: Request, res: Response): Promise<void> => 
       where: { id: sessionId },
       data: { endedAt: new Date() },
     });
+
+    void stopCandidateEgressRecording(session.attemptId);
 
     // Generate proctoring summary
     const summary = await generateProctoringSummary(session.attemptId);

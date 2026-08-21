@@ -13,6 +13,7 @@ import {
 import { scoreWrittenAnswer, scoreSpeakingAnswer } from '../services/communicationScoringService.js';
 import { sendCandidateScoreWebhook } from '../services/candidateScoreWebhookService.js';
 import { performSubmission } from './candidate.js';
+import { reconcileCandidateEgressRecording } from '../services/liveKitEgressService.js';
 
 async function resolveCompanyName(companyId: string | null): Promise<string> {
   if (!companyId) return 'Our Team';
@@ -258,6 +259,30 @@ export async function getAttemptDetails(req: AuthenticatedRequest, res: Response
       return;
     }
 
+    await reconcileCandidateEgressRecording(attempt.id).catch(error => {
+      console.error(`Recording reconciliation failed for attempt ${attempt.id}:`, error);
+    });
+    const recordings = attempt.proctorSession
+      ? await prisma.proctorRecording.findMany({
+          where: {
+            sessionId: attempt.proctorSession.id,
+            recordingType: 'webcam',
+            recordingKey: { not: null },
+          },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            status: true,
+            startTime: true,
+            endTime: true,
+            duration: true,
+            fileSize: true,
+            mimeType: true,
+            processingError: true,
+          },
+        })
+      : [];
+
     // Format MCQ answers with question details
     const mcqAnswers = attempt.mcqAnswers.map((a: typeof attempt.mcqAnswers[number]) => ({
       questionId: a.questionId,
@@ -350,6 +375,7 @@ export async function getAttemptDetails(req: AuthenticatedRequest, res: Response
       activityLogs: attempt.activityLogs,
       violationCounts,
       communicationAnswers,
+      recordings,
     });
   } catch (error) {
     console.error('Get attempt details error:', error);

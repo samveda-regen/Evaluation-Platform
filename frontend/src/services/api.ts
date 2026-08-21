@@ -424,6 +424,11 @@ export const adminApi = {
   getAttemptDetails: (attemptId: string) =>
     api.get(`/admin/attempts/${attemptId}`),
 
+  getRecordingAccess: (recordingId: string) =>
+    api.post<{ streamUrl: string; downloadUrl: string; expiresInSeconds: number }>(
+      `/admin/recordings/${recordingId}/access`
+    ),
+
   flagAttempt: (attemptId: string, data: { isFlagged: boolean; reason?: string }) =>
     api.post(`/admin/attempts/${attemptId}/flag`, data),
 

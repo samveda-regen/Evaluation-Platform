@@ -14,6 +14,7 @@ import {
   CheckCheck,
   ShieldCheck,
   Sparkles,
+  Video,
 } from 'lucide-react';
 
 /* -- Types -- */
@@ -74,6 +75,16 @@ interface AttemptData {
     id: string; eventType: string; eventData?: string; timestamp: string;
   }>;
   violationCounts?: Record<string, number>;
+  recordings: Array<{
+    id: string;
+    status: 'starting' | 'recording' | 'processing' | 'ready' | 'failed';
+    startTime: string;
+    endTime?: string | null;
+    duration?: number | null;
+    fileSize?: number | null;
+    mimeType?: string | null;
+    processingError?: string | null;
+  }>;
 }
 
 /* -- Helpers -- */
@@ -96,6 +107,23 @@ function fmtDuration(start: string, end?: string | null): string {
 }
 function safeDiv(num: number, den: number): number {
   return den > 0 ? Math.min(100, Math.round((num / den) * 100)) : 0;
+}
+
+function fmtFileSize(bytes?: number | null): string {
+  if (!bytes || bytes < 1) return '—';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / Math.pow(1024, index)).toFixed(index > 1 ? 1 : 0)} ${units[index]}`;
+}
+
+function fmtRecordingDuration(seconds?: number | null): string {
+  if (!seconds || seconds < 1) return '—';
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remaining = seconds % 60;
+  return hours > 0
+    ? `${hours}h ${String(minutes).padStart(2, '0')}m`
+    : `${minutes}m ${String(remaining).padStart(2, '0')}s`;
 }
 
 /* -- SVG score ring (large) -- */
@@ -163,6 +191,8 @@ export default function AttemptDetails() {
   const [reviewed,      setReviewed]      = useState(false);
   const [releasing,     setReleasing]     = useState(false);
   const [emailingResult,setEmailingResult]= useState(false);
+  const [recordingAccess, setRecordingAccess] = useState<{ streamUrl: string; downloadUrl: string } | null>(null);
+  const [recordingAccessLoading, setRecordingAccessLoading] = useState(false);
   const [behavioralDrafts, setBehavioralDrafts] = useState<Record<string, string>>({});
   const [communicationDrafts, setCommunicationDrafts] = useState<Record<string, string>>({});
   const [gradingQuestionId, setGradingQuestionId] = useState<string | null>(null);
@@ -172,6 +202,27 @@ export default function AttemptDetails() {
   const autoGradedCommRef = useRef<Set<string>>(new Set());
 
   useEffect(() => { void loadAttempt(); }, [attemptId]);
+
+  const latestRecording = data?.recordings?.[0];
+  useEffect(() => {
+    if (!latestRecording || latestRecording.status !== 'ready') {
+      setRecordingAccess(null);
+      return;
+    }
+    let cancelled = false;
+    setRecordingAccessLoading(true);
+    adminApi.getRecordingAccess(latestRecording.id)
+      .then(({ data: access }) => {
+        if (!cancelled) setRecordingAccess(access);
+      })
+      .catch(() => {
+        if (!cancelled) setRecordingAccess(null);
+      })
+      .finally(() => {
+        if (!cancelled) setRecordingAccessLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [latestRecording?.id, latestRecording?.status]);
 
   // AI scoring is the default: as soon as an attempt's behavioral answers load, any answer that
   // hasn't been graded yet (marksObtained is null) and actually has candidate text gets auto-scored
@@ -1071,6 +1122,54 @@ export default function AttemptDetails() {
               </div>
             )}
           </div>
+
+          {/* Webcam recording */}
+          {latestRecording && (
+            <div style={{ borderRadius:'14px', padding:'18px 22px', backgroundColor:'var(--admin-surface)', border:'1px solid var(--admin-border)' }}>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'12px', marginBottom:'14px', flexWrap:'wrap' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+                  <Video size={20} color="var(--admin-accent)" />
+                  <div>
+                    <p style={{ margin:0, fontSize:'14px', fontWeight:700, color:'var(--admin-text)' }}>Candidate webcam recording</p>
+                    <p style={{ margin:'2px 0 0', fontSize:'11px', color:'var(--admin-text-subtle)' }}>Camera and microphone only — screen sharing is not recorded</p>
+                  </div>
+                </div>
+                {latestRecording.status === 'ready' && recordingAccess?.downloadUrl && (
+                  <a
+                    href={recordingAccess.downloadUrl}
+                    style={{ display:'inline-flex', alignItems:'center', gap:'6px', padding:'8px 12px', borderRadius:'8px', backgroundColor:'var(--admin-accent)', color:'#fff', fontSize:'12px', fontWeight:600, textDecoration:'none' }}
+                  >
+                    <FileDown size={14} /> Download MP4
+                  </a>
+                )}
+              </div>
+
+              {latestRecording.status === 'ready' && recordingAccess?.streamUrl ? (
+                <video
+                  controls
+                  preload="metadata"
+                  src={recordingAccess.streamUrl}
+                  style={{ width:'100%', maxHeight:'520px', borderRadius:'10px', background:'#020617' }}
+                />
+              ) : (
+                <div style={{ padding:'28px 16px', borderRadius:'10px', background:'var(--admin-bg)', textAlign:'center', color:'var(--admin-text-muted)', fontSize:'13px' }}>
+                  {recordingAccessLoading
+                    ? 'Loading recording…'
+                    : latestRecording.status === 'failed'
+                      ? `Recording unavailable${latestRecording.processingError ? `: ${latestRecording.processingError}` : ''}`
+                      : latestRecording.status === 'recording'
+                        ? 'Recording is currently in progress.'
+                        : 'Recording is being finalized.'}
+                </div>
+              )}
+
+              <div style={{ display:'flex', gap:'18px', marginTop:'10px', flexWrap:'wrap', fontSize:'11px', color:'var(--admin-text-subtle)' }}>
+                <span>Status: <strong style={{ color:'var(--admin-text-muted)', textTransform:'capitalize' }}>{latestRecording.status}</strong></span>
+                <span>Duration: <strong style={{ color:'var(--admin-text-muted)' }}>{fmtRecordingDuration(latestRecording.duration)}</strong></span>
+                <span>Size: <strong style={{ color:'var(--admin-text-muted)' }}>{fmtFileSize(latestRecording.fileSize)}</strong></span>
+              </div>
+            </div>
+          )}
 
           {/* Integrity summary */}
           <div style={{

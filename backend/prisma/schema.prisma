@@ -721,6 +721,8 @@ model ProctorRecording {
   session   ProctorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   recordingType String // webcam, screen, audio, combined
+  recordingKey  String? @unique // idempotency key for server-side recordings
+  egressId      String? @unique // LiveKit Egress job ID
   storageUrl    String // URL to stored video/audio file
   storageBucket String? // Storage bucket name
   storageKey    String? // Object key in storage
@@ -739,6 +741,8 @@ model ProctorRecording {
   violationClips ViolationClip[]
 
   createdAt DateTime @default(now())
+
+  @@index([sessionId, status])
 }
 
 model ProctorTelemetry {

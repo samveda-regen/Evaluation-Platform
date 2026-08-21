@@ -8,6 +8,7 @@ import {
   getLiveKitUrl,
   isLiveKitConfigured,
 } from '../services/liveProctoringService.js';
+import { ensureCandidateEgressRecording } from '../services/liveKitEgressService.js';
 
 function metadataPatch(existing: unknown, patch: Prisma.JsonObject): Prisma.JsonObject {
   const current =
@@ -79,6 +80,14 @@ export async function getCandidateLiveToken(req: AuthenticatedRequest, res: Resp
             liveKitStartedAt: new Date().toISOString(),
           }),
         },
+      });
+
+      void ensureCandidateEgressRecording({
+        sessionId: attempt.proctorSession.id,
+        testId: attempt.testId,
+        attemptId: attempt.id,
+        roomName,
+        participantIdentity: identity,
       });
     }
 

@@ -32,6 +32,7 @@ import { ensureDefaultBillingPlans } from './services/billing.js';
 import { checkTelemetryThresholds } from './services/telemetryAlerting.js';
 import { runAnomalyDetection } from './services/anomalyLock.js';
 import { runScheduledDeletions } from './services/softDelete.js';
+import { liveKitEgressWebhook } from './controllers/egressRecording.js';
 
 function applyEnvFile(envPath: string): boolean {
   if (!fs.existsSync(envPath)) return false;
@@ -197,6 +198,14 @@ app.use(cors({
 
 app.use('/api/media', express.json({ limit: '200mb' }));
 app.use('/api/media', express.urlencoded({ extended: true, limit: '200mb' }));
+
+// LiveKit signs the exact raw webhook payload. This route must be registered
+// before the general JSON parser or signature verification will fail.
+app.post(
+  '/api/webhooks/livekit-egress',
+  express.raw({ type: ['application/webhook+json', 'application/json'] }),
+  liveKitEgressWebhook,
+);
 
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

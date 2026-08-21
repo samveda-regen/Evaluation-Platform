@@ -1,0 +1,316 @@
+import fs from 'fs/promises';
+import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
+import {
+  EgressClient,
+  EncodedFileOutput,
+  EncodedFileType,
+  WebhookConfig,
+  WebhookReceiver,
+} from 'livekit-server-sdk';
+import prisma from '../utils/db.js';
+
+const startLocks = new Map<string, Promise<void>>();
+
+type EgressInfoLike = {
+  egressId?: string;
+  status?: number | string;
+  error?: string;
+  startedAt?: number | bigint | string;
+  endedAt?: number | bigint | string;
+  fileResults?: Array<{
+    filename?: string;
+    duration?: number | bigint | string;
+    size?: number | bigint | string;
+  }>;
+};
+
+function enabled(): boolean {
+  return (process.env.LIVEKIT_EGRESS_ENABLED || 'false').toLowerCase() === 'true';
+}
+
+export function getRecordingRoot(): string {
+  return path.resolve(process.env.RECORDING_DIR || '/var/lib/talentstaq/recordings');
+}
+
+function liveKitHttpUrl(): string {
+  const raw = (process.env.LIVEKIT_URL || '').trim();
+  if (raw.startsWith('wss://')) return `https://${raw.slice(6)}`;
+  if (raw.startsWith('ws://')) return `http://${raw.slice(5)}`;
+  return raw;
+}
+
+function configured(): boolean {
+  return Boolean(
+    enabled() &&
+    liveKitHttpUrl() &&
+    process.env.LIVEKIT_API_KEY &&
+    process.env.LIVEKIT_API_SECRET &&
+    process.env.RECORDING_DIR
+  );
+}
+
+function egressClient(): EgressClient {
+  return new EgressClient(
+    liveKitHttpUrl(),
+    process.env.LIVEKIT_API_KEY,
+    process.env.LIVEKIT_API_SECRET,
+  );
+}
+
+function relativeRecordingPath(testId: string, attemptId: string, timestamp: number): string {
+  return `${testId}/${attemptId}/webcam-${timestamp}.mp4`;
+}
+
+export function resolveRecordingPath(storageKey: string): string {
+  const root = getRecordingRoot();
+  const resolved = path.resolve(root, storageKey);
+  const relative = path.relative(root, resolved);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+    throw new Error('Recording path is outside RECORDING_DIR');
+  }
+  return resolved;
+}
+
+function toSafeNumber(value: unknown): number | null {
+  if (typeof value === 'bigint') return Number(value);
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function durationSeconds(info: EgressInfoLike): number | null {
+  const fileDuration = toSafeNumber(info.fileResults?.[0]?.duration);
+  if (fileDuration && fileDuration > 0) {
+    return Math.max(1, Math.round(fileDuration > 1_000_000 ? fileDuration / 1_000_000_000 : fileDuration));
+  }
+  const started = toSafeNumber(info.startedAt);
+  const ended = toSafeNumber(info.endedAt);
+  if (!started || !ended || ended <= started) return null;
+  const divisor = ended > 100_000_000_000_000 ? 1_000_000_000 : 1_000;
+  return Math.max(1, Math.round((ended - started) / divisor));
+}
+
+function statusName(status: EgressInfoLike['status']): string {
+  if (typeof status === 'string') return status.toUpperCase();
+  return ({
+    0: 'EGRESS_STARTING',
+    1: 'EGRESS_ACTIVE',
+    2: 'EGRESS_ENDING',
+    3: 'EGRESS_COMPLETE',
+    4: 'EGRESS_FAILED',
+    5: 'EGRESS_ABORTED',
+    6: 'EGRESS_LIMIT_REACHED',
+  } as Record<number, string>)[status ?? -1] || 'UNKNOWN';
+}
+
+export async function syncRecordingFromEgressInfo(info: EgressInfoLike): Promise<void> {
+  if (!info.egressId) return;
+  const recording = await prisma.proctorRecording.findUnique({ where: { egressId: info.egressId } });
+  if (!recording) return;
+
+  const state = statusName(info.status);
+  if (state.includes('STARTING') || state.includes('ACTIVE')) {
+    await prisma.proctorRecording.update({
+      where: { id: recording.id },
+      data: { status: state.includes('ACTIVE') ? 'recording' : 'starting', processingError: null },
+    });
+    return;
+  }
+  if (state.includes('ENDING')) {
+    await prisma.proctorRecording.update({ where: { id: recording.id }, data: { status: 'processing' } });
+    return;
+  }
+  if (state.includes('FAILED') || state.includes('ABORTED') || state.includes('LIMIT')) {
+    await prisma.proctorRecording.update({
+      where: { id: recording.id },
+      data: {
+        status: 'failed',
+        endTime: new Date(),
+        processingError: info.error || `LiveKit Egress ended with ${state}`,
+      },
+    });
+    return;
+  }
+  if (!state.includes('COMPLETE')) return;
+
+  try {
+    if (!recording.storageKey) throw new Error('Recording has no storage key');
+    const absolutePath = resolveRecordingPath(recording.storageKey);
+    const stats = await fs.stat(absolutePath);
+    await prisma.proctorRecording.update({
+      where: { id: recording.id },
+      data: {
+        status: 'ready',
+        endTime: new Date(),
+        duration: durationSeconds(info),
+        fileSize: stats.size,
+        mimeType: 'video/mp4',
+        processingError: null,
+      },
+    });
+  } catch (error) {
+    await prisma.proctorRecording.update({
+      where: { id: recording.id },
+      data: {
+        status: 'processing',
+        processingError: error instanceof Error ? error.message : 'Recording file is not available yet',
+      },
+    });
+  }
+}
+
+async function startCandidateRecording(input: {
+  sessionId: string;
+  testId: string;
+  attemptId: string;
+  roomName: string;
+  participantIdentity: string;
+}): Promise<void> {
+  if (!configured()) return;
+
+  const recordingKey = `livekit-webcam:${input.attemptId}`;
+  let recording = await prisma.proctorRecording.findUnique({ where: { recordingKey } });
+  if (recording && ['starting', 'recording', 'processing', 'ready'].includes(recording.status)) return;
+
+  const now = Date.now();
+  const storageKey = relativeRecordingPath(input.testId, input.attemptId, now);
+  const absolutePath = resolveRecordingPath(storageKey);
+  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+
+  if (!recording) {
+    const id = uuidv4();
+    try {
+      recording = await prisma.proctorRecording.create({
+        data: {
+          id,
+          sessionId: input.sessionId,
+          recordingType: 'webcam',
+          recordingKey,
+          storageUrl: `/api/admin/recordings/${id}/stream`,
+          storageBucket: 'local-filesystem',
+          storageKey,
+          startTime: new Date(),
+          mimeType: 'video/mp4',
+          status: 'starting',
+        },
+      });
+    } catch (error) {
+      recording = await prisma.proctorRecording.findUnique({ where: { recordingKey } });
+      if (!recording || ['starting', 'recording', 'processing', 'ready'].includes(recording.status)) return;
+    }
+  } else {
+    recording = await prisma.proctorRecording.update({
+      where: { id: recording.id },
+      data: {
+        egressId: null,
+        storageKey,
+        startTime: new Date(),
+        endTime: null,
+        duration: null,
+        fileSize: null,
+        status: 'starting',
+        processingError: null,
+      },
+    });
+  }
+
+  try {
+    const output = new EncodedFileOutput({
+      fileType: EncodedFileType.MP4,
+      filepath: absolutePath,
+      disableManifest: true,
+    });
+    const webhookUrl = (process.env.LIVEKIT_EGRESS_WEBHOOK_URL || '').trim();
+    const webhooks = webhookUrl
+      ? [new WebhookConfig({ url: webhookUrl, signingKey: process.env.LIVEKIT_API_KEY || '' })]
+      : undefined;
+    const client = egressClient();
+    const info = await client.startParticipantEgress(
+      input.roomName,
+      input.participantIdentity,
+      { file: output },
+      { screenShare: false, webhooks },
+    );
+    await prisma.proctorRecording.update({
+      where: { id: recording.id },
+      data: { egressId: info.egressId, status: 'recording', processingError: null },
+    });
+    const currentAttempt = await prisma.testAttempt.findUnique({
+      where: { id: input.attemptId },
+      select: { status: true },
+    });
+    if (currentAttempt?.status !== 'in_progress') {
+      const stopped = await client.stopEgress(info.egressId);
+      await syncRecordingFromEgressInfo(stopped as EgressInfoLike);
+    }
+  } catch (error) {
+    await prisma.proctorRecording.update({
+      where: { id: recording.id },
+      data: {
+        status: 'failed',
+        endTime: new Date(),
+        processingError: error instanceof Error ? error.message : 'Unable to start LiveKit Egress',
+      },
+    });
+    console.error(`[egress] failed to start recording for attempt ${input.attemptId}:`, error);
+  }
+}
+
+export function ensureCandidateEgressRecording(input: {
+  sessionId: string;
+  testId: string;
+  attemptId: string;
+  roomName: string;
+  participantIdentity: string;
+}): Promise<void> {
+  const existing = startLocks.get(input.attemptId);
+  if (existing) return existing;
+  const task = startCandidateRecording(input).finally(() => startLocks.delete(input.attemptId));
+  startLocks.set(input.attemptId, task);
+  return task;
+}
+
+export async function stopCandidateEgressRecording(attemptId: string): Promise<void> {
+  if (!configured()) return;
+  const recording = await prisma.proctorRecording.findUnique({
+    where: { recordingKey: `livekit-webcam:${attemptId}` },
+  });
+  if (!recording?.egressId || ['ready', 'failed'].includes(recording.status)) return;
+
+  await prisma.proctorRecording.update({ where: { id: recording.id }, data: { status: 'processing' } });
+  try {
+    const info = await egressClient().stopEgress(recording.egressId);
+    await syncRecordingFromEgressInfo(info as EgressInfoLike);
+  } catch (error) {
+    console.error(`[egress] stop request failed for attempt ${attemptId}:`, error);
+    await reconcileCandidateEgressRecording(attemptId).catch(() => undefined);
+  }
+}
+
+export async function reconcileCandidateEgressRecording(attemptId: string): Promise<void> {
+  if (!configured()) return;
+  const recording = await prisma.proctorRecording.findUnique({
+    where: { recordingKey: `livekit-webcam:${attemptId}` },
+  });
+  if (!recording?.egressId || recording.status === 'ready') return;
+  const results = await egressClient().listEgress({ egressId: recording.egressId });
+  const info = results.find(item => item.egressId === recording.egressId);
+  if (info) await syncRecordingFromEgressInfo(info as EgressInfoLike);
+}
+
+export async function receiveLiveKitEgressWebhook(rawBody: string, authorization?: string): Promise<void> {
+  const receiver = new WebhookReceiver(
+    process.env.LIVEKIT_API_KEY || '',
+    process.env.LIVEKIT_API_SECRET || '',
+  );
+  const event = await receiver.receive(rawBody, authorization);
+  if (event.egressInfo) await syncRecordingFromEgressInfo(event.egressInfo as EgressInfoLike);
+}
+
+export function isLiveKitEgressEnabled(): boolean {
+  return configured();
+}

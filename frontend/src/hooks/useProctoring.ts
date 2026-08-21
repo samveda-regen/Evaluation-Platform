@@ -171,6 +171,10 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
 
   const analysisIntervalMs = Number((import.meta as any).env?.VITE_PROCTOR_ANALYSIS_INTERVAL_MS || 1000);
   const recordingChunkMs = Number((import.meta as any).env?.VITE_PROCTOR_RECORDING_CHUNK_MS || 30000);
+  // LiveKit Participant Egress is the primary recorder. The legacy browser
+  // recorder remains available only as an explicit emergency fallback.
+  const legacyBrowserRecordingEnabled =
+    String((import.meta as any).env?.VITE_LEGACY_BROWSER_RECORDING || 'false').toLowerCase() === 'true';
   const analysisFrameQuality = Number((import.meta as any).env?.VITE_PROCTOR_ANALYSIS_FRAME_QUALITY || 0.9);
   const analysisFrameMaxWidth = Number((import.meta as any).env?.VITE_PROCTOR_ANALYSIS_FRAME_MAX_WIDTH || 640);
   const snapshotFrameQuality = Number((import.meta as any).env?.VITE_PROCTOR_SNAPSHOT_QUALITY || 0.85);
@@ -628,7 +632,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
         }
       };
 
-      if (enableWebcamRecording && cameraStreamRef.current) {
+      if (legacyBrowserRecordingEnabled && enableWebcamRecording && cameraStreamRef.current) {
         const webcamTracks: MediaStreamTrack[] = [
           ...cameraStreamRef.current.getVideoTracks(),
           ...(micStreamRef.current ? micStreamRef.current.getAudioTracks() : []),
@@ -637,7 +641,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
           startChunkedRecorder(new MediaStream(webcamTracks), 'webcam', webcamRecorderRef);
         }
       }
-      if (screenStreamRef.current) {
+      if (legacyBrowserRecordingEnabled && screenStreamRef.current) {
         startChunkedRecorder(screenStreamRef.current, 'screen', screenRecorderRef);
       }
 
@@ -651,6 +655,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     attemptId,
     finalConfig,
     recordingChunkMs,
+    legacyBrowserRecordingEnabled,
     enableWebcamRecording,
     allowRuntimeScreenPrompt,
     reportViolationAndHandleTermination,
