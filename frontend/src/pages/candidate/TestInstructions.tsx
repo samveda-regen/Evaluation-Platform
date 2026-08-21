@@ -9,7 +9,6 @@ import IDVerification from '../../components/IDVerification';
 import { clearCachedStreams, getCachedStreams, setCachedStreams } from '../../services/devicePermissionService';
 import { requestScreenShare, getScreenShareErrorMessage } from '../../services/proctorService';
 import { acquireVerifiedCameraStream, type CameraDiagnostics } from '../../services/cameraDeviceService';
-import { getAIProctor } from '../../services/aiDetectionService';
 import { DEFAULT_CUSTOM_AI_VIOLATIONS, normalizeCustomAIViolationSelection } from '../../constants/customAIViolations';
 import talentstaQLogo from '../../assets/assessment-icons/icons/Talentstaq logo dark.svg';
 
@@ -124,11 +123,7 @@ export default function TestInstructions() {
   // models blocks the main thread for several seconds (WebGL shader compilation) — doing it here
   // means that freeze either finishes before Start Test is clicked, or is already well underway
   // by the time the "Setting up your environment" screen (handleStartTest) needs to wait on it.
-  useEffect(() => {
-    if (testDetails?.test.proctorEnabled && testDetails.test.requireCamera) {
-      getAIProctor().initialize().catch(() => {});
-    }
-  }, [testDetails?.test.proctorEnabled, testDetails?.test.requireCamera]);
+
 
   const measureConnection = async () => {
     const start = performance.now();
@@ -192,9 +187,7 @@ export default function TestInstructions() {
       // which stamps the exam's server-side start time — so environment setup never eats into
       // the candidate's actual test duration, and the "Setting up your environment" screen
       // below covers any remaining wait instead of it happening silently once they're timed.
-      if (testDetails?.test.proctorEnabled && testDetails.test.requireCamera) {
-        await getAIProctor().initialize();
-      }
+     
 
       const { data } = await candidateApi.startTest();
       const savedAnswers = await candidateApi.getSavedAnswers();
