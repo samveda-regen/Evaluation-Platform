@@ -6,15 +6,15 @@ export const DEFAULT_INVITE_SUBJECT = "You're invited to take a test on {{test_n
 export const DEFAULT_INVITE_BODY = `Hello {{candidate_name}},
 
 You have been invited to take the test: {{test_name}}.
-This test is designed to evaluate your skills and experience.
 
 Exam date: {{exam_start}} to {{exam_end}}
-
-Click the Continue button below to get started.
-
+Duration: Approximately {{estimated_time}}
 Access code: {{access_code}}
 
-The test will take approximately {{estimated_time}} to complete.
+Important: This assessment must be completed using Safe Exam Browser (SEB). Please install SEB before starting the assessment.
+
+After installing SEB, return to this email and click Continue to Assessment.
+
 If you have any questions, feel free to reach out to us.
 
 Best regards,
@@ -110,26 +110,42 @@ function buildSebLandingLink(testLink: string): string {
 
 function buildSebButtonsHtml(testLink: string): string {
   const launchLink = buildSebLandingLink(testLink);
+  const installLink = 'https://safeexambrowser.org/download_en.html';
 
-  return `<div style="margin:20px 0">
-  <a
-    href="${escapeHtml(launchLink)}"
-    style="display:inline-block;background:#111827;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600"
-  >
-    Continue
-  </a>
-</div>`;
+  return `
+    <div style="margin:18px 0 10px;display:flex;flex-direction:column;gap:10px">
+      <a
+        href="${installLink}"
+        target="_blank"
+        rel="noopener noreferrer"
+        style="display:inline-block;background:#ffffff;color:#111827;padding:11px 20px;border:1px solid #D1D5DB;border-radius:8px;text-decoration:none;font-weight:600;text-align:center"
+      >
+        Install Safe Exam Browser
+      </a>
+
+      <a
+        href="${escapeHtml(launchLink)}"
+        style="display:inline-block;background:#111827;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;text-align:center"
+      >
+        Continue to Assessment
+      </a>
+    </div>
+  `;
 }
 
 function textToHtml(text: string): string {
   return escapeHtml(text)
-    .split('\n')
-    .map(line => {
-      if (!line.trim()) return '<br />';
-      // Detect URLs and linkify them
-      const urlRegex = /https?:\/\/[^\s<>"]+/g;
-      const linked = line.replace(urlRegex, url => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`);
-      return `<p style="margin:0 0 8px">${linked}</p>`;
+    .split(/\n{2,}/)
+    .map(paragraph => {
+      const linked = paragraph
+        .replace(/\n/g, '<br />')
+        .replace(
+          /https?:\/\/[^\s<>"&]+/g,
+          url =>
+            `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`
+        );
+
+      return `<p style="margin:0 0 12px;line-height:1.5">${linked}</p>`;
     })
     .join('');
 }
@@ -431,9 +447,7 @@ function escapeHtml(value: string): string {
 
 // ── Build invite email from template ─────────────────────────────────────────
 function appendSebPlainTextLine(text: string, testLink: string): string {
-  const sebLink = deriveSebLaunchLink(testLink);
-  if (!sebLink) return text;
-  return `${text}\n\nPrefer to take this test in Secure Exam Browser? Open it here:\n${buildSebLandingLink(testLink)}\n(Don't have it installed? Get it at https://safeexambrowser.org/download_en.html)`;
+ return text;
 }
 
 function renderInviteBody(payload: InvitationEmailPayload): string {
