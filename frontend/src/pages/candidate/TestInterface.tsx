@@ -8,6 +8,7 @@ import GuardedAudioPlayer from '../../components/GuardedAudioPlayer';
 import AudioRecorder from '../../components/AudioRecorder';
 import { useProctoring } from '../../hooks/useProctoring';
 import { SCREEN_SHARE_WRONG_SURFACE_MESSAGE } from '../../services/proctorService';
+import { violationLabel } from '../../utils/violationLabels';
 import {
   getRealtimeSocket,
   disconnectRealtimeSocket,
@@ -236,7 +237,7 @@ export default function TestInterface() {
         });
       }
     },
-    onTerminate: () => { handleAutoSubmit(); },
+    onTerminate: (reason) => { handleAutoSubmit(reason); },
   });
 
   const proctorStatusRef = useRef(proctorStatus);
@@ -316,7 +317,7 @@ export default function TestInterface() {
       const remaining = Math.max(0, endTime - Date.now());
       setTimeRemaining(remaining);
       if (remaining === 0 && !isSubmitted) {
-        if (autoSubmitOnTimeout) handleAutoSubmit();
+        if (autoSubmitOnTimeout) handleAutoSubmit('Time limit reached');
         else setTimeUp(true);
       }
     };
@@ -530,7 +531,7 @@ export default function TestInterface() {
         const socket = getRealtimeSocket();
         socket.emit('candidate-activity', { testId, activity: { attemptId, eventType: normalizedEventType, message, timestamp: new Date().toISOString() } });
       }
-      if (response.data.autoSubmit === true) handleAutoSubmit();
+      if (response.data.autoSubmit === true) handleAutoSubmit(`Maximum proctoring violations reached (last: ${violationLabel(normalizedEventType)})`);
       else if (!document.fullscreenElement) setShowFullscreenPrompt(true);
     } catch (error) { console.error('Failed to log activity:', error); }
   }, [incrementViolations, isSubmitted, captureEvidenceFrame, isViolationEnabled, violationPopupSettings, triggerPolicyPause]);
@@ -698,13 +699,13 @@ export default function TestInterface() {
   const isAlreadySubmittedError = (err: unknown) =>
     (err as { response?: { status?: number } })?.response?.status === 400;
 
-  const handleAutoSubmit = async () => {
+  const handleAutoSubmit = async (reason?: string) => {
     if (isSubmitted || submitting) return;
     setSubmitting(true);
     await saveCurrentAnswer();
     try {
       await endProctoringSession();
-      const { data: submitResult } = await candidateApi.submitTest({ autoSubmit: true });
+      const { data: submitResult } = await candidateApi.submitTest({ autoSubmit: true, reason });
       setSubmitted(submitResult);
       toast.success('Test auto-submitted');
       const previewId = localStorage.getItem('previewMode');

@@ -36,25 +36,35 @@ export async function sweepExpiredAttempts(): Promise<void> {
     });
 
     const now = Date.now();
-    const expired = candidates.filter((attempt) => {
-      // startTime is stamped at login, before ID verification / "Start Test" is ever clicked
-      // (see startTest's own correction of startTime, candidate.ts). An attempt with no
-      // test_start log yet hasn't actually begun the exam, so it must never be swept —
-      // otherwise a candidate stuck waiting on ID verification approval can get
-      // auto-submitted before seeing a single question.
-      if (attempt.activityLogs.length === 0) return false;
+    const expired = candidates
+      .map((attempt) => {
+        // startTime is stamped at login, before ID verification / "Start Test" is ever clicked
+        // (see startTest's own correction of startTime, candidate.ts). An attempt with no
+        // test_start log yet hasn't actually begun the exam, so it must never be swept —
+        // otherwise a candidate stuck waiting on ID verification approval can get
+        // auto-submitted before seeing a single question.
+        if (attempt.activityLogs.length === 0) return null;
 
-      const durationElapsed = attempt.startTime.getTime() + attempt.test.duration * 60_000 <= now;
-      // lastSeenAt is only null for attempts started before the heartbeat feature existed
-      // (or the very first tick before the initial heartbeat lands) — fall back to the
-      // normal duration-based expiry for those rather than treating them as abandoned.
-      const abandoned = attempt.lastSeenAt != null && now - attempt.lastSeenAt.getTime() >= ABANDONMENT_GRACE_MS;
+        const durationElapsed = attempt.startTime.getTime() + attempt.test.duration * 60_000 <= now;
+        // lastSeenAt is only null for attempts started before the heartbeat feature existed
+        // (or the very first tick before the initial heartbeat lands) — fall back to the
+        // normal duration-based expiry for those rather than treating them as abandoned.
+        const abandoned = attempt.lastSeenAt != null && now - attempt.lastSeenAt.getTime() >= ABANDONMENT_GRACE_MS;
 
-      return durationElapsed || abandoned;
-    });
+        if (!durationElapsed && !abandoned) return null;
+
+        // Duration takes priority in the reason shown to the recruiter: an attempt that's both
+        // out of time and quiet is more usefully described by "time's up" than "went inactive".
+        const reason = durationElapsed
+          ? 'Time limit reached'
+          : 'Candidate went inactive (no heartbeat received for over 2 minutes)';
+
+        return { id: attempt.id, testId: attempt.testId, reason };
+      })
+      .filter((attempt): attempt is { id: string; testId: string; reason: string } => attempt !== null);
 
     for (const attempt of expired) {
-      await autoSubmitExpiredAttempt(attempt.id, attempt.testId);
+      await autoSubmitExpiredAttempt(attempt.id, attempt.testId, attempt.reason);
     }
   } catch (error) {
     console.error('Test expiry sweep failed:', error);
