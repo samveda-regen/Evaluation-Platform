@@ -90,6 +90,11 @@ export function useLiveProctoringPublisher({
         await publishMediaTrack(liveMicrophoneStream?.getAudioTracks()[0], Track.Source.Microphone, 'candidate-microphone');
         await publishMediaTrack(screenStream?.getVideoTracks()[0], Track.Source.ScreenShare, 'candidate-screen');
 
+        // LiveKit creates rooms lazily on first participant connection. Egress
+        // must therefore start after connect + camera publication, not while the
+        // backend is still issuing the connection token.
+        await candidateApi.startLiveProctoringRecording(attemptId);
+
         setConnected(true);
         setError(null);
       } catch (err) {

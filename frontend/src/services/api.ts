@@ -752,6 +752,9 @@ export const candidateApi = {
       roomName: string;
       identity: string;
     }>(`/proctoring/live/candidate/attempt/${attemptId}/token`),
+
+  startLiveProctoringRecording: (attemptId: string) =>
+    api.post(`/proctoring/live/candidate/attempt/${attemptId}/recording/start`),
 };
 
 export default api;

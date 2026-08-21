@@ -23,6 +23,7 @@ import {
 import {
   getAdminLiveToken,
   getCandidateLiveToken,
+  startCandidateLiveRecording,
 } from '../controllers/liveProctoring';
 
 const router = Router();
@@ -34,6 +35,8 @@ router.post('/session/:attemptId/init', candidateAuth, initializeSession);
 
 // Start the separate LiveKit/WebRTC media pipeline after proctoring permissions pass.
 router.post('/live/candidate/attempt/:attemptId/token', candidateAuth, getCandidateLiveToken);
+// The room exists only after the candidate connects; start Egress afterward.
+router.post('/live/candidate/attempt/:attemptId/recording/start', candidateAuth, startCandidateLiveRecording);
 
 // Submit real-time proctoring analysis data
 router.post('/session/:sessionId/analysis', candidateAuth, submitAnalysis);

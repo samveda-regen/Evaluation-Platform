@@ -82,13 +82,6 @@ export async function getCandidateLiveToken(req: AuthenticatedRequest, res: Resp
         },
       });
 
-      void ensureCandidateEgressRecording({
-        sessionId: attempt.proctorSession.id,
-        testId: attempt.testId,
-        attemptId: attempt.id,
-        roomName,
-        participantIdentity: identity,
-      });
     }
 
     res.json({
@@ -101,6 +94,52 @@ export async function getCandidateLiveToken(req: AuthenticatedRequest, res: Resp
   } catch (error) {
     console.error('Error creating candidate LiveKit token:', error);
     res.status(500).json({ error: 'Failed to create live proctoring token' });
+  }
+}
+
+// Called by the publisher only after room.connect() and camera publication have
+// completed. Starting Egress from the token endpoint is too early because a
+// LiveKit room is created lazily when its first participant connects.
+export async function startCandidateLiveRecording(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const candidate = req.candidate;
+    const { attemptId } = req.params;
+    if (!candidate || candidate.attemptId !== attemptId) {
+      res.status(403).json({ error: 'Candidate is not allowed to record this live session' });
+      return;
+    }
+
+    const attempt = await prisma.testAttempt.findUnique({
+      where: { id: attemptId },
+      select: {
+        id: true,
+        testId: true,
+        candidateId: true,
+        status: true,
+        test: { select: { proctorEnabled: true } },
+        proctorSession: { select: { id: true } },
+      },
+    });
+    if (!attempt || attempt.candidateId !== candidate.id) {
+      res.status(404).json({ error: 'Attempt not found' });
+      return;
+    }
+    if (!attempt.test.proctorEnabled || attempt.status !== 'in_progress' || !attempt.proctorSession) {
+      res.status(409).json({ error: 'Recording is available only during an active proctored exam' });
+      return;
+    }
+
+    await ensureCandidateEgressRecording({
+      sessionId: attempt.proctorSession.id,
+      testId: attempt.testId,
+      attemptId: attempt.id,
+      roomName: buildLiveRoomName(attempt.testId, attempt.id),
+      participantIdentity: `candidate:${attempt.id}`,
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error starting candidate LiveKit recording:', error);
+    res.status(500).json({ error: 'Failed to start live recording' });
   }
 }
 
