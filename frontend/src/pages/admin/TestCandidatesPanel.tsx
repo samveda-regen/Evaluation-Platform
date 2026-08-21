@@ -533,16 +533,25 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
                   <p className="text-sm py-2" style={{ color:'var(--admin-text-subtle)' }}>No activity recorded yet.</p>
                 ) : (
                   <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                    {activityLogs.map(log => (
-                      <div key={log.id} className="flex items-start gap-2.5 px-3 py-2 rounded-xl"
-                        style={{ backgroundColor:'#F9FAFB', border:'1px solid var(--admin-border)' }}>
-                        <Clock width={13} height={13} style={{ flexShrink:0, marginTop:2, color:'var(--admin-text-subtle)' }} />
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate" style={{ color:'var(--admin-text)' }}>{violationLabel(log.eventType)}</p>
-                          <p className="text-xs" style={{ color:'var(--admin-text-muted)' }}>{format(new Date(log.timestamp), 'MMM d, yyyy, h:mm:ss a')}</p>
+                    {activityLogs.map(log => {
+                      let reason: string | undefined;
+                      if (log.eventType === 'auto_submit' && log.eventData) {
+                        try { reason = JSON.parse(log.eventData)?.reason; } catch { /* ignore malformed eventData */ }
+                      }
+                      return (
+                        <div key={log.id} className="flex items-start gap-2.5 px-3 py-2 rounded-xl"
+                          style={{ backgroundColor:'#F9FAFB', border:'1px solid var(--admin-border)' }}>
+                          <Clock width={13} height={13} style={{ flexShrink:0, marginTop:2, color:'var(--admin-text-subtle)' }} />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate" style={{ color:'var(--admin-text)' }}>{violationLabel(log.eventType)}</p>
+                            {reason && (
+                              <p className="text-xs truncate" style={{ color:'var(--admin-text-muted)' }}>{reason}</p>
+                            )}
+                            <p className="text-xs" style={{ color:'var(--admin-text-muted)' }}>{format(new Date(log.timestamp), 'MMM d, yyyy, h:mm:ss a')}</p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

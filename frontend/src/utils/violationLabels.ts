@@ -14,6 +14,8 @@ const VIOLATION_LABELS: Record<string, string> = {
   screen_share_stopped: 'Screen Sharing Stopped',
   external_monitor: 'External Monitor Detected',
   suspicious_audio: 'Suspicious Audio',
+  auto_submit: 'Auto-Submitted',
+  manual_submit: 'Test Submitted',
 };
 
 export function violationLabel(eventType: string): string {

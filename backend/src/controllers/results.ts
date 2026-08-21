@@ -911,7 +911,7 @@ export async function forceSubmitAttempt(req: AuthenticatedRequest, res: Respons
       return;
     }
 
-    const outcome = await performSubmission(attemptId, attempt.testId, true);
+    const outcome = await performSubmission(attemptId, attempt.testId, true, 'Force-submitted by admin');
     if (!outcome.ok) {
       res.status(outcome.statusCode).json({ error: outcome.error });
       return;

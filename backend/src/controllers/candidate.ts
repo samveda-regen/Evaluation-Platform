@@ -1605,7 +1605,7 @@ export type SubmissionOutcome =
 // autoSubmitExpiredAttempts in services/testExpiryService.ts), and the admin-triggered force-submit
 // (results.ts's forceSubmitAttempt) so all three paths grade and finalize an attempt identically,
 // regardless of who triggered the submit.
-export async function performSubmission(attemptId: string, testId: string, autoSubmit: boolean): Promise<SubmissionOutcome> {
+export async function performSubmission(attemptId: string, testId: string, autoSubmit: boolean, reason?: string): Promise<SubmissionOutcome> {
     // Batch fetch: attempt with answers, test with questions - single DB round trip
     const [attempt, test] = await Promise.all([
       prisma.testAttempt.findUnique({
@@ -1833,7 +1833,8 @@ export async function performSubmission(attemptId: string, testId: string, autoS
           eventType: autoSubmit ? 'auto_submit' : 'manual_submit',
           eventData: JSON.stringify({
             timestamp: new Date().toISOString(),
-            score: totalScore
+            score: totalScore,
+            ...(autoSubmit && reason ? { reason } : {})
           })
         }
       })
@@ -2012,9 +2013,9 @@ export async function performSubmission(attemptId: string, testId: string, autoS
 export async function submitTest(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { attemptId, testId } = req.candidate!;
-    const { autoSubmit } = req.body;
+    const { autoSubmit, reason } = req.body;
 
-    const outcome = await performSubmission(attemptId, testId, !!autoSubmit);
+    const outcome = await performSubmission(attemptId, testId, !!autoSubmit, typeof reason === 'string' ? reason : undefined);
     if (!outcome.ok) {
       res.status(outcome.statusCode).json({ error: outcome.error });
       return;
@@ -2029,9 +2030,9 @@ export async function submitTest(req: AuthenticatedRequest, res: Response): Prom
 // Called by the background expiry sweep (services/testExpiryService.ts) to finalize
 // an attempt whose time is up without relying on any client request ever arriving —
 // covers a closed tab/browser or a dead network, not just an idle-but-open one.
-export async function autoSubmitExpiredAttempt(attemptId: string, testId: string): Promise<void> {
+export async function autoSubmitExpiredAttempt(attemptId: string, testId: string, reason?: string): Promise<void> {
   try {
-    const outcome = await performSubmission(attemptId, testId, true);
+    const outcome = await performSubmission(attemptId, testId, true, reason);
     if (!outcome.ok) {
       console.error(`Auto-submit sweep: attempt ${attemptId} not finalized — ${outcome.error}`);
     }
