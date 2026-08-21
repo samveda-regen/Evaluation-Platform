@@ -685,30 +685,40 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
       where: { attemptId, eventType: 'test_start' }
     });
 
+    // The status flip and the test_start log must land together — if the request got
+    // interrupted (deploy restart, transient DB error, etc.) between two separate writes here,
+    // an attempt could end up permanently 'in_progress' with zero activity logs: invisible to
+    // both the candidate (can't resume/restart) and the expiry sweep (which deliberately
+    // requires a test_start log before touching an attempt, to protect candidates still on ID
+    // verification pre-start) — a zombie attempt stuck "in progress" forever. $transaction makes
+    // this all-or-nothing.
+    const testStartLogData = {
+      attemptId,
+      eventType: 'test_start',
+      eventData: JSON.stringify({ timestamp: new Date().toISOString() })
+    };
+
     let effectiveStartTime = attempt.startTime;
     if (!priorStart) {
-      const startedAttempt = await prisma.testAttempt.update({
-        where: { id: attemptId },
-        data: { startTime: new Date(), lastSeenAt: new Date(), status: 'in_progress' }
-      });
+      const [startedAttempt] = await prisma.$transaction([
+        prisma.testAttempt.update({
+          where: { id: attemptId },
+          data: { startTime: new Date(), lastSeenAt: new Date(), status: 'in_progress' }
+        }),
+        prisma.activityLog.create({ data: testStartLogData })
+      ]);
       effectiveStartTime = startedAttempt.startTime;
     } else {
       // Resuming (e.g. page refresh) — give the abandonment grace period a fresh baseline
       // rather than leaving lastSeenAt at whatever it was before the candidate reconnected.
-      await prisma.testAttempt.update({
-        where: { id: attemptId },
-        data: { lastSeenAt: new Date(), status: 'in_progress' }
-      });
+      await prisma.$transaction([
+        prisma.testAttempt.update({
+          where: { id: attemptId },
+          data: { lastSeenAt: new Date(), status: 'in_progress' }
+        }),
+        prisma.activityLog.create({ data: testStartLogData })
+      ]);
     }
-
-    // Log test start
-    await prisma.activityLog.create({
-      data: {
-        attemptId,
-        eventType: 'test_start',
-        eventData: JSON.stringify({ timestamp: new Date().toISOString() })
-      }
-    });
 
     // Get test questions
     const test = await prisma.test.findUnique({
