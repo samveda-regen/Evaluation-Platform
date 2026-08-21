@@ -108,11 +108,12 @@ export default function TestPreview() {
 
       // Restore any already-saved answers
       const saved = savedAnswersRes?.data;
-      if ((saved?.mcqAnswers?.length ?? 0) > 0 || (saved?.codingAnswers?.length ?? 0) > 0 || (saved?.behavioralAnswers?.length ?? 0) > 0) {
+      if ((saved?.mcqAnswers?.length ?? 0) > 0 || (saved?.codingAnswers?.length ?? 0) > 0 || (saved?.behavioralAnswers?.length ?? 0) > 0 || (saved?.communicationAnswers?.length ?? 0) > 0) {
         useTestStore.getState().loadSavedAnswers(
           saved.mcqAnswers  || [],
           saved.codingAnswers || [],
           saved.behavioralAnswers || [],
+          saved.communicationAnswers || [],
         );
       }
 

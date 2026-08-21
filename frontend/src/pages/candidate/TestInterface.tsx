@@ -4,6 +4,8 @@ import { toast } from 'react-hot-toast';
 import Editor from '@monaco-editor/react';
 import { candidateApi } from '../../services/api';
 import { useTestStore } from '../../context/testStore';
+import GuardedAudioPlayer from '../../components/GuardedAudioPlayer';
+import AudioRecorder from '../../components/AudioRecorder';
 import { useProctoring } from '../../hooks/useProctoring';
 import { SCREEN_SHARE_WRONG_SURFACE_MESSAGE } from '../../services/proctorService';
 import { useLiveProctoringPublisher } from '../../hooks/useLiveProctoringPublisher';
@@ -39,7 +41,8 @@ const ALLOWED_CANDIDATE_VIOLATIONS = new Set([
 // Enrich TestQuestion with fields the backend returns but aren't typed
 interface RichQuestion {
   id: string;
-  type: 'mcq' | 'coding' | 'behavioral';
+  type: 'mcq' | 'coding' | 'behavioral' | 'communication';
+  subType?: 'WRITTEN' | 'LISTENING' | 'READING' | 'SPEAKING';
   questionId: string;
   questionText?: string;
   options?: Array<{ originalIndex: number; text: string }>;
@@ -62,6 +65,18 @@ interface RichQuestion {
   marks?: number;
   difficulty?: 'easy' | 'medium' | 'hard';
   partialScoring?: boolean;
+  // Communication (Written) — stimulusType only meaningful for subType WRITTEN
+  stimulusType?: 'NONE' | 'IMAGE' | 'AUDIO';
+  // Communication (Listening) — options/isMultipleChoice shared with MCQ fields above
+  replayLimit?: number | null;
+  allowRewind?: boolean | null;
+  allowSpeedChange?: boolean | null;
+  fixedPlaybackSpeed?: number | null;
+  // Communication (Reading) — options/isMultipleChoice shared with MCQ fields above
+  passage?: { id: string; title: string; passageText: string } | null;
+  // Communication (Speaking)
+  recordingTimeLimit?: number | null;
+  retakeLimit?: number | null;
 }
 
 export default function TestInterface() {
@@ -70,8 +85,10 @@ export default function TestInterface() {
     testId, testCode, testName, duration, attemptId, maxViolations,
     proctorEnabled, requireCamera, requireMicrophone, requireScreenShare,
     customAIViolations, startTime, questions, currentQuestionIndex,
-    mcqAnswers, codingAnswers, behavioralAnswers, isSubmitted,
-    setCurrentQuestion, saveMCQAnswer, saveCodingAnswer, saveBehavioralAnswer,
+    mcqAnswers, codingAnswers, behavioralAnswers, communicationAnswers,
+    communicationSelectedAnswers, communicationReplayCounts, communicationRetakeCounts, communicationAudioAnswers, isSubmitted,
+    setCurrentQuestion, saveMCQAnswer, saveCodingAnswer, saveBehavioralAnswer, saveCommunicationAnswer,
+    saveCommunicationSelectedAnswer, setCommunicationReplayCount, setCommunicationRetakeCount, saveCommunicationAudioAnswer,
     incrementViolations, setSubmitted, violationPopupSettings,
     showTimer, autoSubmitOnTimeout,
   } = useTestStore();
@@ -435,6 +452,17 @@ export default function TestInterface() {
     return () => { if (autoSaveRef.current) clearInterval(autoSaveRef.current); };
   }, [currentQuestionIndex, mcqAnswers, codingAnswers, behavioralAnswers]);
 
+  // Lets the server tell an abandoned attempt (tab closed, crash, network loss) apart from
+  // one still genuinely in progress, so it can be auto-submitted well before the full test
+  // duration elapses. Runs regardless of tab visibility — background timers still fire
+  // (Chrome throttles to ~once/min when hidden), comfortably inside the server's grace window.
+  useEffect(() => {
+    if (isSubmitted) return;
+    candidateApi.heartbeat().catch(() => {});
+    const interval = setInterval(() => { candidateApi.heartbeat().catch(() => {}); }, 15000);
+    return () => clearInterval(interval);
+  }, [isSubmitted]);
+
   useEffect(() => {
     if (!currentQuestion || currentQuestion.type !== 'coding') return;
     const questionId = currentQuestion.questionId;
@@ -555,6 +583,11 @@ export default function TestInterface() {
         if (answer && answer.code) await candidateApi.saveCodingAnswer({ questionId: currentQuestion.questionId, code: answer.code, language: answer.language });
       } else if (currentQuestion.type === 'behavioral') {
         await candidateApi.saveBehavioralAnswer({ questionId: currentQuestion.questionId, answerText: behavioralAnswers[currentQuestion.questionId] || '' });
+      } else if (currentQuestion.type === 'communication' && currentQuestion.subType === 'WRITTEN') {
+        await candidateApi.saveCommunicationAnswer({ questionId: currentQuestion.questionId, answerText: communicationAnswers[currentQuestion.questionId] || '' });
+      } else if (currentQuestion.type === 'communication' && (currentQuestion.subType === 'LISTENING' || currentQuestion.subType === 'READING')) {
+        const answer = communicationSelectedAnswers[currentQuestion.questionId];
+        if (answer && answer.length > 0) await candidateApi.saveCommunicationAnswer({ questionId: currentQuestion.questionId, selectedOptions: answer });
       }
       if (silent) {
         setAutoSaved(true);
@@ -642,6 +675,41 @@ export default function TestInterface() {
     saveBehavioralAnswer(currentQuestion!.questionId, value);
   };
 
+  const handleCommunicationChange = (value: string) => {
+    if (isSubmitted || timeUp) return;
+    saveCommunicationAnswer(currentQuestion!.questionId, value);
+  };
+
+  const handleCommunicationSelect = (originalIndex: number) => {
+    if (isSubmitted || answeringLocked) return;
+    const questionId = currentQuestion!.questionId;
+    const isMultiple = currentQuestion!.isMultipleChoice;
+    const currentSelected = communicationSelectedAnswers[questionId] || [];
+    const newSelected = isMultiple
+      ? (currentSelected.includes(originalIndex) ? currentSelected.filter((i) => i !== originalIndex) : [...currentSelected, originalIndex])
+      : [originalIndex];
+    saveCommunicationSelectedAnswer(questionId, newSelected);
+    candidateApi.saveCommunicationAnswer({ questionId, selectedOptions: newSelected }).catch(() => {});
+  };
+
+  const handleReplayCountChange = (count: number) => {
+    const questionId = currentQuestion!.questionId;
+    setCommunicationReplayCount(questionId, count);
+    candidateApi.saveCommunicationAnswer({ questionId, replayCount: count }).catch(() => {});
+  };
+
+  const handleRetakeCountChange = (count: number) => {
+    const questionId = currentQuestion!.questionId;
+    setCommunicationRetakeCount(questionId, count);
+    candidateApi.saveCommunicationAnswer({ questionId, retakeCount: count }).catch(() => {});
+  };
+
+  const handleSpeakingRecordingComplete = async (base64: string, mimeType: string) => {
+    const questionId = currentQuestion!.questionId;
+    const { data } = await candidateApi.saveCommunicationAnswer({ questionId, audio: base64, audioMimeType: mimeType });
+    saveCommunicationAudioAnswer(questionId, data.audioAssetId, data.transcript);
+  };
+
   // The server also auto-submits attempts whose time has run out (a safety net that
   // fires even if this tab is closed/inactive), so it can beat this client to the
   // punch. Treat "already submitted" as success rather than an error in that race.
@@ -701,6 +769,9 @@ export default function TestInterface() {
       if (q.type === 'mcq' && mcqAnswers[q.questionId]?.length > 0) count++;
       if (q.type === 'coding' && codingAnswers[q.questionId]?.code) count++;
       if (q.type === 'behavioral' && (behavioralAnswers[q.questionId] || '').trim().length > 0) count++;
+      if (q.type === 'communication' && q.subType === 'WRITTEN' && (communicationAnswers[q.questionId] || '').trim().length > 0) count++;
+      if (q.type === 'communication' && (q.subType === 'LISTENING' || q.subType === 'READING') && (communicationSelectedAnswers[q.questionId]?.length || 0) > 0) count++;
+      if (q.type === 'communication' && q.subType === 'SPEAKING' && communicationAudioAnswers[q.questionId]) count++;
     });
     return count;
   };
@@ -731,6 +802,9 @@ export default function TestInterface() {
     if (!q) return false;
     if (q.type === 'mcq') return (mcqAnswers[q.questionId]?.length || 0) > 0;
     if (q.type === 'coding') return !!codingAnswers[q.questionId]?.code;
+    if (q.type === 'communication' && (q.subType === 'LISTENING' || q.subType === 'READING')) return (communicationSelectedAnswers[q.questionId]?.length || 0) > 0;
+    if (q.type === 'communication' && q.subType === 'SPEAKING') return Boolean(communicationAudioAnswers[q.questionId]);
+    if (q.type === 'communication') return (communicationAnswers[q.questionId] || '').trim().length > 0;
     return (behavioralAnswers[q.questionId] || '').trim().length > 0;
   };
 
@@ -738,17 +812,18 @@ export default function TestInterface() {
     easy: 'var(--admin-accent-hover)', medium: 'var(--admin-accent-hover)', hard: 'var(--admin-accent-hover)',
   };
   const typeColor: Record<string, string> = {
-    mcq: 'var(--admin-accent-hover)', coding: 'var(--admin-accent-hover)', behavioral: 'var(--admin-accent-hover)',
+    mcq: 'var(--admin-accent-hover)', coding: 'var(--admin-accent-hover)', behavioral: 'var(--admin-accent-hover)', communication: 'var(--admin-accent-hover)',
   };
   const typeLabel: Record<string, string> = {
-    mcq: 'Multiple choice', coding: 'Coding', behavioral: 'Behavioral',
+    mcq: 'Multiple choice', coding: 'Coding', behavioral: 'Behavioral', communication: 'Written',
   };
 
   const totalTestCases = currentQuestion.testCases?.length ?? 0;
   const hiddenTestCases = currentQuestion.testCases?.filter((tc) => tc.isHidden).length ?? 0;
 
   const behavioralText = currentQuestion.type === 'behavioral' ? (behavioralAnswers[currentQuestion.questionId] || '') : '';
-  const wordCount = getWordCount(behavioralText);
+  const communicationText = currentQuestion.type === 'communication' ? (communicationAnswers[currentQuestion.questionId] || '') : '';
+  const wordCount = getWordCount(currentQuestion.type === 'communication' ? communicationText : behavioralText);
 
   // -- Question Palette --------------------------------------------------
   const Palette = () => (
@@ -1283,7 +1358,10 @@ export default function TestInterface() {
                 {/* Breadcrumb */}
                 <div className="flex items-center gap-2 flex-wrap mb-5">
                   <span className="text-sm font-semibold" style={{ color: typeColor[currentQuestion.type] }}>
-                    {typeLabel[currentQuestion.type]}
+                    {currentQuestion.type === 'communication' && currentQuestion.subType === 'LISTENING' ? 'Listening'
+                      : currentQuestion.type === 'communication' && currentQuestion.subType === 'READING' ? 'Reading'
+                      : currentQuestion.type === 'communication' && currentQuestion.subType === 'SPEAKING' ? 'Speaking'
+                      : typeLabel[currentQuestion.type]}
                   </span>
                   {currentQuestion.difficulty && (
                     <>
@@ -1369,6 +1447,244 @@ export default function TestInterface() {
                           ? 'Multiple answers · your selections are saved automatically.'
                           : 'Single answer · your selection is saved automatically.'}
                       </span>
+                    </div>
+                  </>
+                ) : currentQuestion.type === 'communication' && currentQuestion.subType === 'LISTENING' ? (
+                  // -- Communication (Listening) --
+                  <>
+                    <h2 className="text-xl font-bold text-gray-900 mb-2 leading-snug">
+                      {currentQuestion.title}
+                    </h2>
+                    {currentQuestion.description && (
+                      <p className="text-sm mb-5" style={{ color: 'var(--admin-accent)' }}>
+                        {currentQuestion.description}
+                      </p>
+                    )}
+
+                    {currentQuestion.mediaAssets && currentQuestion.mediaAssets[0] && (
+                      <div className="mb-6">
+                        <GuardedAudioPlayer
+                          src={currentQuestion.mediaAssets[0].storageUrl}
+                          replayLimit={currentQuestion.replayLimit}
+                          allowRewind={currentQuestion.allowRewind}
+                          allowSpeedChange={currentQuestion.allowSpeedChange}
+                          fixedPlaybackSpeed={currentQuestion.fixedPlaybackSpeed}
+                          initialReplayCount={communicationReplayCounts[currentQuestion.questionId] || 0}
+                          onReplayCountChange={handleReplayCountChange}
+                          disabled={isSubmitted || timeUp}
+                        />
+                      </div>
+                    )}
+
+                    {/* Options */}
+                    <div className="space-y-3">
+                      {currentQuestion.options?.map((option, displayIdx) => {
+                        const isSelected = communicationSelectedAnswers[currentQuestion.questionId]?.includes(option.originalIndex);
+                        const letter = String.fromCharCode(65 + displayIdx);
+                        return (
+                          <button
+                            key={option.originalIndex}
+                            onClick={() => handleCommunicationSelect(option.originalIndex)}
+                            className="w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all"
+                            style={{
+                              borderColor: isSelected ? 'var(--admin-accent)' : 'var(--admin-border)',
+                              background: isSelected ? 'var(--admin-accent-soft)' : '#FFFFFF',
+                            }}
+                          >
+                            <span
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0 transition-colors"
+                              style={{
+                                background: isSelected ? 'var(--admin-accent)' : 'var(--admin-border)',
+                                color: isSelected ? '#FFFFFF' : '#6B7280',
+                              }}
+                            >
+                              {letter}
+                            </span>
+                            <span className="flex-1 text-sm text-gray-700">{option.text}</span>
+                            {isSelected && (
+                              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 flex-shrink-0" viewBox="0 0 20 20" fill="var(--admin-accent)">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="flex items-center gap-2 mt-5">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="text-xs text-gray-400">
+                        {currentQuestion.isMultipleChoice
+                          ? 'Multiple answers · your selections are saved automatically.'
+                          : 'Single answer · your selection is saved automatically.'}
+                      </span>
+                    </div>
+                  </>
+                ) : currentQuestion.type === 'communication' && currentQuestion.subType === 'READING' ? (
+                  // -- Communication (Reading) --
+                  <>
+                    <h2 className="text-xl font-bold text-gray-900 mb-2 leading-snug">
+                      {currentQuestion.title}
+                    </h2>
+                    {currentQuestion.description && (
+                      <p className="text-sm mb-5" style={{ color: 'var(--admin-accent)' }}>
+                        {currentQuestion.description}
+                      </p>
+                    )}
+
+                    {currentQuestion.passage && (
+                      <div className="mb-6 rounded-xl border p-5" style={{ borderColor: 'var(--admin-border)', backgroundColor: '#F9FAFB' }}>
+                        <p className="text-xs font-bold uppercase tracking-widest mb-2 text-gray-400">{currentQuestion.passage.title}</p>
+                        <div className="text-sm text-gray-700 leading-relaxed max-h-64 overflow-y-auto whitespace-pre-wrap">
+                          {currentQuestion.passage.passageText}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Options */}
+                    <div className="space-y-3">
+                      {currentQuestion.options?.map((option, displayIdx) => {
+                        const isSelected = communicationSelectedAnswers[currentQuestion.questionId]?.includes(option.originalIndex);
+                        const letter = String.fromCharCode(65 + displayIdx);
+                        return (
+                          <button
+                            key={option.originalIndex}
+                            onClick={() => handleCommunicationSelect(option.originalIndex)}
+                            className="w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all"
+                            style={{
+                              borderColor: isSelected ? 'var(--admin-accent)' : 'var(--admin-border)',
+                              background: isSelected ? 'var(--admin-accent-soft)' : '#FFFFFF',
+                            }}
+                          >
+                            <span
+                              className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold flex-shrink-0 transition-colors"
+                              style={{
+                                background: isSelected ? 'var(--admin-accent)' : 'var(--admin-border)',
+                                color: isSelected ? '#FFFFFF' : '#6B7280',
+                              }}
+                            >
+                              {letter}
+                            </span>
+                            <span className="flex-1 text-sm text-gray-700">{option.text}</span>
+                            {isSelected && (
+                              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 flex-shrink-0" viewBox="0 0 20 20" fill="var(--admin-accent)">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="flex items-center gap-2 mt-5">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="text-xs text-gray-400">
+                        {currentQuestion.isMultipleChoice
+                          ? 'Multiple answers · your selections are saved automatically.'
+                          : 'Single answer · your selection is saved automatically.'}
+                      </span>
+                    </div>
+                  </>
+                ) : currentQuestion.type === 'communication' && currentQuestion.subType === 'SPEAKING' ? (
+                  // -- Communication (Speaking) --
+                  <>
+                    <h2 className="text-xl font-bold text-gray-900 mb-2 leading-snug">
+                      {currentQuestion.title}
+                    </h2>
+                    {currentQuestion.description && (
+                      <p className="text-sm mb-5" style={{ color: 'var(--admin-accent)' }}>
+                        {currentQuestion.description}
+                      </p>
+                    )}
+
+                    {currentQuestion.mediaAssets && currentQuestion.mediaAssets[0] && (
+                      <div className="mb-6 rounded-xl overflow-hidden border p-4 bg-gray-50" style={{ borderColor: 'var(--admin-border)' }}>
+                        <audio src={currentQuestion.mediaAssets[0].storageUrl} controls className="w-full" preload="metadata" />
+                      </div>
+                    )}
+
+                    <AudioRecorder
+                      maxDurationSec={currentQuestion.recordingTimeLimit || 120}
+                      onSubmitRecording={handleSpeakingRecordingComplete}
+                      disabled={isSubmitted || timeUp}
+                      alreadyRecorded={Boolean(communicationAudioAnswers[currentQuestion.questionId])}
+                      existingAudioUrl={
+                        communicationAudioAnswers[currentQuestion.questionId]
+                          ? `/api/files/${communicationAudioAnswers[currentQuestion.questionId].audioAssetId}`
+                          : null
+                      }
+                      maxRetakes={currentQuestion.retakeLimit ?? null}
+                      initialRetakeCount={communicationRetakeCounts[currentQuestion.questionId] || 0}
+                      onRetakeCountChange={handleRetakeCountChange}
+                    />
+
+                    <div className="flex items-center gap-2 mt-5">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="text-xs text-gray-400">
+                        Your recording is transcribed and graded automatically once submitted.
+                      </span>
+                    </div>
+                  </>
+                ) : currentQuestion.type === 'communication' ? (
+                  // -- Communication (Written) --
+                  <>
+                    <h2 className="text-xl font-bold text-gray-900 mb-2 leading-snug">
+                      {currentQuestion.title}
+                    </h2>
+                    {currentQuestion.description && (
+                      <p className="text-sm mb-5" style={{ color: 'var(--admin-accent)' }}>
+                        {currentQuestion.description}
+                      </p>
+                    )}
+
+                    {/* Stimulus (image or audio) */}
+                    {currentQuestion.mediaAssets && currentQuestion.mediaAssets.length > 0 && (
+                      <div className="mb-6 space-y-3">
+                        {currentQuestion.mediaAssets.map((asset) => (
+                          <div key={asset.id} className="rounded-xl overflow-hidden border" style={{ borderColor: 'var(--admin-border)' }}>
+                            {asset.mediaType === 'image' && <img src={asset.storageUrl} alt={asset.originalName} className="w-full h-auto object-contain max-h-80" />}
+                            {asset.mediaType === 'audio' && (
+                              <div className="p-4 bg-gray-50">
+                                <audio src={asset.storageUrl} controls className="w-full" preload="metadata" />
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="relative">
+                      <textarea
+                        value={communicationText}
+                        onChange={(e) => handleCommunicationChange(e.target.value)}
+                        disabled={isSubmitted || timeUp}
+                        rows={12}
+                        placeholder="Write your response here..."
+                        className="w-full rounded-xl border px-4 py-4 text-sm text-gray-700 resize-none outline-none transition-colors"
+                        style={{ borderColor: 'var(--admin-border)', background: '#FFFFFF', lineHeight: '1.6' }}
+                        onFocus={(e) => (e.target.style.borderColor = 'var(--admin-accent)')}
+                        onBlur={(e) => (e.target.style.borderColor = 'var(--admin-border)')}
+                      />
+                      {/* Word count + auto-saved */}
+                      <div className="flex items-center justify-between mt-2 px-1">
+                        <span className="text-xs text-gray-400">
+                          {wordCount} {wordCount === 1 ? 'word' : 'words'} · {communicationText.length} characters
+                        </span>
+                        {autoSaved && (
+                          <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--admin-accent)' }}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                            Auto-saved
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </>
                 ) : (

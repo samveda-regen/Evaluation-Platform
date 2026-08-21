@@ -18,6 +18,7 @@ import {
   normalizeCustomAIViolationEvents,
   parseStoredCustomAIViolationEvents,
 } from '../utils/proctoringConfig.js';
+import { buildCreateData as buildCommunicationCreateData, VALID_SUB_TYPES as VALID_COMMUNICATION_SUB_TYPES, serializeCommunicationQuestion } from './communicationQuestion.js';
 
 const TEST_SCOPED_TAG = '__test_scoped__';
 const MAX_TEST_VIOLATIONS = 150;
@@ -202,6 +203,7 @@ interface TestQuestionLike {
   mcqQuestion?: QuestionWithTags | null;
   codingQuestion?: QuestionWithTags | null;
   behavioralQuestion?: QuestionWithTags | null;
+  communicationQuestion?: QuestionWithTags | null;
   [key: string]: unknown;
 }
 
@@ -213,6 +215,9 @@ function withParsedQuestionTags<T extends TestQuestionLike>(testQuestion: T): T 
       : testQuestion.mcqQuestion,
     codingQuestion: testQuestion.codingQuestion ? { ...testQuestion.codingQuestion, tags: parseJsonArrayField(testQuestion.codingQuestion.tags) } : testQuestion.codingQuestion,
     behavioralQuestion: testQuestion.behavioralQuestion ? { ...testQuestion.behavioralQuestion, tags: parseJsonArrayField(testQuestion.behavioralQuestion.tags) } : testQuestion.behavioralQuestion,
+    communicationQuestion: testQuestion.communicationQuestion
+      ? { ...testQuestion.communicationQuestion, tags: parseJsonArrayField(testQuestion.communicationQuestion.tags), options: parseJsonArrayField(testQuestion.communicationQuestion.options) }
+      : testQuestion.communicationQuestion,
   };
 }
 
@@ -422,7 +427,8 @@ export async function getTestById(req: AuthenticatedRequest, res: Response): Pro
                 testCases: true
               }
             },
-            behavioralQuestion: true
+            behavioralQuestion: true,
+            communicationQuestion: true
           },
           orderBy: { orderIndex: 'asc' }
         },
@@ -436,7 +442,8 @@ export async function getTestById(req: AuthenticatedRequest, res: Response): Pro
                     testCases: true
                   }
                 },
-                behavioralQuestion: true
+                behavioralQuestion: true,
+                communicationQuestion: true
               },
               orderBy: { orderIndex: 'asc' }
             }
@@ -1045,6 +1052,17 @@ export async function addQuestionToTest(req: AuthenticatedRequest, res: Response
         res.status(404).json({ error: 'Behavioral question not found' });
         return;
       }
+    } else if (questionType === 'communication') {
+      const communication = await prisma.communicationQuestion.findFirst({
+        where: {
+          id: questionId,
+          OR: [{ adminId: req.admin!.id }, { adminId: null }]
+        }
+      });
+      if (!communication) {
+        res.status(404).json({ error: 'Communication question not found' });
+        return;
+      }
     } else {
       res.status(400).json({ error: 'Invalid question type' });
       return;
@@ -1057,12 +1075,15 @@ export async function addQuestionToTest(req: AuthenticatedRequest, res: Response
           ? { mcqQuestionId: questionId }
           : questionType === 'coding'
             ? { codingQuestionId: questionId }
-            : { behavioralQuestionId: questionId })
+            : questionType === 'behavioral'
+              ? { behavioralQuestionId: questionId }
+              : { communicationQuestionId: questionId })
       },
       include: {
         mcqQuestion: true,
         codingQuestion: true,
-        behavioralQuestion: true
+        behavioralQuestion: true,
+        communicationQuestion: true
       }
     });
 
@@ -1099,13 +1120,15 @@ export async function addQuestionToTest(req: AuthenticatedRequest, res: Response
         mcqQuestionId: questionType === 'mcq' ? questionId : null,
         codingQuestionId: questionType === 'coding' ? questionId : null,
         behavioralQuestionId: questionType === 'behavioral' ? questionId : null,
+        communicationQuestionId: questionType === 'communication' ? questionId : null,
         orderIndex: order,
         sectionId: sectionId ?? null
       },
       include: {
         mcqQuestion: true,
         codingQuestion: true,
-        behavioralQuestion: true
+        behavioralQuestion: true,
+        communicationQuestion: true
       }
     });
 
@@ -1483,7 +1506,63 @@ export async function addCustomQuestionToTest(req: AuthenticatedRequest, res: Re
       return;
     }
 
-    res.status(400).json({ error: 'Invalid questionType. Use mcq, coding, or behavioral.' });
+    if (questionType === 'communication') {
+      const subType = VALID_COMMUNICATION_SUB_TYPES.includes(req.body.subType) ? req.body.subType : null;
+      if (!subType) {
+        res.status(400).json({ error: 'Valid subType is required (WRITTEN, LISTENING, READING, or SPEAKING).' });
+        return;
+      }
+
+      const result = await buildCommunicationCreateData(req, subType);
+      if ('error' in result) {
+        res.status(400).json({ error: result.error });
+        return;
+      }
+
+      // Test-scoped custom questions use the same "__test_scoped__" tag marker as the mcq/coding/
+      // behavioral branches above (toTestScopedTagJson) so they don't clutter the general library
+      // search — this intentionally overrides buildCommunicationCreateData's own plain tag handling.
+      const data = { ...result.data, tags: toTestScopedTagJson(testId, req.body.tags) };
+
+      const [question, testQuestion] = await prisma.$transaction(async (tx) => {
+        const createdQuestion = await tx.communicationQuestion.create({
+          data: {
+            ...data,
+            source: QuestionSource.CUSTOM,
+            repositoryCategory: QuestionRepositoryCategory.COMMUNICATION,
+            isEnabled: true,
+            adminId: req.admin!.id
+          } as Parameters<typeof tx.communicationQuestion.create>[0]['data']
+        });
+
+        const createdTestQuestion = await tx.testQuestion.create({
+          data: {
+            testId,
+            questionType: 'communication',
+            communicationQuestionId: createdQuestion.id,
+            orderIndex: resolvedOrder,
+            sectionId: sectionId ?? null
+          },
+          include: {
+            mcqQuestion: true,
+            codingQuestion: true,
+            behavioralQuestion: true,
+            communicationQuestion: true
+          }
+        });
+
+        return [createdQuestion, createdTestQuestion];
+      });
+
+      res.status(201).json({
+        message: 'Custom communication question created and added to test.',
+        testQuestion,
+        question: serializeCommunicationQuestion(question)
+      });
+      return;
+    }
+
+    res.status(400).json({ error: 'Invalid questionType. Use mcq, coding, behavioral, or communication.' });
   } catch (error) {
     console.error('Add custom question to test error:', error);
     res.status(500).json({ error: 'Internal server error' });

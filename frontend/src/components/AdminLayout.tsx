@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../context/authStore';
+import { useAuthStore, getAdminToken } from '../context/authStore';
 import api, { adminApi } from '../services/api';
 import { getRealtimeSocket } from '../services/realtimeService';
 import {
@@ -237,7 +237,7 @@ export default function AdminLayout() {
   };
 
   useEffect(() => {
-    if (admin?.id || !localStorage.getItem('adminToken')) return;
+    if (admin?.id || !getAdminToken()) return;
     let cancelled = false;
     adminApi.getProfile()
       .then(({ data }) => { if (!cancelled) setAdmin(data.admin); })

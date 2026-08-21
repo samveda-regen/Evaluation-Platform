@@ -1,6 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import { toast } from 'react-hot-toast';
-import { useAuthStore } from '../context/authStore';
+import { useAuthStore, getAdminToken } from '../context/authStore';
 import type {
   RepositoryCategory,
   RepositoryListResponse,
@@ -42,7 +42,7 @@ api.interceptors.request.use((config) => {
     }
   }
 
-  const adminToken = localStorage.getItem('adminToken');
+  const adminToken = getAdminToken();
   const candidateToken = localStorage.getItem('candidateToken');
 
   const url = config.url || '';
@@ -93,7 +93,7 @@ api.interceptors.response.use(
         url.startsWith('/proctoring/admin') ||
         url.startsWith('/verification/admin');
       const isPublicAdminAuthRoute = ADMIN_PUBLIC_AUTH_PATHS.some((path) => url.startsWith(path));
-      const hadAdminToken = !!localStorage.getItem('adminToken');
+      const hadAdminToken = !!getAdminToken();
 
       if (isAdminRoute && !isPublicAdminAuthRoute && hadAdminToken) {
         // The admin's token was rejected on a route that requires one - either
@@ -106,8 +106,8 @@ api.interceptors.response.use(
       } else {
         // Not an authenticated-session case (e.g. a failed login attempt) -
         // just clear any stale tokens and let the caller handle its own error.
-        localStorage.removeItem('adminToken');
-        localStorage.removeItem('candidateToken');
+        useAuthStore.getState().logoutAdmin();
+        useAuthStore.getState().logoutCandidate();
       }
     }
     return Promise.reject(error);
@@ -229,6 +229,9 @@ export const adminApi = {
   deleteTestInvitation: (testId: string, invitationId: string) =>
     api.delete(`/admin/tests/${testId}/invitations/${invitationId}`),
 
+  resendTestInvitation: (testId: string, invitationId: string) =>
+    api.post(`/admin/tests/${testId}/invitations/${invitationId}/resend`),
+
   addQuestionToTest: (testId: string, data: { questionId: string; questionType: string; orderIndex?: number }) =>
     api.post(`/admin/tests/${testId}/questions`, data),
 
@@ -272,6 +275,25 @@ export const adminApi = {
   getBehaviorals: (page = 1, limit = 20, search = '') =>
     api.get(`/admin/behavioral?page=${page}&limit=${limit}${search ? `&search=${search}` : ''}`),
 
+  // Communication Questions (Written / Listening / Reading / Speaking)
+  createCommunication: (data: Record<string, unknown>) =>
+    api.post('/admin/communication', data),
+
+  getCommunications: (page = 1, limit = 20, search = '', subType = '') =>
+    api.get(`/admin/communication?page=${page}&limit=${limit}${search ? `&search=${search}` : ''}${subType ? `&subType=${subType}` : ''}`),
+
+  getCommunicationById: (questionId: string) =>
+    api.get(`/admin/communication/${questionId}`),
+
+  deleteCommunication: (questionId: string) =>
+    api.delete(`/admin/communication/${questionId}`),
+
+  createReadingPassage: (data: { title: string; passageText: string }) =>
+    api.post('/admin/communication/reading-passages', data),
+
+  getReadingPassages: (search = '') =>
+    api.get(`/admin/communication/reading-passages${search ? `?search=${search}` : ''}`),
+
   // Question Repository
   getQuestionBankQuestions: (params: RepositoryQueryParams) =>
     api.get<RepositoryListResponse>(`/admin/repository/question-bank?${buildRepositoryQuery(params)}`),
@@ -294,6 +316,15 @@ export const adminApi = {
     topic?: string;
     tags?: string[];
   }) => api.post('/admin/repository/custom/behavioral', data),
+
+  createCustomCommunication: (data: Record<string, unknown>) =>
+    api.post('/admin/repository/custom/communication', data),
+
+  updateCustomCommunication: (questionId: string, data: Record<string, unknown>) =>
+    api.put(`/admin/repository/custom/communication/${questionId}`, data),
+
+  updateQuestionBankCommunication: (questionId: string, data: Record<string, unknown>) =>
+    api.put(`/admin/repository/question-bank/communication/${questionId}`, data),
 
   updateCustomMCQ: (questionId: string, data: {
     questionText?: string;
@@ -416,6 +447,17 @@ export const adminApi = {
       `/admin/attempts/${attemptId}/behavioral/${questionId}/auto-grade`
     ),
 
+  gradeCommunicationAnswer: (attemptId: string, questionId: string, marksObtained: number) =>
+    api.post<{ message: string; questionId: string; marksObtained: number; score: number }>(
+      `/admin/attempts/${attemptId}/communication/${questionId}/grade`,
+      { marksObtained }
+    ),
+
+  autoGradeCommunicationAnswer: (attemptId: string, questionId: string) =>
+    api.post<{ questionId: string; marksObtained: number; maxMarks: number; reasoning: string; score: number }>(
+      `/admin/attempts/${attemptId}/communication/${questionId}/auto-grade`
+    ),
+
   reEvaluateAttempt: (attemptId: string) =>
     api.post(`/admin/attempts/${attemptId}/reevaluate`),
 
@@ -438,6 +480,9 @@ export const adminApi = {
   deleteAttempt: (attemptId: string) =>
     api.delete(`/admin/attempts/${attemptId}`),
 
+  forceSubmitAttempt: (attemptId: string) =>
+    api.post(`/admin/attempts/${attemptId}/force-submit`),
+
   // Agent API - AI-powered test generation
   analyzeJob: (jobTitle: string, jobDescription?: string, experience?: string) =>
     api.post('/admin/agent/analyze-job', { jobTitle, jobDescription, experience }),
@@ -452,6 +497,9 @@ export const adminApi = {
     mcqCount: number;
     codingCount: number;
     behavioralCount: number;
+    writtenCount?: number;
+    readingCount?: number;
+    speakingCount?: number;
     duration?: number;
   }) => api.post('/admin/agent/generate-test', data),
 
@@ -460,6 +508,9 @@ export const adminApi = {
       mcqQuestionIds: string[];
       codingQuestionIds: string[];
       behavioralQuestionIds: string[];
+      writtenQuestionIds?: string[];
+      readingQuestionIds?: string[];
+      speakingQuestionIds?: string[];
       reasoning?: string;
       suggestedDuration?: number;
       suggestedTestName?: string;
@@ -470,6 +521,27 @@ export const adminApi = {
 
   suggestTags: (questionText: string, questionType: 'mcq' | 'coding') =>
     api.post('/admin/agent/suggest-tags', { questionText, questionType }),
+
+  suggestNewQuestions: (data: {
+    jobProfile: { title: string; experience: string; description?: string };
+    skills: string[];
+    difficulty: 'easy' | 'medium' | 'hard' | 'mixed';
+    mcqCount: number;
+    codingCount: number;
+    behavioralCount: number;
+    writtenCount?: number;
+    readingCount?: number;
+    speakingCount?: number;
+  }) => api.post('/admin/agent/suggest-questions', data),
+
+  getAgentReviewDetails: (data: {
+    mcqQuestionIds: string[];
+    codingQuestionIds: string[];
+    behavioralQuestionIds: string[];
+    writtenQuestionIds?: string[];
+    readingQuestionIds?: string[];
+    speakingQuestionIds?: string[];
+  }) => api.post('/admin/agent/review-details', data),
 
   // Proctoring - Admin
   getProctoringSummary: (attemptId: string) =>
@@ -548,8 +620,8 @@ export const adminApi = {
   deleteMedia: (assetId: string) =>
     api.delete(`/media/${assetId}`),
 
-  assignMediaToQuestion: (questionId: string, assetIds: string[]) =>
-    api.post(`/media/question/${questionId}/assign`, { assetIds }),
+  assignMediaToQuestion: (questionId: string, assetIds: string[], questionType?: 'mcq' | 'communication') =>
+    api.post(`/media/question/${questionId}/assign`, { assetIds, questionType }),
 
   getQuestionMedia: (questionId: string) =>
     api.get<{ success: boolean; assets: Array<{ id: string; filename: string; originalName: string; mimeType: string; fileSize: number; storageUrl: string; mediaType: string; width?: number; height?: number; duration?: number; thumbnailUrl?: string }> }>(`/media/question/${questionId}`),
@@ -632,11 +704,17 @@ export const candidateApi = {
   saveBehavioralAnswer: (data: { questionId: string; answerText: string }) =>
     api.post('/candidate/answer/behavioral', data),
 
+  saveCommunicationAnswer: (data: { questionId: string; answerText?: string; selectedOptions?: number[]; replayCount?: number; retakeCount?: number; audio?: string; audioMimeType?: string }) =>
+    api.post('/candidate/answer/communication', data),
+
   runCode: (data: { questionId: string; code: string; language: string; input?: string }) =>
     api.post('/candidate/code/run', data),
 
   logActivity: (data: { eventType: string; eventData?: Record<string, unknown> }) =>
     api.post('/candidate/activity', data),
+
+  heartbeat: () =>
+    api.post('/candidate/heartbeat'),
 
   submitTest: (data: { autoSubmit?: boolean }) =>
     api.post<SubmissionResult>('/candidate/test/submit', data),

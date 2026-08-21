@@ -433,7 +433,13 @@ export async function uploadRecording(
   recordingType: 'webcam' | 'screen' | 'audio' | 'combined',
   mimeType: string
 ): Promise<UploadResult> {
-  const ext = mimeType.includes('video') ? '.webm' : '.wav';
+  // MediaRecorder's actual output (webcam/screen video AND mic-only Speaking-answer audio) is
+  // WebM by default in every browser that supports it — the old `video ? .webm : .wav` guess
+  // mislabeled every audio recording (always WebM/Opus in practice, never real WAV) as .wav.
+  const ext = mimeType.includes('wav') ? '.wav'
+    : mimeType.includes('ogg') ? '.ogg'
+    : mimeType.includes('mp4') ? '.mp4'
+    : '.webm';
   const timestamp = Date.now();
   const filename = `${attemptId}-${recordingType}-${timestamp}${ext}`;
   const candidateContext = await getAttemptCandidateContext(attemptId);

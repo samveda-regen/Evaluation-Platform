@@ -5,11 +5,12 @@ import prisma from '../utils/db.js';
 import { sanitizeInput } from '../utils/sanitize.js';
 import { createMCQQuestion } from './mcqQuestion.js';
 import { createCodingQuestion } from './codingQuestion.js';
+import { createCommunicationQuestion, serializeCommunicationQuestion, MAX_RECORDING_TIME_LIMIT_SEC } from './communicationQuestion.js';
 
-type RepositoryCategory = 'MCQ' | 'CODING' | 'BEHAVIORAL';
+type RepositoryCategory = 'MCQ' | 'CODING' | 'BEHAVIORAL' | 'COMMUNICATION';
 type Difficulty = 'easy' | 'medium' | 'hard';
 
-const VALID_CATEGORIES: RepositoryCategory[] = ['MCQ', 'CODING', 'BEHAVIORAL'];
+const VALID_CATEGORIES: RepositoryCategory[] = ['MCQ', 'CODING', 'BEHAVIORAL', 'COMMUNICATION'];
 const VALID_DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard'];
 
 function toStringOrUndefined(value: unknown): string | undefined {
@@ -209,7 +210,7 @@ export async function getRepositoryQuestions(req: AuthenticatedRequest, res: Res
     }
 
     if (!category) {
-      res.status(400).json({ error: 'Invalid category. Use MCQ, CODING, or BEHAVIORAL.' });
+      res.status(400).json({ error: 'Invalid category. Use MCQ, CODING, BEHAVIORAL, or COMMUNICATION.' });
       return;
     }
 
@@ -310,6 +311,43 @@ export async function getRepositoryQuestions(req: AuthenticatedRequest, res: Res
           questions: questions.map(q => ({ ...serializeBehavioralQuestion(q), usageCount: q._count.testQuestions })),
           pagination: buildPagination(page, limit, total)
         });
+        return;
+      }
+
+      case 'COMMUNICATION': {
+        const where: Prisma.CommunicationQuestionWhereInput = { source };
+        if (source === QuestionSource.CUSTOM) where.adminId = req.admin!.id;
+        if (difficulty) where.difficulty = difficulty;
+        if (topic) where.topic = { contains: topic, mode: 'insensitive' };
+        if (tag) where.tags = { contains: tag, mode: 'insensitive' };
+        if (enabled !== undefined) where.isEnabled = enabled;
+        const subType = toStringOrUndefined(req.query.subType);
+        if (subType && ['WRITTEN', 'LISTENING', 'READING', 'SPEAKING'].includes(subType.toUpperCase())) {
+          where.subType = subType.toUpperCase() as Prisma.EnumCommunicationSubTypeFilter['equals'];
+        }
+        if (search) {
+          where.OR = [
+            { title: { contains: search, mode: 'insensitive' } },
+            { description: { contains: search, mode: 'insensitive' } },
+            { tags: { contains: search, mode: 'insensitive' } }
+          ];
+        }
+
+        const [questions, total] = await Promise.all([
+          prisma.communicationQuestion.findMany({
+            where,
+            skip,
+            take: limit,
+            orderBy: { createdAt: 'desc' },
+            include: { _count: { select: { testQuestions: true } }, passage: true }
+          }),
+          prisma.communicationQuestion.count({ where })
+        ]);
+
+        res.json({
+          questions: questions.map(q => ({ ...serializeCommunicationQuestion(q), usageCount: q._count.testQuestions })),
+          pagination: buildPagination(page, limit, total)
+        });
       }
     }
   } catch (error) {
@@ -331,7 +369,7 @@ export async function toggleRepositoryQuestion(
     const category = parseCategory(req.query.category);
 
     if (!category) {
-      res.status(400).json({ error: 'Invalid category. Use MCQ, CODING, or BEHAVIORAL.' });
+      res.status(400).json({ error: 'Invalid category. Use MCQ, CODING, BEHAVIORAL, or COMMUNICATION.' });
       return;
     }
 
@@ -375,6 +413,20 @@ export async function toggleRepositoryQuestion(
           where: { id: questionId },
           data: { isEnabled: value }
         });
+        break;
+      }
+
+      case 'COMMUNICATION': {
+        const existing = await prisma.communicationQuestion.findUnique({ where: { id: questionId } });
+        if (!existing || !isOwnedByRequester(existing, req.admin!.id)) {
+          res.status(404).json({ error: 'Question not found' });
+          return;
+        }
+
+        await prisma.communicationQuestion.update({
+          where: { id: questionId },
+          data: { isEnabled: value }
+        });
       }
     }
 
@@ -394,7 +446,7 @@ export async function deleteRepositoryQuestion(req: AuthenticatedRequest, res: R
     const category = parseCategory(req.query.category);
 
     if (!category) {
-      res.status(400).json({ error: 'Invalid category. Use MCQ, CODING, or BEHAVIORAL.' });
+      res.status(400).json({ error: 'Invalid category. Use MCQ, CODING, BEHAVIORAL, or COMMUNICATION.' });
       return;
     }
 
@@ -477,6 +529,33 @@ export async function deleteRepositoryQuestion(req: AuthenticatedRequest, res: R
         }
 
         await prisma.behavioralQuestion.delete({ where: { id: questionId } });
+        break;
+      }
+
+      case 'COMMUNICATION': {
+        const question = await prisma.communicationQuestion.findUnique({ where: { id: questionId } });
+        if (!question) {
+          res.status(404).json({ error: 'Question not found' });
+          return;
+        }
+        if (question.source !== QuestionSource.CUSTOM) {
+          res.status(400).json({ error: 'Only custom questions can be deleted from this endpoint.' });
+          return;
+        }
+        if (question.adminId !== req.admin!.id) {
+          res.status(404).json({ error: 'Question not found' });
+          return;
+        }
+
+        const inTest = await prisma.testQuestion.findFirst({
+          where: { communicationQuestionId: questionId }
+        });
+        if (inTest) {
+          res.status(400).json({ error: 'Question is used in a test and cannot be deleted.' });
+          return;
+        }
+
+        await prisma.communicationQuestion.delete({ where: { id: questionId } });
       }
     }
 
@@ -794,4 +873,133 @@ export async function createCustomBehavioral(req: AuthenticatedRequest, res: Res
     console.error('Create behavioral question error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+}
+
+export async function createCustomCommunication(req: AuthenticatedRequest, res: Response) {
+  req.body.source = QuestionSource.CUSTOM;
+  return createCommunicationQuestion(req, res);
+}
+
+// Partial update across whichever fields the request body includes — only the fields relevant to
+// the question's own subType are ever read (a Written question's request can't accidentally set
+// Listening-only guardrail fields, since those keys are simply never inspected for that subType).
+async function updateCommunicationBySource(
+  req: AuthenticatedRequest,
+  res: Response,
+  expectedSource: QuestionSource,
+  sourceLabel: string
+) {
+  try {
+    const { questionId } = req.params;
+
+    const existing = await prisma.communicationQuestion.findUnique({ where: { id: questionId } });
+    if (!existing) {
+      res.status(404).json({ error: 'Question not found' });
+      return;
+    }
+    if (existing.source !== expectedSource) {
+      res.status(400).json({ error: `Only ${sourceLabel} questions can be edited from this endpoint.` });
+      return;
+    }
+    if (!isOwnedByRequester(existing, req.admin!.id)) {
+      res.status(404).json({ error: 'Question not found' });
+      return;
+    }
+
+    const title = toStringOrUndefined(req.body.title);
+    const description = req.body.description !== undefined ? (req.body.description ? String(req.body.description) : null) : undefined;
+    const topic = toStringOrUndefined(req.body.topic);
+    const difficulty = parseDifficulty(req.body.difficulty);
+    const parsedTags = parseTagsInput(req.body.tags);
+    const marks = req.body.marks !== undefined ? Number.parseInt(String(req.body.marks), 10) : undefined;
+
+    if (marks !== undefined && (!Number.isFinite(marks) || marks < 1)) {
+      res.status(400).json({ error: 'Marks must be a positive integer.' });
+      return;
+    }
+
+    const data: Prisma.CommunicationQuestionUpdateInput = {
+      ...(title !== undefined && { title: sanitizeInput(title) }),
+      ...(description !== undefined && { description: description ? sanitizeInput(description) : null }),
+      ...(marks !== undefined && { marks }),
+      ...(difficulty !== undefined && { difficulty }),
+      ...(topic !== undefined && { topic: sanitizeInput(topic) }),
+      ...(parsedTags !== null && { tags: JSON.stringify(parsedTags) })
+    };
+
+    if (existing.subType === 'WRITTEN') {
+      if (req.body.stimulusType !== undefined && ['NONE', 'IMAGE', 'AUDIO'].includes(req.body.stimulusType)) {
+        data.stimulusType = req.body.stimulusType;
+      }
+      const evaluationNotes = toStringOrUndefined(req.body.evaluationNotes);
+      if (evaluationNotes !== undefined) data.evaluationNotes = sanitizeInput(evaluationNotes);
+    }
+
+    if (existing.subType === 'LISTENING' || existing.subType === 'READING') {
+      if (Array.isArray(req.body.options)) {
+        const filtered = (req.body.options as unknown[])
+          .filter((o): o is string => typeof o === 'string' && o.trim().length > 0)
+          .map(o => sanitizeInput(o));
+        if (filtered.length < 2) {
+          res.status(400).json({ error: 'At least 2 options are required.' });
+          return;
+        }
+        data.options = JSON.stringify(filtered);
+      }
+      if (Array.isArray(req.body.correctAnswers)) {
+        data.correctAnswers = JSON.stringify(req.body.correctAnswers);
+      }
+      const explanation = toStringOrUndefined(req.body.explanation);
+      if (explanation !== undefined) data.explanation = sanitizeInput(explanation);
+      if (req.body.isMultipleChoice !== undefined) data.isMultipleChoice = Boolean(req.body.isMultipleChoice);
+    }
+
+    if (existing.subType === 'READING' && typeof req.body.passageId === 'string' && req.body.passageId.trim()) {
+      const passage = await prisma.readingPassage.findUnique({ where: { id: req.body.passageId.trim() } });
+      if (!passage) {
+        res.status(400).json({ error: 'Reading passage not found.' });
+        return;
+      }
+      data.passage = { connect: { id: passage.id } };
+    }
+
+    if (existing.subType === 'LISTENING') {
+      if (req.body.replayLimit !== undefined && Number.isFinite(Number(req.body.replayLimit))) {
+        data.replayLimit = Math.max(1, Math.floor(Number(req.body.replayLimit)));
+      }
+      if (req.body.allowRewind !== undefined) data.allowRewind = Boolean(req.body.allowRewind);
+      if (req.body.allowSpeedChange !== undefined) data.allowSpeedChange = Boolean(req.body.allowSpeedChange);
+      if (req.body.fixedPlaybackSpeed !== undefined && Number.isFinite(Number(req.body.fixedPlaybackSpeed))) {
+        data.fixedPlaybackSpeed = Number(req.body.fixedPlaybackSpeed);
+      }
+    }
+
+    if (existing.subType === 'SPEAKING') {
+      if (req.body.recordingTimeLimit !== undefined && Number.isFinite(Number(req.body.recordingTimeLimit))) {
+        data.recordingTimeLimit = Math.min(MAX_RECORDING_TIME_LIMIT_SEC, Math.max(10, Math.floor(Number(req.body.recordingTimeLimit))));
+      }
+      if (req.body.retakeLimit !== undefined) {
+        data.retakeLimit = req.body.retakeLimit === null || req.body.retakeLimit === ''
+          ? null
+          : (Number.isFinite(Number(req.body.retakeLimit)) ? Math.max(1, Math.floor(Number(req.body.retakeLimit))) : null);
+      }
+      const evaluationNotes = toStringOrUndefined(req.body.evaluationNotes);
+      if (evaluationNotes !== undefined) data.evaluationNotes = sanitizeInput(evaluationNotes);
+    }
+
+    const updated = await prisma.communicationQuestion.update({ where: { id: questionId }, data });
+
+    res.json({ message: 'Communication question updated successfully', question: serializeCommunicationQuestion(updated) });
+  } catch (error) {
+    console.error(`Update ${sourceLabel} communication error:`, error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export async function updateCustomCommunication(req: AuthenticatedRequest, res: Response) {
+  return updateCommunicationBySource(req, res, QuestionSource.CUSTOM, 'custom');
+}
+
+export async function updateQuestionBankCommunication(req: AuthenticatedRequest, res: Response) {
+  return updateCommunicationBySource(req, res, QuestionSource.QUESTION_BANK, 'question bank');
 }

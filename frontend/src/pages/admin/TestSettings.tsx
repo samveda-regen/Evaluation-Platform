@@ -54,6 +54,7 @@ interface FormState {
   description: string;
   category: string;
   language: string;
+  duration: number;
   /* Access & scheduling */
   startTime: string;
   endTime: string;
@@ -136,6 +137,7 @@ function toFormState(t: Test): FormState {
     description:        t.description ?? '',
     category:           stringSetting(ext, settings, 'category', 'Back-End Developer'),
     language:           stringSetting(ext, settings, 'language', 'English'),
+    duration:           t.duration ?? 60,
     startTime:          fmtForInput(t.startTime),
     endTime:            fmtForInput(t.endTime),
     requireInvitationLink: booleanSetting(ext, settings, 'requireInvitationLink', true),
@@ -348,6 +350,7 @@ export default function TestSettings() {
       await adminApi.updateTest(testId, {
         name: form.name, description: form.description,
         category: form.category, language: form.language,
+        duration: form.duration,
         startTime: toISOStringFromLocalDateTime(form.startTime),
         endTime:   toISOStringFromLocalDateTime(form.endTime),
         requireInvitationLink: form.requireInvitationLink,
@@ -482,6 +485,21 @@ export default function TestSettings() {
                   <textarea value={form.description}
                     onChange={e => patch({ description: e.target.value })}
                     rows={4} style={{ ...inputSx, lineHeight:'1.5' }} />
+                </div>
+
+                <div>
+                  <label style={labelSx}> Duration (minutes)</label>
+                  <input type="number" min={1}
+                    value={form.duration}
+                    onChange={e => {
+                      const parsed = Math.round(Number(e.target.value));
+                      patch({ duration: Number.isFinite(parsed) ? Math.max(0, parsed) : 0 });
+                    }}
+                    onBlur={() => patch({ duration: Math.max(1, form.duration) })}
+                    style={{ ...inputSx, width:'160px' }} />
+                  <p style={{ fontSize:'11px', color:'var(--admin-text-subtle)', margin:'6px 0 0' }}>
+                    Total time each candidate gets to complete this test, once started.
+                  </p>
                 </div>
 
                 <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'16px' }}>

@@ -171,11 +171,17 @@ function selectQuestionsLocally(
   mcqSummaries: QuestionSummary[],
   codingSummaries: QuestionSummary[],
   behavioralSummaries: QuestionSummary[],
+  writtenSummaries: QuestionSummary[],
+  readingSummaries: QuestionSummary[],
+  speakingSummaries: QuestionSummary[],
   skills: string[],
   difficulty: string,
   mcqCount: number,
   codingCount: number,
   behavioralCount: number,
+  writtenCount: number,
+  readingCount: number,
+  speakingCount: number,
   jobTitle: string,
   duration?: number
 ): QuestionSelection {
@@ -198,22 +204,34 @@ function selectQuestionsLocally(
   const pickedMcq = rank(mcqSummaries, mcqCount);
   const pickedCoding = rank(codingSummaries, codingCount);
   const pickedBehavioral = rank(behavioralSummaries, behavioralCount);
+  const pickedWritten = rank(writtenSummaries, writtenCount);
+  const pickedReading = rank(readingSummaries, readingCount);
+  const pickedSpeaking = rank(speakingSummaries, speakingCount);
 
   const shortfalls: string[] = [];
   if (pickedMcq.length < mcqCount) shortfalls.push(`${pickedMcq.length}/${mcqCount} MCQ`);
   if (pickedCoding.length < codingCount) shortfalls.push(`${pickedCoding.length}/${codingCount} coding`);
   if (pickedBehavioral.length < behavioralCount) shortfalls.push(`${pickedBehavioral.length}/${behavioralCount} behavioral`);
+  if (pickedWritten.length < writtenCount) shortfalls.push(`${pickedWritten.length}/${writtenCount} written`);
+  if (pickedReading.length < readingCount) shortfalls.push(`${pickedReading.length}/${readingCount} reading`);
+  if (pickedSpeaking.length < speakingCount) shortfalls.push(`${pickedSpeaking.length}/${speakingCount} speaking`);
 
   return {
     mcqQuestionIds: pickedMcq.map(q => q.id),
     codingQuestionIds: pickedCoding.map(q => q.id),
     behavioralQuestionIds: pickedBehavioral.map(q => q.id),
+    writtenQuestionIds: pickedWritten.map(q => q.id),
+    readingQuestionIds: pickedReading.map(q => q.id),
+    speakingQuestionIds: pickedSpeaking.map(q => q.id),
     mcqPreviews: pickedMcq.map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic })),
     codingPreviews: pickedCoding.map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic })),
     behavioralPreviews: pickedBehavioral.map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic })),
-    reasoning: `Selected ${pickedMcq.length} MCQ, ${pickedCoding.length} coding, and ${pickedBehavioral.length} behavioral questions that genuinely match: ${skills.join(', ')}.`
+    writtenPreviews: pickedWritten.map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic })),
+    readingPreviews: pickedReading.map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic })),
+    speakingPreviews: pickedSpeaking.map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic })),
+    reasoning: `Selected ${pickedMcq.length} MCQ, ${pickedCoding.length} coding, ${pickedBehavioral.length} behavioral, ${pickedWritten.length} written, ${pickedReading.length} reading, and ${pickedSpeaking.length} speaking questions that genuinely match: ${skills.join(', ')}.`
       + (shortfalls.length ? ` No filler questions were added — the library only had ${shortfalls.join(', ')} matching these skills.` : ''),
-    suggestedDuration: duration || pickedMcq.length * 2 + pickedCoding.length * 20 + pickedBehavioral.length * 5,
+    suggestedDuration: duration || pickedMcq.length * 2 + pickedCoding.length * 20 + pickedBehavioral.length * 5 + pickedWritten.length * 5 + pickedReading.length * 3 + pickedSpeaking.length * 5,
     suggestedTestName: `${jobTitle} Assessment`,
     suggestedDescription: `Assessment for ${jobTitle} covering ${skills.slice(0, 3).join(', ')} and related topics.`,
   };
@@ -239,6 +257,9 @@ interface TestGenerationRequest {
   mcqCount: number;
   codingCount: number;
   behavioralCount: number;
+  writtenCount?: number;
+  readingCount?: number;
+  speakingCount?: number;
   duration?: number; // minutes
 }
 
@@ -246,6 +267,9 @@ interface QuestionSelection {
   mcqQuestionIds: string[];
   codingQuestionIds: string[];
   behavioralQuestionIds: string[];
+  writtenQuestionIds?: string[];
+  readingQuestionIds?: string[];
+  speakingQuestionIds?: string[];
   reasoning: string;
   suggestedDuration: number;
   suggestedTestName: string;
@@ -253,11 +277,14 @@ interface QuestionSelection {
   mcqPreviews?: Array<{ id: string; text: string; difficulty: string; topic: string | null }>;
   codingPreviews?: Array<{ id: string; text: string; difficulty: string; topic: string | null }>;
   behavioralPreviews?: Array<{ id: string; text: string; difficulty: string; topic: string | null }>;
+  writtenPreviews?: Array<{ id: string; text: string; difficulty: string; topic: string | null }>;
+  readingPreviews?: Array<{ id: string; text: string; difficulty: string; topic: string | null }>;
+  speakingPreviews?: Array<{ id: string; text: string; difficulty: string; topic: string | null }>;
 }
 
 interface QuestionSummary {
   id: string;
-  type: 'mcq' | 'coding' | 'behavioral';
+  type: 'mcq' | 'coding' | 'behavioral' | 'written' | 'reading' | 'speaking';
   text: string;
   difficulty: string;
   topic: string | null;
@@ -272,7 +299,7 @@ export async function generateTestFromJobProfile(
   void adminId; // adminId kept for signature compat — questions are pooled across all admins
 
   // Fetch ALL questions from the database (no per-admin filter so the pool is as large as possible)
-  const [mcqQuestions, codingQuestions, behavioralQuestions] = await Promise.all([
+  const [mcqQuestions, codingQuestions, behavioralQuestions, writtenQuestions, readingQuestions, speakingQuestions] = await Promise.all([
     prisma.mCQQuestion.findMany({
       select: {
         id: true,
@@ -304,6 +331,18 @@ export async function generateTestFromJobProfile(
         tags: true,
         marks: true
       }
+    }),
+    prisma.communicationQuestion.findMany({
+      where: { subType: 'WRITTEN' },
+      select: { id: true, title: true, description: true, difficulty: true, topic: true, tags: true, marks: true }
+    }),
+    prisma.communicationQuestion.findMany({
+      where: { subType: 'READING' },
+      select: { id: true, title: true, description: true, difficulty: true, topic: true, tags: true, marks: true, passage: { select: { title: true } } }
+    }),
+    prisma.communicationQuestion.findMany({
+      where: { subType: 'SPEAKING' },
+      select: { id: true, title: true, description: true, difficulty: true, topic: true, tags: true, marks: true }
     })
   ]);
 
@@ -338,6 +377,36 @@ export async function generateTestFromJobProfile(
     marks: q.marks
   }));
 
+  const writtenSummaries: QuestionSummary[] = writtenQuestions.map((q: typeof writtenQuestions[number]) => ({
+    id: q.id,
+    type: 'written' as const,
+    text: `${q.title}${q.description ? `: ${q.description.substring(0, 150)}${q.description.length > 150 ? '...' : ''}` : ''}`,
+    difficulty: q.difficulty || 'medium',
+    topic: q.topic,
+    tags: q.tags ? JSON.parse(q.tags) : [],
+    marks: q.marks
+  }));
+
+  const readingSummaries: QuestionSummary[] = readingQuestions.map((q: typeof readingQuestions[number]) => ({
+    id: q.id,
+    type: 'reading' as const,
+    text: `${q.passage?.title ? `[${q.passage.title}] ` : ''}${q.title}`,
+    difficulty: q.difficulty || 'medium',
+    topic: q.topic,
+    tags: q.tags ? JSON.parse(q.tags) : [],
+    marks: q.marks
+  }));
+
+  const speakingSummaries: QuestionSummary[] = speakingQuestions.map((q: typeof speakingQuestions[number]) => ({
+    id: q.id,
+    type: 'speaking' as const,
+    text: `${q.title}${q.description ? `: ${q.description.substring(0, 150)}${q.description.length > 150 ? '...' : ''}` : ''}`,
+    difficulty: q.difficulty || 'medium',
+    topic: q.topic,
+    tags: q.tags ? JSON.parse(q.tags) : [],
+    marks: q.marks
+  }));
+
   // Narrow the candidate pool down to genuinely skill-relevant questions BEFORE building the LLM
   // prompt (and before local keyword ranking) — keeps the prompt small and the round trip fast
   // regardless of how large the question library grows, since it no longer scales 1:1 with total
@@ -346,13 +415,20 @@ export async function generateTestFromJobProfile(
   const relevantMcq = mcqSummaries.filter(q => skillMatchCount(q, request.skills) > 0);
   const relevantCoding = codingSummaries.filter(q => skillMatchCount(q, request.skills) > 0);
   const relevantBehavioral = behavioralSummaries.filter(q => skillMatchCount(q, request.skills) > 0);
+  const relevantWritten = writtenSummaries.filter(q => skillMatchCount(q, request.skills) > 0);
+  const relevantReading = readingSummaries.filter(q => skillMatchCount(q, request.skills) > 0);
+  const relevantSpeaking = speakingSummaries.filter(q => skillMatchCount(q, request.skills) > 0);
+
+  const writtenCount = request.writtenCount || 0;
+  const readingCount = request.readingCount || 0;
+  const speakingCount = request.speakingCount || 0;
 
   // Use local fallback when no LLM key is configured
   if (!hasLLMKey()) {
     return selectQuestionsLocally(
-      relevantMcq, relevantCoding, relevantBehavioral,
+      relevantMcq, relevantCoding, relevantBehavioral, relevantWritten, relevantReading, relevantSpeaking,
       request.skills, request.difficulty,
-      request.mcqCount, request.codingCount, request.behavioralCount,
+      request.mcqCount, request.codingCount, request.behavioralCount, writtenCount, readingCount, speakingCount,
       request.jobProfile.title, request.duration
     );
   }
@@ -371,6 +447,9 @@ ${request.jobProfile.description ? `**Job Description:** ${request.jobProfile.de
 **MCQ Questions Needed:** ${request.mcqCount}
 **Coding Questions Needed:** ${request.codingCount}
 **Behavioral Questions Needed:** ${request.behavioralCount}
+**Written (Communication) Questions Needed:** ${writtenCount}
+**Reading (Communication) Questions Needed:** ${readingCount}
+**Speaking (Communication) Questions Needed:** ${speakingCount}
 
 ## Available MCQ Questions (${relevantMcq.length} that match the required skills, out of ${mcqSummaries.length} in the library):
 ${relevantMcq.map(q => `- ID: ${q.id} | Difficulty: ${q.difficulty} | Topic: ${q.topic || 'General'} | Tags: [${q.tags.join(', ')}] | Marks: ${q.marks}\n  Question: ${q.text}`).join('\n') || '(none)'}
@@ -381,6 +460,15 @@ ${relevantCoding.map(q => `- ID: ${q.id} | Difficulty: ${q.difficulty} | Topic: 
 ## Available Behavioral Questions (${relevantBehavioral.length} that match the required skills, out of ${behavioralSummaries.length} in the library):
 ${relevantBehavioral.map(q => `- ID: ${q.id} | Difficulty: ${q.difficulty} | Topic: ${q.topic || 'General'} | Tags: [${q.tags.join(', ')}] | Marks: ${q.marks}\n  ${q.text}`).join('\n') || '(none)'}
 
+## Available Written Questions (${relevantWritten.length} that match the required skills, out of ${writtenSummaries.length} in the library):
+${relevantWritten.map(q => `- ID: ${q.id} | Difficulty: ${q.difficulty} | Topic: ${q.topic || 'General'} | Tags: [${q.tags.join(', ')}] | Marks: ${q.marks}\n  ${q.text}`).join('\n') || '(none)'}
+
+## Available Reading Questions (${relevantReading.length} that match the required skills, out of ${readingSummaries.length} in the library):
+${relevantReading.map(q => `- ID: ${q.id} | Difficulty: ${q.difficulty} | Topic: ${q.topic || 'General'} | Tags: [${q.tags.join(', ')}] | Marks: ${q.marks}\n  ${q.text}`).join('\n') || '(none)'}
+
+## Available Speaking Questions (${relevantSpeaking.length} that match the required skills, out of ${speakingSummaries.length} in the library):
+${relevantSpeaking.map(q => `- ID: ${q.id} | Difficulty: ${q.difficulty} | Topic: ${q.topic || 'General'} | Tags: [${q.tags.join(', ')}] | Marks: ${q.marks}\n  ${q.text}`).join('\n') || '(none)'}
+
 Pick behavioral questions whose tags/topic best match the role's soft-skill needs (e.g. seniority-appropriate leadership/ownership for senior roles, collaboration/learning for junior roles) — not just generic picks.
 
 Only select a question if it genuinely tests one of the **Required Skills** listed above (via its topic, tags, or content) — never select a question just to reach the requested count. If the library doesn't contain enough genuinely relevant questions for a category, return fewer than the requested count for that category rather than padding it with unrelated questions.
@@ -390,6 +478,9 @@ Respond with JSON:
   "mcqQuestionIds": ["id1", ...],
   "codingQuestionIds": ["id1", ...],
   "behavioralQuestionIds": ["id1", ...],
+  "writtenQuestionIds": ["id1", ...],
+  "readingQuestionIds": ["id1", ...],
+  "speakingQuestionIds": ["id1", ...],
   "reasoning": "...",
   "suggestedDuration": <minutes>,
   "suggestedTestName": "...",
@@ -409,30 +500,43 @@ Respond with JSON:
     const mcqById = new Map(relevantMcq.map(q => [q.id, q]));
     const codingById = new Map(relevantCoding.map(q => [q.id, q]));
     const behavioralById = new Map(relevantBehavioral.map(q => [q.id, q]));
+    const writtenById = new Map(relevantWritten.map(q => [q.id, q]));
+    const readingById = new Map(relevantReading.map(q => [q.id, q]));
+    const speakingById = new Map(relevantSpeaking.map(q => [q.id, q]));
     selection.mcqQuestionIds    = selection.mcqQuestionIds.filter(id => mcqById.has(id));
     selection.codingQuestionIds = selection.codingQuestionIds.filter(id => codingById.has(id));
     selection.behavioralQuestionIds = (selection.behavioralQuestionIds || []).filter(id => behavioralById.has(id));
+    selection.writtenQuestionIds = (selection.writtenQuestionIds || []).filter(id => writtenById.has(id));
+    selection.readingQuestionIds = (selection.readingQuestionIds || []).filter(id => readingById.has(id));
+    selection.speakingQuestionIds = (selection.speakingQuestionIds || []).filter(id => speakingById.has(id));
 
     if (!selection.suggestedDuration || selection.suggestedDuration < 10) {
       selection.suggestedDuration = request.duration ||
-        selection.mcqQuestionIds.length * 2 + selection.codingQuestionIds.length * 20 + selection.behavioralQuestionIds.length * 5;
+        selection.mcqQuestionIds.length * 2 + selection.codingQuestionIds.length * 20 + selection.behavioralQuestionIds.length * 5
+        + selection.writtenQuestionIds.length * 5 + selection.readingQuestionIds.length * 3 + selection.speakingQuestionIds.length * 5;
     }
 
     // Attach summaries so the frontend can preview without a second fetch
     const mcqIdSet    = new Set(selection.mcqQuestionIds);
     const codingIdSet = new Set(selection.codingQuestionIds);
     const behavioralIdSet = new Set(selection.behavioralQuestionIds);
+    const writtenIdSet = new Set(selection.writtenQuestionIds);
+    const readingIdSet = new Set(selection.readingQuestionIds);
+    const speakingIdSet = new Set(selection.speakingQuestionIds);
     selection.mcqPreviews    = relevantMcq.filter(q => mcqIdSet.has(q.id)).map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic }));
     selection.codingPreviews = relevantCoding.filter(q => codingIdSet.has(q.id)).map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic }));
     selection.behavioralPreviews = relevantBehavioral.filter(q => behavioralIdSet.has(q.id)).map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic }));
+    selection.writtenPreviews = relevantWritten.filter(q => writtenIdSet.has(q.id)).map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic }));
+    selection.readingPreviews = relevantReading.filter(q => readingIdSet.has(q.id)).map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic }));
+    selection.speakingPreviews = relevantSpeaking.filter(q => speakingIdSet.has(q.id)).map(q => ({ id: q.id, text: q.text, difficulty: q.difficulty, topic: q.topic }));
 
     return selection;
   } catch {
     // LLM call failed — fall back to keyword matching
     return selectQuestionsLocally(
-      relevantMcq, relevantCoding, relevantBehavioral,
+      relevantMcq, relevantCoding, relevantBehavioral, relevantWritten, relevantReading, relevantSpeaking,
       request.skills, request.difficulty,
-      request.mcqCount, request.codingCount, request.behavioralCount,
+      request.mcqCount, request.codingCount, request.behavioralCount, writtenCount, readingCount, speakingCount,
       request.jobProfile.title, request.duration
     );
   }
@@ -457,7 +561,12 @@ export async function createTestFromSelection(
   }
 ): Promise<{ testId: string; testCode: string }> {
   // Calculate total marks — no adminId filter so we can tally marks for any selected question
-  const [mcqQuestions, codingQuestions, behavioralQuestions] = await Promise.all([
+  const communicationIds = [
+    ...(selection.writtenQuestionIds || []),
+    ...(selection.readingQuestionIds || []),
+    ...(selection.speakingQuestionIds || [])
+  ];
+  const [mcqQuestions, codingQuestions, behavioralQuestions, communicationQuestions] = await Promise.all([
     prisma.mCQQuestion.findMany({
       where: { id: { in: selection.mcqQuestionIds } },
       select: { id: true, marks: true }
@@ -469,13 +578,18 @@ export async function createTestFromSelection(
     prisma.behavioralQuestion.findMany({
       where: { id: { in: selection.behavioralQuestionIds || [] } },
       select: { id: true, marks: true }
+    }),
+    prisma.communicationQuestion.findMany({
+      where: { id: { in: communicationIds } },
+      select: { id: true, marks: true }
     })
   ]);
 
   const totalMarks =
     mcqQuestions.reduce((sum: number, q: { marks: number }) => sum + q.marks, 0) +
     codingQuestions.reduce((sum: number, q: { marks: number }) => sum + q.marks, 0) +
-    behavioralQuestions.reduce((sum: number, q: { marks: number }) => sum + q.marks, 0);
+    behavioralQuestions.reduce((sum: number, q: { marks: number }) => sum + q.marks, 0) +
+    communicationQuestions.reduce((sum: number, q: { marks: number }) => sum + q.marks, 0);
   const passingMarks =
     testSettings.passingScorePercent !== undefined
       ? Math.round((testSettings.passingScorePercent / 100) * totalMarks)
@@ -544,6 +658,19 @@ export async function createTestFromSelection(
       });
     }
 
+    // Add communication questions (written/reading/speaking all share questionType 'communication' —
+    // CommunicationQuestion.subType is what actually distinguishes them, already set at creation time)
+    for (const communicationId of communicationIds) {
+      await tx.testQuestion.create({
+        data: {
+          testId: newTest.id,
+          questionType: 'communication',
+          communicationQuestionId: communicationId,
+          orderIndex: orderIndex++
+        }
+      });
+    }
+
     return newTest;
   });
 
@@ -563,13 +690,14 @@ function generateTestCode(): string {
 // ground its suggestions in names that will actually match real questions.
 export async function getLibrarySkillTags(): Promise<string[]> {
   try {
-    const [mcq, coding, behavioral] = await Promise.all([
+    const [mcq, coding, behavioral, communication] = await Promise.all([
       prisma.mCQQuestion.findMany({ select: { tags: true, topic: true } }),
       prisma.codingQuestion.findMany({ select: { tags: true, topic: true } }),
-      prisma.behavioralQuestion.findMany({ select: { tags: true, topic: true } })
+      prisma.behavioralQuestion.findMany({ select: { tags: true, topic: true } }),
+      prisma.communicationQuestion.findMany({ select: { tags: true, topic: true } })
     ]);
     const set = new Set<string>();
-    for (const q of [...mcq, ...coding, ...behavioral]) {
+    for (const q of [...mcq, ...coding, ...behavioral, ...communication]) {
       if (q.topic?.trim()) set.add(q.topic.trim());
       if (q.tags) {
         try {
@@ -695,6 +823,452 @@ Respond with a JSON object containing (in this order):
   }
 }
 
+/* ── brand-new question authoring (separate from the library-selection flow above) ───── */
+
+export interface SuggestedMCQQuestion {
+  questionText: string;
+  options: string[];
+  correctAnswers: number[];
+  marks: number;
+  isMultipleChoice: boolean;
+  explanation: string;
+  difficulty: 'easy' | 'medium' | 'hard';
+  topic: string;
+  tags: string[];
+  suggestedTimeEstimateSec: number;
+}
+
+export interface SuggestedCodingQuestion {
+  title: string;
+  description: string;
+  inputFormat: string;
+  outputFormat: string;
+  constraints: string;
+  sampleInput: string;
+  sampleOutput: string;
+  marks: number;
+  timeLimit: number;
+  memoryLimit: number;
+  supportedLanguages: string[];
+  testCases: Array<{ input: string; expectedOutput: string; isHidden: boolean; marks: number }>;
+  difficulty: 'easy' | 'medium' | 'hard';
+  topic: string;
+  tags: string[];
+}
+
+export interface SuggestedBehavioralQuestion {
+  title: string;
+  description: string;
+  expectedAnswer: string;
+  marks: number;
+  difficulty: 'easy' | 'medium' | 'hard';
+  topic: string;
+  tags: string[];
+  suggestedTimeEstimateSec: number;
+}
+
+export interface SuggestedWrittenQuestion {
+  title: string;
+  description: string;
+  evaluationNotes: string;
+  marks: number;
+  difficulty: 'easy' | 'medium' | 'hard';
+  topic: string;
+  tags: string[];
+  suggestedTimeEstimateSec: number;
+}
+
+export interface SuggestedSpeakingQuestion {
+  title: string;
+  description: string;
+  evaluationNotes: string;
+  recordingTimeLimit: number;
+  marks: number;
+  difficulty: 'easy' | 'medium' | 'hard';
+  topic: string;
+  tags: string[];
+  suggestedTimeEstimateSec: number;
+}
+
+export interface SuggestedReadingGroup {
+  passage: { title: string; passageText: string };
+  questions: Array<{
+    title: string;
+    options: string[];
+    correctAnswers: number[];
+    explanation: string;
+    marks: number;
+    difficulty: 'easy' | 'medium' | 'hard';
+    topic: string;
+    tags: string[];
+  }>;
+}
+
+export interface QuestionSuggestions {
+  mcq: SuggestedMCQQuestion[];
+  coding: SuggestedCodingQuestion[];
+  behavioral: SuggestedBehavioralQuestion[];
+  written: SuggestedWrittenQuestion[];
+  reading: SuggestedReadingGroup | null;
+  speaking: SuggestedSpeakingQuestion[];
+}
+
+const SUPPORTED_CODING_LANGUAGES = ['python', 'javascript', 'java', 'cpp', 'c', 'csharp', 'go', 'typescript'];
+
+function normalizeDifficulty(value: unknown): 'easy' | 'medium' | 'hard' {
+  return value === 'easy' || value === 'hard' ? value : 'medium';
+}
+
+function normalizeStringArray(value: unknown, max: number): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((v): v is string => typeof v === 'string' && v.trim().length > 0).slice(0, max);
+}
+
+function normalizeMarks(value: unknown, fallback: number): number {
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function normalizeMCQSuggestion(raw: Record<string, unknown>): SuggestedMCQQuestion | null {
+  const questionText = typeof raw.questionText === 'string' ? raw.questionText.trim() : '';
+  const options = Array.isArray(raw.options)
+    ? raw.options.filter((o): o is string => typeof o === 'string' && o.trim().length > 0)
+    : [];
+  if (!questionText || options.length < 2) return null;
+
+  const correctAnswers = Array.isArray(raw.correctAnswers)
+    ? raw.correctAnswers
+        .map(i => Math.floor(Number(i)))
+        .filter(i => Number.isInteger(i) && i >= 0 && i < options.length)
+    : [];
+  if (correctAnswers.length === 0) return null;
+
+  return {
+    questionText,
+    options,
+    correctAnswers,
+    marks: normalizeMarks(raw.marks, 5),
+    isMultipleChoice: Boolean(raw.isMultipleChoice) || correctAnswers.length > 1,
+    explanation: typeof raw.explanation === 'string' ? raw.explanation.trim() : '',
+    difficulty: normalizeDifficulty(raw.difficulty),
+    topic: typeof raw.topic === 'string' ? raw.topic.trim() : '',
+    tags: normalizeStringArray(raw.tags, 8),
+    suggestedTimeEstimateSec: Number.isFinite(Number(raw.suggestedTimeEstimateSec)) ? Math.floor(Number(raw.suggestedTimeEstimateSec)) : 45
+  };
+}
+
+function normalizeCodingSuggestion(raw: Record<string, unknown>): SuggestedCodingQuestion | null {
+  const title = typeof raw.title === 'string' ? raw.title.trim() : '';
+  const description = typeof raw.description === 'string' ? raw.description.trim() : '';
+  const sampleInput = typeof raw.sampleInput === 'string' ? raw.sampleInput : '';
+  const sampleOutput = typeof raw.sampleOutput === 'string' ? raw.sampleOutput : '';
+  if (!title || !description) return null;
+
+  const testCases = Array.isArray(raw.testCases)
+    ? raw.testCases
+        .filter((tc): tc is Record<string, unknown> => !!tc && typeof tc === 'object')
+        .map(tc => ({
+          input: typeof tc.input === 'string' ? tc.input : '',
+          expectedOutput: typeof tc.expectedOutput === 'string' ? tc.expectedOutput : '',
+          isHidden: Boolean(tc.isHidden),
+          marks: normalizeMarks(tc.marks, 0)
+        }))
+        .filter(tc => tc.input && tc.expectedOutput)
+        .slice(0, 10)
+    : [];
+
+  const supportedLanguages = normalizeStringArray(raw.supportedLanguages, 8)
+    .map(l => l.toLowerCase())
+    .filter(l => SUPPORTED_CODING_LANGUAGES.includes(l));
+
+  return {
+    title,
+    description,
+    inputFormat: typeof raw.inputFormat === 'string' ? raw.inputFormat.trim() : '',
+    outputFormat: typeof raw.outputFormat === 'string' ? raw.outputFormat.trim() : '',
+    constraints: typeof raw.constraints === 'string' ? raw.constraints.trim() : '',
+    sampleInput,
+    sampleOutput,
+    marks: normalizeMarks(raw.marks, 20),
+    timeLimit: Number.isFinite(Number(raw.timeLimit)) && Number(raw.timeLimit) > 0 ? Math.floor(Number(raw.timeLimit)) : 2000,
+    memoryLimit: Number.isFinite(Number(raw.memoryLimit)) && Number(raw.memoryLimit) > 0 ? Math.floor(Number(raw.memoryLimit)) : 256,
+    supportedLanguages: supportedLanguages.length ? supportedLanguages : ['python', 'javascript'],
+    testCases,
+    difficulty: normalizeDifficulty(raw.difficulty),
+    topic: typeof raw.topic === 'string' ? raw.topic.trim() : '',
+    tags: normalizeStringArray(raw.tags, 8)
+  };
+}
+
+function normalizeBehavioralSuggestion(raw: Record<string, unknown>): SuggestedBehavioralQuestion | null {
+  const title = typeof raw.title === 'string' ? raw.title.trim() : '';
+  const description = typeof raw.description === 'string' ? raw.description.trim() : '';
+  if (!title || !description) return null;
+
+  return {
+    title,
+    description,
+    expectedAnswer: typeof raw.expectedAnswer === 'string' ? raw.expectedAnswer.trim() : '',
+    marks: normalizeMarks(raw.marks, 5),
+    difficulty: normalizeDifficulty(raw.difficulty),
+    topic: typeof raw.topic === 'string' ? raw.topic.trim() : '',
+    tags: normalizeStringArray(raw.tags, 8),
+    suggestedTimeEstimateSec: Number.isFinite(Number(raw.suggestedTimeEstimateSec)) ? Math.floor(Number(raw.suggestedTimeEstimateSec)) : 120
+  };
+}
+
+function normalizeWrittenSuggestion(raw: Record<string, unknown>): SuggestedWrittenQuestion | null {
+  const title = typeof raw.title === 'string' ? raw.title.trim() : '';
+  const description = typeof raw.description === 'string' ? raw.description.trim() : '';
+  if (!title || !description) return null;
+
+  return {
+    title,
+    description,
+    evaluationNotes: typeof raw.evaluationNotes === 'string' ? raw.evaluationNotes.trim() : '',
+    marks: normalizeMarks(raw.marks, 10),
+    difficulty: normalizeDifficulty(raw.difficulty),
+    topic: typeof raw.topic === 'string' ? raw.topic.trim() : '',
+    tags: normalizeStringArray(raw.tags, 8),
+    suggestedTimeEstimateSec: Number.isFinite(Number(raw.suggestedTimeEstimateSec)) ? Math.floor(Number(raw.suggestedTimeEstimateSec)) : 300
+  };
+}
+
+function normalizeSpeakingSuggestion(raw: Record<string, unknown>): SuggestedSpeakingQuestion | null {
+  const title = typeof raw.title === 'string' ? raw.title.trim() : '';
+  const description = typeof raw.description === 'string' ? raw.description.trim() : '';
+  if (!title || !description) return null;
+
+  return {
+    title,
+    description,
+    evaluationNotes: typeof raw.evaluationNotes === 'string' ? raw.evaluationNotes.trim() : '',
+    recordingTimeLimit: Number.isFinite(Number(raw.recordingTimeLimit)) && Number(raw.recordingTimeLimit) >= 10 ? Math.floor(Number(raw.recordingTimeLimit)) : 120,
+    marks: normalizeMarks(raw.marks, 10),
+    difficulty: normalizeDifficulty(raw.difficulty),
+    topic: typeof raw.topic === 'string' ? raw.topic.trim() : '',
+    tags: normalizeStringArray(raw.tags, 8),
+    suggestedTimeEstimateSec: Number.isFinite(Number(raw.suggestedTimeEstimateSec)) ? Math.floor(Number(raw.suggestedTimeEstimateSec)) : 180
+  };
+}
+
+function normalizeReadingGroup(raw: Record<string, unknown> | undefined, maxQuestions: number): SuggestedReadingGroup | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const passageRaw = raw.passage as Record<string, unknown> | undefined;
+  const passageTitle = passageRaw && typeof passageRaw.title === 'string' ? passageRaw.title.trim() : '';
+  const passageText = passageRaw && typeof passageRaw.passageText === 'string' ? passageRaw.passageText.trim() : '';
+  if (!passageTitle || !passageText) return null;
+
+  const questions = (Array.isArray(raw.questions) ? raw.questions : [])
+    .filter((q): q is Record<string, unknown> => !!q && typeof q === 'object')
+    .map(q => {
+      const title = typeof q.title === 'string' ? q.title.trim() : '';
+      const options = Array.isArray(q.options)
+        ? q.options.filter((o): o is string => typeof o === 'string' && o.trim().length > 0)
+        : [];
+      if (!title || options.length < 2) return null;
+      const correctAnswers = Array.isArray(q.correctAnswers)
+        ? q.correctAnswers.map(i => Math.floor(Number(i))).filter(i => Number.isInteger(i) && i >= 0 && i < options.length)
+        : [];
+      if (correctAnswers.length === 0) return null;
+      return {
+        title,
+        options,
+        correctAnswers,
+        explanation: typeof q.explanation === 'string' ? q.explanation.trim() : '',
+        marks: normalizeMarks(q.marks, 5),
+        difficulty: normalizeDifficulty(q.difficulty),
+        topic: typeof q.topic === 'string' ? q.topic.trim() : '',
+        tags: normalizeStringArray(q.tags, 8)
+      };
+    })
+    .filter((q): q is SuggestedReadingGroup['questions'][number] => q !== null)
+    .slice(0, maxQuestions);
+
+  if (questions.length === 0) return null;
+
+  return { passage: { title: passageTitle, passageText }, questions };
+}
+
+export async function suggestNewQuestions(
+  jobProfile: JobProfile,
+  skills: string[],
+  difficulty: 'easy' | 'medium' | 'hard' | 'mixed',
+  counts: {
+    mcqCount: number; codingCount: number; behavioralCount: number;
+    writtenCount?: number; readingQuestionCount?: number; speakingCount?: number;
+  }
+): Promise<QuestionSuggestions> {
+  if (!hasLLMKey()) {
+    throw new Error('AI question authoring requires an LLM API key to be configured.');
+  }
+
+  const mcqCount = Math.max(0, Math.min(10, Math.floor(counts.mcqCount)));
+  const codingCount = Math.max(0, Math.min(5, Math.floor(counts.codingCount)));
+  const behavioralCount = Math.max(0, Math.min(5, Math.floor(counts.behavioralCount)));
+  const writtenCount = Math.max(0, Math.min(5, Math.floor(counts.writtenCount || 0)));
+  const readingQuestionCount = Math.max(0, Math.min(5, Math.floor(counts.readingQuestionCount || 0)));
+  const speakingCount = Math.max(0, Math.min(5, Math.floor(counts.speakingCount || 0)));
+
+  const systemPrompt = `You are an expert technical interviewer and question-bank author. Unlike a librarian picking from an existing catalog, your job here is to WRITE brand-new, original assessment questions from scratch, tailored precisely to the job profile given. Never write generic filler questions — every question must genuinely probe one of the required skills at the requested difficulty. Always respond with a valid JSON object only, no prose outside the JSON. Every string value must be valid JSON: escape all newlines as \\n, tabs as \\t, and double quotes as \\" — this matters most in multi-line fields like a coding question's description, sampleInput, sampleOutput, or a test case's input/expectedOutput. Never place a literal, unescaped line break inside a JSON string. Never use a bare double quote to emphasize or quote a word/phrase inside a string value (e.g. do NOT write "the "primitive" types") — use single quotes for that instead (e.g. "the 'primitive' types"), or escape it as \\". Keep every question concise enough that the full response comfortably fits the token budget — never truncate a question mid-way; if you are running low on space, write fewer questions rather than cutting one off.`;
+
+  const userPrompt = `Author new assessment questions for this role:
+
+**Job Title:** ${jobProfile.title}
+**Experience Level:** ${jobProfile.experience}
+${jobProfile.description ? `**Job Description:** ${jobProfile.description}` : ''}
+**Required Skills:** ${skills.join(', ')}
+**Difficulty Level:** ${difficulty}
+
+Write exactly:
+- ${mcqCount} multiple-choice question(s)
+- ${codingCount} coding question(s)
+- ${behavioralCount} behavioral question(s)
+- ${writtenCount} written-response question(s) (a Communication sub-type: candidate types a free-text answer to a prompt, graded on grammar/wording/coherence)
+- ${readingQuestionCount > 0 ? `1 reading passage with ${readingQuestionCount} linked multiple-choice question(s) about it` : '0 reading passages'} (a Communication sub-type)
+- ${speakingCount} speaking-topic question(s) (a Communication sub-type: candidate records a spoken answer to a topic, so only write the topic/prompt text, not the answer)
+
+(If a count is 0, return an empty array for that section. For "reading", if ${readingQuestionCount} is 0, return null instead of an object.)
+
+Respond with a JSON object shaped exactly like this:
+{
+  "mcq": [
+    {
+      "questionText": "...",
+      "options": ["...", "...", "...", "..."],
+      "correctAnswers": [0],
+      "marks": 5,
+      "isMultipleChoice": false,
+      "explanation": "why the correct answer is right",
+      "difficulty": "easy|medium|hard",
+      "topic": "short category name",
+      "tags": ["skill1", "skill2"],
+      "suggestedTimeEstimateSec": 45
+    }
+  ],
+  "coding": [
+    {
+      "title": "...",
+      "description": "full problem statement",
+      "inputFormat": "...",
+      "outputFormat": "...",
+      "constraints": "...",
+      "sampleInput": "...",
+      "sampleOutput": "...",
+      "marks": 20,
+      "timeLimit": 2000,
+      "memoryLimit": 256,
+      "supportedLanguages": ["python", "javascript"],
+      "testCases": [{ "input": "...", "expectedOutput": "...", "isHidden": false, "marks": 10 }],
+      "difficulty": "easy|medium|hard",
+      "topic": "short category name",
+      "tags": ["skill1", "skill2"]
+    }
+  ],
+  "behavioral": [
+    {
+      "title": "short scenario title",
+      "description": "the full behavioral question/prompt shown to the candidate",
+      "expectedAnswer": "what a strong answer covers (grading benchmark, not shown to candidate)",
+      "marks": 5,
+      "difficulty": "easy|medium|hard",
+      "topic": "short category name",
+      "tags": ["communication", "teamwork"],
+      "suggestedTimeEstimateSec": 120
+    }
+  ],
+  "written": [
+    {
+      "title": "short label for this question (e.g. 'Describe your ideal work environment')",
+      "description": "the full prompt shown to the candidate — what they must write about",
+      "evaluationNotes": "extra grading rubric beyond the prompt itself (grammar/wording/coherence focus)",
+      "marks": 10,
+      "difficulty": "easy|medium|hard",
+      "topic": "short category name",
+      "tags": ["skill1", "skill2"],
+      "suggestedTimeEstimateSec": 300
+    }
+  ],
+  "reading": {
+    "passage": { "title": "short passage title", "passageText": "the full passage text the candidate reads" },
+    "questions": [
+      {
+        "title": "the full multiple-choice question text about the passage",
+        "options": ["...", "...", "...", "..."],
+        "correctAnswers": [0],
+        "explanation": "why the correct answer is right",
+        "marks": 5,
+        "difficulty": "easy|medium|hard",
+        "topic": "short category name",
+        "tags": ["skill1", "skill2"]
+      }
+    ]
+  },
+  "speaking": [
+    {
+      "title": "short label for this question (e.g. 'Handling a scheduling conflict')",
+      "description": "the topic/prompt the candidate speaks about — never an answer",
+      "evaluationNotes": "what a strong spoken answer covers (grading benchmark)",
+      "recordingTimeLimit": 120,
+      "marks": 10,
+      "difficulty": "easy|medium|hard",
+      "topic": "short category name",
+      "tags": ["skill1", "skill2"],
+      "suggestedTimeEstimateSec": 180
+    }
+  ]
+}`;
+
+  // Generous headroom: up to 10 MCQ + 5 coding (each with multiple test cases) + 5 behavioral
+  // questions can easily exceed a few thousand tokens — a response cut off mid-string by hitting
+  // the token limit is genuinely incomplete JSON, which no amount of post-hoc repair can fix, so
+  // the real defense is not running out of room in the first place.
+  const response = await callLLM([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userPrompt }
+  ], { temperature: 0.6, maxTokens: 8192 });
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = parseJSONFromLLM(response.content) as Record<string, unknown>;
+  } catch (err) {
+    // Log the raw response so a future parse failure can actually be diagnosed instead of guessed at.
+    console.error('suggestNewQuestions: failed to parse LLM JSON response. Raw content:\n', response.content);
+    throw err;
+  }
+
+  const mcq = (Array.isArray(parsed.mcq) ? parsed.mcq : [])
+    .map(raw => normalizeMCQSuggestion(raw as Record<string, unknown>))
+    .filter((q): q is SuggestedMCQQuestion => q !== null)
+    .slice(0, mcqCount);
+
+  const coding = (Array.isArray(parsed.coding) ? parsed.coding : [])
+    .map(raw => normalizeCodingSuggestion(raw as Record<string, unknown>))
+    .filter((q): q is SuggestedCodingQuestion => q !== null)
+    .slice(0, codingCount);
+
+  const behavioral = (Array.isArray(parsed.behavioral) ? parsed.behavioral : [])
+    .map(raw => normalizeBehavioralSuggestion(raw as Record<string, unknown>))
+    .filter((q): q is SuggestedBehavioralQuestion => q !== null)
+    .slice(0, behavioralCount);
+
+  const written = (Array.isArray(parsed.written) ? parsed.written : [])
+    .map(raw => normalizeWrittenSuggestion(raw as Record<string, unknown>))
+    .filter((q): q is SuggestedWrittenQuestion => q !== null)
+    .slice(0, writtenCount);
+
+  const reading = readingQuestionCount > 0
+    ? normalizeReadingGroup(parsed.reading as Record<string, unknown> | undefined, readingQuestionCount)
+    : null;
+
+  const speaking = (Array.isArray(parsed.speaking) ? parsed.speaking : [])
+    .map(raw => normalizeSpeakingSuggestion(raw as Record<string, unknown>))
+    .filter((q): q is SuggestedSpeakingQuestion => q !== null)
+    .slice(0, speakingCount);
+
+  return { mcq, coding, behavioral, written, reading, speaking };
+}
+
 export async function suggestQuestionTags(
   questionText: string,
   questionType: 'mcq' | 'coding'
@@ -728,5 +1302,167 @@ Respond with a JSON object:
     suggestedTags: string[];
     suggestedTopic: string;
     suggestedDifficulty: 'easy' | 'medium' | 'hard';
+  };
+}
+
+export interface ReviewMCQDetail {
+  id: string;
+  questionText: string;
+  options: string[];
+  correctAnswers: number[];
+  marks: number;
+  isMultipleChoice: boolean;
+  explanation: string | null;
+  difficulty: string;
+  topic: string | null;
+  tags: string[];
+}
+export interface ReviewCodingDetail {
+  id: string;
+  title: string;
+  description: string;
+  inputFormat: string;
+  outputFormat: string;
+  constraints: string | null;
+  sampleInput: string;
+  sampleOutput: string;
+  marks: number;
+  timeLimit: number;
+  memoryLimit: number;
+  supportedLanguages: string[];
+  difficulty: string;
+  topic: string | null;
+  tags: string[];
+  testCases: Array<{ input: string; expectedOutput: string; isHidden: boolean; marks: number }>;
+}
+export interface ReviewBehavioralDetail {
+  id: string;
+  title: string;
+  description: string;
+  expectedAnswer: string | null;
+  marks: number;
+  difficulty: string;
+  topic: string | null;
+  tags: string[];
+}
+
+export interface ReviewCommunicationDetail {
+  id: string;
+  subType: 'WRITTEN' | 'LISTENING' | 'READING' | 'SPEAKING';
+  title: string;
+  description: string | null;
+  marks: number;
+  difficulty: string;
+  topic: string | null;
+  tags: string[];
+  stimulusType: string | null;
+  evaluationNotes: string | null;
+  recordingTimeLimit: number | null;
+  options: string[];
+  correctAnswers: number[];
+  explanation: string | null;
+  passage: { title: string; passageText: string } | null;
+}
+
+// Pure read — fetches the full stored details (options, test cases, expected answers, etc.) for a
+// final set of selected question IDs, regardless of whether they originated from a library match,
+// a manual library pick, or an AI-authored suggestion (all three are real persisted questions by
+// the time their ids reach here) — used to render a complete, read-only pre-creation review.
+export async function getQuestionDetailsForReview(
+  mcqIds: string[],
+  codingIds: string[],
+  behavioralIds: string[],
+  communicationIds: string[] = []
+): Promise<{
+  mcq: ReviewMCQDetail[];
+  coding: ReviewCodingDetail[];
+  behavioral: ReviewBehavioralDetail[];
+  communication: ReviewCommunicationDetail[];
+}> {
+  const [mcqQuestions, codingQuestions, behavioralQuestions, communicationQuestions] = await Promise.all([
+    mcqIds.length ? prisma.mCQQuestion.findMany({ where: { id: { in: mcqIds } } }) : Promise.resolve([]),
+    codingIds.length ? prisma.codingQuestion.findMany({ where: { id: { in: codingIds } }, include: { testCases: true } }) : Promise.resolve([]),
+    behavioralIds.length ? prisma.behavioralQuestion.findMany({ where: { id: { in: behavioralIds } } }) : Promise.resolve([]),
+    communicationIds.length ? prisma.communicationQuestion.findMany({ where: { id: { in: communicationIds } }, include: { passage: true } }) : Promise.resolve([])
+  ]);
+
+  const mcqById = new Map(mcqQuestions.map((q: typeof mcqQuestions[number]) => [q.id, q]));
+  const codingById = new Map(codingQuestions.map((q: typeof codingQuestions[number]) => [q.id, q]));
+  const behavioralById = new Map(behavioralQuestions.map((q: typeof behavioralQuestions[number]) => [q.id, q]));
+  const communicationById = new Map(communicationQuestions.map((q: typeof communicationQuestions[number]) => [q.id, q]));
+
+  return {
+    // Preserve the order the caller asked for (the order questions were selected in), not DB order.
+    mcq: mcqIds
+      .map(id => mcqById.get(id))
+      .filter((q): q is NonNullable<typeof q> => !!q)
+      .map(q => ({
+        id: q.id,
+        questionText: q.questionText,
+        options: JSON.parse(q.options),
+        correctAnswers: JSON.parse(q.correctAnswers),
+        marks: q.marks,
+        isMultipleChoice: q.isMultipleChoice,
+        explanation: q.explanation,
+        difficulty: q.difficulty,
+        topic: q.topic,
+        tags: q.tags ? JSON.parse(q.tags) : []
+      })),
+    coding: codingIds
+      .map(id => codingById.get(id))
+      .filter((q): q is NonNullable<typeof q> => !!q)
+      .map(q => ({
+        id: q.id,
+        title: q.title,
+        description: q.description,
+        inputFormat: q.inputFormat,
+        outputFormat: q.outputFormat,
+        constraints: q.constraints,
+        sampleInput: q.sampleInput,
+        sampleOutput: q.sampleOutput,
+        marks: q.marks,
+        timeLimit: q.timeLimit,
+        memoryLimit: q.memoryLimit,
+        supportedLanguages: JSON.parse(q.supportedLanguages),
+        difficulty: q.difficulty,
+        topic: q.topic,
+        tags: q.tags ? JSON.parse(q.tags) : [],
+        testCases: q.testCases.map((tc: { input: string; expectedOutput: string; isHidden: boolean; marks: number }) => ({
+          input: tc.input, expectedOutput: tc.expectedOutput, isHidden: tc.isHidden, marks: tc.marks
+        }))
+      })),
+    behavioral: behavioralIds
+      .map(id => behavioralById.get(id))
+      .filter((q): q is NonNullable<typeof q> => !!q)
+      .map(q => ({
+        id: q.id,
+        title: q.title,
+        description: q.description,
+        expectedAnswer: q.expectedAnswer,
+        marks: q.marks,
+        difficulty: q.difficulty,
+        topic: q.topic,
+        tags: q.tags ? JSON.parse(q.tags) : []
+      })),
+    communication: communicationIds
+      .map(id => communicationById.get(id))
+      .filter((q): q is NonNullable<typeof q> => !!q)
+      .map(q => ({
+        id: q.id,
+        subType: q.subType,
+        title: q.title,
+        description: q.description,
+        marks: q.marks,
+        difficulty: q.difficulty,
+        topic: q.topic,
+        tags: q.tags ? JSON.parse(q.tags) : [],
+        stimulusType: q.stimulusType,
+        evaluationNotes: q.evaluationNotes,
+        recordingTimeLimit: q.recordingTimeLimit,
+        options: q.options ? JSON.parse(q.options) : [],
+        correctAnswers: q.correctAnswers ? JSON.parse(q.correctAnswers) : [],
+        explanation: q.explanation,
+        passage: q.passage ? { title: q.passage.title, passageText: q.passage.passageText } : null
+      }))
   };
 }

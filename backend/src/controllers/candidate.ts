@@ -11,9 +11,11 @@ import {
   InvitationServiceError,
   consumeInvitation,
   getInvitationContextForLogin,
-  resolveInvitationTokenFromAccessCode
+  resolveInvitationTokenFromAccessCode,
+  resetAttemptForRetake
 } from '../services/invitationService.js';
-import { uploadSnapshot } from '../services/fileStorageService.js';
+import { uploadSnapshot, uploadRecording } from '../services/fileStorageService.js';
+import { transcribeAudio, isSpeechServiceConfigured } from '../services/speechService.js';
 import { parseStoredCustomAIViolationEvents } from '../utils/proctoringConfig.js';
 import { sendCandidateScoreWebhook, dispatchCompanyWebhookEvent } from '../services/candidateScoreWebhookService.js';
 import { sendConfirmationEmail, sendResultEmail } from '../services/emailService.js';
@@ -294,6 +296,42 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
         return;
       }
 
+      if (existingAttempt.status === 'permission') {
+        const token = generateCandidateToken({
+          id: candidate.id,
+          email: candidate.email,
+          testId: test.id,
+          attemptId: existingAttempt.id,
+          invitationId,
+          role: 'candidate'
+        });
+
+        await prisma.activityLog.create({
+          data: {
+            attemptId: existingAttempt.id,
+            eventType: 'login_permission',
+            eventData: JSON.stringify({ timestamp: new Date().toISOString() })
+          }
+        });
+
+        res.json({
+          message: 'Permission granted',
+          candidate: {
+            id: candidate.id,
+            email: candidate.email,
+            name: candidate.name
+          },
+          attempt: {
+            id: existingAttempt.id,
+            startTime: existingAttempt.startTime,
+            status: existingAttempt.status,
+            violations: existingAttempt.violations
+          },
+          token
+        });
+        return;
+      }
+
       // Completed attempt exists
       if (!test.allowMultipleAttempts) {
         res.status(400).json({ error: 'You have already completed this test' });
@@ -301,26 +339,7 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
       }
 
       // For allowMultipleAttempts, reset the same attempt row (schema has unique testId+candidateId).
-      await prisma.$transaction([
-        prisma.mCQAnswer.deleteMany({ where: { attemptId: existingAttempt.id } }),
-        prisma.codingAnswer.deleteMany({ where: { attemptId: existingAttempt.id } }),
-        prisma.activityLog.deleteMany({ where: { attemptId: existingAttempt.id } }),
-        prisma.proctorSession.deleteMany({ where: { attemptId: existingAttempt.id } }),
-        prisma.performanceAnalytics.deleteMany({ where: { attemptId: existingAttempt.id } }),
-        prisma.testAttempt.update({
-          where: { id: existingAttempt.id },
-          data: {
-            startTime: new Date(),
-            endTime: null,
-            submittedAt: null,
-            status: 'in_progress',
-            score: null,
-            violations: 0,
-            isFlagged: false,
-            flagReason: null,
-          },
-        }),
-      ]);
+      await resetAttemptForRetake(existingAttempt.id);
 
       const token = generateCandidateToken({
         id: candidate.id,
@@ -349,7 +368,7 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
         attempt: {
           id: existingAttempt.id,
           startTime: new Date(),
-          status: 'in_progress',
+          status: 'permission',
           violations: 0
         },
         token
@@ -364,7 +383,8 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
         data: {
           testId: test.id,
           candidateId: candidate.id,
-          startTime: new Date()
+          startTime: new Date(),
+          status: 'permission'
         }
       });
     } catch (error) {
@@ -549,6 +569,13 @@ export async function getTestDetails(req: AuthenticatedRequest, res: Response): 
       return;
     }
 
+    // Speaking questions need mic access regardless of the proctoring mic toggle (which governs
+    // audio-based cheating detection, a separate concern) — the pre-exam device check uses this
+    // to ask for the mic upfront instead of the candidate hitting a browser prompt mid-exam.
+    const hasSpeakingQuestion = (await prisma.testQuestion.count({
+      where: { testId, questionType: 'communication', communicationQuestion: { subType: 'SPEAKING' } }
+    })) > 0;
+
     // Derive device requirements from proctoringSettings JSON when available.
     // This ensures the candidate "Before you begin" page always reflects what
     // the admin actually configured in the AI Proctoring tab, even if the
@@ -577,6 +604,7 @@ export async function getTestDetails(req: AuthenticatedRequest, res: Response): 
         requireCamera,
         requireMicrophone,
         requireScreenShare,
+        hasSpeakingQuestion,
         customAIViolations: parseStoredCustomAIViolationEvents(test.customAIViolations),
       },
       attempt: {
@@ -610,7 +638,11 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
       },
     });
 
-    if (!attempt || attempt.status !== 'in_progress') {
+    // A freshly-logged-in attempt starts at 'permission' (device/ID checks not yet done) and
+    // only reaches 'in_progress' once this function's own update below runs — so it must accept
+    // both, or the very first Start Test click on any new attempt would 400 here before ever
+    // getting the chance to transition the status.
+    if (!attempt || (attempt.status !== 'in_progress' && attempt.status !== 'permission')) {
       res.status(400).json({ error: 'Invalid attempt status' });
       return;
     }
@@ -657,9 +689,16 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
     if (!priorStart) {
       const startedAttempt = await prisma.testAttempt.update({
         where: { id: attemptId },
-        data: { startTime: new Date() }
+        data: { startTime: new Date(), lastSeenAt: new Date(), status: 'in_progress' }
       });
       effectiveStartTime = startedAttempt.startTime;
+    } else {
+      // Resuming (e.g. page refresh) — give the abandonment grace period a fresh baseline
+      // rather than leaving lastSeenAt at whatever it was before the candidate reconnected.
+      await prisma.testAttempt.update({
+        where: { id: attemptId },
+        data: { lastSeenAt: new Date(), status: 'in_progress' }
+      });
     }
 
     // Log test start
@@ -689,7 +728,13 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
                 }
               }
             },
-            behavioralQuestion: true
+            behavioralQuestion: true,
+            communicationQuestion: {
+              include: {
+                mediaAssets: true,
+                passage: true
+              }
+            }
           },
           orderBy: { orderIndex: 'asc' }
         },
@@ -709,7 +754,13 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
                     }
                   }
                 },
-                behavioralQuestion: true
+                behavioralQuestion: true,
+                communicationQuestion: {
+                  include: {
+                    mediaAssets: true,
+                    passage: true
+                  }
+                }
               },
               orderBy: { orderIndex: 'asc' }
             }
@@ -741,7 +792,13 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
                 }
               }
             },
-            behavioralQuestion: true
+            behavioralQuestion: true,
+            communicationQuestion: {
+              include: {
+                mediaAssets: true,
+                passage: true
+              }
+            }
           }
         }
       },
@@ -872,15 +929,58 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
           description: q.behavioralQuestion.description,
           marks: q.behavioralQuestion.marks
         };
+      } else if (q.questionType === 'communication' && q.communicationQuestion) {
+        const cq = q.communicationQuestion;
+        const mediaAssets = (cq.mediaAssets || []).map((asset) => ({
+          ...asset,
+          storageUrl: normalizeMediaUrl(asset.storageUrl, asset.storageKey),
+        }));
+        const base = {
+          id: q.id,
+          type: 'communication',
+          subType: cq.subType,
+          questionId: cq.id,
+          title: cq.title,
+          description: cq.description,
+          marks: cq.marks,
+          mediaAssets
+        };
+
+        if (cq.subType === 'WRITTEN') {
+          return { ...base, stimulusType: cq.stimulusType };
+        }
+
+        if (cq.subType === 'LISTENING' || cq.subType === 'READING') {
+          const options = cq.options ? (JSON.parse(cq.options) as string[]) : [];
+          const optionsWithIndex = options.map((text, index) => ({ originalIndex: index, text }));
+          return {
+            ...base,
+            options: optionsWithIndex,
+            isMultipleChoice: cq.isMultipleChoice,
+            ...(cq.subType === 'LISTENING'
+              ? {
+                  replayLimit: cq.replayLimit,
+                  allowRewind: cq.allowRewind,
+                  allowSpeedChange: cq.allowSpeedChange,
+                  fixedPlaybackSpeed: cq.fixedPlaybackSpeed
+                }
+              : {
+                  passage: cq.passage ? { id: cq.passage.id, title: cq.passage.title, passageText: cq.passage.passageText } : null
+                })
+          };
+        }
+
+        // SPEAKING
+        return { ...base, recordingTimeLimit: cq.recordingTimeLimit, retakeLimit: cq.retakeLimit };
       }
       return null;
     }).filter(Boolean);
 
     if (test.shuffleOptions) {
       for (const q of questions) {
-        if (q && q.type === 'mcq' && Array.isArray(q.options)) {
+        if (q && (q.type === 'mcq' || q.type === 'communication') && Array.isArray((q as { options?: unknown }).options)) {
           // Shuffle options in place while preserving originalIndex
-          q.options.sort(() => Math.random() - 0.5);
+          (q as { options: unknown[] }).options.sort(() => Math.random() - 0.5);
         }
       }
     }
@@ -1111,6 +1211,128 @@ export async function saveBehavioralAnswer(req: AuthenticatedRequest, res: Respo
     console.error('Save behavioral answer error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+}
+
+// Accepts whichever fields are relevant to the question's subType — answerText (Written),
+// selectedOptions (Listening/Reading), or a base64 audio recording (Speaking) — same
+// upsert-on-save pattern as saveBehavioralAnswer. Speaking stores the recording and responds
+// immediately; transcription runs afterward in the background (see transcribeAndStoreInBackground)
+// instead of blocking the request, since Whisper + phoneme scoring can take longer than the
+// recording itself for longer clips, which was previously eating into exam time and risking
+// proxy/client timeouts on anything much past a minute. Auto-grading only happens later via an
+// admin-triggered action (results.ts's autoGradeCommunicationAnswer), so there's no need for the
+// transcript to exist by the time this request returns.
+export async function saveCommunicationAnswer(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { attemptId } = req.candidate!;
+    const { questionId, answerText, selectedOptions, replayCount, retakeCount, audio, audioMimeType } = req.body;
+
+    const attempt = await prisma.testAttempt.findUnique({
+      where: { id: attemptId }
+    });
+
+    if (!attempt || attempt.status !== 'in_progress') {
+      res.status(400).json({ error: 'Cannot save answer - test not in progress' });
+      return;
+    }
+
+    const data: {
+      answerText?: string;
+      selectedOptions?: string;
+      replayCount?: number;
+      retakeCount?: number;
+      audioAssetId?: string;
+    } = {};
+    if (typeof answerText === 'string') data.answerText = answerText;
+    if (Array.isArray(selectedOptions)) data.selectedOptions = JSON.stringify(selectedOptions);
+    if (typeof replayCount === 'number' && Number.isFinite(replayCount)) data.replayCount = Math.max(0, Math.floor(replayCount));
+    if (typeof retakeCount === 'number' && Number.isFinite(retakeCount)) data.retakeCount = Math.max(0, Math.floor(retakeCount));
+
+    let audioBuffer: Buffer | null = null;
+    let audioMime = 'audio/webm';
+    if (typeof audio === 'string' && audio.trim()) {
+      try {
+        audioBuffer = Buffer.from(audio, 'base64');
+      } catch {
+        res.status(400).json({ error: 'audio must be valid base64' });
+        return;
+      }
+      if (!audioBuffer.length) {
+        res.status(400).json({ error: 'audio payload is empty' });
+        return;
+      }
+
+      audioMime = typeof audioMimeType === 'string' && audioMimeType.trim() ? audioMimeType.trim() : 'audio/webm';
+      const uploadResult = await uploadRecording(audioBuffer, attemptId, 'audio', audioMime);
+      if (!uploadResult.success || !uploadResult.fileId) {
+        res.status(500).json({ error: uploadResult.error || 'Failed to store recording' });
+        return;
+      }
+      data.audioAssetId = uploadResult.fileId;
+    }
+
+    await prisma.communicationAnswer.upsert({
+      where: {
+        attemptId_questionId: {
+          attemptId,
+          questionId
+        }
+      },
+      create: {
+        attemptId,
+        questionId,
+        ...data
+      },
+      update: {
+        ...data,
+        submittedAt: new Date()
+      }
+    });
+
+    res.json({ message: 'Communication answer saved', audioAssetId: data.audioAssetId });
+
+    if (audioBuffer && data.audioAssetId) {
+      transcribeAndStoreInBackground(attemptId, questionId, data.audioAssetId, audio, audioMime);
+    }
+  } catch (error) {
+    console.error('Save communication answer error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// Fire-and-forget: runs after saveCommunicationAnswer has already responded to the candidate, so
+// a slow or failed transcription never surfaces as a save failure. Swallows all errors itself —
+// nothing awaits this, so an unhandled rejection here would otherwise crash the process. Guards
+// the update with the audioAssetId captured at upload time so that re-recording (which starts a
+// second background job) can't let a slower, now-stale job overwrite the newer recording's
+// transcript once it finally finishes.
+function transcribeAndStoreInBackground(attemptId: string, questionId: string, audioAssetId: string, audioBase64: string, mimeType: string): void {
+  void (async () => {
+    if (!isSpeechServiceConfigured()) return;
+    try {
+      const transcription = await transcribeAudio(audioBase64, mimeType);
+      if (!transcription) {
+        console.error(`Background transcription failed for attempt ${attemptId}, question ${questionId}`);
+        return;
+      }
+      await prisma.communicationAnswer.updateMany({
+        where: { attemptId, questionId, audioAssetId },
+        data: {
+          transcript: transcription.transcript,
+          gradingDetail: JSON.stringify({
+            wordsPerMinute: transcription.wordsPerMinute,
+            pauseCount: transcription.pauseCount,
+            longestPauseSec: transcription.longestPauseSec,
+            durationSec: transcription.durationSec,
+            pronunciationAvailable: transcription.pronunciationAvailable,
+            phoneErrorRate: transcription.phoneErrorRate,
+          }),
+        },
+      });
+    } catch (error) {
+      console.error(`Background transcription error for attempt ${attemptId}, question ${questionId}:`, error);
+    }
+  })();
 }
 
 export async function runCode(req: AuthenticatedRequest, res: Response): Promise<void> {
@@ -1395,14 +1617,33 @@ export async function logActivity(req: AuthenticatedRequest, res: Response): Pro
   }
 }
 
-type SubmissionOutcome =
+// Periodic keepalive from the exam tab while it's open. Lets the expiry sweep
+// (testExpiryService.ts) tell an abandoned attempt (tab closed, crash, network loss) apart
+// from one that's still genuinely in progress, and auto-submit it after a grace period
+// instead of only expiring once the full test duration has elapsed.
+export async function heartbeat(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { attemptId } = req.candidate!;
+    await prisma.testAttempt.updateMany({
+      where: { id: attemptId, status: 'in_progress' },
+      data: { lastSeenAt: new Date() }
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Heartbeat error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+export type SubmissionOutcome =
   | { ok: true; payload: Record<string, unknown> }
   | { ok: false; statusCode: number; error: string };
 
-// Shared by the candidate-facing HTTP endpoint and the server-side expiry sweep
-// (see autoSubmitExpiredAttempts in services/testExpiryService.ts) so both paths
-// grade and finalize an attempt identically, regardless of who triggered the submit.
-async function performSubmission(attemptId: string, testId: string, autoSubmit: boolean): Promise<SubmissionOutcome> {
+// Shared by the candidate-facing HTTP endpoint, the server-side expiry sweep (see
+// autoSubmitExpiredAttempts in services/testExpiryService.ts), and the admin-triggered force-submit
+// (results.ts's forceSubmitAttempt) so all three paths grade and finalize an attempt identically,
+// regardless of who triggered the submit.
+export async function performSubmission(attemptId: string, testId: string, autoSubmit: boolean): Promise<SubmissionOutcome> {
     // Batch fetch: attempt with answers, test with questions - single DB round trip
     const [attempt, test] = await Promise.all([
       prisma.testAttempt.findUnique({
@@ -1411,6 +1652,7 @@ async function performSubmission(attemptId: string, testId: string, autoSubmit: 
           mcqAnswers: true,
           codingAnswers: true,
           behavioralAnswers: true,
+          communicationAnswers: true,
           candidate: { select: { name: true, email: true } }
         }
       }),
@@ -1423,7 +1665,8 @@ async function performSubmission(attemptId: string, testId: string, autoSubmit: 
               codingQuestion: {
                 include: { testCases: true }
               },
-              behavioralQuestion: true
+              behavioralQuestion: true,
+              communicationQuestion: true
             }
           }
         }
@@ -1450,6 +1693,7 @@ async function performSubmission(attemptId: string, testId: string, autoSubmit: 
       partialScoring: boolean;
       testCases: Array<{ id: string; input: string; expectedOutput: string }>;
     }>();
+    const communicationQuestionsMap = new Map<string, { subType: string; correctAnswers: string | null; marks: number }>();
 
     for (const eq of test.questions) {
       if (eq.mcqQuestion) {
@@ -1464,6 +1708,13 @@ async function performSubmission(attemptId: string, testId: string, autoSubmit: 
           marks: eq.codingQuestion.marks,
           partialScoring: eq.codingQuestion.partialScoring,
           testCases: eq.codingQuestion.testCases
+        });
+      }
+      if (eq.communicationQuestion) {
+        communicationQuestionsMap.set(eq.communicationQuestion.id, {
+          subType: eq.communicationQuestion.subType,
+          correctAnswers: eq.communicationQuestion.correctAnswers,
+          marks: eq.communicationQuestion.marks
         });
       }
     }
@@ -1547,6 +1798,29 @@ async function performSubmission(attemptId: string, testId: string, autoSubmit: 
       totalScore += behavioralAnswer.marksObtained ?? 0;
     }
 
+    // Communication: Listening/Reading are MCQ-shaped and auto-score here; Written/Speaking can't
+    // be auto-graded at submission time (LLM grading happens afterward), so fold in whatever's
+    // already assigned (normally none yet), mirroring the behavioral handling above.
+    const communicationUpdates: Array<{ id: string; isCorrect: boolean; marksObtained: number }> = [];
+    for (const communicationAnswer of attempt.communicationAnswers) {
+      const question = communicationQuestionsMap.get(communicationAnswer.questionId);
+      if (!question) continue;
+
+      if (question.subType === 'LISTENING' || question.subType === 'READING') {
+        const correctAnswers = question.correctAnswers ? (JSON.parse(question.correctAnswers) as number[]) : [];
+        const selectedOptions = communicationAnswer.selectedOptions ? (JSON.parse(communicationAnswer.selectedOptions) as number[]) : [];
+        const isCorrect =
+          correctAnswers.length === selectedOptions.length &&
+          correctAnswers.every((a: number) => selectedOptions.includes(a));
+        const marks = isCorrect ? question.marks : 0;
+
+        totalScore += marks;
+        communicationUpdates.push({ id: communicationAnswer.id, isCorrect, marksObtained: marks });
+      } else {
+        totalScore += communicationAnswer.marksObtained ?? 0;
+      }
+    }
+
     // Execute all database updates in a transaction for consistency
     const attemptStatus = autoSubmit ? 'auto_submitted' : 'submitted';
     const webhookStatus = attemptStatus === 'submitted' || attemptStatus === 'auto_submitted'
@@ -1570,6 +1844,13 @@ async function performSubmission(attemptId: string, testId: string, autoSubmit: 
         prisma.codingAnswer.update({
           where: { id: update.id },
           data: { testResults: update.testResults, marksObtained: update.marksObtained }
+        })
+      ),
+      // Batch update auto-scored (Listening/Reading) communication answers
+      ...communicationUpdates.map(update =>
+        prisma.communicationAnswer.update({
+          where: { id: update.id },
+          data: { isCorrect: update.isCorrect, marksObtained: update.marksObtained }
         })
       ),
       // Update attempt status
@@ -1801,7 +2082,7 @@ export async function getSavedAnswers(req: AuthenticatedRequest, res: Response):
   try {
     const { attemptId } = req.candidate!;
 
-    const [mcqAnswers, codingAnswers, behavioralAnswers] = await Promise.all([
+    const [mcqAnswers, codingAnswers, behavioralAnswers, communicationAnswers] = await Promise.all([
       prisma.mCQAnswer.findMany({
         where: { attemptId },
         select: {
@@ -1823,6 +2104,17 @@ export async function getSavedAnswers(req: AuthenticatedRequest, res: Response):
           questionId: true,
           answerText: true
         }
+      }),
+      prisma.communicationAnswer.findMany({
+        where: { attemptId },
+        select: {
+          questionId: true,
+          answerText: true,
+          selectedOptions: true,
+          replayCount: true,
+          retakeCount: true,
+          audioAssetId: true
+        }
       })
     ]);
 
@@ -1832,7 +2124,15 @@ export async function getSavedAnswers(req: AuthenticatedRequest, res: Response):
         selectedOptions: JSON.parse(a.selectedOptions)
       })),
       codingAnswers,
-      behavioralAnswers
+      behavioralAnswers,
+      communicationAnswers: communicationAnswers.map(a => ({
+        questionId: a.questionId,
+        answerText: a.answerText,
+        selectedOptions: a.selectedOptions ? JSON.parse(a.selectedOptions) : null,
+        replayCount: a.replayCount,
+        retakeCount: a.retakeCount,
+        audioAssetId: a.audioAssetId
+      }))
     });
   } catch (error) {
     console.error('Get saved answers error:', error);

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { toast } from 'react-hot-toast';
-import { useAuthStore } from '../../context/authStore';
+import { useAuthStore, getAdminToken } from '../../context/authStore';
 import { adminApi } from '../../services/api';
 import { Eye, EyeOff } from 'lucide-react';
 import BackButton from '../../components/BackButton';
@@ -29,7 +29,7 @@ export default function AdminProfile() {
     setSavingName(true);
     try {
       const { data } = await adminApi.updateProfile({ name: name.trim() });
-      setAdmin(data.admin, localStorage.getItem('adminToken') || undefined);
+      setAdmin(data.admin, getAdminToken() || undefined);
       toast.success('Name updated');
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
@@ -45,7 +45,7 @@ export default function AdminProfile() {
     setSavingCompany(true);
     try {
       const { data } = await adminApi.updateCompany({ companyName: companyName.trim(), companyId: companyId.trim() });
-      setAdmin(data.admin, data.token || localStorage.getItem('adminToken') || undefined);
+      setAdmin(data.admin, data.token || getAdminToken() || undefined);
       toast.success('Company linked');
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };

@@ -27,6 +27,7 @@ import IDVerificationData from './pages/admin/IDVerificationData';
 import TrustReports from './pages/admin/TrustReports';
 import AdminProfile from './pages/admin/AdminProfile';
 import BehavioralForm from './pages/admin/BehavioralForm';
+import CommunicationForm from './pages/admin/CommunicationForm';
 import AllAttempts from './pages/admin/AllAttempts';
 
 // Public pages
@@ -115,6 +116,7 @@ export default function App() {
         <Route path="mcq/new" element={<MCQForm />} />
         <Route path="coding/new" element={<CodingForm />} />
         <Route path="behavioral/new" element={<BehavioralForm />} />
+        <Route path="communication/new" element={<CommunicationForm />} />
         <Route path="repository" element={<RepositoryLayout />}>
           <Route index element={<Navigate to="question-bank" replace />} />
           <Route path="question-bank" element={<QuestionBank />} />
@@ -123,6 +125,7 @@ export default function App() {
         <Route path="coding/:questionId/edit" element={<CodingForm />} />
         <Route path="mcq/:questionId/edit" element={<MCQForm />} />
         <Route path="behavioral/:questionId/edit" element={<BehavioralForm />} />
+        <Route path="communication/:questionId/edit" element={<CommunicationForm />} />
         <Route path="profile" element={<AdminProfile />} />
         <Route path="id-verification-data" element={<IDVerificationData />} />
         <Route path="trust-reports" element={<TrustReports />} />

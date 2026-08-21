@@ -195,6 +195,9 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
+app.use('/api/media', express.json({ limit: '200mb' }));
+app.use('/api/media', express.urlencoded({ extended: true, limit: '200mb' }));
+
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10000,
@@ -227,8 +230,11 @@ const integrationApiLimiter = rateLimit({
 });
 
 app.use(generalLimiter);
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+// 80mb gives headroom for Speaking-answer recordings sent as base64 JSON (which inflates the raw
+// audio size by ~33%) — a 600s recording (the admin-configurable max, see communicationQuestion.ts)
+// is only a few MB at realistic voice bitrates, so this is generous margin, not a loosened ceiling.
+app.use(express.json({ limit: '80mb' }));
+app.use(express.urlencoded({ extended: true, limit: '80mb' }));
 app.use(cookieParser());
 
 app.use('/api/admin/login', authLimiter);
@@ -426,7 +432,14 @@ io.on('connection', (socket) => {
 });
 
 // Error handling middleware
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((err: Error & { type?: string; status?: number }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  // body-parser (express.json/urlencoded) throws this specific error type when a request exceeds
+  // the size limit above — without this check it fell through to the generic 500 below, which is
+  // why an oversized recording upload previously looked like an unexplained "can't be saved".
+  if (err.type === 'entity.too.large' || err.status === 413) {
+    res.status(413).json({ error: 'This file is too large to upload. Please use a shorter recording or a smaller file.' });
+    return;
+  }
   console.error('Server error:', err);
   res.status(500).json({ error: 'Internal server error' });
 });

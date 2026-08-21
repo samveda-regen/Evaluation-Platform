@@ -9,6 +9,7 @@ import IDVerification from '../../components/IDVerification';
 import { clearCachedStreams, getCachedStreams, setCachedStreams } from '../../services/devicePermissionService';
 import { requestScreenShare, getScreenShareErrorMessage } from '../../services/proctorService';
 import { acquireVerifiedCameraStream, type CameraDiagnostics } from '../../services/cameraDeviceService';
+import { getAIProctor } from '../../services/aiDetectionService';
 import { DEFAULT_CUSTOM_AI_VIOLATIONS, normalizeCustomAIViolationSelection } from '../../constants/customAIViolations';
 import talentstaQLogo from '../../assets/assessment-icons/icons/Talentstaq logo dark.svg';
 
@@ -28,6 +29,7 @@ interface TestDetails {
     requireCamera: boolean;
     requireMicrophone: boolean;
     requireScreenShare: boolean;
+    hasSpeakingQuestion: boolean;
     customAIViolations?: string[];
     questionCounts?: { mcq?: number; coding?: number; behavioral?: number };
   };
@@ -83,6 +85,15 @@ export default function TestInstructions() {
       window.location.href = sebQuitUrl;
     }
   };
+
+  // Speaking questions need mic access independent of the (currently disabled) audio-proctoring
+  // toggle — these are computed once here and reused everywhere the old inline
+  // `test.requireMicrophone && !TEMP_DISABLE_AUDIO_PROCTORING` / `test.proctorEnabled` checks
+  // used to gate the device-check flow, so a non-proctored test with a Speaking question still
+  // asks for the mic upfront instead of the candidate hitting a prompt mid-exam.
+  const needsSpeakingMic = testDetails?.test.hasSpeakingQuestion ?? false;
+  const microphoneRequired = (!!testDetails?.test.requireMicrophone && !TEMP_DISABLE_AUDIO_PROCTORING) || needsSpeakingMic;
+  const deviceCheckNeeded = !!testDetails?.test.proctorEnabled || needsSpeakingMic;
   const setCameraPreviewVideo = useCallback(
     (el: HTMLVideoElement | null) => {
       cameraPreviewRef.current = el;
@@ -107,6 +118,17 @@ export default function TestInstructions() {
     measureConnection();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Warm up the AI proctoring models (TensorFlow.js WebGL backend + COCO-SSD/BlazeFace) while
+  // the candidate is still reading instructions, not after they click Start Test. Loading these
+  // models blocks the main thread for several seconds (WebGL shader compilation) — doing it here
+  // means that freeze either finishes before Start Test is clicked, or is already well underway
+  // by the time the "Setting up your environment" screen (handleStartTest) needs to wait on it.
+  useEffect(() => {
+    if (testDetails?.test.proctorEnabled && testDetails.test.requireCamera) {
+      getAIProctor().initialize().catch(() => {});
+    }
+  }, [testDetails?.test.proctorEnabled, testDetails?.test.requireCamera]);
 
   const measureConnection = async () => {
     const start = performance.now();
@@ -147,14 +169,13 @@ export default function TestInstructions() {
       toast.error('Identity verification is required before starting this test');
       return;
     }
-    if (testDetails?.test.proctorEnabled && !deviceReady) {
+    if (deviceCheckNeeded && !deviceReady) {
       toast.error('Complete required device permission checks before starting');
       return;
     }
-    if (testDetails?.test.proctorEnabled) {
+    if (deviceCheckNeeded && testDetails) {
       const cached = getCachedStreams();
       const missingCamera = testDetails.test.requireCamera && !cached.cameraStream;
-      const microphoneRequired = testDetails.test.requireMicrophone && !TEMP_DISABLE_AUDIO_PROCTORING;
       const missingMic = microphoneRequired && !cached.microphoneStream;
       const missingScreen = testDetails.test.requireScreenShare && !cached.screenStream;
       if (missingCamera || missingMic || missingScreen) {
@@ -166,6 +187,15 @@ export default function TestInstructions() {
 
     setStarting(true);
     try {
+      // Finish the AI-proctoring model warm-up (usually already done from the effect above,
+      // triggered while the candidate was reading instructions) before calling startTest(),
+      // which stamps the exam's server-side start time — so environment setup never eats into
+      // the candidate's actual test duration, and the "Setting up your environment" screen
+      // below covers any remaining wait instead of it happening silently once they're timed.
+      if (testDetails?.test.proctorEnabled && testDetails.test.requireCamera) {
+        await getAIProctor().initialize();
+      }
+
       const { data } = await candidateApi.startTest();
       const savedAnswers = await candidateApi.getSavedAnswers();
       setTestData({
@@ -179,7 +209,7 @@ export default function TestInstructions() {
         maxViolations: data.test.maxViolations,
         proctorEnabled: data.test.proctorEnabled,
         requireCamera: data.test.requireCamera,
-        requireMicrophone: data.test.requireMicrophone && !TEMP_DISABLE_AUDIO_PROCTORING,
+        requireMicrophone: microphoneRequired,
         requireScreenShare: data.test.requireScreenShare,
         customAIViolations: normalizeCustomAIViolationSelection(
           data.test.customAIViolations || DEFAULT_CUSTOM_AI_VIOLATIONS,
@@ -209,7 +239,8 @@ export default function TestInstructions() {
       if (
         savedAnswers.data.mcqAnswers.length > 0 ||
         savedAnswers.data.codingAnswers.length > 0 ||
-        savedAnswers.data.behavioralAnswers.length > 0
+        savedAnswers.data.behavioralAnswers.length > 0 ||
+        (savedAnswers.data.communicationAnswers?.length ?? 0) > 0
       ) {
         useTestStore
           .getState()
@@ -217,6 +248,7 @@ export default function TestInstructions() {
             savedAnswers.data.mcqAnswers,
             savedAnswers.data.codingAnswers,
             savedAnswers.data.behavioralAnswers,
+            savedAnswers.data.communicationAnswers ?? [],
           );
       }
       navigate('/test/start');
@@ -228,13 +260,12 @@ export default function TestInstructions() {
   };
 
   const checkDevicePermissions = async () => {
-    if (!testDetails?.test.proctorEnabled) {
+    if (!deviceCheckNeeded || !testDetails) {
       setDeviceReady(true);
       return;
     }
     setCheckingDevices(true);
     const required = testDetails.test;
-    const microphoneRequired = required.requireMicrophone && !TEMP_DISABLE_AUDIO_PROCTORING;
     let cameraOk = !required.requireCamera;
     let microphoneOk = !microphoneRequired;
     let screenOk = !required.requireScreenShare;
@@ -340,8 +371,31 @@ export default function TestInstructions() {
 
   if (!testDetails) return null;
 
+  // Full-page takeover from the moment Start Test is clicked until the candidate lands on the
+  // timed assessment page. Covers the AI-proctoring model warm-up (see handleStartTest) with an
+  // explicit, expected wait instead of the browser silently freezing ("Page Unresponsive") right
+  // as the exam begins — which is what led candidates to close the tab mid-setup.
+  if (starting) {
+    return (
+      <div
+        className="min-h-screen flex flex-col items-center justify-center gap-6 px-4"
+        style={{ background: 'var(--admin-border)' }}
+      >
+        <div className="relative w-16 h-16">
+          <div className="absolute inset-0 rounded-full border-4 border-amber-200" />
+          <div className="absolute inset-0 rounded-full border-4 border-amber-500 border-t-transparent animate-spin" />
+        </div>
+        <div className="text-center">
+          <p className="text-lg font-semibold text-gray-900">Setting up your environment</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Please wait a few moments while we prepare your test session…
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const { test } = testDetails;
-  const microphoneRequired = test.requireMicrophone && !TEMP_DISABLE_AUDIO_PROCTORING;
   const initials = getInitials(candidate?.name);
   const totalQuestions =
     (test.questionCounts?.mcq ?? 0) +
@@ -353,7 +407,7 @@ export default function TestInstructions() {
     accepted &&
     !starting &&
     (!verificationRequired || verificationComplete) &&
-    (!test.proctorEnabled || deviceReady);
+    (!deviceCheckNeeded || deviceReady);
 
   const allChecksOk =
     (!test.requireCamera || deviceStatus.camera) &&
@@ -698,8 +752,8 @@ export default function TestInstructions() {
                 />
               </div>
 
-              {/* Device check button (only shown when proctoring required and not yet ready) */}
-              {test.proctorEnabled && !deviceReady && (
+              {/* Device check button (shown when proctoring or a Speaking question needs a device check, and not yet ready) */}
+              {deviceCheckNeeded && !deviceReady && (
                 <button
                   type="button"
                   onClick={checkDevicePermissions}

@@ -5,9 +5,15 @@ import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { TestAttempt } from '../../types';
 import { violationLabel } from '../../utils/violationLabels';
-import { FileDown, Mail, ChevronLeft, ChevronRight, XCircle, CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react';
+import { FileDown, Mail, ChevronLeft, ChevronRight, XCircle, CheckCircle2, AlertTriangle, Trash2, Send, Clock, RotateCcw } from 'lucide-react';
 import Icon from '../../components/Icon';
 import CustomSelect from '../../components/CustomSelect';
+interface ActivityLogEntry {
+  id: string;
+  eventType: string;
+  eventData?: string | null;
+  timestamp: string;
+}
 
 /* --- Interfaces --- */
 interface InvitationRow {
@@ -56,11 +62,13 @@ function fmtAttemptDate(start?: string | null) {
   return format(new Date(start), 'MMM d, yyyy');
 }
 
-type CandStatus = 'Submitted' | 'In progress' | 'Invited' | 'Expired' | 'Failed';
+type CandStatus = 'Submitted' | 'Permission' | 'In progress' | 'Invited' | 'Expired' | 'Failed';
 function getCandStatus(invite: InvitationRow, attempt?: TestAttempt): CandStatus {
   if (attempt?.status === 'submitted' || attempt?.status === 'auto_submitted' || attempt?.status === 'flagged') return 'Submitted';
+  if (attempt?.status === 'permission') return 'Permission';
   if (attempt?.status === 'in_progress') return 'In progress';
   if (invite.lifecycleStatus === 'Completed') return 'Submitted';
+  if (invite.lifecycleStatus === 'Started') return 'Permission';
   if (invite.lifecycleStatus === 'Expired') return 'Expired';
   if (invite.inviteStatus === 'FAILED') return 'Failed';
   return 'Invited';
@@ -70,6 +78,7 @@ function statusFilterValue(status: CandStatus): string {
 }
 const STATUS_CFG: Record<CandStatus, { bg: string; color: string; dot: string; label: string }> = {
   'Submitted':   { bg:'var(--admin-accent-soft)', color:'var(--admin-accent-hover)', dot:'var(--admin-accent)', label:'Submitted' },
+  'Permission':  { bg:'#EFF6FF', color:'#1D4ED8', dot:'#3B82F6', label:'Permission' },
   'In progress': { bg:'var(--admin-accent-soft)', color:'var(--admin-accent-link)', dot:'var(--admin-accent)', label:'In progress' },
   'Invited':     { bg:'var(--admin-border)', color:'var(--admin-text-muted)', dot:'var(--admin-text-subtle)', label:'Invited' },
   'Expired':     { bg:'#FEF2F2', color:'#DC2626', dot:'#EF4444', label:'Expired' },
@@ -91,6 +100,10 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
   const [resLoading, setResLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [forceSubmittingId, setForceSubmittingId] = useState<string | null>(null);
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
 
   useEffect(() => { load(); }, [testId, refreshKey]);
   useEffect(() => { setPage(1); }, [search, statusFilter]);
@@ -121,6 +134,31 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
       await load();
     } catch { toast.error('Failed to remove candidate'); }
     finally { setDeletingId(null); }
+  };
+
+  const handleForceSubmit = async (attemptId: string, name: string) => {
+    if (!window.confirm(`Force-submit ${name}'s attempt now? Whatever they've answered so far will be graded, and they won't be able to continue the test.`)) return;
+    setForceSubmittingId(attemptId);
+    try {
+      await adminApi.forceSubmitAttempt(attemptId);
+      toast.success(`${name}'s attempt submitted`);
+      await load();
+    } catch { toast.error('Failed to force-submit attempt'); }
+    finally { setForceSubmittingId(null); }
+  };
+
+  const handleResendInvitation = async (invitationId: string, name: string, hasAttempt: boolean) => {
+    const confirmMsg = hasAttempt
+      ? `Resend the invitation to ${name}? Their current attempt (answers, score) will be reset so the new link starts a clean retake.`
+      : `Resend the invitation to ${name}? A new link and access code will be emailed to them.`;
+    if (!window.confirm(confirmMsg)) return;
+    setResendingId(invitationId);
+    try {
+      const { data } = await adminApi.resendTestInvitation(testId, invitationId);
+      toast.success(data?.message || `Invitation resent to ${name}`);
+      await load();
+    } catch (err: any) { toast.error(err?.response?.data?.error || 'Failed to resend invitation'); }
+    finally { setResendingId(null); }
   };
 
   const handleExport = async () => {
@@ -179,6 +217,17 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
     .filter(([, count]) => count > 0)
     .map(([eventType, count]) => `${violationLabel(eventType)} ×${count}`);
 
+  useEffect(() => {
+    if (!selAttempt?.id) { setActivityLogs([]); return; }
+    let cancelled = false;
+    setLogsLoading(true);
+    adminApi.getAttemptDetails(selAttempt.id)
+      .then(({ data }) => { if (!cancelled) setActivityLogs(data.activityLogs || []); })
+      .catch(() => { if (!cancelled) setActivityLogs([]); })
+      .finally(() => { if (!cancelled) setLogsLoading(false); });
+    return () => { cancelled = true; };
+  }, [selAttempt?.id]);
+
   const isLoading = invLoading || resLoading;
 
   /* -- Stat card component -- */
@@ -224,6 +273,7 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
           options={[
             { value:'all',         label:'All status' },
             { value:'submitted',   label:'Submitted' },
+            { value:'permission',  label:'Permission' },
             { value:'in_progress', label:'In progress' },
             { value:'invited',     label:'Invited' },
             { value:'expired',     label:'Expired' },
@@ -283,7 +333,7 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
               const scoreCol = scorePct != null ? (scorePct >= 70 ? 'var(--admin-accent)' : scorePct >= 50 ? 'var(--admin-accent)' : '#EF4444') : 'var(--admin-text-muted)';
               const time = fmtDuration(attempt?.startTime, attempt?.endTime);
               const viol = attempt?.violations ?? 0;
-              const integrity = status === 'In progress' ? 'Live'
+              const integrity = status === 'In progress' || status === 'Permission' ? 'Live'
                 : status === 'Invited' || status === 'Expired' ? 'Not started'
                 : viol === 0 ? 'Clean' : `${viol} flag${viol > 1 ? 's' : ''}`;
               const integrityCl = integrity === 'Live' ? '#0891B2'
@@ -468,6 +518,33 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
                 )}
               </div>
 
+              {/* Activity log */}
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest mb-3" style={{ color:'var(--admin-text-subtle)' }}>
+                  Activity Log
+                </p>
+                {logsLoading ? (
+                  <div className="flex items-center justify-center py-6">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2" style={{ borderColor:'var(--admin-accent)' }} />
+                  </div>
+                ) : activityLogs.length === 0 ? (
+                  <p className="text-sm py-2" style={{ color:'var(--admin-text-subtle)' }}>No activity recorded yet.</p>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {activityLogs.map(log => (
+                      <div key={log.id} className="flex items-start gap-2.5 px-3 py-2 rounded-xl"
+                        style={{ backgroundColor:'#F9FAFB', border:'1px solid var(--admin-border)' }}>
+                        <Clock width={13} height={13} style={{ flexShrink:0, marginTop:2, color:'var(--admin-text-subtle)' }} />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate" style={{ color:'var(--admin-text)' }}>{violationLabel(log.eventType)}</p>
+                          <p className="text-xs" style={{ color:'var(--admin-text-muted)' }}>{format(new Date(log.timestamp), 'MMM d, yyyy, h:mm:ss a')}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Action buttons */}
               <div className="flex items-center gap-3 pt-1">
                 <button
@@ -477,6 +554,16 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
                   style={{ backgroundColor: selAttempt?.id ? 'var(--admin-accent)' : 'var(--admin-accent-disabled)', cursor: selAttempt?.id ? 'pointer' : 'not-allowed' }}>
                   View full attempt
                 </button>
+                {selAttempt?.status === 'in_progress' && (
+                  <button
+                    onClick={() => handleForceSubmit(selAttempt.id, selInv.name)}
+                    disabled={forceSubmittingId === selAttempt.id}
+                    className="p-3 rounded-xl border flex items-center justify-center hover:bg-orange-50 transition-colors"
+                    style={{ borderColor:'#FDBA74', backgroundColor:'white', cursor:'pointer' }}
+                    title="Force submit — grade whatever they've answered so far">
+                    <Send width={16} height={16} style={{ color:'#EA580C' }} />
+                  </button>
+                )}
                 <button
                   onClick={() => selAttempt?.id && (async () => {
                     try {
@@ -492,6 +579,14 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
                   className="p-3 rounded-xl border flex items-center justify-center"
                   style={{ borderColor:'var(--admin-border)', backgroundColor:'white', cursor: selAttempt?.id ? 'pointer' : 'not-allowed' }}>
                   <FileDown width={16} height={16} style={{ color:'var(--admin-text-muted)' }} />
+                </button>
+                <button
+                  onClick={() => handleResendInvitation(selInv.id, selInv.name, !!selAttempt)}
+                  disabled={resendingId === selInv.id}
+                  className="p-3 rounded-xl border flex items-center justify-center hover:bg-blue-50 transition-colors"
+                  style={{ borderColor:'var(--admin-border)', backgroundColor:'white', cursor:'pointer', opacity: resendingId === selInv.id ? 0.5 : 1 }}
+                  title="Resend invitation — new link, resets their attempt for a clean retake">
+                  <RotateCcw width={16} height={16} style={{ color:'var(--admin-accent-link)' }} />
                 </button>
                 <button
                   onClick={() => handleDeleteCandidate(selInv.id, selInv.name)}
