@@ -34,6 +34,8 @@ const EMAIL_TAB_DESCRIPTIONS: Record<EmailTab, string> = {
 };
 
 const AVAILABLE_VARS = [
+    { key: '{{seb_install_button}}', desc: 'Install Safe Exam Browser button' },
+  { key: '{{seb_continue_button}}', desc: 'Continue to Assessment button' },
   { key: '{{candidate_name}}', desc: 'Candidate full name' },
   { key: '{{test_name}}',      desc: 'Name of the test' },
   { key: '{{company_name}}',   desc: 'Your company name' },
@@ -47,6 +49,10 @@ const AVAILABLE_VARS = [
 const INVITE_ONLY_VAR_KEYS = new Set(['{{exam_start}}', '{{exam_end}}']);
 const REMINDER_ONLY_VAR_KEYS = new Set(['{{closes_at}}']);
 const INVITE_AND_REMINDER_VAR_KEYS = new Set(['{{test_link}}', '{{access_code}}']);
+const SEB_BUTTON_VAR_KEYS = new Set([
+  '{{seb_install_button}}',
+  '{{seb_continue_button}}',
+]);
 
 interface FormState {
   /* General */
@@ -255,6 +261,7 @@ export default function TestSettings() {
   const [customCategoryOpen, setCustomCategoryOpen] = useState(false);
   const [customCategoryInput, setCustomCategoryInput] = useState('');
   const customCategoryInputRef = useRef<HTMLInputElement | null>(null);
+  const emailBodyRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     if (customCategoryOpen) customCategoryInputRef.current?.focus();
@@ -289,6 +296,36 @@ export default function TestSettings() {
     } catch { toast.error('Failed to load settings'); }
     finally { setLoading(false); }
   };
+  
+const insertEmailToken = (token: string) => {
+  const textarea = emailBodyRef.current;
+
+  if (!textarea) {
+    setEmailDraft(d => ({
+      ...d,
+      body: d.body + token,
+    }));
+    return;
+  }
+
+  const start = textarea.selectionStart ?? emailDraft.body.length;
+  const end = textarea.selectionEnd ?? start;
+
+  setEmailDraft(d => {
+    const body = d.body;
+    return {
+      ...d,
+      body: `${body.slice(0, start)}${token}${body.slice(end)}`,
+    };
+  });
+
+  requestAnimationFrame(() => {
+    const position = start + token.length;
+    textarea.focus();
+    textarea.setSelectionRange(position, position);
+  });
+};
+
 
   const openEmailEdit = (tab: EmailTab) => {
     if (!emailTemplates) return;
@@ -706,6 +743,7 @@ export default function TestSettings() {
                     if (INVITE_ONLY_VAR_KEYS.has(key)) return isInvite;
                     if (REMINDER_ONLY_VAR_KEYS.has(key)) return isReminder;
                     if (INVITE_AND_REMINDER_VAR_KEYS.has(key)) return isInvite || isReminder;
+                    if (SEB_BUTTON_VAR_KEYS.has(key)) return isInvite || isReminder;
                     return true;
                   };
                   return (
@@ -767,6 +805,7 @@ export default function TestSettings() {
                           <div style={{ marginBottom:'14px' }}>
                             <label style={{ display:'block', fontSize:'12px', fontWeight:600, color:'var(--admin-text-muted)', marginBottom:'6px' }}>Body</label>
                             <textarea
+                            ref={emailBodyRef}
                               value={emailDraft.body}
                               onChange={e => setEmailDraft(d => ({ ...d, body: e.target.value }))}
                               rows={12}
@@ -782,7 +821,7 @@ export default function TestSettings() {
                             <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
                               {AVAILABLE_VARS.filter(v => isVarApplicable(v.key)).map(v => (
                                 <button key={v.key} type="button" title={v.desc}
-                                  onClick={() => setEmailDraft(d => ({ ...d, body: d.body + v.key }))}
+                                  onClick={() => insertEmailToken(v.key)}
                                   style={{
                                     fontSize:'11px', fontWeight:600, color:'var(--admin-accent-hover)',
                                     backgroundColor:'var(--admin-accent-disabled)', padding:'2px 8px', borderRadius:'20px',

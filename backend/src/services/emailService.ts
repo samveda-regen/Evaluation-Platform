@@ -25,16 +25,22 @@ export const DEFAULT_REMINDER_BODY = `Hello {{candidate_name}},
 
 This is a reminder that you haven't started your test yet: {{test_name}}.
 
-Your access to this test closes on {{closes_at}}. Please make sure to complete it before then.
+Exam date: {{exam_start}} to {{exam_end}}
 
-Click the Continue button below to get started.
+Duration: Approximately {{estimated_time}}
 
 Access code: {{access_code}}
 
-The test will take approximately {{estimated_time}} to complete.
+Important: This assessment must be completed using Safe Exam Browser (SEB). Please install SEB before starting the assessment.
+
+If you have already installed SEB, return to this email and click Continue to Assessment.
+
+Please make sure to complete the assessment before the access window closes on {{closes_at}}.
+
 If you have any questions, feel free to reach out to us.
 
 Best regards,
+
 {{company_name}} Team`;
 export const DEFAULT_CONFIRM_SUBJECT = "Thanks for completing {{test_name}}";
 export const DEFAULT_CONFIRM_BODY = `Hello {{candidate_name}},
@@ -88,6 +94,46 @@ function deriveSebLaunchLink(testLink: string): string | null {
     return null;
   }
 }
+function renderEmailBodyWithSebButtons(
+  text: string,
+  testLink: string
+): string {
+  const installToken = '__SEB_INSTALL_BUTTON_TOKEN__';
+  const continueToken = '__SEB_CONTINUE_BUTTON_TOKEN__';
+
+  const installButtonExists = text.includes('{{seb_install_button}}');
+  const continueButtonExists = text.includes('{{seb_continue_button}}');
+
+  let workingText = text
+    .replace(/\{\{seb_install_button\}\}/g, installToken)
+    .replace(/\{\{seb_continue_button\}\}/g, continueToken);
+
+  // Backward compatibility:
+  // Existing templates may not contain the new tokens.
+  // Keep both buttons working by appending them only when neither
+  // token has been explicitly positioned in the template.
+  if (!installButtonExists && !continueButtonExists) {
+    workingText += '\n\n' + installToken + '\n\n' + continueToken;
+  } else if (!installButtonExists) {
+    workingText += '\n\n' + installToken;
+  } else if (!continueButtonExists) {
+    workingText += '\n\n' + continueToken;
+  }
+
+  let html = textToHtml(workingText);
+
+  html = html.replace(
+    new RegExp(installToken, 'g'),
+    buildSebInstallButtonHtml(testLink)
+  );
+
+  html = html.replace(
+    new RegExp(continueToken, 'g'),
+    buildSebContinueButtonHtml(testLink)
+  );
+
+  return html;
+}
 
 // Gmail and most webmail clients strip non-standard URI schemes (sebs://,
 // seb://) from email HTML as an anti-abuse measure, silently killing a raw
@@ -108,24 +154,47 @@ function buildSebLandingLink(testLink: string): string {
   }
 }
 
-function buildSebButtonsHtml(testLink: string): string {
-  const launchLink = buildSebLandingLink(testLink);
+function buildSebInstallButtonHtml(testLink: string): string {
   const installLink = 'https://safeexambrowser.org/download_en.html';
 
   return `
-    <div style="margin:18px 0 10px;display:flex;flex-direction:column;gap:10px">
+    <div style="margin:14px 0">
       <a
         href="${installLink}"
         target="_blank"
         rel="noopener noreferrer"
-        style="display:inline-block;background:#ffffff;color:#111827;padding:11px 20px;border:1px solid #D1D5DB;border-radius:8px;text-decoration:none;font-weight:600;text-align:center"
+        style="
+          display:inline-block;
+          background:#ffffff;
+          color:#111827;
+          padding:11px 20px;
+          border:1px solid #D1D5DB;
+          border-radius:8px;
+          text-decoration:none;
+          font-weight:600;
+        "
       >
         Install Safe Exam Browser
       </a>
+    </div>
+  `;
+}
+function buildSebContinueButtonHtml(testLink: string): string {
+  const launchLink = buildSebLandingLink(testLink);
 
+  return `
+    <div style="margin:14px 0">
       <a
         href="${escapeHtml(launchLink)}"
-        style="display:inline-block;background:#111827;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;text-align:center"
+        style="
+          display:inline-block;
+          background:#111827;
+          color:#ffffff;
+          padding:12px 24px;
+          border-radius:8px;
+          text-decoration:none;
+          font-weight:600;
+        "
       >
         Continue to Assessment
       </a>
@@ -486,9 +555,9 @@ function buildInviteSubject(payload: InvitationEmailPayload): string {
 
 function buildInviteHtml(payload: InvitationEmailPayload): string {
   const text = renderInviteBody(payload);
+
   return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#374151;max-width:600px">
-${textToHtml(text)}
-${buildSebButtonsHtml(payload.testLink)}
+${renderEmailBodyWithSebButtons(text, payload.testLink)}
 </div>`;
 }
 
@@ -529,9 +598,9 @@ function buildReminderSubject(payload: ReminderEmailPayload): string {
 
 function buildReminderHtml(payload: ReminderEmailPayload): string {
   const text = renderReminderBody(payload);
+
   return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#374151;max-width:600px">
-${textToHtml(text)}
-${buildSebButtonsHtml(payload.testLink)}
+${renderEmailBodyWithSebButtons(text, payload.testLink)}
 </div>`;
 }
 
