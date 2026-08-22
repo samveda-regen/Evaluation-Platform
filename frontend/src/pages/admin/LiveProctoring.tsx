@@ -10,7 +10,7 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react';
-import { RemoteTrack, RemoteTrackPublication, Room, RoomEvent, Track } from 'livekit-client';
+import { RemoteTrack, RemoteTrackPublication, Room, RoomEvent, Track, VideoQuality } from 'livekit-client';
 import { adminApi } from '../../services/api';
 
 interface LiveCandidate {
@@ -37,7 +37,21 @@ function trustColor(score: number) {
   return '#E11D48';
 }
 
-function CandidateVideo({ attemptId, active }: { attemptId?: string; active: boolean }) {
+// Shared by the grid tiles (low-bitrate, video-only thumbnail) and the modal (full
+// quality + audio) so opening dozens of tiles doesn't cost as much as one focused view.
+function LiveVideoFeed({
+  attemptId,
+  active,
+  quality,
+  withAudio,
+  showOverlay = true,
+}: {
+  attemptId?: string;
+  active: boolean;
+  quality: VideoQuality;
+  withAudio: boolean;
+  showOverlay?: boolean;
+}) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const attachedVideoRef = useRef<RemoteTrack | null>(null);
@@ -55,6 +69,17 @@ function CandidateVideo({ attemptId, active }: { attemptId?: string; active: boo
       dynacast: true,
     });
 
+    // Manual subscription (autoSubscribe: false on connect below) so tile thumbnails never
+    // pull down audio at all, and camera video comes in at the requested simulcast layer
+    // instead of full resolution for every visible tile.
+    const subscribeIfWanted = (publication: RemoteTrackPublication) => {
+      if (publication.kind === Track.Kind.Video && publication.source === Track.Source.Camera) {
+        publication.setSubscribed(true);
+      } else if (publication.kind === Track.Kind.Audio && withAudio) {
+        publication.setSubscribed(true);
+      }
+    };
+
     const attachTrack = (track: RemoteTrack, publication?: RemoteTrackPublication) => {
       if (track.kind === Track.Kind.Video && publication?.source === Track.Source.Camera && videoRef.current) {
         if (attachedVideoRef.current && attachedVideoRef.current !== track) {
@@ -62,13 +87,15 @@ function CandidateVideo({ attemptId, active }: { attemptId?: string; active: boo
         }
         track.attach(videoRef.current);
         attachedVideoRef.current = track;
+        publication.setVideoQuality(quality);
         setStatus('connected');
       }
-      if (track.kind === Track.Kind.Audio && audioRef.current) {
+      if (track.kind === Track.Kind.Audio && withAudio && audioRef.current) {
         track.attach(audioRef.current);
       }
     };
 
+    room.on(RoomEvent.TrackPublished, subscribeIfWanted);
     room.on(RoomEvent.TrackSubscribed, attachTrack);
     room.on(RoomEvent.Disconnected, () => {
       if (!cancelled) setStatus('idle');
@@ -79,10 +106,11 @@ function CandidateVideo({ attemptId, active }: { attemptId?: string; active: boo
         setStatus('connecting');
         const { data } = await adminApi.getLiveProctoringViewerToken(attemptId);
         if (cancelled) return;
-        await room.connect(data.url, data.token, { autoSubscribe: true });
+        await room.connect(data.url, data.token, { autoSubscribe: false });
         if (cancelled) return;
         room.remoteParticipants.forEach((participant) => {
           participant.trackPublications.forEach((publication) => {
+            subscribeIfWanted(publication);
             if (publication.track) attachTrack(publication.track, publication);
           });
         });
@@ -97,6 +125,7 @@ function CandidateVideo({ attemptId, active }: { attemptId?: string; active: boo
 
     return () => {
       cancelled = true;
+      room.off(RoomEvent.TrackPublished, subscribeIfWanted);
       room.off(RoomEvent.TrackSubscribed, attachTrack);
       if (videoRef.current && attachedVideoRef.current) {
         attachedVideoRef.current.detach(videoRef.current);
@@ -104,7 +133,7 @@ function CandidateVideo({ attemptId, active }: { attemptId?: string; active: boo
       attachedVideoRef.current = null;
       room.disconnect();
     };
-  }, [active, attemptId]);
+  }, [active, attemptId, quality, withAudio]);
 
   if (!active) return null;
 
@@ -121,11 +150,11 @@ function CandidateVideo({ attemptId, active }: { attemptId?: string; active: boo
           width: '100%',
           height: '100%',
           objectFit: 'cover',
-          backgroundColor: '#020617',
+          backgroundColor: showOverlay || status === 'connected' ? '#020617' : 'transparent',
         }}
       />
-      <audio ref={audioRef} autoPlay />
-      {status !== 'connected' && (
+      {withAudio && <audio ref={audioRef} autoPlay />}
+      {showOverlay && status !== 'connected' && (
         <div
           style={{
             position: 'absolute',
@@ -241,6 +270,14 @@ function LiveTile({
             {candidate.initials}
           </div>
         )}
+
+        <LiveVideoFeed
+          attemptId={candidate.attemptId}
+          active={candidate.online !== false}
+          quality={VideoQuality.LOW}
+          withAudio={false}
+          showOverlay={false}
+        />
 
         {candidate.warning && (
           <div
@@ -739,7 +776,13 @@ export default function LiveProctoring() {
                 backgroundColor: '#0F172A',
               }}
             >
-              <CandidateVideo attemptId={viewerCandidate.attemptId} active />
+              <LiveVideoFeed
+                attemptId={viewerCandidate.attemptId}
+                active
+                quality={VideoQuality.HIGH}
+                withAudio
+                showOverlay
+              />
               <div
                 style={{
                   position: 'absolute',
