@@ -33,6 +33,26 @@ export function getRecordingRoot(): string {
   return path.resolve(process.env.RECORDING_DIR || '/var/lib/talentstaq/recordings');
 }
 
+// The Egress container does NOT see the host filesystem at the same path as this
+// backend process. It only has RECORDING_DIR bind-mounted at a container-internal
+// path (see docker-compose / egress.yaml `backup_storage`), typically `/recordings`.
+// Egress must be told to write using ITS OWN view of that path, not this backend's
+// host-side RECORDING_DIR — otherwise it tries to create host-style directories
+// (e.g. /var/lib/talentstaq/...) that don't exist inside its own container and
+// fails with a permission error while mkdir-ing a path it has no reason to touch.
+// This backend still uses RECORDING_DIR (host path) for its own reads/writes,
+// since it runs directly on the host, unlike Egress.
+function getEgressRecordingRoot(): string {
+  return process.env.EGRESS_RECORDING_DIR || '/recordings';
+}
+
+function egressFilepath(storageKey: string): string {
+  // storageKey is always a relative, already-sanitized `testId/attemptId/file.mp4`
+  // path (see relativeRecordingPath/resolveRecordingPath) — join with '/' rather
+  // than path.join so this stays POSIX-correct regardless of the backend's host OS.
+  return `${getEgressRecordingRoot().replace(/\/+$/, '')}/${storageKey}`;
+}
+
 function liveKitHttpUrl(): string {
   const raw = (process.env.LIVEKIT_URL || '').trim();
   if (raw.startsWith('wss://')) return `https://${raw.slice(6)}`;
@@ -262,9 +282,9 @@ async function startCandidateRecording(input: {
   }
 
   try {
-    const output = new EncodedFileOutput({
+        const output = new EncodedFileOutput({
       fileType: EncodedFileType.MP4,
-      filepath: absolutePath,
+      filepath: egressFilepath(storageKey),
       disableManifest: true,
     });
     const webhookUrl = (process.env.LIVEKIT_EGRESS_WEBHOOK_URL || '').trim();
