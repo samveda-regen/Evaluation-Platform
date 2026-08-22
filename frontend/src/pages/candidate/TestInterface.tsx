@@ -7,6 +7,7 @@ import { useTestStore } from '../../context/testStore';
 import GuardedAudioPlayer from '../../components/GuardedAudioPlayer';
 import AudioRecorder from '../../components/AudioRecorder';
 import { useProctoring } from '../../hooks/useProctoring';
+import { useLiveProctoringPublisher } from '../../hooks/useLiveProctoringPublisher';
 import { SCREEN_SHARE_WRONG_SURFACE_MESSAGE } from '../../services/proctorService';
 import { violationLabel } from '../../utils/violationLabels';
 import {
@@ -217,7 +218,7 @@ export default function TestInterface() {
   const {
     status: proctorStatus, endSession: endProctoringSession,
     error: proctorError, capturePreviewFrame, captureEvidenceFrame,
-    cameraStream, resumeScreenShare,
+    cameraStream, screenStream, resumeScreenShare,
   } = useProctoring(attemptId || '', {
     enabled: proctorEnabled,
     enableCamera: requireCamera,
@@ -238,6 +239,17 @@ export default function TestInterface() {
       }
     },
     onTerminate: (reason) => { handleAutoSubmit(reason); },
+  });
+
+  // Mirrors the candidate's camera/screen tracks to LiveKit so an admin can watch the
+  // live feed. Reuses the same MediaStreamTracks the local proctoring hook already
+  // acquired above — no extra getUserMedia prompts, no change to local proctoring logic.
+  useLiveProctoringPublisher({
+    enabled: proctorEnabled && proctorStatus.isInitialized,
+    attemptId: attemptId || '',
+    publishMicrophone: false,
+    cameraStream,
+    screenStream,
   });
 
   const proctorStatusRef = useRef(proctorStatus);

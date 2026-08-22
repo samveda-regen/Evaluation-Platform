@@ -547,6 +547,18 @@ export const adminApi = {
   getLiveProctoringCandidates: (testId: string) =>
     api.get(`/proctoring/admin/test/${testId}/live`),
 
+  getAllLiveProctoringCandidates: () =>
+    api.get('/proctoring/admin/live'),
+
+  getLiveProctoringViewerToken: (attemptId: string) =>
+    api.post<{
+      success: boolean;
+      url: string;
+      token: string;
+      roomName: string;
+      identity: string;
+    }>(`/proctoring/admin/live/attempt/${attemptId}/token`),
+
   getProctoringSession: (sessionId: string) =>
     api.get(`/proctoring/admin/session/${sessionId}`),
 
@@ -709,6 +721,15 @@ export const candidateApi = {
 
   cancelMyPendingVerification: () =>
     api.delete('/verification/my-submission'),
+
+  getLiveProctoringPublishToken: (attemptId: string) =>
+    api.post<{
+      success: boolean;
+      url: string;
+      token: string;
+      roomName: string;
+      identity: string;
+    }>(`/proctoring/live/candidate/attempt/${attemptId}/token`),
 };
 
 export default api;
