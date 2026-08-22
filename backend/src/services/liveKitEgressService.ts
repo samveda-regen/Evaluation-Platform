@@ -242,7 +242,18 @@ async function startCandidateRecording(input: {
   const now = Date.now();
   const storageKey = relativeRecordingPath(input.testId, input.attemptId, now);
   const absolutePath = resolveRecordingPath(storageKey);
-  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+    try {
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+    // fs.mkdir's mode is masked by the process umask (typically 022), so a fresh
+    // directory usually lands at 755 regardless of what mode is requested here —
+    // group members get no write access. The Egress container writes into this
+    // exact directory as a non-root user (gid 0 / group "root"), so it needs
+    // real group-write permission, not just matching group ownership. chmod
+    // explicitly afterward to sidestep the umask entirely, on every new attempt
+    // folder, rather than relying on a one-time host-level chmod that only
+    // covers directories that already existed at the time it was run.
+    await fs.chmod(path.dirname(absolutePath), 0o775);
+  } catch (error) {
 
   if (!recording) {
     const id = uuidv4();
