@@ -152,6 +152,7 @@ setSocketServer(io);
 const candidateSocketPresence = new Map<string, { testId: string; attemptId: string }>();
 
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '127.0.0.1';
 
 function isHighFrequencyProctoringPath(path: string): boolean {
   return /^\/api\/proctoring\/session\/[^/]+\/(analysis|recording\/upload|snapshot|monitors|violation)$/.test(path);
@@ -474,8 +475,8 @@ async function startServer(): Promise<void> {
   startInvitationReminderSweep();
   console.log('Invitation reminder sweep: started');
 
-  httpServer.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  httpServer.listen(PORT, HOST, () => {
+    console.log(`Server running on http://${HOST}:${PORT}`);
     console.log(`API endpoints:`);
     console.log(`  - Admin: http://localhost:${PORT}/api/admin`);
     console.log(`  - Candidate: http://localhost:${PORT}/api/candidate`);
