@@ -1819,13 +1819,17 @@ export const getLiveTestSessions = async (req: Request, res: Response): Promise<
   try {
     const { testId } = req.params;
     const adminId = (req as any).admin?.id;
+    const companyId = (req as any).admin?.companyId;
 
     const test = await prisma.test.findUnique({
       where: { id: testId },
-      select: { adminId: true },
+      select: { adminId: true, companyId: true },
     });
 
-    if (!test || test.adminId !== adminId) {
+    // Tests are shared across every admin in the same company; only fall back to a
+    // strict adminId match for admins without a company (see testOwnershipWhere in test.ts).
+    const owns = test && (companyId ? test.companyId === companyId : test.adminId === adminId);
+    if (!owns) {
       res.status(404).json({ error: 'Test not found' });
       return;
     }
@@ -1923,11 +1927,14 @@ export const getLiveTestSessions = async (req: Request, res: Response): Promise<
 export const getAllLiveAdminSessions = async (req: Request, res: Response): Promise<void> => {
   try {
     const adminId = (req as any).admin?.id;
+    const companyId = (req as any).admin?.companyId;
 
+    // Tests are shared across every admin in the same company; only fall back to a
+    // strict adminId match for admins without a company (see testListWhere in test.ts).
     const attempts = await prisma.testAttempt.findMany({
       where: {
         status: 'in_progress',
-        test: { adminId },
+        test: companyId ? { companyId } : { adminId },
       },
       select: {
         id: true,

@@ -95,11 +95,14 @@ export async function getAdminLiveToken(req: AuthenticatedRequest, res: Response
         candidateId: true,
         status: true,
         candidate: { select: { name: true, email: true } },
-        test: { select: { adminId: true, name: true } },
+        test: { select: { adminId: true, companyId: true, name: true } },
       },
     });
 
-    if (!attempt || attempt.test.adminId !== admin.id) {
+    // Tests are shared across every admin in the same company; only fall back to a
+    // strict adminId match for admins without a company (see testOwnershipWhere in test.ts).
+    const owns = attempt && (admin.companyId ? attempt.test.companyId === admin.companyId : attempt.test.adminId === admin.id);
+    if (!owns) {
       res.status(404).json({ error: 'Attempt not found' });
       return;
     }
