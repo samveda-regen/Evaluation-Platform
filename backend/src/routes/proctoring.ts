@@ -17,8 +17,10 @@ import {
   updateMobileDevice,
   updateMonitorCount,
   getLiveTestSessions,
+  getAllLiveAdminSessions,
   ingestExternalEngineEvent,
 } from '../controllers/proctoring';
+import { getCandidateLiveToken, getAdminLiveToken } from '../controllers/liveProctoring';
 
 const router = Router();
 
@@ -26,6 +28,9 @@ const router = Router();
 
 // Initialize proctoring session when test starts
 router.post('/session/:attemptId/init', candidateAuth, initializeSession);
+
+// Live video (LiveKit): candidate publish token for the current attempt's room.
+router.post('/live/candidate/attempt/:attemptId/token', candidateAuth, getCandidateLiveToken);
 
 // Submit real-time proctoring analysis data
 router.post('/session/:sessionId/analysis', candidateAuth, submitAnalysis);
@@ -75,5 +80,11 @@ router.get('/admin/attempt/:attemptId/summary', adminAuth, getAttemptProctoringS
 
 // Get all live proctoring sessions for a test
 router.get('/admin/test/:testId/live', adminAuth, getLiveTestSessions);
+
+// Get all live proctoring sessions for the admin across tests
+router.get('/admin/live', adminAuth, getAllLiveAdminSessions);
+
+// Live video (LiveKit): admin subscribe-only viewer token for a candidate's room.
+router.post('/admin/live/attempt/:attemptId/token', adminAuth, getAdminLiveToken);
 
 export default router;
