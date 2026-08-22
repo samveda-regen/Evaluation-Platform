@@ -87,12 +87,19 @@ export function useLiveProctoringPublisher({
             },
           });
         }
-        await publishMediaTrack(liveMicrophoneStream?.getAudioTracks()[0], Track.Source.Microphone, 'candidate-microphone');
+                await publishMediaTrack(liveMicrophoneStream?.getAudioTracks()[0], Track.Source.Microphone, 'candidate-microphone');
         await publishMediaTrack(screenStream?.getVideoTracks()[0], Track.Source.ScreenShare, 'candidate-screen');
+        if (cancelled) return;
 
         // LiveKit creates rooms lazily on first participant connection. Egress
         // must therefore start after connect + camera publication, not while the
-        // backend is still issuing the connection token.
+        // backend is still issuing the connection token. Guarded by `cancelled`
+        // above: on fast exams the component can unmount (room.disconnect() in
+        // the cleanup below) while this async chain is still in flight. Without
+        // the guard, this call fires after the room is already gone client-side,
+        // and the backend's startParticipantEgress request can lose the race and
+        // land after LiveKit has torn the room down, failing with
+        // "requested room does not exist".
         await candidateApi.startLiveProctoringRecording(attemptId);
 
         setConnected(true);
