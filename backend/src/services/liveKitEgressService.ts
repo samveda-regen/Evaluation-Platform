@@ -242,18 +242,7 @@ async function startCandidateRecording(input: {
   const now = Date.now();
   const storageKey = relativeRecordingPath(input.testId, input.attemptId, now);
   const absolutePath = resolveRecordingPath(storageKey);
-    try {
-    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-    // fs.mkdir's mode is masked by the process umask (typically 022), so a fresh
-    // directory usually lands at 755 regardless of what mode is requested here —
-    // group members get no write access. The Egress container writes into this
-    // exact directory as a non-root user (gid 0 / group "root"), so it needs
-    // real group-write permission, not just matching group ownership. chmod
-    // explicitly afterward to sidestep the umask entirely, on every new attempt
-    // folder, rather than relying on a one-time host-level chmod that only
-    // covers directories that already existed at the time it was run.
-    await fs.chmod(path.dirname(absolutePath), 0o775);
-  } catch (error) {
+  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
 
   if (!recording) {
     const id = uuidv4();
@@ -291,7 +280,31 @@ async function startCandidateRecording(input: {
       },
     });
   }
-
+try {
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+    // fs.mkdir's mode is masked by the process umask (typically 022), so a fresh
+    // directory usually lands at 755 regardless of what mode is requested here —
+    // group members get no write access. The Egress container writes into this
+    // exact directory as a non-root user (gid 0 / group "root"), so it needs
+    // real group-write permission, not just matching group ownership. chmod
+    // explicitly afterward to sidestep the umask entirely, on every new attempt
+    // folder, rather than relying on a one-time host-level chmod that only
+    // covers directories that already existed at the time it was run.
+    await fs.chmod(path.dirname(absolutePath), 0o775);
+  } catch (error) {
+    await prisma.proctorRecording.update({
+      where: { id: recording.id },
+      data: {
+        status: 'failed',
+        endTime: new Date(),
+        processingError: `Local storage directory is not writable: ${
+          error instanceof Error ? error.message : 'unknown filesystem error'
+        }`,
+      },
+    });
+    console.error(`[egress] failed to prepare recording directory for attempt ${input.attemptId}:`, error);
+    return;
+  }
   try {
         const output = new EncodedFileOutput({
       fileType: EncodedFileType.MP4,
