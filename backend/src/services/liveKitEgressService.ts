@@ -162,6 +162,49 @@ export async function syncRecordingFromEgressInfo(info: EgressInfoLike): Promise
     });
   }
 }
+function isRoomNotFoundError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /room does not exist/i.test(message);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// The candidate publishes to the room before this is called (see
+// useLiveProctoringPublisher on the frontend), so the room should already
+// exist by the time we get here. In practice, on very fast exams the
+// candidate can disconnect (room torn down client-side) right as this
+// request is in flight, or there can be a brief propagation delay between
+// the SFU accepting the connection and the room being visible to Egress.
+// Retry a few times before giving up, rather than failing the recording
+// outright on the first "room does not exist".
+async function startParticipantEgressWithRetry(
+  client: EgressClient,
+  roomName: string,
+  participantIdentity: string,
+  output: EncodedFileOutput,
+  webhooks: WebhookConfig[] | undefined,
+  maxAttempts = 3,
+): Promise<{ egressId: string }> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await client.startParticipantEgress(
+        roomName,
+        participantIdentity,
+        { file: output },
+        { screenShare: false, webhooks },
+      );
+    } catch (error) {
+      lastError = error;
+      if (!isRoomNotFoundError(error) || attempt === maxAttempts) throw error;
+      await sleep(500 * attempt);
+    }
+  }
+  throw lastError;
+}
+
 
 async function startCandidateRecording(input: {
   sessionId: string;
@@ -228,12 +271,13 @@ async function startCandidateRecording(input: {
     const webhooks = webhookUrl
       ? [new WebhookConfig({ url: webhookUrl, signingKey: process.env.LIVEKIT_API_KEY || '' })]
       : undefined;
-    const client = egressClient();
-    const info = await client.startParticipantEgress(
+        const client = egressClient();
+    const info = await startParticipantEgressWithRetry(
+      client,
       input.roomName,
       input.participantIdentity,
-      { file: output },
-      { screenShare: false, webhooks },
+      output,
+      webhooks,
     );
     await prisma.proctorRecording.update({
       where: { id: recording.id },
