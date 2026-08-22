@@ -151,7 +151,7 @@ setSocketServer(io);
 
 const candidateSocketPresence = new Map<string, { testId: string; attemptId: string }>();
 
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
 
 function isHighFrequencyProctoringPath(path: string): boolean {
