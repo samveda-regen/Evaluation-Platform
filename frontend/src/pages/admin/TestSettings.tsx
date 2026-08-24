@@ -32,7 +32,7 @@ const EMAIL_TAB_DESCRIPTIONS: Record<EmailTab, string> = {
   confirm: 'This email is sent to candidates when they complete the test.',
   reminder: "This email is sent to candidates who haven't started the test yet, as their access window is closing. It reuses the exact same invite link and access code originally sent to them — no new link is generated.",
 };
-const [assessmentMode, setAssessmentMode] = useState<'seb' | 'browser'>('seb');
+
 
 const AVAILABLE_VARS = [
     { key: '{{seb_install_button}}', desc: 'Install Safe Exam Browser button' },
@@ -263,6 +263,7 @@ export default function TestSettings() {
   const [customCategoryInput, setCustomCategoryInput] = useState('');
   const customCategoryInputRef = useRef<HTMLInputElement | null>(null);
   const emailBodyRef = useRef<HTMLTextAreaElement | null>(null);
+  const [assessmentMode, setAssessmentMode] = useState<'seb' | 'browser'>('seb');
 
   useEffect(() => {
     if (customCategoryOpen) customCategoryInputRef.current?.focus();
