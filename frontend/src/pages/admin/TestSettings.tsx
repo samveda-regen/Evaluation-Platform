@@ -32,6 +32,7 @@ const EMAIL_TAB_DESCRIPTIONS: Record<EmailTab, string> = {
   confirm: 'This email is sent to candidates when they complete the test.',
   reminder: "This email is sent to candidates who haven't started the test yet, as their access window is closing. It reuses the exact same invite link and access code originally sent to them — no new link is generated.",
 };
+const [assessmentMode, setAssessmentMode] = useState<'seb' | 'browser'>('seb');
 
 const AVAILABLE_VARS = [
     { key: '{{seb_install_button}}', desc: 'Install Safe Exam Browser button' },
@@ -601,6 +602,39 @@ const insertEmailToken = (token: string) => {
                 </div>
               </div>
             )}
+          
+          {/* --- MODE OF ASSESSMENNT --- */}
+          <div style={{ marginTop: '4px' }}>
+  <label style={labelSx}>Mode of assessment</label>
+
+  <CustomSelect
+    value={assessmentMode}
+    onChange={(value) =>
+      setAssessmentMode(value as 'seb' | 'browser')
+    }
+    options={[
+      {
+        value: 'seb',
+        label: 'Safe Exam Browser',
+      },
+      {
+        value: 'browser',
+        label: 'Normal Browser',
+      },
+    ]}
+    style={{ width: '100%', maxWidth: '100%' }}
+  />
+
+  <p
+    style={{
+      fontSize: '11px',
+      color: 'var(--admin-text-subtle)',
+      margin: '6px 0 0',
+    }}
+  >
+    Choose how candidates will access this assessment.
+  </p>
+</div>
 
             {/* --- ACCESS & SCHEDULING --- */}
             {activePanel === 'access' && (
