@@ -7,7 +7,7 @@ import { ChevronRight, Pencil, Check, Trash2, Info } from 'lucide-react';
 import DateTimePicker from '../../components/DateTimePicker';
 import CustomSelect from '../../components/CustomSelect';
 
-type Panel = 'general' | 'access' | 'behavior' | 'grading' | 'email' | 'danger';
+type Panel = 'general' | 'access' |'assessmentmode'| 'behavior' | 'grading' | 'email' | 'danger';
 
 type EmailTab = 'invite' | 'confirm' | 'reminder';
 
@@ -441,6 +441,7 @@ const insertEmailToken = (token: string) => {
   const PANELS: { id: Panel; label: string }[] = [
     { id:'general',  label:'General' },
     { id:'access',   label:'Access & scheduling' },
+    { id:'assessmentmode',   label:'Mode of Asseessment' },
     { id:'behavior', label:'Test behavior' },
     { id:'grading',  label:'Results & grading' },
     { id:'email',    label:'Email' },
@@ -603,39 +604,7 @@ const insertEmailToken = (token: string) => {
                 </div>
               </div>
             )}
-          
-          {/* --- MODE OF ASSESSMENNT --- */}
-          <div style={{ marginTop: '4px' }}>
-  <label style={labelSx}>Mode of assessment</label>
-
-  <CustomSelect
-    value={assessmentMode}
-    onChange={(value) =>
-      setAssessmentMode(value as 'seb' | 'browser')
-    }
-    options={[
-      {
-        value: 'seb',
-        label: 'Safe Exam Browser',
-      },
-      {
-        value: 'browser',
-        label: 'Normal Browser',
-      },
-    ]}
-    style={{ width: '100%', maxWidth: '100%' }}
-  />
-
-  <p
-    style={{
-      fontSize: '11px',
-      color: 'var(--admin-text-subtle)',
-      margin: '6px 0 0',
-    }}
-  >
-    Choose how candidates will access this assessment.
-  </p>
-</div>
+            
 
             {/* --- ACCESS & SCHEDULING --- */}
             {activePanel === 'access' && (
@@ -692,6 +661,86 @@ const insertEmailToken = (token: string) => {
                 <ToggleRow label="Allow access code"          desc="Candidates enter a code to join"        on={form.allowAccessCode}       onChange={() => patch({ allowAccessCode: !form.allowAccessCode })} last />
               </div>
             )}
+
+
+            {/* --- MODE OF ASSESSMENT --- */}
+{activePanel === 'assessmentmode' && (
+  <div>
+    <p
+      style={{
+        fontSize: '18px',
+        fontWeight: 700,
+        color: 'var(--admin-text)',
+        margin: '0 0 4px',
+      }}
+    >
+      Mode of assessment
+    </p>
+
+    <p
+      style={{
+        fontSize: '13px',
+        color: 'var(--admin-text-muted)',
+        margin: '0 0 24px',
+      }}
+    >
+      Choose how candidates will access this assessment.
+    </p>
+
+    <div
+      style={{
+        padding: '16px 18px',
+        border: '1px solid var(--admin-border)',
+        borderRadius: '10px',
+        backgroundColor: '#F9FAFB',
+      }}
+    >
+      <label
+        style={{
+          display: 'block',
+          fontSize: '12px',
+          fontWeight: 600,
+          color: 'var(--admin-text-muted)',
+          marginBottom: '8px',
+        }}
+      >
+        Assessment mode
+      </label>
+
+      <CustomSelect
+        value={assessmentMode}
+        onChange={(value) =>
+          setAssessmentMode(value as 'seb' | 'browser')
+        }
+        options={[
+          {
+            value: 'seb',
+            label: 'Safe Exam Browser',
+          },
+          {
+            value: 'browser',
+            label: 'Normal Browser',
+          },
+        ]}
+        style={{
+          width: '100%',
+          maxWidth: '420px',
+        }}
+      />
+
+      <p
+        style={{
+          fontSize: '11px',
+          color: 'var(--admin-text-subtle)',
+          margin: '8px 0 0',
+        }}
+      >
+        Safe Exam Browser is selected by default.
+      </p>
+    </div>
+  </div>
+)}
+
 
             {/* --- TEST BEHAVIOR --- */}
             {activePanel === 'behavior' && (
