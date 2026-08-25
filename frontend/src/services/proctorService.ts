@@ -28,6 +28,7 @@ export interface ProctorSession {
   sessionId: string;
   attemptId: string;
   config: ProctorConfig;
+  detectionMode: 'client' | 'server';
 }
 
 export interface FaceDetectionResult {
@@ -87,6 +88,7 @@ export async function initializeProctorSession(attemptId: string, deviceInfo: {
         snapshotInterval: 30000,
         analysisInterval: 5000,
       },
+      detectionMode: response.data.detectionMode === 'server' ? 'server' : 'client',
     };
   } catch (error) {
     console.error('Failed to initialize proctor session:', error);

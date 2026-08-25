@@ -37,6 +37,7 @@ export interface Test {
   autoApproveId?: boolean;
   idVerificationAutoApproveThreshold?: number;
   customAIViolations?: string[];
+  assessmentMode?: 'SEB' | 'NORMAL_BROWSER';
   proctoringSettings?: Record<string, unknown>;
   violationPopupSettings?: Record<string, unknown>;
   createdAt: string;

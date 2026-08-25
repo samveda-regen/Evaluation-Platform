@@ -61,6 +61,7 @@ export const createTestValidation: ValidationChain[] = [
   body('requireIdVerification').optional().isBoolean().withMessage('Require ID verification must be boolean'),
   body('customAIViolations').optional().isArray().withMessage('customAIViolations must be an array'),
   body('customAIViolations.*').optional().isString().withMessage('Each customAIViolations value must be a string'),
+  body('assessmentMode').optional().isIn(['SEB', 'NORMAL_BROWSER']).withMessage('Assessment mode must be SEB or NORMAL_BROWSER'),
   body('instructions').optional().trim()
 ];
 
@@ -80,7 +81,8 @@ export const updateTestValidation: ValidationChain[] = [
   body('requireScreenShare').optional().isBoolean(),
   body('requireIdVerification').optional().isBoolean(),
   body('customAIViolations').optional().isArray(),
-  body('customAIViolations.*').optional().isString()
+  body('customAIViolations.*').optional().isString(),
+  body('assessmentMode').optional().isIn(['SEB', 'NORMAL_BROWSER'])
 ];
 
 // MCQ Question validation

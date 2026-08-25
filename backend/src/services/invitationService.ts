@@ -15,6 +15,23 @@ const EMAIL_SEND_RETRY_DELAY_MS = 1500;
 const CANDIDATE_LOGIN_PATH = '/test/login';
 const CANDIDATE_SEB_QUIT_PATH = '/test/quit-seb';
 
+function activeInvitationTemplate(test: any): {
+  assessmentMode: 'SEB' | 'NORMAL_BROWSER';
+  subject?: string;
+  body?: string;
+} {
+  const assessmentMode = test.assessmentMode === 'NORMAL_BROWSER' ? 'NORMAL_BROWSER' : 'SEB';
+  return {
+    assessmentMode,
+    subject: assessmentMode === 'NORMAL_BROWSER'
+      ? test.normalBrowserInviteEmailSubject ?? undefined
+      : test.inviteEmailSubject ?? undefined,
+    body: assessmentMode === 'NORMAL_BROWSER'
+      ? test.normalBrowserInviteEmailBody ?? undefined
+      : test.inviteEmailBody ?? undefined,
+  };
+}
+
 export function formatExamDate(startTime: Date | null | undefined): string | undefined {
   if (!startTime) return undefined;
   return new Intl.DateTimeFormat('en-US', {
@@ -72,6 +89,8 @@ export interface InvitationDetails {
     startTime: Date;
     endTime: Date | null;
     isActive: boolean;
+    proctorEnabled: boolean;
+    assessmentMode: string;
   };
 }
 
@@ -322,7 +341,9 @@ async function fetchInvitationByToken(token: string): Promise<InvitationDetails>
           duration: true,
           startTime: true,
           endTime: true,
-          isActive: true
+          isActive: true,
+          proctorEnabled: true,
+          assessmentMode: true,
         }
       }
     }
@@ -430,6 +451,9 @@ export async function sendBulkTestInvitations(input: {
       duration: true,
       inviteEmailSubject: true,
       inviteEmailBody: true,
+      normalBrowserInviteEmailSubject: true,
+      normalBrowserInviteEmailBody: true,
+      assessmentMode: true,
       admin: { select: { company: { select: { name: true } } } }
     }
   });
@@ -492,6 +516,7 @@ export async function sendBulkTestInvitations(input: {
 
         invitationId = invitation.id;
 
+        const activeTemplate = activeInvitationTemplate(test);
         await sendInvitationEmailWithRetry({
           to: row.email,
           candidateName: row.name,
@@ -502,8 +527,9 @@ export async function sendBulkTestInvitations(input: {
           estimatedTime: `${(test as any).duration ?? ''} minutes`,
           examStart,
           examEnd,
-          inviteEmailSubject: (test as any).inviteEmailSubject ?? undefined,
-          inviteEmailBody: (test as any).inviteEmailBody ?? undefined,
+          inviteEmailSubject: activeTemplate.subject,
+          inviteEmailBody: activeTemplate.body,
+          assessmentMode: activeTemplate.assessmentMode,
         }, row.email);
 
         await prisma.testInvitation.update({
@@ -595,6 +621,9 @@ export async function sendStructuredTestInvitations(input: {
       duration: true,
       inviteEmailSubject: true,
       inviteEmailBody: true,
+      normalBrowserInviteEmailSubject: true,
+      normalBrowserInviteEmailBody: true,
+      assessmentMode: true,
       admin: { select: { company: { select: { name: true } } } }
     }
   });
@@ -669,6 +698,7 @@ export async function sendStructuredTestInvitations(input: {
 
       invitationId = invitation.id;
 
+      const activeTemplate = activeInvitationTemplate(test);
       await sendInvitationEmailWithRetry({
         to: row.email,
         candidateName: row.name,
@@ -679,8 +709,9 @@ export async function sendStructuredTestInvitations(input: {
         estimatedTime: `${(test as any).duration ?? ''} minutes`,
         examStart,
         examEnd,
-        inviteEmailSubject: (test as any).inviteEmailSubject ?? undefined,
-        inviteEmailBody: (test as any).inviteEmailBody ?? undefined,
+        inviteEmailSubject: activeTemplate.subject,
+        inviteEmailBody: activeTemplate.body,
+        assessmentMode: activeTemplate.assessmentMode,
       }, row.email);
 
       await prisma.testInvitation.update({
@@ -862,6 +893,9 @@ export async function resendInvitationForCandidate(input: {
       duration: true,
       inviteEmailSubject: true,
       inviteEmailBody: true,
+      normalBrowserInviteEmailSubject: true,
+      normalBrowserInviteEmailBody: true,
+      assessmentMode: true,
       admin: { select: { company: { select: { name: true } } } }
     }
   });
@@ -906,6 +940,7 @@ export async function resendInvitationForCandidate(input: {
   const examEnd = formatExamDate((test as any).endTime);
 
   try {
+    const activeTemplate = activeInvitationTemplate(test);
     await sendInvitationEmailWithRetry({
       to: updated.email,
       candidateName: updated.name,
@@ -916,8 +951,9 @@ export async function resendInvitationForCandidate(input: {
       estimatedTime: `${(test as any).duration ?? ''} minutes`,
       examStart,
       examEnd,
-      inviteEmailSubject: (test as any).inviteEmailSubject ?? undefined,
-      inviteEmailBody: (test as any).inviteEmailBody ?? undefined,
+      inviteEmailSubject: activeTemplate.subject,
+      inviteEmailBody: activeTemplate.body,
+      assessmentMode: activeTemplate.assessmentMode,
     }, updated.email);
 
     await prisma.testInvitation.update({
@@ -991,7 +1027,9 @@ export async function consumeInvitation(invitationId: string, testId: string): P
       duration: 0,
       startTime: invitation.test.startTime,
       endTime: invitation.test.endTime,
-      isActive: invitation.test.isActive
+      isActive: invitation.test.isActive,
+      proctorEnabled: false,
+      assessmentMode: 'SEB'
     }
   };
 

@@ -38,6 +38,9 @@ export async function sweepInvitationReminders(): Promise<void> {
             endTime: true,
             reminderEmailSubject: true,
             reminderEmailBody: true,
+            normalBrowserReminderEmailSubject: true,
+            normalBrowserReminderEmailBody: true,
+            assessmentMode: true,
             reminderHoursBeforeClose: true,
             admin: { select: { company: { select: { name: true } } } },
           },
@@ -62,8 +65,13 @@ export async function sweepInvitationReminders(): Promise<void> {
           closesAt: formatExamDate(invitation.test.endTime) ?? 'soon',
           companyName: invitation.test.admin?.company?.name ?? undefined,
           estimatedTime: `${invitation.test.duration} minutes`,
-          reminderEmailSubject: invitation.test.reminderEmailSubject,
-          reminderEmailBody: invitation.test.reminderEmailBody,
+          reminderEmailSubject: invitation.test.assessmentMode === 'NORMAL_BROWSER'
+            ? invitation.test.normalBrowserReminderEmailSubject
+            : invitation.test.reminderEmailSubject,
+          reminderEmailBody: invitation.test.assessmentMode === 'NORMAL_BROWSER'
+            ? invitation.test.normalBrowserReminderEmailBody
+            : invitation.test.reminderEmailBody,
+          assessmentMode: invitation.test.assessmentMode === 'NORMAL_BROWSER' ? 'NORMAL_BROWSER' : 'SEB',
         });
 
         await prisma.testInvitation.update({

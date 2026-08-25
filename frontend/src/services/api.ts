@@ -252,6 +252,7 @@ export const adminApi = {
     reminderEmailSubject?: string;
     reminderEmailBody?: string;
     reminderHoursBeforeClose?: number;
+    templateMode?: 'SEB' | 'NORMAL_BROWSER';
   }) => api.put(`/admin/tests/${testId}/email-templates`, data),
 
   // MCQ Questions

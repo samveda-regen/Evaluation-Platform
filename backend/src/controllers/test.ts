@@ -12,6 +12,12 @@ import {
   DEFAULT_CONFIRM_BODY,
   DEFAULT_REMINDER_SUBJECT,
   DEFAULT_REMINDER_BODY,
+  DEFAULT_NORMAL_BROWSER_INVITE_SUBJECT,
+  DEFAULT_NORMAL_BROWSER_INVITE_BODY,
+  DEFAULT_NORMAL_BROWSER_CONFIRM_SUBJECT,
+  DEFAULT_NORMAL_BROWSER_CONFIRM_BODY,
+  DEFAULT_NORMAL_BROWSER_REMINDER_SUBJECT,
+  DEFAULT_NORMAL_BROWSER_REMINDER_BODY,
 } from '../services/emailService.js';
 import {
   DEFAULT_CUSTOM_AI_VIOLATION_EVENTS,
@@ -321,6 +327,7 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
         requireScreenShare: requireScreenShare || false,
         requireIdVerification: requireIdVerification || false,
         customAIViolations: JSON.stringify(enabledAIViolations),
+        assessmentMode: req.body.assessmentMode === 'NORMAL_BROWSER' ? 'NORMAL_BROWSER' : 'SEB',
         adminId: req.admin!.id,
         ...(adminRecord.companyId ? { companyId: adminRecord.companyId } : {})
       }
@@ -665,6 +672,11 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
     if (updates.customAIViolations !== undefined) {
       const parsedCustomAIViolations = normalizeCustomAIViolationEvents(updates.customAIViolations);
       sanitizedUpdates.customAIViolations = JSON.stringify(parsedCustomAIViolations);
+    }
+    if (updates.assessmentMode !== undefined) {
+      sanitizedUpdates.assessmentMode = updates.assessmentMode === 'NORMAL_BROWSER'
+        ? 'NORMAL_BROWSER'
+        : 'SEB';
     }
 
     if (updates.totalMarks) sanitizedUpdates.totalMarks = parseInt(updates.totalMarks);
@@ -1642,12 +1654,19 @@ export async function reorderTestQuestions(req: AuthenticatedRequest, res: Respo
 
 
 type EmailTemplateRow = {
+  assessmentMode: string;
   inviteEmailSubject: string | null;
   inviteEmailBody: string | null;
   confirmEmailSubject: string | null;
   confirmEmailBody: string | null;
   reminderEmailSubject: string | null;
   reminderEmailBody: string | null;
+  normalBrowserInviteEmailSubject: string | null;
+  normalBrowserInviteEmailBody: string | null;
+  normalBrowserConfirmEmailSubject: string | null;
+  normalBrowserConfirmEmailBody: string | null;
+  normalBrowserReminderEmailSubject: string | null;
+  normalBrowserReminderEmailBody: string | null;
   reminderHoursBeforeClose: number;
 };
 
@@ -1658,12 +1677,19 @@ export async function getEmailTemplates(req: AuthenticatedRequest, res: Response
     const test = await (prisma.test as any).findFirst({
       where: testOwnershipWhere(req, testId),
       select: {
+        assessmentMode: true,
         inviteEmailSubject: true,
         inviteEmailBody: true,
         confirmEmailSubject: true,
         confirmEmailBody: true,
         reminderEmailSubject: true,
         reminderEmailBody: true,
+        normalBrowserInviteEmailSubject: true,
+        normalBrowserInviteEmailBody: true,
+        normalBrowserConfirmEmailSubject: true,
+        normalBrowserConfirmEmailBody: true,
+        normalBrowserReminderEmailSubject: true,
+        normalBrowserReminderEmailBody: true,
         reminderHoursBeforeClose: true,
       }
     }) as EmailTemplateRow | null;
@@ -1673,13 +1699,31 @@ export async function getEmailTemplates(req: AuthenticatedRequest, res: Response
       return;
     }
 
-    res.json({
-      inviteEmailSubject:   test.inviteEmailSubject   ?? DEFAULT_INVITE_SUBJECT,
-      inviteEmailBody:      test.inviteEmailBody      ?? DEFAULT_INVITE_BODY,
-      confirmEmailSubject:  test.confirmEmailSubject  ?? DEFAULT_CONFIRM_SUBJECT,
-      confirmEmailBody:     test.confirmEmailBody     ?? DEFAULT_CONFIRM_BODY,
+    const sebTemplates = {
+      inviteEmailSubject: test.inviteEmailSubject ?? DEFAULT_INVITE_SUBJECT,
+      inviteEmailBody: test.inviteEmailBody ?? DEFAULT_INVITE_BODY,
+      confirmEmailSubject: test.confirmEmailSubject ?? DEFAULT_CONFIRM_SUBJECT,
+      confirmEmailBody: test.confirmEmailBody ?? DEFAULT_CONFIRM_BODY,
       reminderEmailSubject: test.reminderEmailSubject ?? DEFAULT_REMINDER_SUBJECT,
-      reminderEmailBody:    test.reminderEmailBody    ?? DEFAULT_REMINDER_BODY,
+      reminderEmailBody: test.reminderEmailBody ?? DEFAULT_REMINDER_BODY,
+    };
+    const normalBrowserTemplates = {
+      inviteEmailSubject: test.normalBrowserInviteEmailSubject ?? DEFAULT_NORMAL_BROWSER_INVITE_SUBJECT,
+      inviteEmailBody: test.normalBrowserInviteEmailBody ?? DEFAULT_NORMAL_BROWSER_INVITE_BODY,
+      confirmEmailSubject: test.normalBrowserConfirmEmailSubject ?? DEFAULT_NORMAL_BROWSER_CONFIRM_SUBJECT,
+      confirmEmailBody: test.normalBrowserConfirmEmailBody ?? DEFAULT_NORMAL_BROWSER_CONFIRM_BODY,
+      reminderEmailSubject: test.normalBrowserReminderEmailSubject ?? DEFAULT_NORMAL_BROWSER_REMINDER_SUBJECT,
+      reminderEmailBody: test.normalBrowserReminderEmailBody ?? DEFAULT_NORMAL_BROWSER_REMINDER_BODY,
+    };
+    const activeTemplates = test.assessmentMode === 'NORMAL_BROWSER' ? normalBrowserTemplates : sebTemplates;
+
+    res.json({
+      ...activeTemplates,
+      assessmentMode: test.assessmentMode === 'NORMAL_BROWSER' ? 'NORMAL_BROWSER' : 'SEB',
+      templates: {
+        SEB: sebTemplates,
+        NORMAL_BROWSER: normalBrowserTemplates,
+      },
       reminderHoursBeforeClose: test.reminderHoursBeforeClose,
     });
   } catch (error) {
@@ -1696,6 +1740,7 @@ export async function updateEmailTemplates(req: AuthenticatedRequest, res: Respo
       confirmEmailSubject, confirmEmailBody,
       reminderEmailSubject, reminderEmailBody,
       reminderHoursBeforeClose,
+      templateMode,
     } = req.body as {
       inviteEmailSubject?: string;
       inviteEmailBody?: string;
@@ -1704,7 +1749,13 @@ export async function updateEmailTemplates(req: AuthenticatedRequest, res: Respo
       reminderEmailSubject?: string;
       reminderEmailBody?: string;
       reminderHoursBeforeClose?: number;
+      templateMode?: 'SEB' | 'NORMAL_BROWSER';
     };
+
+    if (templateMode !== undefined && templateMode !== 'SEB' && templateMode !== 'NORMAL_BROWSER') {
+      res.status(400).json({ error: 'templateMode must be SEB or NORMAL_BROWSER' });
+      return;
+    }
 
     if (reminderHoursBeforeClose !== undefined
       && (!Number.isFinite(reminderHoursBeforeClose) || reminderHoursBeforeClose <= 0)) {
@@ -1723,12 +1774,25 @@ export async function updateEmailTemplates(req: AuthenticatedRequest, res: Respo
     }
 
     const data: Record<string, string | number> = {};
-    if (inviteEmailSubject   !== undefined) data.inviteEmailSubject   = sanitizeInput(inviteEmailSubject);
-    if (inviteEmailBody      !== undefined) data.inviteEmailBody      = sanitizeInput(inviteEmailBody);
-    if (confirmEmailSubject  !== undefined) data.confirmEmailSubject  = sanitizeInput(confirmEmailSubject);
-    if (confirmEmailBody     !== undefined) data.confirmEmailBody     = sanitizeInput(confirmEmailBody);
-    if (reminderEmailSubject !== undefined) data.reminderEmailSubject = sanitizeInput(reminderEmailSubject);
-    if (reminderEmailBody    !== undefined) data.reminderEmailBody    = sanitizeInput(reminderEmailBody);
+    const normalBrowser = templateMode === 'NORMAL_BROWSER';
+    if (inviteEmailSubject !== undefined) {
+      data[normalBrowser ? 'normalBrowserInviteEmailSubject' : 'inviteEmailSubject'] = sanitizeInput(inviteEmailSubject);
+    }
+    if (inviteEmailBody !== undefined) {
+      data[normalBrowser ? 'normalBrowserInviteEmailBody' : 'inviteEmailBody'] = sanitizeInput(inviteEmailBody);
+    }
+    if (confirmEmailSubject !== undefined) {
+      data[normalBrowser ? 'normalBrowserConfirmEmailSubject' : 'confirmEmailSubject'] = sanitizeInput(confirmEmailSubject);
+    }
+    if (confirmEmailBody !== undefined) {
+      data[normalBrowser ? 'normalBrowserConfirmEmailBody' : 'confirmEmailBody'] = sanitizeInput(confirmEmailBody);
+    }
+    if (reminderEmailSubject !== undefined) {
+      data[normalBrowser ? 'normalBrowserReminderEmailSubject' : 'reminderEmailSubject'] = sanitizeInput(reminderEmailSubject);
+    }
+    if (reminderEmailBody !== undefined) {
+      data[normalBrowser ? 'normalBrowserReminderEmailBody' : 'reminderEmailBody'] = sanitizeInput(reminderEmailBody);
+    }
     if (reminderHoursBeforeClose !== undefined) data.reminderHoursBeforeClose = Math.round(reminderHoursBeforeClose);
 
     await (prisma.test as any).update({ where: { id: testId }, data });

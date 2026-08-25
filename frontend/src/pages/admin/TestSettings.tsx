@@ -11,13 +11,18 @@ type Panel = 'general' | 'access' |'assessmentmode'| 'behavior' | 'grading' | 'e
 
 type EmailTab = 'invite' | 'confirm' | 'reminder';
 
-interface EmailTemplates {
+interface EmailTemplateSet {
   inviteEmailSubject: string;
   inviteEmailBody: string;
   confirmEmailSubject: string;
   confirmEmailBody: string;
   reminderEmailSubject: string;
   reminderEmailBody: string;
+}
+
+interface EmailTemplates {
+  assessmentMode: 'SEB' | 'NORMAL_BROWSER';
+  templates: Record<'SEB' | 'NORMAL_BROWSER', EmailTemplateSet>;
   reminderHoursBeforeClose: number;
 }
 
@@ -71,6 +76,7 @@ interface FormState {
   autoApproveId: boolean;
   idVerificationAutoApproveThreshold: number;
   allowAccessCode: boolean;
+  assessmentMode: 'SEB' | 'NORMAL_BROWSER';
   /* Test behavior */
   shuffleQuestions: boolean;
   shuffleOptions: boolean;
@@ -153,6 +159,7 @@ function toFormState(t: Test): FormState {
     autoApproveId:         t.autoApproveId ?? false,
     idVerificationAutoApproveThreshold: t.idVerificationAutoApproveThreshold ?? 75,
     allowAccessCode:       booleanSetting(ext, settings, 'allowAccessCode', false),
+    assessmentMode:        t.assessmentMode === 'NORMAL_BROWSER' ? 'NORMAL_BROWSER' : 'SEB',
     shuffleQuestions:      t.shuffleQuestions ?? false,
     shuffleOptions:        t.shuffleOptions ?? false,
     showTimer:             booleanSetting(ext, settings, 'showTimer', true),
@@ -263,7 +270,6 @@ export default function TestSettings() {
   const [customCategoryInput, setCustomCategoryInput] = useState('');
   const customCategoryInputRef = useRef<HTMLInputElement | null>(null);
   const emailBodyRef = useRef<HTMLTextAreaElement | null>(null);
-  const [assessmentMode, setAssessmentMode] = useState<'seb' | 'browser'>('seb');
 
   useEffect(() => {
     if (customCategoryOpen) customCategoryInputRef.current?.focus();
@@ -273,6 +279,7 @@ export default function TestSettings() {
   const [emailTab,          setEmailTab]           = useState<EmailTab>('invite');
   const [emailTemplates,    setEmailTemplates]     = useState<EmailTemplates | null>(null);
   const [emailEditing,      setEmailEditing]       = useState<EmailTab | null>(null);
+  const [emailEditingMode,  setEmailEditingMode]   = useState<'SEB' | 'NORMAL_BROWSER'>('SEB');
   const [emailDraft,        setEmailDraft]         = useState<{ subject: string; body: string }>({ subject: '', body: '' });
   const [emailSaving,       setEmailSaving]        = useState(false);
   const [reminderHoursDraft, setReminderHoursDraft] = useState<number>(24);
@@ -330,14 +337,16 @@ const insertEmailToken = (token: string) => {
 
 
   const openEmailEdit = (tab: EmailTab) => {
-    if (!emailTemplates) return;
+    if (!emailTemplates || !form) return;
+    const activeTemplates = emailTemplates.templates[form.assessmentMode];
     setEmailDraft(
       tab === 'invite'
-        ? { subject: emailTemplates.inviteEmailSubject, body: emailTemplates.inviteEmailBody }
+        ? { subject: activeTemplates.inviteEmailSubject, body: activeTemplates.inviteEmailBody }
         : tab === 'reminder'
-          ? { subject: emailTemplates.reminderEmailSubject, body: emailTemplates.reminderEmailBody }
-          : { subject: emailTemplates.confirmEmailSubject, body: emailTemplates.confirmEmailBody }
+          ? { subject: activeTemplates.reminderEmailSubject, body: activeTemplates.reminderEmailBody }
+          : { subject: activeTemplates.confirmEmailSubject, body: activeTemplates.confirmEmailBody }
     );
+    setEmailEditingMode(form.assessmentMode);
     setEmailEditing(tab);
   };
 
@@ -350,8 +359,14 @@ const insertEmailToken = (token: string) => {
         : emailEditing === 'reminder'
           ? { reminderEmailSubject: emailDraft.subject, reminderEmailBody: emailDraft.body }
           : { confirmEmailSubject: emailDraft.subject, confirmEmailBody: emailDraft.body };
-      await adminApi.updateEmailTemplates(testId, patch);
-      setEmailTemplates(prev => prev ? { ...prev, ...patch } : prev);
+      await adminApi.updateEmailTemplates(testId, { ...patch, templateMode: emailEditingMode });
+      setEmailTemplates(prev => prev ? {
+        ...prev,
+        templates: {
+          ...prev.templates,
+          [emailEditingMode]: { ...prev.templates[emailEditingMode], ...patch },
+        },
+      } : prev);
       setEmailEditing(null);
       toast.success('Email template saved');
     } catch { toast.error('Failed to save email template'); }
@@ -398,6 +413,7 @@ const insertEmailToken = (token: string) => {
         autoApproveId:         form.autoApproveId,
         idVerificationAutoApproveThreshold: form.idVerificationAutoApproveThreshold,
         allowAccessCode:       form.allowAccessCode,
+        assessmentMode:        form.assessmentMode,
         shuffleQuestions:      form.shuffleQuestions,
         shuffleOptions:        form.shuffleOptions,
         showTimer:             form.showTimer,
@@ -441,7 +457,7 @@ const insertEmailToken = (token: string) => {
   const PANELS: { id: Panel; label: string }[] = [
     { id:'general',  label:'General' },
     { id:'access',   label:'Access & scheduling' },
-    { id:'assessmentmode',   label:'Mode of Asseessment' },
+    { id:'assessmentmode',   label:'Mode of Assessment' },
     { id:'behavior', label:'Test behavior' },
     { id:'grading',  label:'Results & grading' },
     { id:'email',    label:'Email' },
@@ -708,17 +724,18 @@ const insertEmailToken = (token: string) => {
       </label>
 
       <CustomSelect
-        value={assessmentMode}
-        onChange={(value) =>
-          setAssessmentMode(value as 'seb' | 'browser')
-        }
+        value={form.assessmentMode}
+        onChange={(value) => {
+          patch({ assessmentMode: value as 'SEB' | 'NORMAL_BROWSER' });
+          setEmailEditing(null);
+        }}
         options={[
           {
-            value: 'seb',
+            value: 'SEB',
             label: 'Safe Exam Browser',
           },
           {
-            value: 'browser',
+            value: 'NORMAL_BROWSER',
             label: 'Normal Browser',
           },
         ]}
@@ -795,6 +812,9 @@ const insertEmailToken = (token: string) => {
                 <p style={{ fontSize:'13px', color:'var(--admin-text-muted)', margin:'0 0 20px' }}>
                   Customize the emails sent to candidates during the assessment lifecycle.
                 </p>
+                <div style={{ marginBottom:'16px', padding:'10px 12px', borderRadius:'9px', backgroundColor:'var(--admin-accent-soft)', color:'var(--admin-accent-hover)', fontSize:'12px', fontWeight:600 }}>
+                  Editing {form.assessmentMode === 'SEB' ? 'Safe Exam Browser' : 'Normal Browser'} email templates. Changing the assessment mode automatically switches this template set.
+                </div>
 
                 {/* Tabs */}
                 <div style={{ display:'flex', borderBottom:'2px solid var(--admin-border)', marginBottom:'24px' }}>
@@ -814,20 +834,21 @@ const insertEmailToken = (token: string) => {
                 </div>
 
                 {emailTemplates && (() => {
+                  const activeTemplates = emailTemplates.templates[form.assessmentMode];
                   const isInvite = emailTab === 'invite';
                   const isReminder = emailTab === 'reminder';
-                  const subject = isInvite ? emailTemplates.inviteEmailSubject
-                    : isReminder ? emailTemplates.reminderEmailSubject
-                    : emailTemplates.confirmEmailSubject;
-                  const body = isInvite ? emailTemplates.inviteEmailBody
-                    : isReminder ? emailTemplates.reminderEmailBody
-                    : emailTemplates.confirmEmailBody;
+                  const subject = isInvite ? activeTemplates.inviteEmailSubject
+                    : isReminder ? activeTemplates.reminderEmailSubject
+                    : activeTemplates.confirmEmailSubject;
+                  const body = isInvite ? activeTemplates.inviteEmailBody
+                    : isReminder ? activeTemplates.reminderEmailBody
+                    : activeTemplates.confirmEmailBody;
                   const editKey = emailTab;
                   const isVarApplicable = (key: string) => {
                     if (INVITE_ONLY_VAR_KEYS.has(key)) return isInvite;
                     if (REMINDER_ONLY_VAR_KEYS.has(key)) return isReminder;
                     if (INVITE_AND_REMINDER_VAR_KEYS.has(key)) return isInvite || isReminder;
-                    if (SEB_BUTTON_VAR_KEYS.has(key)) return isInvite || isReminder;
+                    if (SEB_BUTTON_VAR_KEYS.has(key)) return form.assessmentMode === 'SEB' && (isInvite || isReminder);
                     return true;
                   };
                   return (

@@ -914,27 +914,29 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
       const frameData = await takeWebcamSnapshot();
 
       let clientViolations: ReturnType<typeof detectionsToViolations> | undefined;
-      try {
-        const activeVideo = getActiveVideoElement();
-        if (activeVideo) {
-          const clientSession = await loadClientVisionModel();
-          const detections = await runClientDetection(clientSession, activeVideo);
-          clientViolations = detectionsToViolations(detections);
-          traceLog('client_vision_detection', {
-            sessionId: session.sessionId,
-            detectionCount: detections.length,
-            violationCount: clientViolations.length,
-            violationTypes: clientViolations.map(v => v.eventType),
-          });
-        }
-      } catch (clientVisionError) {
+      if (session.detectionMode === 'client') {
+        try {
+          const activeVideo = getActiveVideoElement();
+          if (activeVideo) {
+            const clientSession = await loadClientVisionModel();
+            const detections = await runClientDetection(clientSession, activeVideo);
+            clientViolations = detectionsToViolations(detections);
+            traceLog('client_vision_detection', {
+              sessionId: session.sessionId,
+              detectionCount: detections.length,
+              violationCount: clientViolations.length,
+              violationTypes: clientViolations.map(v => v.eventType),
+            });
+          }
+        } catch (clientVisionError) {
         // Model failed to load or infer this cycle — leave clientViolations
         // undefined so the backend's own python_cv_service fallback covers
         // this cycle instead of proctoring silently going dark.
-        traceLog('client_vision_error', {
-          sessionId: session.sessionId,
-          message: clientVisionError instanceof Error ? clientVisionError.message : 'unknown',
-        });
+          traceLog('client_vision_error', {
+            sessionId: session.sessionId,
+            message: clientVisionError instanceof Error ? clientVisionError.message : 'unknown',
+          });
+        }
       }
 
       traceLog('snapshot_analysis', {

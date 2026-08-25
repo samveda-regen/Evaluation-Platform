@@ -213,6 +213,7 @@ model Test {
   idVerificationAutoApproveThreshold Float?
   allowMobileProctoring Boolean @default(false)
   customAIViolations    String? // JSON array of enabled proctoring violation event types
+  assessmentMode       String  @default("SEB") // SEB | NORMAL_BROWSER
 
   // Email templates ({{candidate_name}}, {{test_name}}, {{company_name}}, {{estimated_time}}, {{test_link}})
   inviteEmailSubject    String?
@@ -221,6 +222,12 @@ model Test {
   confirmEmailBody      String?
   reminderEmailSubject  String?
   reminderEmailBody     String?
+  normalBrowserInviteEmailSubject   String?
+  normalBrowserInviteEmailBody      String?
+  normalBrowserConfirmEmailSubject  String?
+  normalBrowserConfirmEmailBody     String?
+  normalBrowserReminderEmailSubject String?
+  normalBrowserReminderEmailBody    String?
   // Hours before endTime the reminder sweep emails candidates who haven't started yet
   reminderHoursBeforeClose Int @default(24)
 

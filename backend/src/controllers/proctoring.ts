@@ -384,6 +384,7 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
             requireMicrophone: true,
             requireScreenShare: true,
             customAIViolations: true,
+            assessmentMode: true,
           },
         },
       },
@@ -417,6 +418,8 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
         monitorCount: normalizedMonitorCount,
         externalMonitorDetected: normalizedMonitorCount > 1,
         enabledAIViolations,
+        assessmentMode: attempt.test.assessmentMode,
+        detectionMode: attempt.test.assessmentMode === 'NORMAL_BROWSER' ? 'server' : 'client',
         ipAddress: req.ip,
         sessionUpdatedAt: new Date().toISOString(),
       };
@@ -454,6 +457,7 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
           microphone: TEMP_DISABLE_AUDIO_PROCTORING ? false : attempt.test.requireMicrophone,
           screenShare: attempt.test.requireScreenShare,
         },
+        detectionMode: attempt.test.assessmentMode === 'NORMAL_BROWSER' ? 'server' : 'client',
       });
 
       emitToProctorTargets(attempt.testId, attemptId, 'candidate-status', {
@@ -490,6 +494,8 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
       monitorCount: normalizedMonitorCount,
       externalMonitorDetected: normalizedMonitorCount > 1,
       enabledAIViolations,
+      assessmentMode: attempt.test.assessmentMode,
+      detectionMode: attempt.test.assessmentMode === 'NORMAL_BROWSER' ? 'server' : 'client',
       ipAddress: req.ip,
       sessionStartedAt: new Date().toISOString(),
     };
@@ -527,6 +533,7 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
         microphone: TEMP_DISABLE_AUDIO_PROCTORING ? false : attempt.test.requireMicrophone,
         screenShare: attempt.test.requireScreenShare,
       },
+      detectionMode: attempt.test.assessmentMode === 'NORMAL_BROWSER' ? 'server' : 'client',
     });
 
     emitToProctorTargets(attempt.testId, attemptId, 'candidate-status', {
@@ -604,6 +611,7 @@ export const submitAnalysis = async (req: Request, res: Response): Promise<void>
               test: {
                 select: {
                   customAIViolations: true,
+                  assessmentMode: true,
                 },
               },
             },
@@ -630,6 +638,7 @@ export const submitAnalysis = async (req: Request, res: Response): Promise<void>
     const enabledEvents = new Set(
       parseStoredCustomAIViolationEvents(session.attempt.test.customAIViolations)
     );
+    const useServerVision = session.attempt.test.assessmentMode === 'NORMAL_BROWSER';
 
     const telemetryPayload = stripLargeFields({
       ...analysisData,
@@ -645,9 +654,21 @@ export const submitAnalysis = async (req: Request, res: Response): Promise<void>
       recordFrameIntervalSample(analysisData.actualIntervalMs);
     }
 
-    // Analyze proctoring data for violations
-    const violations = analyzeProctoring(analysisData);
+    // In server-vision mode, do not trust browser-produced face, gaze, object, or
+    // clientViolations fields. Browser-level signals (tab/fullscreen/audio) remain
+    // available because the server cannot observe those APIs directly.
+    const trustedAnalysisData = useServerVision
+      ? {
+          ...analysisData,
+          face: undefined,
+          gaze: undefined,
+          objects: undefined,
+          clientViolations: undefined,
+        }
+      : analysisData;
+    const violations = analyzeProctoring(trustedAnalysisData);
     let pythonResult: Awaited<ReturnType<typeof analyzeFrameWithPythonForSession>> = null;
+    const hasClientVisionResult = !useServerVision && Array.isArray(analysisData.clientViolations);
     proctorTrace('local_analysis', {
       sessionId,
       localViolationCount: violations.length,
@@ -659,7 +680,7 @@ export const submitAnalysis = async (req: Request, res: Response): Promise<void>
     // authoritative for this cycle and python_cv_service is skipped below —
     // it only runs as a fallback for cycles where client-side inference
     // didn't produce a result (model still loading, inference error, etc).
-    if (analysisData.clientViolations?.length) {
+    if (hasClientVisionResult && analysisData.clientViolations?.length) {
       proctorTrace('client_vision_result', {
         sessionId,
         clientViolationCount: analysisData.clientViolations.length,
@@ -684,7 +705,7 @@ export const submitAnalysis = async (req: Request, res: Response): Promise<void>
 
     // Optional Python CV service violations (OpenCV/YOLO) — only when the
     // client didn't already produce a result this cycle (see above).
-    if (analysisData.frameData && !analysisData.clientViolations?.length) {
+    if (analysisData.frameData && !hasClientVisionResult) {
       pythonResult = await analyzeFrameWithPythonForSession(analysisData.frameData, sessionId, analysisData.timestamp);
       proctorTrace('python_cv_result', {
         sessionId,

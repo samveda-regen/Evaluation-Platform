@@ -76,7 +76,11 @@ export async function getInvitationSebConfig(req: AuthenticatedRequest, res: Res
     // Non-consuming lookup — only validates the token/test are still usable.
     // The actual login (and single-use consumption) happens once the
     // candidate continues inside SEB, same as the normal browser flow.
-    await getPublicInvitationDetails(token);
+    const details = await getPublicInvitationDetails(token);
+    if (details.test.assessmentMode !== 'SEB') {
+      res.status(400).json({ error: 'Safe Exam Browser is not enabled for this assessment.' });
+      return;
+    }
 
     const startUrl = buildInviteLink(token);
 const quitUrl = buildSebQuitLink(token);

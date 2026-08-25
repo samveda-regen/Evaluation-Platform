@@ -534,6 +534,13 @@ async function startServer(): Promise<void> {
     await prisma.$executeRaw`ALTER TABLE "Test" ADD COLUMN IF NOT EXISTS "confirmEmailBody" TEXT`;
     await prisma.$executeRaw`ALTER TABLE "Test" ADD COLUMN IF NOT EXISTS "inviteEmailSubject" TEXT`;
     await prisma.$executeRaw`ALTER TABLE "Test" ADD COLUMN IF NOT EXISTS "inviteEmailBody" TEXT`;
+    await prisma.$executeRaw`ALTER TABLE "Test" ADD COLUMN IF NOT EXISTS "assessmentMode" TEXT NOT NULL DEFAULT 'SEB'`;
+    await prisma.$executeRaw`ALTER TABLE "Test" ADD COLUMN IF NOT EXISTS "normalBrowserInviteEmailSubject" TEXT`;
+    await prisma.$executeRaw`ALTER TABLE "Test" ADD COLUMN IF NOT EXISTS "normalBrowserInviteEmailBody" TEXT`;
+    await prisma.$executeRaw`ALTER TABLE "Test" ADD COLUMN IF NOT EXISTS "normalBrowserConfirmEmailSubject" TEXT`;
+    await prisma.$executeRaw`ALTER TABLE "Test" ADD COLUMN IF NOT EXISTS "normalBrowserConfirmEmailBody" TEXT`;
+    await prisma.$executeRaw`ALTER TABLE "Test" ADD COLUMN IF NOT EXISTS "normalBrowserReminderEmailSubject" TEXT`;
+    await prisma.$executeRaw`ALTER TABLE "Test" ADD COLUMN IF NOT EXISTS "normalBrowserReminderEmailBody" TEXT`;
     console.log('Test extended columns: ready');
 
     // Recruiter-platform integration: company-scoped candidates, multi-partner

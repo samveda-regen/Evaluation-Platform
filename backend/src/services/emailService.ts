@@ -52,6 +52,49 @@ Our team will review your results and get back to you soon.
 Best regards,
 {{company_name}} Team`;
 
+export const DEFAULT_NORMAL_BROWSER_INVITE_SUBJECT = "You're invited to take an online assessment: {{test_name}}";
+export const DEFAULT_NORMAL_BROWSER_INVITE_BODY = `Hello {{candidate_name}},
+
+You have been invited to take the assessment: {{test_name}}.
+
+Exam date: {{exam_start}} to {{exam_end}}
+Duration: Approximately {{estimated_time}}
+Access code: {{access_code}}
+
+You can complete this assessment in a supported web browser. No Safe Exam Browser installation is required.
+
+Open the assessment: {{test_link}}
+
+If you have any questions, feel free to reach out to us.
+
+Best regards,
+{{company_name}} Team`;
+
+export const DEFAULT_NORMAL_BROWSER_REMINDER_SUBJECT = "Reminder: {{test_name}} closes soon";
+export const DEFAULT_NORMAL_BROWSER_REMINDER_BODY = `Hello {{candidate_name}},
+
+This is a reminder that you haven't started your assessment yet: {{test_name}}.
+
+Duration: Approximately {{estimated_time}}
+Access code: {{access_code}}
+
+Open the assessment in your web browser: {{test_link}}
+
+Please complete it before the access window closes on {{closes_at}}.
+
+Best regards,
+{{company_name}} Team`;
+
+export const DEFAULT_NORMAL_BROWSER_CONFIRM_SUBJECT = "Thanks for completing {{test_name}}";
+export const DEFAULT_NORMAL_BROWSER_CONFIRM_BODY = `Hello {{candidate_name}},
+
+Thank you for completing the assessment: {{test_name}}.
+We appreciate the time and effort you put into it.
+Our team will review your results and get back to you soon.
+
+Best regards,
+{{company_name}} Team`;
+
 // ── Placeholder substitution ─────────────────────────────────────────────────
 interface TemplateVars {
   candidate_name: string;
@@ -233,6 +276,7 @@ interface InvitationEmailPayload {
   // custom templates (if set on the test)
   inviteEmailSubject?: string | null;
   inviteEmailBody?: string | null;
+  assessmentMode?: 'SEB' | 'NORMAL_BROWSER';
 }
 
 interface ReminderEmailPayload {
@@ -247,6 +291,7 @@ interface ReminderEmailPayload {
   // custom templates (if set on the test)
   reminderEmailSubject?: string | null;
   reminderEmailBody?: string | null;
+  assessmentMode?: 'SEB' | 'NORMAL_BROWSER';
 }
 
 interface ConfirmationEmailPayload {
@@ -257,6 +302,7 @@ interface ConfirmationEmailPayload {
   // custom templates (if set on the test)
   confirmEmailSubject?: string | null;
   confirmEmailBody?: string | null;
+  assessmentMode?: 'SEB' | 'NORMAL_BROWSER';
 }
 
 interface ResultEmailPayload {
@@ -520,7 +566,9 @@ function appendSebPlainTextLine(text: string, testLink: string): string {
 }
 
 function renderInviteBody(payload: InvitationEmailPayload): string {
-  const templateBody = payload.inviteEmailBody || DEFAULT_INVITE_BODY;
+  const templateBody = payload.inviteEmailBody || (payload.assessmentMode === 'NORMAL_BROWSER'
+    ? DEFAULT_NORMAL_BROWSER_INVITE_BODY
+    : DEFAULT_INVITE_BODY);
   return applyTemplate(templateBody, {
     candidate_name: payload.candidateName,
     test_name:      payload.testName,
@@ -539,7 +587,9 @@ function buildInviteText(payload: InvitationEmailPayload): string {
 }
 
 function buildInviteSubject(payload: InvitationEmailPayload): string {
-  const templateSubject = payload.inviteEmailSubject || DEFAULT_INVITE_SUBJECT;
+  const templateSubject = payload.inviteEmailSubject || (payload.assessmentMode === 'NORMAL_BROWSER'
+    ? DEFAULT_NORMAL_BROWSER_INVITE_SUBJECT
+    : DEFAULT_INVITE_SUBJECT);
   return applyTemplate(templateSubject, {
     candidate_name: payload.candidateName,
     test_name:      payload.testName,
@@ -557,13 +607,15 @@ function buildInviteHtml(payload: InvitationEmailPayload): string {
   const text = renderInviteBody(payload);
 
   return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#374151;max-width:600px">
-${renderEmailBodyWithSebButtons(text, payload.testLink)}
+${payload.assessmentMode === 'NORMAL_BROWSER' ? textToHtml(text) : renderEmailBodyWithSebButtons(text, payload.testLink)}
 </div>`;
 }
 
 // ── Build reminder email from template ────────────────────────────────────────
 function renderReminderBody(payload: ReminderEmailPayload): string {
-  const templateBody = payload.reminderEmailBody || DEFAULT_REMINDER_BODY;
+  const templateBody = payload.reminderEmailBody || (payload.assessmentMode === 'NORMAL_BROWSER'
+    ? DEFAULT_NORMAL_BROWSER_REMINDER_BODY
+    : DEFAULT_REMINDER_BODY);
   return applyTemplate(templateBody, {
     candidate_name: payload.candidateName,
     test_name:      payload.testName,
@@ -582,7 +634,9 @@ function buildReminderText(payload: ReminderEmailPayload): string {
 }
 
 function buildReminderSubject(payload: ReminderEmailPayload): string {
-  const templateSubject = payload.reminderEmailSubject || DEFAULT_REMINDER_SUBJECT;
+  const templateSubject = payload.reminderEmailSubject || (payload.assessmentMode === 'NORMAL_BROWSER'
+    ? DEFAULT_NORMAL_BROWSER_REMINDER_SUBJECT
+    : DEFAULT_REMINDER_SUBJECT);
   return applyTemplate(templateSubject, {
     candidate_name: payload.candidateName,
     test_name:      payload.testName,
@@ -600,13 +654,15 @@ function buildReminderHtml(payload: ReminderEmailPayload): string {
   const text = renderReminderBody(payload);
 
   return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#374151;max-width:600px">
-${renderEmailBodyWithSebButtons(text, payload.testLink)}
+${payload.assessmentMode === 'NORMAL_BROWSER' ? textToHtml(text) : renderEmailBodyWithSebButtons(text, payload.testLink)}
 </div>`;
 }
 
 // ── Build confirmation email from template ────────────────────────────────────
 function buildConfirmText(payload: ConfirmationEmailPayload): string {
-  const templateBody = payload.confirmEmailBody || DEFAULT_CONFIRM_BODY;
+  const templateBody = payload.confirmEmailBody || (payload.assessmentMode === 'NORMAL_BROWSER'
+    ? DEFAULT_NORMAL_BROWSER_CONFIRM_BODY
+    : DEFAULT_CONFIRM_BODY);
   return applyTemplate(templateBody, {
     candidate_name: payload.candidateName,
     test_name:      payload.testName,
@@ -621,7 +677,9 @@ function buildConfirmText(payload: ConfirmationEmailPayload): string {
 }
 
 function buildConfirmSubject(payload: ConfirmationEmailPayload): string {
-  const templateSubject = payload.confirmEmailSubject || DEFAULT_CONFIRM_SUBJECT;
+  const templateSubject = payload.confirmEmailSubject || (payload.assessmentMode === 'NORMAL_BROWSER'
+    ? DEFAULT_NORMAL_BROWSER_CONFIRM_SUBJECT
+    : DEFAULT_CONFIRM_SUBJECT);
   return applyTemplate(templateSubject, {
     candidate_name: payload.candidateName,
     test_name:      payload.testName,

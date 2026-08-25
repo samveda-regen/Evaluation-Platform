@@ -15,6 +15,7 @@ interface TestState {
   requireCamera: boolean;
   requireMicrophone: boolean;
   requireScreenShare: boolean;
+  assessmentMode: 'SEB' | 'NORMAL_BROWSER';
   customAIViolations: string[];
   violationPopupSettings: { enabled: boolean; durationSeconds: number };
   startTime: Date | null;
@@ -47,6 +48,7 @@ interface TestState {
     requireCamera: boolean;
     requireMicrophone: boolean;
     requireScreenShare: boolean;
+    assessmentMode?: 'SEB' | 'NORMAL_BROWSER';
     customAIViolations?: string[];
     violationPopupSettings?: { enabled: boolean; durationSeconds: number };
     startTime: Date;
@@ -84,6 +86,7 @@ export const useTestStore = create<TestState>((set, get) => ({
   requireCamera: false,
   requireMicrophone: false,
   requireScreenShare: false,
+  assessmentMode: 'SEB',
   customAIViolations: [...DEFAULT_CUSTOM_AI_VIOLATIONS],
   violationPopupSettings: { enabled: false, durationSeconds: 2 },
   startTime: null,
@@ -116,6 +119,7 @@ export const useTestStore = create<TestState>((set, get) => ({
     requireCamera: data.requireCamera,
     requireMicrophone: data.requireMicrophone,
     requireScreenShare: data.requireScreenShare,
+    assessmentMode: data.assessmentMode ?? 'SEB',
     customAIViolations: normalizeCustomAIViolationSelection(data.customAIViolations),
     violationPopupSettings: data.violationPopupSettings ?? { enabled: false, durationSeconds: 2 },
     startTime: data.startTime,
@@ -214,6 +218,7 @@ export const useTestStore = create<TestState>((set, get) => ({
     requireCamera: false,
     requireMicrophone: false,
     requireScreenShare: false,
+    assessmentMode: 'SEB',
     customAIViolations: [...DEFAULT_CUSTOM_AI_VIOLATIONS],
     violationPopupSettings: { enabled: false, durationSeconds: 2 },
     startTime: null,

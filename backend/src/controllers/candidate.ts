@@ -206,7 +206,8 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
         },
         orderBy: {
           startTime: 'desc'
-        }
+        },
+        include: { test: { select: { assessmentMode: true } } },
       });
 
       if (!resumableAttempt) {
@@ -232,6 +233,7 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
 
       res.json({
         message: 'Resuming test session',
+        assessmentMode: resumableAttempt.test.assessmentMode === 'NORMAL_BROWSER' ? 'NORMAL_BROWSER' : 'SEB',
         candidate: {
           id: candidate.id,
           email: candidate.email,
@@ -281,6 +283,7 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
 
         res.json({
           message: 'Resuming test session',
+          assessmentMode: test?.assessmentMode === 'NORMAL_BROWSER' ? 'NORMAL_BROWSER' : 'SEB',
           candidate: {
             id: candidate.id,
             email: candidate.email,
@@ -317,6 +320,7 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
 
         res.json({
           message: 'Permission granted',
+          assessmentMode: test?.assessmentMode === 'NORMAL_BROWSER' ? 'NORMAL_BROWSER' : 'SEB',
           candidate: {
             id: candidate.id,
             email: candidate.email,
@@ -361,6 +365,7 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
 
       res.json({
         message: 'New attempt started',
+        assessmentMode: test?.assessmentMode === 'NORMAL_BROWSER' ? 'NORMAL_BROWSER' : 'SEB',
         candidate: {
           id: candidate.id,
           email: candidate.email,
@@ -426,6 +431,7 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
 
         res.json({
           message: 'Resuming test session',
+          assessmentMode: test?.assessmentMode === 'NORMAL_BROWSER' ? 'NORMAL_BROWSER' : 'SEB',
           candidate: {
             id: candidate.id,
             email: candidate.email,
@@ -464,6 +470,7 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
 
     res.json({
       message: authMode === 'signup' ? 'Sign up successful' : createdCandidate ? 'Account created and logged in' : 'Login successful',
+      assessmentMode: test?.assessmentMode === 'NORMAL_BROWSER' ? 'NORMAL_BROWSER' : 'SEB',
       candidate: {
         id: candidate.id,
         email: candidate.email,
@@ -557,7 +564,8 @@ export async function getTestDetails(req: AuthenticatedRequest, res: Response): 
           customAIViolations: true,
           shuffleQuestions: true,
           shuffleOptions: true,
-          maxViolations: true
+          maxViolations: true,
+          assessmentMode: true,
         }
       }),
       prisma.testAttempt.findUnique({
@@ -633,6 +641,7 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
             id: true,
             maxViolations: true,
             customAIViolations: true,
+            assessmentMode: true,
           },
         },
         candidate: { select: { name: true, email: true } },
@@ -1030,6 +1039,7 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
         requireMicrophone: startRequireMicrophone,
         requireScreenShare: startRequireScreenShare,
         maxViolations: test.maxViolations,
+        assessmentMode: test.assessmentMode === 'NORMAL_BROWSER' ? 'NORMAL_BROWSER' : 'SEB',
         customAIViolations: parseStoredCustomAIViolationEvents(test.customAIViolations),
         violationPopupSettings: violationPopupSettingsRaw || undefined,
         showTimer: startShowTimer,
@@ -1980,14 +1990,25 @@ export async function performSubmission(attemptId: string, testId: string, autoS
           // in that case we fall back silently to the default templates.
           let confirmEmailSubject: string | undefined;
           let confirmEmailBody: string | undefined;
+          let confirmationAssessmentMode: 'SEB' | 'NORMAL_BROWSER' = 'SEB';
           try {
             const rows = await prisma.$queryRaw<Array<{
+              assessmentMode: string;
               confirmEmailSubject: string | null;
               confirmEmailBody: string | null;
-            }>>`SELECT "confirmEmailSubject", "confirmEmailBody" FROM "Test" WHERE id = ${testId}`;
+              normalBrowserConfirmEmailSubject: string | null;
+              normalBrowserConfirmEmailBody: string | null;
+            }>>`SELECT "assessmentMode", "confirmEmailSubject", "confirmEmailBody",
+                       "normalBrowserConfirmEmailSubject", "normalBrowserConfirmEmailBody"
+                FROM "Test" WHERE id = ${testId}`;
             if (rows.length > 0) {
-              confirmEmailSubject = rows[0].confirmEmailSubject ?? undefined;
-              confirmEmailBody    = rows[0].confirmEmailBody    ?? undefined;
+              confirmationAssessmentMode = rows[0].assessmentMode === 'NORMAL_BROWSER' ? 'NORMAL_BROWSER' : 'SEB';
+              confirmEmailSubject = confirmationAssessmentMode === 'NORMAL_BROWSER'
+                ? rows[0].normalBrowserConfirmEmailSubject ?? undefined
+                : rows[0].confirmEmailSubject ?? undefined;
+              confirmEmailBody = confirmationAssessmentMode === 'NORMAL_BROWSER'
+                ? rows[0].normalBrowserConfirmEmailBody ?? undefined
+                : rows[0].confirmEmailBody ?? undefined;
             }
           } catch {
             // columns not in DB yet — use default templates (safe to continue)
@@ -2000,6 +2021,7 @@ export async function performSubmission(attemptId: string, testId: string, autoS
             companyName,
             confirmEmailSubject,
             confirmEmailBody,
+            assessmentMode: confirmationAssessmentMode,
           });
           console.log(`Confirmation email sent to ${candidateEmail} for test "${testRow.name}"`);
         } catch (err) {
