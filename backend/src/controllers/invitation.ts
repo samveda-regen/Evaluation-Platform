@@ -35,6 +35,7 @@ export async function sendTestInvitations(req: AuthenticatedRequest, res: Respon
     const summary = await sendBulkTestInvitations({
       testId,
       adminId: req.admin!.id,
+      companyId: req.admin!.companyId,
       file: req.file,
       customMessage
     });
@@ -104,11 +105,12 @@ const xml = buildSebConfigXml(startUrl, quitUrl);
 export async function getInvitationDashboard(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const adminId = req.admin!.id;
+    const companyId = req.admin!.companyId;
     const now = new Date();
 
     const invitations = await prisma.testInvitation.findMany({
       where: {
-        test: { adminId },
+        test: companyId ? { companyId } : { adminId },
         status: { in: ['PENDING', 'SENT'] }
       },
       select: {
@@ -198,10 +200,11 @@ export async function getTestInvitationDashboard(req: AuthenticatedRequest, res:
   try {
     const { testId } = req.params;
     const adminId = req.admin!.id;
+    const companyId = req.admin!.companyId;
     const now = new Date();
 
     const test = await prisma.test.findFirst({
-      where: { id: testId, adminId },
+      where: companyId ? { id: testId, companyId } : { id: testId, adminId },
       select: { id: true, name: true, endTime: true }
     });
 
@@ -317,12 +320,13 @@ export async function deleteTestInvitationCandidate(req: AuthenticatedRequest, r
   try {
     const { testId, invitationId } = req.params;
     const adminId = req.admin!.id;
+    const companyId = req.admin!.companyId;
 
     const invitation = await prisma.testInvitation.findFirst({
       where: {
         id: invitationId,
         testId,
-        test: { adminId }
+        test: companyId ? { companyId } : { adminId }
       },
       select: {
         id: true,
@@ -370,8 +374,9 @@ export async function resendTestInvitationCandidate(req: AuthenticatedRequest, r
   try {
     const { testId, invitationId } = req.params;
     const adminId = req.admin!.id;
+    const companyId = req.admin!.companyId;
 
-    const result = await resendInvitationForCandidate({ testId, adminId, invitationId });
+    const result = await resendInvitationForCandidate({ testId, adminId, companyId, invitationId });
 
     res.json({
       message: result.attemptReset

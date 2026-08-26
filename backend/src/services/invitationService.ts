@@ -435,14 +435,14 @@ async function sendInvitationEmailWithRetry(payload: InvitationEmailArgs, email:
 export async function sendBulkTestInvitations(input: {
   testId: string;
   adminId: string;
+  companyId?: string | null;
   file: Express.Multer.File;
   customMessage?: string;
 }): Promise<SendInvitationSummary> {
   const test = await (prisma.test as any).findFirst({
-    where: {
-      id: input.testId,
-      adminId: input.adminId
-    },
+    where: input.companyId
+      ? { id: input.testId, companyId: input.companyId }
+      : { id: input.testId, adminId: input.adminId },
     select: {
       id: true,
       name: true,
@@ -885,10 +885,13 @@ export interface ResendInvitationResult {
 export async function resendInvitationForCandidate(input: {
   testId: string;
   adminId: string;
+  companyId?: string | null;
   invitationId: string;
 }): Promise<ResendInvitationResult> {
   const test = await (prisma.test as any).findFirst({
-    where: { id: input.testId, adminId: input.adminId },
+    where: input.companyId
+      ? { id: input.testId, companyId: input.companyId }
+      : { id: input.testId, adminId: input.adminId },
     select: {
       id: true,
       name: true,
