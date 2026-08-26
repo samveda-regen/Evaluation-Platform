@@ -5,6 +5,7 @@ import { Request, Response } from 'express';
 import prisma from '../utils/db.js';
 import { AuthenticatedRequest } from '../types/index.js';
 import {
+  getRecordingSignedUrl,
   receiveLiveKitEgressWebhook,
   reconcileCandidateEgressRecording,
   resolveRecordingPath,
@@ -96,10 +97,20 @@ async function serveRecording(req: Request, res: Response, scope: 'stream' | 'do
       return;
     }
 
-    const absolutePath = resolveRecordingPath(recording.storageKey);
-    const stats = await fsPromises.stat(absolutePath);
     const attempt = recording.session.attempt;
     const filename = safeFilename(`${attempt.candidate.name}-${attempt.test.name}-webcam.mp4`);
+
+    if (recording.storageBucket && recording.storageBucket !== 'local-filesystem') {
+      const signedUrl = await getRecordingSignedUrl(recording.storageKey, {
+        filename,
+        disposition: scope === 'download' ? 'attachment' : 'inline',
+      });
+      res.redirect(302, signedUrl);
+      return;
+    }
+
+    const absolutePath = resolveRecordingPath(recording.storageKey);
+    const stats = await fsPromises.stat(absolutePath);
 
     res.setHeader('Content-Type', recording.mimeType || 'video/mp4');
     res.setHeader('Accept-Ranges', 'bytes');

@@ -5,9 +5,12 @@ import {
   EgressClient,
   EncodedFileOutput,
   EncodedFileType,
+  S3Upload,
   WebhookConfig,
   WebhookReceiver,
 } from 'livekit-server-sdk';
+import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import prisma from '../utils/db.js';
 
 const startLocks = new Map<string, Promise<void>>();
@@ -53,6 +56,54 @@ function egressFilepath(storageKey: string): string {
   return `${getEgressRecordingRoot().replace(/\/+$/, '')}/${storageKey}`;
 }
 
+// Optional S3-compatible bucket (e.g. Backblaze B2) for egress output. When all of
+// these are set, Egress uploads recordings directly to the bucket instead of the
+// local RECORDING_DIR, and admin playback is served via short-lived signed URLs
+// instead of streaming from local disk.
+function s3Env() {
+  const endpoint = (process.env.EGRESS_S3_ENDPOINT || '').trim();
+  const region = (process.env.EGRESS_S3_REGION || '').trim();
+  const bucket = (process.env.EGRESS_S3_BUCKET || '').trim();
+  const accessKey = (process.env.EGRESS_S3_ACCESS_KEY || '').trim();
+  const secretKey = (process.env.EGRESS_S3_SECRET_KEY || '').trim();
+  if (!endpoint || !region || !bucket || !accessKey || !secretKey) return null;
+  return { endpoint, region, bucket, accessKey, secretKey };
+}
+
+export function s3Configured(): boolean {
+  return s3Env() !== null;
+}
+
+export function s3BucketName(): string | null {
+  return s3Env()?.bucket ?? null;
+}
+
+function s3Client(): S3Client {
+  const env = s3Env();
+  if (!env) throw new Error('EGRESS_S3_* environment variables are not configured');
+  return new S3Client({
+    region: env.region,
+    endpoint: env.endpoint,
+    forcePathStyle: true,
+    credentials: { accessKeyId: env.accessKey, secretAccessKey: env.secretKey },
+  });
+}
+
+export async function getRecordingSignedUrl(
+  storageKey: string,
+  options: { filename: string; disposition: 'inline' | 'attachment' },
+): Promise<string> {
+  const env = s3Env();
+  if (!env) throw new Error('EGRESS_S3_* environment variables are not configured');
+  const command = new GetObjectCommand({
+    Bucket: env.bucket,
+    Key: storageKey,
+    ResponseContentType: 'video/mp4',
+    ResponseContentDisposition: `${options.disposition}; filename="${options.filename}"`,
+  });
+  return getSignedUrl(s3Client(), command, { expiresIn: 600 });
+}
+
 function liveKitHttpUrl(): string {
   const raw = (process.env.LIVEKIT_URL || '').trim();
   if (raw.startsWith('wss://')) return `https://${raw.slice(6)}`;
@@ -66,7 +117,7 @@ function configured(): boolean {
     liveKitHttpUrl() &&
     process.env.LIVEKIT_API_KEY &&
     process.env.LIVEKIT_API_SECRET &&
-    process.env.RECORDING_DIR
+    (s3Configured() || process.env.RECORDING_DIR)
   );
 }
 
@@ -159,15 +210,22 @@ export async function syncRecordingFromEgressInfo(info: EgressInfoLike): Promise
 
   try {
     if (!recording.storageKey) throw new Error('Recording has no storage key');
-    const absolutePath = resolveRecordingPath(recording.storageKey);
-    const stats = await fs.stat(absolutePath);
+    let fileSize: number | null;
+    if (s3Configured()) {
+      fileSize = toSafeNumber(info.fileResults?.[0]?.size);
+      if (fileSize == null) throw new Error('Egress result did not report a file size yet');
+    } else {
+      const absolutePath = resolveRecordingPath(recording.storageKey);
+      const stats = await fs.stat(absolutePath);
+      fileSize = stats.size;
+    }
     await prisma.proctorRecording.update({
       where: { id: recording.id },
       data: {
         status: 'ready',
         endTime: new Date(),
         duration: durationSeconds(info),
-        fileSize: stats.size,
+        fileSize,
         mimeType: 'video/mp4',
         processingError: null,
       },
@@ -241,8 +299,7 @@ async function startCandidateRecording(input: {
 
   const now = Date.now();
   const storageKey = relativeRecordingPath(input.testId, input.attemptId, now);
-  const absolutePath = resolveRecordingPath(storageKey);
-  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+  const useS3 = s3Configured();
 
   if (!recording) {
     const id = uuidv4();
@@ -254,7 +311,7 @@ async function startCandidateRecording(input: {
           recordingType: 'webcam',
           recordingKey,
           storageUrl: `/api/admin/recordings/${id}/stream`,
-          storageBucket: 'local-filesystem',
+          storageBucket: useS3 ? s3BucketName()! : 'local-filesystem',
           storageKey,
           startTime: new Date(),
           mimeType: 'video/mp4',
@@ -280,37 +337,57 @@ async function startCandidateRecording(input: {
       },
     });
   }
-try {
-    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
-    // fs.mkdir's mode is masked by the process umask (typically 022), so a fresh
-    // directory usually lands at 755 regardless of what mode is requested here —
-    // group members get no write access. The Egress container writes into this
-    // exact directory as a non-root user (gid 0 / group "root"), so it needs
-    // real group-write permission, not just matching group ownership. chmod
-    // explicitly afterward to sidestep the umask entirely, on every new attempt
-    // folder, rather than relying on a one-time host-level chmod that only
-    // covers directories that already existed at the time it was run.
-    await fs.chmod(path.dirname(absolutePath), 0o775);
-  } catch (error) {
-    await prisma.proctorRecording.update({
-      where: { id: recording.id },
-      data: {
-        status: 'failed',
-        endTime: new Date(),
-        processingError: `Local storage directory is not writable: ${
-          error instanceof Error ? error.message : 'unknown filesystem error'
-        }`,
-      },
-    });
-    console.error(`[egress] failed to prepare recording directory for attempt ${input.attemptId}:`, error);
-    return;
+  if (!useS3) {
+    try {
+      const absolutePath = resolveRecordingPath(storageKey);
+      await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+      // fs.mkdir's mode is masked by the process umask (typically 022), so a fresh
+      // directory usually lands at 755 regardless of what mode is requested here —
+      // group members get no write access. The Egress container writes into this
+      // exact directory as a non-root user (gid 0 / group "root"), so it needs
+      // real group-write permission, not just matching group ownership. chmod
+      // explicitly afterward to sidestep the umask entirely, on every new attempt
+      // folder, rather than relying on a one-time host-level chmod that only
+      // covers directories that already existed at the time it was run.
+      await fs.chmod(path.dirname(absolutePath), 0o775);
+    } catch (error) {
+      await prisma.proctorRecording.update({
+        where: { id: recording.id },
+        data: {
+          status: 'failed',
+          endTime: new Date(),
+          processingError: `Local storage directory is not writable: ${
+            error instanceof Error ? error.message : 'unknown filesystem error'
+          }`,
+        },
+      });
+      console.error(`[egress] failed to prepare recording directory for attempt ${input.attemptId}:`, error);
+      return;
+    }
   }
   try {
-        const output = new EncodedFileOutput({
-      fileType: EncodedFileType.MP4,
-      filepath: egressFilepath(storageKey),
-      disableManifest: true,
-    });
+    const output = useS3
+      ? new EncodedFileOutput({
+          fileType: EncodedFileType.MP4,
+          filepath: storageKey,
+          disableManifest: true,
+          output: {
+            case: 's3',
+            value: new S3Upload({
+              accessKey: process.env.EGRESS_S3_ACCESS_KEY,
+              secret: process.env.EGRESS_S3_SECRET_KEY,
+              region: process.env.EGRESS_S3_REGION,
+              endpoint: process.env.EGRESS_S3_ENDPOINT,
+              bucket: s3BucketName()!,
+              forcePathStyle: true,
+            }),
+          },
+        })
+      : new EncodedFileOutput({
+          fileType: EncodedFileType.MP4,
+          filepath: egressFilepath(storageKey),
+          disableManifest: true,
+        });
     const webhookUrl = (process.env.LIVEKIT_EGRESS_WEBHOOK_URL || '').trim();
     const webhooks = webhookUrl
       ? [new WebhookConfig({ url: webhookUrl, signingKey: process.env.LIVEKIT_API_KEY || '' })]
