@@ -11,7 +11,7 @@ import {
   getTrustEventsForSessions,
 } from './trustReports.js';
 import { scoreWrittenAnswer, scoreSpeakingAnswer } from '../services/communicationScoringService.js';
-import { sendCandidateScoreWebhook } from '../services/candidateScoreWebhookService.js';
+import { sendCandidateScoreWebhook, dispatchCompanyWebhookEvent } from '../services/candidateScoreWebhookService.js';
 import { performSubmission } from './candidate.js';
 import { reconcileCandidateEgressRecording } from '../services/liveKitEgressService.js';
 
@@ -1010,7 +1010,9 @@ export async function reEvaluateAttempt(req: AuthenticatedRequest, res: Response
             adminId: true,
             negativeMarking: true,
             totalMarks: true,
-            passingMarks: true
+            passingMarks: true,
+            name: true,
+            companyId: true
           }
         },
         candidate: {
@@ -1158,6 +1160,10 @@ export async function reEvaluateAttempt(req: AuthenticatedRequest, res: Response
       data: { score: totalScore }
     });
 
+    const reEvaluatedResult: 'passed' | 'failed' | null = attempt.test.passingMarks != null
+      ? (totalScore >= attempt.test.passingMarks ? 'passed' : 'failed')
+      : null;
+
     void sendCandidateScoreWebhook({
       name: attempt.candidate?.name ?? 'Unknown',
       emailid: attempt.candidate?.email ?? '',
@@ -1166,9 +1172,23 @@ export async function reEvaluateAttempt(req: AuthenticatedRequest, res: Response
       testid: attempt.testId,
       status: 're_evaluated',
       passingMarks: attempt.test.passingMarks ?? null,
-      result: attempt.test.passingMarks != null
-        ? (totalScore >= attempt.test.passingMarks ? 'passed' : 'failed')
-        : null,
+      result: reEvaluatedResult,
+    });
+
+    // Keep the recruiter-partner's per-company webhook in sync too — otherwise a
+    // re-evaluation only reaches the legacy single-tenant CANDIDATE_SCORE_WEBHOOK_URL
+    // and partners relying on their configured company webhook keep the stale score.
+    void dispatchCompanyWebhookEvent(attempt.test.companyId, 'test.completed', {
+      testId: attempt.testId,
+      testName: attempt.test.name,
+      attemptId,
+      candidateName: attempt.candidate?.name ?? 'Unknown',
+      candidateEmail: attempt.candidate?.email ?? '',
+      score: totalScore,
+      totalMarks: attempt.test.totalMarks,
+      status: 're_evaluated',
+      passingMarks: attempt.test.passingMarks ?? null,
+      result: reEvaluatedResult,
     });
 
     res.json({
