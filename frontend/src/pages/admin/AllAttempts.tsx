@@ -13,6 +13,7 @@ interface Attempt {
   status: string;
   score: number | null;
   reviewed?: boolean;
+  attemptNumber?: number;
   candidate: { id: string; name: string; email: string };
   test: { id: string; name: string };
 }
@@ -273,6 +274,15 @@ export default function AllAttempts() {
                         <p style={{ fontSize: '13px', fontWeight: 500, color: 'var(--admin-text)', margin: 0, whiteSpace: 'nowrap' }}>
                           {attempt.candidate.name || attempt.candidate.email}
                         </p>
+                        {!!attempt.attemptNumber && attempt.attemptNumber > 1 && (
+                          <span style={{
+                            fontSize: '11px', fontWeight: 600, padding: '2px 8px',
+                            borderRadius: '10px', backgroundColor: 'var(--admin-accent-soft)',
+                            color: 'var(--admin-accent-hover)', whiteSpace: 'nowrap',
+                          }}>
+                            Attempt #{attempt.attemptNumber}
+                          </span>
+                        )}
                       </div>
                     </td>
 

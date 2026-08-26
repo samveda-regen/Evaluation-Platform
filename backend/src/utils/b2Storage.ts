@@ -90,7 +90,8 @@ export interface AssessmentCandidateContext {
   testName: string;
   candidateId: string;
   candidateName: string;
-  // "<testName>_<testId>/<candidateName>_<candidateId>"
+  attemptNumber: number;
+  // "<testName>_<testId>/<candidateName>_<candidateId>/attempt <N>"
   folder: string;
 }
 
@@ -105,6 +106,7 @@ export async function getAssessmentCandidateContext(
   const attempt = await prisma.testAttempt.findUnique({
     where: { id: attemptId },
     select: {
+      attemptNumber: true,
       test: { select: { id: true, name: true } },
       candidate: { select: { id: true, name: true, email: true } },
     },
@@ -120,7 +122,8 @@ export async function getAssessmentCandidateContext(
     testName,
     candidateId: attempt.candidate.id,
     candidateName,
-    folder: `${testName}_${attempt.test.id}/${candidateName}_${attempt.candidate.id}`,
+    attemptNumber: attempt.attemptNumber,
+    folder: `${testName}_${attempt.test.id}/${candidateName}_${attempt.candidate.id}/attempt ${attempt.attemptNumber}`,
   };
   contextCache.set(attemptId, context);
   return context;

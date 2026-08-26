@@ -913,21 +913,11 @@ export async function createAdminPreviewAttempt(
     });
 
     const attempt = await prisma.$transaction(async (tx) => {
-      const existingAttempt = await tx.testAttempt.findUnique({
-        where: {
-          testId_candidateId: {
-            testId,
-            candidateId: candidate.id,
-          },
-        },
-        select: { id: true },
+      // Preview attempts are throwaway (not a real candidate), so we keep the
+      // delete-and-recreate behavior rather than accumulating attempt history.
+      await tx.testAttempt.deleteMany({
+        where: { testId, candidateId: candidate.id },
       });
-
-      if (existingAttempt) {
-        await tx.testAttempt.delete({
-          where: { id: existingAttempt.id },
-        });
-      }
 
       const createdAttempt = await tx.testAttempt.create({
         data: {

@@ -21,6 +21,7 @@ import {
 interface AttemptData {
   attempt: {
     id: string;
+    attemptNumber?: number;
     startTime: string;
     endTime?: string;
     submittedAt?: string;
@@ -46,6 +47,13 @@ interface AttemptData {
     negativeMarking: number;
   };
   candidate: { id: string; email: string; name: string };
+  attemptHistory?: Array<{
+    id: string;
+    attemptNumber: number;
+    startTime: string;
+    status: string;
+    score: number | null;
+  }>;
   mcqAnswers: Array<{
     questionId: string; questionText: string; options: string[];
     correctAnswers: number[]; selectedOptions: number[];
@@ -459,7 +467,7 @@ export default function AttemptDetails() {
   );
   if (!data) return null;
 
-  const { attempt, test, candidate, mcqAnswers, codingAnswers, behavioralAnswers, communicationAnswers, activityLogs } = data;
+  const { attempt, test, candidate, attemptHistory, mcqAnswers, codingAnswers, behavioralAnswers, communicationAnswers, activityLogs } = data;
 
   /* -- Score calculations -- */
   const scoreRaw   = attempt.score ?? 0;
@@ -689,6 +697,39 @@ export default function AttemptDetails() {
               {attempt.isFlagged ? 'Remove flag' : 'Flag attempt'}
             </button>
           </div>
+
+          {/* Attempts */}
+          {attemptHistory && attemptHistory.length > 1 && (
+            <>
+              <div style={{ width:'100%', height:'1px', backgroundColor:'var(--admin-border)', margin:'16px 0' }} />
+
+              <div style={{ width:'100%' }}>
+                <p style={{ fontSize:'13px', fontWeight:600, color:'var(--admin-text)', margin:'0 0 12px' }}>
+                  Past Attempts ({attemptHistory.length})
+                </p>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:'8px' }}>
+                  {attemptHistory.map(h => {
+                    const isActive = h.id === attempt.id;
+                    return (
+                      <button
+                        key={h.id}
+                        onClick={() => !isActive && navigate(`/admin/attempts/${h.id}`)}
+                        style={{
+                          padding:'6px 12px', borderRadius:'8px', fontSize:'12px', fontWeight:600,
+                          border: isActive ? '1.5px solid var(--admin-accent)' : '1.5px solid var(--admin-border)',
+                          backgroundColor: isActive ? 'var(--admin-accent-soft)' : 'white',
+                          color: isActive ? 'var(--admin-accent-hover)' : 'var(--admin-text-muted)',
+                          cursor: isActive ? 'default' : 'pointer',
+                        }}
+                      >
+                        Attempt {h.attemptNumber}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* -- RIGHT PANEL -- */}

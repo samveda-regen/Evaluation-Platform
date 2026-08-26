@@ -11,8 +11,7 @@ import {
   InvitationServiceError,
   consumeInvitation,
   getInvitationContextForLogin,
-  resolveInvitationTokenFromAccessCode,
-  resetAttemptForRetake
+  resolveInvitationTokenFromAccessCode
 } from '../services/invitationService.js';
 import { uploadSnapshot, uploadRecording } from '../services/fileStorageService.js';
 import { transcribeAudio, isSpeechServiceConfigured } from '../services/speechService.js';
@@ -250,14 +249,14 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
       return;
     }
 
-    // Check for existing attempt (schema enforces one attempt row per test+candidate)
-    const existingAttempt = await prisma.testAttempt.findUnique({
+    // A candidate can have multiple TestAttempt rows over time (one per re-evaluation);
+    // the most recent one (highest attemptNumber) is the one that matters for login.
+    const existingAttempt = await prisma.testAttempt.findFirst({
       where: {
-        testId_candidateId: {
-          testId: test.id,
-          candidateId: candidate.id
-        }
-      }
+        testId: test.id,
+        candidateId: candidate.id
+      },
+      orderBy: { attemptNumber: 'desc' }
     });
 
     if (existingAttempt) {
@@ -343,23 +342,50 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
         return;
       }
 
-      // For allowMultipleAttempts, reset the same attempt row (schema has unique testId+candidateId).
-      await resetAttemptForRetake(existingAttempt.id);
+      // Re-evaluation: create a brand new attempt row (next attemptNumber) instead of
+      // resetting the previous one in place — the old attempt's answers, violations,
+      // and proctoring data all remain untouched as permanent history.
+      let newAttempt;
+      try {
+        newAttempt = await prisma.testAttempt.create({
+          data: {
+            testId: test.id,
+            candidateId: candidate.id,
+            attemptNumber: existingAttempt.attemptNumber + 1,
+            startTime: new Date(),
+            status: 'permission'
+          }
+        });
+      } catch (error) {
+        // Race condition: another request already created the next attempt concurrently.
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+          const concurrentAttempt = await prisma.testAttempt.findFirst({
+            where: { testId: test.id, candidateId: candidate.id },
+            orderBy: { attemptNumber: 'desc' }
+          });
+          if (!concurrentAttempt) {
+            throw error;
+          }
+          newAttempt = concurrentAttempt;
+        } else {
+          throw error;
+        }
+      }
 
       const token = generateCandidateToken({
         id: candidate.id,
         email: candidate.email,
         testId: test.id,
-        attemptId: existingAttempt.id,
+        attemptId: newAttempt.id,
         invitationId,
         role: 'candidate'
       });
 
       await prisma.activityLog.create({
         data: {
-          attemptId: existingAttempt.id,
+          attemptId: newAttempt.id,
           eventType: 'login_new_attempt',
-          eventData: JSON.stringify({ timestamp: new Date().toISOString() })
+          eventData: JSON.stringify({ timestamp: new Date().toISOString(), attemptNumber: newAttempt.attemptNumber })
         }
       });
 
@@ -372,10 +398,11 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
           name: candidate.name
         },
         attempt: {
-          id: existingAttempt.id,
-          startTime: new Date(),
-          status: 'permission',
-          violations: 0
+          id: newAttempt.id,
+          startTime: newAttempt.startTime,
+          status: newAttempt.status,
+          violations: newAttempt.violations,
+          attemptNumber: newAttempt.attemptNumber
         },
         token
       });
@@ -399,13 +426,9 @@ export async function candidateLogin(req: AuthenticatedRequest, res: Response): 
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
-        const concurrentAttempt = await prisma.testAttempt.findUnique({
-          where: {
-            testId_candidateId: {
-              testId: test.id,
-              candidateId: candidate.id
-            }
-          }
+        const concurrentAttempt = await prisma.testAttempt.findFirst({
+          where: { testId: test.id, candidateId: candidate.id },
+          orderBy: { attemptNumber: 'desc' }
         });
 
         if (!concurrentAttempt) {

@@ -511,10 +511,11 @@ model TestSection {
 }
 
 model TestAttempt {
-  id          String    @id @default(uuid())
-  testId      String
-  candidateId String
-  startTime   DateTime  @default(now())
+  id            String    @id @default(uuid())
+  testId        String
+  candidateId   String
+  attemptNumber Int       @default(1) // 1st attempt, 2nd (re-evaluation), 3rd, ...
+  startTime     DateTime  @default(now())
   endTime     DateTime?
   submittedAt DateTime?
   status      String    @default("in_progress") // in_progress, submitted, auto_submitted, flagged
@@ -551,7 +552,8 @@ model TestAttempt {
   proctorSession ProctorSession?
   analytics      PerformanceAnalytics?
 
-  @@unique([testId, candidateId])
+  @@unique([testId, candidateId, attemptNumber])
+  @@index([testId, candidateId])
 }
 
 model TestAttemptQuestion {

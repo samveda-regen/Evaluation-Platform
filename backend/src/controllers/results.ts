@@ -335,6 +335,13 @@ export async function getAttemptDetails(req: AuthenticatedRequest, res: Response
 
     const reviewState = await getAttemptReviewState(attempt.id);
 
+    // All attempts this candidate has made on this test (for history navigation).
+    const attemptHistory = await prisma.testAttempt.findMany({
+      where: { testId: attempt.testId, candidateId: attempt.candidateId },
+      select: { id: true, attemptNumber: true, startTime: true, status: true, score: true },
+      orderBy: { attemptNumber: 'asc' }
+    });
+
     // Same event source/formula as the quick candidates panel and the
     // Trust & Integrity report — see comment there for why this matters:
     // this used to default to a hardcoded 100 whenever analytics.trustScore
@@ -346,6 +353,7 @@ export async function getAttemptDetails(req: AuthenticatedRequest, res: Response
     res.json({
       attempt: {
         id: attempt.id,
+        attemptNumber: attempt.attemptNumber,
         startTime: attempt.startTime,
         endTime: attempt.endTime,
         submittedAt: attempt.submittedAt,
@@ -367,6 +375,7 @@ export async function getAttemptDetails(req: AuthenticatedRequest, res: Response
         releasedBy: attempt.releasedBy,
         resultEmailSentAt: attempt.resultEmailSentAt
       },
+      attemptHistory,
       test: attempt.test,
       candidate: attempt.candidate,
       mcqAnswers,
@@ -1425,6 +1434,7 @@ export async function getAllAttempts(req: AuthenticatedRequest, res: Response): 
     res.json({
       attempts: attempts.map(a => ({
         id:            a.id,
+        attemptNumber: a.attemptNumber,
         startTime:     a.startTime,
         endTime:       a.endTime,
         submittedAt:   a.submittedAt,

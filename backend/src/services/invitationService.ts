@@ -2,6 +2,7 @@ import { randomBytes, randomInt } from 'crypto';
 import { Readable } from 'stream';
 import type { Express } from 'express';
 import ExcelJS from 'exceljs';
+import { Prisma } from '@prisma/client';
 
 import prisma from '../utils/db.js';
 import { sanitizeInput } from '../utils/sanitize.js';
@@ -835,36 +836,40 @@ export async function createSilentInvitationForCandidate(input: {
   };
 }
 
-// Wipes an attempt's answers/logs/proctoring/analytics and resets it to a blank permission
-// state, so the same TestAttempt row (schema enforces one per test+candidate) can be reused
-// for a genuine retake — either a candidate re-logging in on a test with allowMultipleAttempts,
-// or an admin resending an invitation to a candidate whose earlier attempt needs to be undone
-// (e.g. wrongly auto-submitted). Deliberately leaves TestAttemptQuestion alone so a retake
-// keeps the same assigned question set rather than reshuffling.
-export async function resetAttemptForRetake(attemptId: string): Promise<void> {
-  await prisma.$transaction([
-    prisma.mCQAnswer.deleteMany({ where: { attemptId } }),
-    prisma.codingAnswer.deleteMany({ where: { attemptId } }),
-    prisma.behavioralAnswer.deleteMany({ where: { attemptId } }),
-    prisma.communicationAnswer.deleteMany({ where: { attemptId } }),
-    prisma.activityLog.deleteMany({ where: { attemptId } }),
-    prisma.proctorSession.deleteMany({ where: { attemptId } }),
-    prisma.performanceAnalytics.deleteMany({ where: { attemptId } }),
-    prisma.testAttempt.update({
-      where: { id: attemptId },
+// Creates the next TestAttempt row (attemptNumber + 1) for a candidate who already has
+// one on this test — used both for a candidate re-logging in on a test with
+// allowMultipleAttempts, and for an admin resending an invitation to a candidate whose
+// earlier attempt needs to be undone (e.g. wrongly auto-submitted). The previous attempt's
+// answers, proctoring session, and analytics are left untouched as permanent history rather
+// than wiped, so admins can still see it via attempt history.
+export async function createNextAttemptForRetake(existingAttempt: {
+  id: string;
+  testId: string;
+  candidateId: string;
+  attemptNumber: number;
+}): Promise<{ id: string; attemptNumber: number }> {
+  try {
+    return await prisma.testAttempt.create({
       data: {
-        startTime: new Date(),
-        endTime: null,
-        submittedAt: null,
+        testId: existingAttempt.testId,
+        candidateId: existingAttempt.candidateId,
+        attemptNumber: existingAttempt.attemptNumber + 1,
         status: 'permission',
-        score: null,
-        violations: 0,
-        isFlagged: false,
-        flagReason: null,
-        lastSeenAt: null,
       },
-    }),
-  ]);
+      select: { id: true, attemptNumber: true },
+    });
+  } catch (error) {
+    // Race condition: another request already created the next attempt concurrently.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      const concurrentAttempt = await prisma.testAttempt.findFirst({
+        where: { testId: existingAttempt.testId, candidateId: existingAttempt.candidateId },
+        orderBy: { attemptNumber: 'desc' },
+        select: { id: true, attemptNumber: true },
+      });
+      if (concurrentAttempt) return concurrentAttempt;
+    }
+    throw error;
+  }
 }
 
 export interface ResendInvitationResult {
@@ -920,11 +925,12 @@ export async function resendInvitationForCandidate(input: {
   const candidate = await prisma.candidate.findUnique({ where: { email: invitation.email } });
   let attemptReset = false;
   if (candidate) {
-    const existingAttempt = await prisma.testAttempt.findUnique({
-      where: { testId_candidateId: { testId: test.id, candidateId: candidate.id } }
+    const existingAttempt = await prisma.testAttempt.findFirst({
+      where: { testId: test.id, candidateId: candidate.id },
+      orderBy: { attemptNumber: 'desc' }
     });
     if (existingAttempt) {
-      await resetAttemptForRetake(existingAttempt.id);
+      await createNextAttemptForRetake(existingAttempt);
       attemptReset = true;
     }
   }
