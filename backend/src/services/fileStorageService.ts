@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import fs from 'fs/promises';
 import fsSync from 'fs';
+import { b2Configured, getAssessmentCandidateContext, getB2SignedUrl, putB2Object } from '../utils/b2Storage.js';
 
 const prisma = new PrismaClient();
 
@@ -358,6 +359,61 @@ export async function storeFile(
   metadata?: Record<string, unknown>
 ): Promise<UploadResult> {
   try {
+    // Proctoring recordings/snapshots go to the same B2 bucket + <test>/<candidate>
+    // folder layout as LiveKit egress video (see b2Storage.ts), so admins can browse
+    // one assessment's candidate folder and find the webcam recording, violation
+    // snapshots, and their metadata sidecars together.
+    if (b2Configured() && references.attemptId && (category === 'recording' || category === 'snapshot')) {
+      const context = await getAssessmentCandidateContext(references.attemptId);
+      if (context) {
+        const subfolder = category === 'snapshot' ? 'snapshots' : 'recordings';
+        const key = `${context.folder}/${subfolder}/${filename}`;
+        await putB2Object(key, buffer, mimeType);
+        await putB2Object(
+          `${key}.json`,
+          Buffer.from(
+            JSON.stringify(
+              {
+                ...metadata,
+                category,
+                originalName,
+                mimeType,
+                fileSize: buffer.length,
+                attemptId: references.attemptId,
+                testId: context.testId,
+                testName: context.testName,
+                candidateId: context.candidateId,
+                candidateName: context.candidateName,
+                storedAt: new Date().toISOString(),
+              },
+              null,
+              2
+            )
+          ),
+          'application/json'
+        );
+
+        const fileRecord = await prisma.fileStorage.create({
+          data: {
+            filename,
+            originalName,
+            mimeType,
+            fileSize: buffer.length,
+            data: Buffer.alloc(0),
+            category,
+            attemptId: references.attemptId,
+            questionId: references.questionId,
+            candidateId: references.candidateId,
+            sessionId: references.sessionId,
+            metadata: JSON.stringify({ ...metadata, storageMode: 'b2', b2Key: key }),
+          },
+        });
+
+        const url = `/api/files/${fileRecord.id}`;
+        return { success: true, url, cdnUrl: url, key: fileRecord.id, fileId: fileRecord.id };
+      }
+    }
+
     if (isFilesystemMode()) {
       await ensureFilesystemStorage();
       const fileId = uuidv4();
@@ -476,7 +532,8 @@ export async function uploadSnapshot(
   buffer: Buffer,
   attemptId: string,
   snapshotType: 'face' | 'violation' | 'verification',
-  mimeType: string = 'image/jpeg'
+  mimeType: string = 'image/jpeg',
+  extraMetadata?: Record<string, unknown>
 ): Promise<UploadResult> {
   const timestamp = Date.now();
   const filename = `${attemptId}-${snapshotType}-${timestamp}.jpg`;
@@ -497,8 +554,10 @@ export async function uploadSnapshot(
     'snapshot',
     { attemptId },
     {
+      ...extraMetadata,
       snapshotType,
       timestamp,
+      capturedAt: new Date(timestamp).toISOString(),
       candidateName: candidateContext?.candidateName,
       candidateId: candidateContext?.candidateId,
       relativePath: isFilesystemMode() ? relativePath : undefined,
@@ -632,6 +691,36 @@ export async function uploadIdDocument(
     { candidateId },
     { documentType, timestamp }
   );
+}
+
+/**
+ * Resolve how to serve a file: a signed redirect URL for B2-backed files
+ * (bytes live in the bucket, not Postgres), or 'bytes' meaning the caller
+ * should fall back to getFile()/send the buffer itself.
+ */
+export async function resolveFileServeUrl(
+  fileId: string,
+  disposition: 'inline' | 'attachment'
+): Promise<{ mode: 'redirect'; url: string } | { mode: 'bytes' } | null> {
+  if (isFilesystemMode()) return { mode: 'bytes' };
+
+  const file = await prisma.fileStorage.findUnique({
+    where: { id: fileId },
+    select: { metadata: true, mimeType: true, originalName: true },
+  });
+  if (!file) return null;
+
+  const metadata = file.metadata ? (JSON.parse(file.metadata) as Record<string, unknown>) : undefined;
+  const b2Key = metadata?.storageMode === 'b2' ? (metadata.b2Key as string | undefined) : undefined;
+  if (b2Key) {
+    const url = await getB2SignedUrl(b2Key, {
+      filename: file.originalName,
+      disposition,
+      contentType: file.mimeType,
+    });
+    return { mode: 'redirect', url };
+  }
+  return { mode: 'bytes' };
 }
 
 /**
@@ -1042,6 +1131,7 @@ export default {
   uploadMCQMedia,
   uploadIdDocument,
   getFile,
+  resolveFileServeUrl,
   getFilesByReference,
   deleteFile,
   deleteFilesByReference,

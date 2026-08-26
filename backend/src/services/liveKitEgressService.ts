@@ -9,9 +9,16 @@ import {
   WebhookConfig,
   WebhookReceiver,
 } from 'livekit-server-sdk';
-import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import prisma from '../utils/db.js';
+import {
+  b2Configured as s3Configured,
+  b2BucketName as s3BucketName,
+  getAssessmentCandidateContext,
+  getB2Config,
+  getB2SignedUrl,
+} from '../utils/b2Storage.js';
+
+export { s3Configured, s3BucketName };
 
 const startLocks = new Map<string, Promise<void>>();
 
@@ -56,52 +63,15 @@ function egressFilepath(storageKey: string): string {
   return `${getEgressRecordingRoot().replace(/\/+$/, '')}/${storageKey}`;
 }
 
-// Optional S3-compatible bucket (e.g. Backblaze B2) for egress output. When all of
-// these are set, Egress uploads recordings directly to the bucket instead of the
-// local RECORDING_DIR, and admin playback is served via short-lived signed URLs
-// instead of streaming from local disk.
-function s3Env() {
-  const endpoint = (process.env.EGRESS_S3_ENDPOINT || '').trim();
-  const region = (process.env.EGRESS_S3_REGION || '').trim();
-  const bucket = (process.env.EGRESS_S3_BUCKET || '').trim();
-  const accessKey = (process.env.EGRESS_S3_ACCESS_KEY || '').trim();
-  const secretKey = (process.env.EGRESS_S3_SECRET_KEY || '').trim();
-  if (!endpoint || !region || !bucket || !accessKey || !secretKey) return null;
-  return { endpoint, region, bucket, accessKey, secretKey };
-}
-
-export function s3Configured(): boolean {
-  return s3Env() !== null;
-}
-
-export function s3BucketName(): string | null {
-  return s3Env()?.bucket ?? null;
-}
-
-function s3Client(): S3Client {
-  const env = s3Env();
-  if (!env) throw new Error('EGRESS_S3_* environment variables are not configured');
-  return new S3Client({
-    region: env.region,
-    endpoint: env.endpoint,
-    forcePathStyle: true,
-    credentials: { accessKeyId: env.accessKey, secretAccessKey: env.secretKey },
-  });
-}
-
+// Optional S3-compatible bucket (e.g. Backblaze B2) for egress output — see
+// backend/src/utils/b2Storage.ts. When configured, Egress uploads recordings
+// directly to the bucket instead of the local RECORDING_DIR, and admin
+// playback is served via short-lived signed URLs instead of local disk.
 export async function getRecordingSignedUrl(
   storageKey: string,
   options: { filename: string; disposition: 'inline' | 'attachment' },
 ): Promise<string> {
-  const env = s3Env();
-  if (!env) throw new Error('EGRESS_S3_* environment variables are not configured');
-  const command = new GetObjectCommand({
-    Bucket: env.bucket,
-    Key: storageKey,
-    ResponseContentType: 'video/mp4',
-    ResponseContentDisposition: `${options.disposition}; filename="${options.filename}"`,
-  });
-  return getSignedUrl(s3Client(), command, { expiresIn: 600 });
+  return getB2SignedUrl(storageKey, { ...options, contentType: 'video/mp4' });
 }
 
 function liveKitHttpUrl(): string {
@@ -129,8 +99,14 @@ function egressClient(): EgressClient {
   );
 }
 
-function relativeRecordingPath(testId: string, attemptId: string, timestamp: number): string {
-  return `${testId}/${attemptId}/webcam-${timestamp}.mp4`;
+// "<testName>_<testId>/<candidateName>_<candidateId>/webcam-<timestamp>.mp4" so
+// admin bucket browsing groups recordings by assessment then candidate. Falls
+// back to raw IDs if the attempt's test/candidate can't be resolved (e.g. one
+// was deleted mid-attempt) so recording still proceeds rather than failing.
+async function relativeRecordingPath(testId: string, attemptId: string, timestamp: number): Promise<string> {
+  const context = await getAssessmentCandidateContext(attemptId);
+  const folder = context?.folder || `${testId}/attempt-${attemptId}`;
+  return `${folder}/webcam-${timestamp}.mp4`;
 }
 
 export function resolveRecordingPath(storageKey: string): string {
@@ -298,7 +274,7 @@ async function startCandidateRecording(input: {
   if (recording && ['starting', 'recording', 'processing', 'ready'].includes(recording.status)) return;
 
   const now = Date.now();
-  const storageKey = relativeRecordingPath(input.testId, input.attemptId, now);
+  const storageKey = await relativeRecordingPath(input.testId, input.attemptId, now);
   const useS3 = s3Configured();
 
   if (!recording) {
@@ -366,7 +342,8 @@ async function startCandidateRecording(input: {
     }
   }
   try {
-    const output = useS3
+    const b2Config = useS3 ? getB2Config() : null;
+    const output = b2Config
       ? new EncodedFileOutput({
           fileType: EncodedFileType.MP4,
           filepath: storageKey,
@@ -374,11 +351,11 @@ async function startCandidateRecording(input: {
           output: {
             case: 's3',
             value: new S3Upload({
-              accessKey: process.env.EGRESS_S3_ACCESS_KEY,
-              secret: process.env.EGRESS_S3_SECRET_KEY,
-              region: process.env.EGRESS_S3_REGION,
-              endpoint: process.env.EGRESS_S3_ENDPOINT,
-              bucket: s3BucketName()!,
+              accessKey: b2Config.accessKey,
+              secret: b2Config.secretKey,
+              region: b2Config.region,
+              endpoint: b2Config.endpoint,
+              bucket: b2Config.bucket,
               forcePathStyle: true,
             }),
           },

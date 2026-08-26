@@ -5,6 +5,7 @@ import {
   getFileByStorageKey,
   getStorageStats,
   listIdDocumentsAdmin,
+  resolveFileServeUrl,
 } from '../services/fileStorageService.js';
 import { adminAuth } from '../middleware/auth.js';
 
@@ -81,6 +82,11 @@ router.get('/:fileId', async (req, res) => {
   try {
     const { fileId } = req.params;
 
+    const serveInfo = await resolveFileServeUrl(fileId, 'inline');
+    if (serveInfo?.mode === 'redirect') {
+      return res.redirect(302, serveInfo.url);
+    }
+
     const file = await getFile(fileId);
 
     if (!file) {
@@ -115,6 +121,11 @@ router.get('/:fileId', async (req, res) => {
 router.get('/:fileId/download', async (req, res) => {
   try {
     const { fileId } = req.params;
+
+    const serveInfo = await resolveFileServeUrl(fileId, 'attachment');
+    if (serveInfo?.mode === 'redirect') {
+      return res.redirect(302, serveInfo.url);
+    }
 
     const file = await getFile(fileId);
 

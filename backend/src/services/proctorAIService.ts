@@ -355,7 +355,14 @@ export async function storeViolation(
     // Upload snapshot if provided
     if (violation.snapshotData) {
       const buffer = Buffer.from(violation.snapshotData, 'base64');
-      const result = await uploadSnapshot(buffer, session.attemptId, 'violation');
+      const result = await uploadSnapshot(buffer, session.attemptId, 'violation', 'image/jpeg', {
+        eventType: violation.eventType,
+        severity: violation.severity,
+        confidence: violation.confidence,
+        description: violation.description,
+        duration: violation.duration,
+        violationMetadata: violation.metadata,
+      });
       if (result.success) {
         snapshotUrl = result.cdnUrl || result.url;
       }
@@ -428,7 +435,12 @@ export async function storeFaceSnapshot(
 
     // Upload image
     const buffer = Buffer.from(imageData, 'base64');
-    const uploadResult = await uploadSnapshot(buffer, session.attemptId, 'face');
+    const uploadResult = await uploadSnapshot(buffer, session.attemptId, 'face', 'image/jpeg', {
+      purpose,
+      matchScore: analysisResult?.confidence,
+      faceCount: analysisResult?.faceCount,
+      gazeDirection: analysisResult?.gazeDirection,
+    });
 
     if (!uploadResult.success) {
       return { success: false, error: uploadResult.error };
