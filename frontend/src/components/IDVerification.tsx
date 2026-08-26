@@ -102,6 +102,10 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
   }, []);
 
   const startPhoneSession = useCallback(async () => {
+    if (phonePollerRef.current) {
+      clearInterval(phonePollerRef.current);
+      phonePollerRef.current = null;
+    }
     try {
       const res = await api.post<{ sessionId: string }>('/verification/phone-session');
       const { sessionId } = res.data;
