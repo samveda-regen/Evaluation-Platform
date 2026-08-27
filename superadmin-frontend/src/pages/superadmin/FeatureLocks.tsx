@@ -6,6 +6,19 @@ import { Card, EmptyState, PageHeader, Select, Toggle } from './components';
 
 const GLOBAL_VIEW = '__global__';
 
+// Most flags gate a capability, so "Locked"/"Unlocked" reads naturally. A few
+// (like anomaly_auto_lock) toggle a background behavior rather than blocking
+// an action, where "locked" would be confusingly self-referential — those use
+// plain Enabled/Disabled wording instead.
+const ENABLE_DISABLE_FLAGS = new Set(['anomaly_auto_lock']);
+
+function statusLabel(key: string, enabled: boolean): string {
+  if (ENABLE_DISABLE_FLAGS.has(key)) {
+    return enabled ? 'Enabled' : 'Disabled';
+  }
+  return enabled ? 'Unlocked' : 'Locked';
+}
+
 export default function SuperAdminFeatureLocks() {
   const [flags, setFlags] = useState<FeatureFlag[] | null>(null);
   const [accounts, setAccounts] = useState<AdminAccountSummary[] | null>(null);
@@ -59,7 +72,7 @@ export default function SuperAdminFeatureLocks() {
     try {
       const { data } = await superAdminApi.toggleFeatureFlag(flag.key, { enabled: !flag.enabled });
       setFlags((prev) => prev?.map((f) => (f.key === flag.key ? data.flag : f)) ?? null);
-      toast.success(`${flag.label} ${data.flag.enabled ? 'unlocked' : 'locked'} platform-wide`);
+      toast.success(`${flag.label} ${statusLabel(flag.key, data.flag.enabled).toLowerCase()} platform-wide`);
     } catch {
       toast.error('Failed to update feature flag');
     } finally {
@@ -72,7 +85,7 @@ export default function SuperAdminFeatureLocks() {
     try {
       const { data } = await superAdminApi.setAdminFeatureOverride(selectedAccountId, flag.key, !flag.effectiveEnabled);
       setAccountFlags((prev) => prev?.map((f) => (f.key === flag.key ? data : f)) ?? null);
-      toast.success(`${flag.label} ${data.effectiveEnabled ? 'unlocked' : 'locked'} for this account`);
+      toast.success(`${flag.label} ${statusLabel(flag.key, data.effectiveEnabled).toLowerCase()} for this account`);
     } catch {
       toast.error('Failed to update feature override');
     } finally {
@@ -142,7 +155,7 @@ export default function SuperAdminFeatureLocks() {
                     flag.enabled ? 'text-sa-good' : 'text-sa-critical'
                   }`}
                 >
-                  {flag.enabled ? 'Unlocked' : 'Locked'}
+                  {statusLabel(flag.key, flag.enabled)}
                 </span>
                 <Toggle on={flag.enabled} onClick={() => toggleGlobal(flag)} disabled={pending === flag.key} label={`Toggle ${flag.label}`} />
               </div>
@@ -173,7 +186,7 @@ export default function SuperAdminFeatureLocks() {
                   {flag.description && <div className="text-[11.5px] text-sa-ink-faint mt-0.5">{flag.description}</div>}
                   <div className="text-[11px] text-sa-ink-faint mt-0.5">
                     {flag.overrideEnabled === null
-                      ? `Following platform default (${flag.globalEnabled ? 'unlocked' : 'locked'})`
+                      ? `Following platform default (${statusLabel(flag.key, flag.globalEnabled).toLowerCase()})`
                       : 'Custom override for this account'}
                   </div>
                 </div>
@@ -193,7 +206,7 @@ export default function SuperAdminFeatureLocks() {
                     flag.effectiveEnabled ? 'text-sa-good' : 'text-sa-critical'
                   }`}
                 >
-                  {flag.effectiveEnabled ? 'Unlocked' : 'Locked'}
+                  {statusLabel(flag.key, flag.effectiveEnabled)}
                 </span>
                 <Toggle
                   on={flag.effectiveEnabled}
