@@ -28,7 +28,8 @@ import {
   updateAdminCompany,
   changeAdminPassword,
   forgotPassword,
-  resetPassword
+  resetPassword,
+  getMaintenanceStatus
 } from '../controllers/adminAuth.js';
 import {
   createTest,
@@ -141,6 +142,7 @@ const invitationUpload = multer({
 });
 
 // Auth routes
+router.get('/maintenance-status', getMaintenanceStatus);
 router.post('/register', adminRegisterValidation, handleValidationErrors, registerAdmin);
 router.post('/login', adminLoginValidation, handleValidationErrors, loginAdmin);
 router.post('/refresh-token', refreshAdminToken);

@@ -1,6 +1,7 @@
 import axios, { AxiosError } from 'axios';
 import { toast } from 'react-hot-toast';
 import { useAuthStore, getAdminToken } from '../context/authStore';
+import { useMaintenanceStore } from '../context/maintenanceStore';
 import type {
   RepositoryCategory,
   RepositoryListResponse,
@@ -81,7 +82,11 @@ api.interceptors.response.use(
   (response) => response,
   (error: AxiosError<{ error: string; message?: string; feature?: string }>) => {
     if (error.response?.status === 423 && error.response.data?.error === 'feature_locked') {
-      toast.error(error.response.data.message || 'The platform administrator has disabled this feature.');
+      if (error.response.data.feature === 'maintenance_mode') {
+        useMaintenanceStore.getState().setMaintenance(true, error.response.data.message);
+      } else {
+        toast.error(error.response.data.message || 'The platform administrator has disabled this feature.');
+      }
     }
     if (error.response?.status === 401) {
       const url = error.config?.url || '';
@@ -141,6 +146,9 @@ const buildRepositoryQuery = (params: RepositoryQueryParams) => {
 
 // Admin API
 export const adminApi = {
+  getMaintenanceStatus: () =>
+    api.get<{ active: boolean; message: string }>('/admin/maintenance-status'),
+
   register: (data: { email: string; password: string; name: string; companyName?: string; companyId?: string }) =>
     api.post('/admin/register', data),
 

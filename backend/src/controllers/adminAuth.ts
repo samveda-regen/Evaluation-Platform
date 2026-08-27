@@ -183,6 +183,22 @@ export async function registerAdminFromIntegration(req: AuthenticatedRequest, re
   }
 }
 
+// Public, unauthenticated status check so the admin frontend can show a full
+// maintenance page (on the login screen and for already-logged-in admins)
+// without waiting for an authenticated request to fail with 423 first.
+export async function getMaintenanceStatus(_req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const maintenanceEnabled = await isFeatureEnabledForAdmin('maintenance_mode');
+    res.json({
+      active: !maintenanceEnabled,
+      message: 'The platform is temporarily down for maintenance. Please try again shortly.',
+    });
+  } catch (error) {
+    console.error('getMaintenanceStatus check failed, failing open:', error);
+    res.json({ active: false, message: '' });
+  }
+}
+
 export async function loginAdmin(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     // Checked before the credential lookup so a maintenance window doesn't leak

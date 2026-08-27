@@ -42,6 +42,7 @@ import TestComplete from './pages/candidate/TestComplete';
 
 // Components
 import AdminLayout from './components/AdminLayout';
+import AdminMaintenanceGate from './components/AdminMaintenanceGate';
 
 function ProtectedAdminRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAdminAuthenticated);
@@ -83,54 +84,56 @@ export default function App() {
       {/* Home redirect */}
       <Route path="/" element={<Navigate to="/admin/login" replace />} />
 
-      {/* Admin routes */}
-      <Route path="/admin/login" element={<AdminLogin />} />
-      <Route path="/admin/impersonate" element={<ImpersonationAccept />} />
-      <Route path="/admin/forgot-password" element={<ForgotPassword />} />
-      <Route path="/admin/reset-password" element={<ResetPassword />} />
-      <Route
-        path="/admin"
-        element={
-          <ProtectedAdminRoute>
-            <AdminLayout />
-          </ProtectedAdminRoute>
-        }
-      >
-        <Route index element={<Navigate to="dashboard" replace />} />
-        <Route path="dashboard" element={<AdminDashboard />} />
-        <Route path="tests" element={<TestList />} />
-        <Route path="tests/new" element={<TestForm />} />
-        <Route path="tests/agent" element={<AgentTestForm />} />
-        <Route path="tests/:testId" element={<TestDetails />} />
-        <Route path="tests/:testId/edit" element={<TestForm />} />
-        <Route path="tests/:testId/settings" element={<TestSettingsRedirect />} />
-        <Route path="tests/:testId/preview" element={<TestPreview />} />
-        <Route path="tests/:testId/ai-proctoring" element={<AIProctoringRedirect />} />
-        <Route path="tests/:testId/results" element={<TestResultsRedirect />} />
-        <Route path="tests/:testId/analytics" element={<PerformanceAnalytics />} />
-        <Route path="analytics" element={<PerformanceAnalytics />} />
-        <Route path="live-proctoring" element={<LiveProctoring />} />
-        <Route path="live-proctoring/:testId" element={<LiveProctoring />} />
-        <Route path="attempts/:attemptId" element={<AttemptDetails />} />
-        <Route path="attempts/:attemptId/proctoring" element={<ProctorDashboard />} />
-        <Route path="mcq/new" element={<MCQForm />} />
-        <Route path="coding/new" element={<CodingForm />} />
-        <Route path="behavioral/new" element={<BehavioralForm />} />
-        <Route path="communication/new" element={<CommunicationForm />} />
-        <Route path="repository" element={<RepositoryLayout />}>
-          <Route index element={<Navigate to="question-bank" replace />} />
-          <Route path="question-bank" element={<QuestionBank />} />
-          <Route path="custom" element={<CustomQuestions />} />
+      {/* Admin routes - gated behind maintenance mode (login screen included) */}
+      <Route element={<AdminMaintenanceGate />}>
+        <Route path="/admin/login" element={<AdminLogin />} />
+        <Route path="/admin/impersonate" element={<ImpersonationAccept />} />
+        <Route path="/admin/forgot-password" element={<ForgotPassword />} />
+        <Route path="/admin/reset-password" element={<ResetPassword />} />
+        <Route
+          path="/admin"
+          element={
+            <ProtectedAdminRoute>
+              <AdminLayout />
+            </ProtectedAdminRoute>
+          }
+        >
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<AdminDashboard />} />
+          <Route path="tests" element={<TestList />} />
+          <Route path="tests/new" element={<TestForm />} />
+          <Route path="tests/agent" element={<AgentTestForm />} />
+          <Route path="tests/:testId" element={<TestDetails />} />
+          <Route path="tests/:testId/edit" element={<TestForm />} />
+          <Route path="tests/:testId/settings" element={<TestSettingsRedirect />} />
+          <Route path="tests/:testId/preview" element={<TestPreview />} />
+          <Route path="tests/:testId/ai-proctoring" element={<AIProctoringRedirect />} />
+          <Route path="tests/:testId/results" element={<TestResultsRedirect />} />
+          <Route path="tests/:testId/analytics" element={<PerformanceAnalytics />} />
+          <Route path="analytics" element={<PerformanceAnalytics />} />
+          <Route path="live-proctoring" element={<LiveProctoring />} />
+          <Route path="live-proctoring/:testId" element={<LiveProctoring />} />
+          <Route path="attempts/:attemptId" element={<AttemptDetails />} />
+          <Route path="attempts/:attemptId/proctoring" element={<ProctorDashboard />} />
+          <Route path="mcq/new" element={<MCQForm />} />
+          <Route path="coding/new" element={<CodingForm />} />
+          <Route path="behavioral/new" element={<BehavioralForm />} />
+          <Route path="communication/new" element={<CommunicationForm />} />
+          <Route path="repository" element={<RepositoryLayout />}>
+            <Route index element={<Navigate to="question-bank" replace />} />
+            <Route path="question-bank" element={<QuestionBank />} />
+            <Route path="custom" element={<CustomQuestions />} />
+          </Route>
+          <Route path="coding/:questionId/edit" element={<CodingForm />} />
+          <Route path="mcq/:questionId/edit" element={<MCQForm />} />
+          <Route path="behavioral/:questionId/edit" element={<BehavioralForm />} />
+          <Route path="communication/:questionId/edit" element={<CommunicationForm />} />
+          <Route path="profile" element={<AdminProfile />} />
+          <Route path="id-verification-data" element={<IDVerificationData />} />
+          <Route path="trust-reports" element={<TrustReports />} />
+          <Route path="all-attempts" element={<AllAttempts />} />
+          <Route path="tests/:testId/invitations" element={<TestInvitationsRedirect />} />
         </Route>
-        <Route path="coding/:questionId/edit" element={<CodingForm />} />
-        <Route path="mcq/:questionId/edit" element={<MCQForm />} />
-        <Route path="behavioral/:questionId/edit" element={<BehavioralForm />} />
-        <Route path="communication/:questionId/edit" element={<CommunicationForm />} />
-        <Route path="profile" element={<AdminProfile />} />
-        <Route path="id-verification-data" element={<IDVerificationData />} />
-        <Route path="trust-reports" element={<TrustReports />} />
-        <Route path="all-attempts" element={<AllAttempts />} />
-        <Route path="tests/:testId/invitations" element={<TestInvitationsRedirect />} />
       </Route>
 
       {/* Candidate routes */}
