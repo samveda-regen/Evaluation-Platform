@@ -702,25 +702,32 @@ export async function resolveFileServeUrl(
   fileId: string,
   disposition: 'inline' | 'attachment'
 ): Promise<{ mode: 'redirect'; url: string } | { mode: 'bytes' } | null> {
-  if (isFilesystemMode()) return { mode: 'bytes' };
-
+  // B2-backed files always have a FileStorage row (even when FILE_STORAGE_MODE
+  // is "filesystem"), since storeFile() writes to B2 + Postgres metadata
+  // regardless of the global storage mode. Check the file's own metadata
+  // before falling back to the global mode, or B2 uploads 404 on read.
   const file = await prisma.fileStorage.findUnique({
     where: { id: fileId },
     select: { metadata: true, mimeType: true, originalName: true },
   });
-  if (!file) return null;
 
-  const metadata = file.metadata ? (JSON.parse(file.metadata) as Record<string, unknown>) : undefined;
-  const b2Key = metadata?.storageMode === 'b2' ? (metadata.b2Key as string | undefined) : undefined;
-  if (b2Key) {
-    const url = await getB2SignedUrl(b2Key, {
-      filename: file.originalName,
-      disposition,
-      contentType: file.mimeType,
-    });
-    return { mode: 'redirect', url };
+  if (file) {
+    const metadata = file.metadata ? (JSON.parse(file.metadata) as Record<string, unknown>) : undefined;
+    const b2Key = metadata?.storageMode === 'b2' ? (metadata.b2Key as string | undefined) : undefined;
+    if (b2Key) {
+      const url = await getB2SignedUrl(b2Key, {
+        filename: file.originalName,
+        disposition,
+        contentType: file.mimeType,
+      });
+      return { mode: 'redirect', url };
+    }
+    return { mode: 'bytes' };
   }
-  return { mode: 'bytes' };
+
+  if (isFilesystemMode()) return { mode: 'bytes' };
+
+  return null;
 }
 
 /**
