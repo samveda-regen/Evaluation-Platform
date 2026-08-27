@@ -174,14 +174,26 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
     } catch { toast.error('Export failed'); } finally { setExporting(false); }
   };
 
-  /* -- Build attempt lookup by email -- */
+/* -- Build attempt lookup by email: a candidate can now have more than one
+     attempt (retakes), so keep the most recent one for the row and the
+     total count for the "attempts" badge. -- */
   const attemptByEmail = new Map<string, TestAttempt>();
-  attempts.forEach(a => { const e = a.candidate?.email?.toLowerCase(); if (e) attemptByEmail.set(e, a); });
+  const attemptCountByEmail = new Map<string, number>();
+  attempts.forEach(a => {
+    const e = a.candidate?.email?.toLowerCase();
+    if (!e) return;
+    attemptCountByEmail.set(e, (attemptCountByEmail.get(e) || 0) + 1);
+    const existing = attemptByEmail.get(e);
+    if (!existing || (a.attemptNumber ?? 1) > (existing.attemptNumber ?? 1)) {
+      attemptByEmail.set(e, a);
+    }
+  });
 
   /* -- Merge invitations + attempts -- */
   const rows = (invData?.invitations || []).map(inv => ({
     inv,
     attempt: attemptByEmail.get(inv.email.toLowerCase()),
+    attemptCount: attemptCountByEmail.get(inv.email.toLowerCase()) || 0,
   }));
 
   /* -- Stat counts -- */
@@ -302,10 +314,10 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
       <div className="rounded-2xl overflow-hidden" style={{ backgroundColor:'white', boxShadow:'0 1px 4px rgba(0,0,0,0.07)' }}>
         {/* Table header */}
         <div className="grid px-5 py-3" style={{
-          gridTemplateColumns:'minmax(220px,1fr) 140px 130px 90px 90px 100px 130px 36px',
+          gridTemplateColumns:'minmax(220px,1fr) 140px 90px 130px 90px 90px 100px 130px 36px',
           borderBottom:'1px solid var(--admin-border)',
         }}>
-          {['CANDIDATE','STATUS','ATTEMPTED ON','SCORE','TRUST','TIME','INTEGRITY',''].map(col => (
+          {['CANDIDATE','STATUS','ATTEMPTS','ATTEMPTED ON','SCORE','TRUST','TIME','INTEGRITY',''].map(col => (
             <span key={col} className="text-xs font-semibold uppercase tracking-wide" style={{ color:'var(--admin-text-subtle)' }}>{col}</span>
           ))}
         </div>
@@ -323,7 +335,7 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
           </div>
         ) : (
           <div>
-            {pagedRows.map(({ inv, attempt }) => {
+            {pagedRows.map(({ inv, attempt, attemptCount }) => {
               const status = getCandStatus(inv, attempt);
               const sc = STATUS_CFG[status];
               const scorePct = attempt?.score != null && test?.totalMarks
@@ -345,7 +357,7 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
                 <div key={inv.id}
                   className="grid px-5 py-4 cursor-pointer transition-colors hover:bg-gray-50"
                   style={{
-                    gridTemplateColumns:'minmax(220px,1fr) 140px 130px 90px 90px 100px 130px 36px',
+                    gridTemplateColumns:'minmax(220px,1fr) 140px 90px 130px 90px 90px 100px 130px 36px',
                     borderBottom:'1px solid #F9FAFB',
                     alignItems:'center',
                     backgroundColor: isSelected ? 'var(--admin-accent-soft)' : undefined,
@@ -372,6 +384,11 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
                       {sc.label}
                     </span>
                   </div>
+
+                  {/* Attempts */}
+                  <span className="text-sm" style={{ color:'var(--admin-text-muted)' }}>
+                    {attemptCount > 0 ? attemptCount : '—'}
+                  </span>
 
                   {/* Date */}
                   <span className="text-sm" style={{ color:'var(--admin-text-muted)' }}>

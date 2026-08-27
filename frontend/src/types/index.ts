@@ -121,6 +121,7 @@ export interface TestAttempt {
   id: string;
   testId: string;
   candidateId: string;
+  attemptNumber?: number;
   startTime: string;
   endTime?: string;
   submittedAt?: string;
