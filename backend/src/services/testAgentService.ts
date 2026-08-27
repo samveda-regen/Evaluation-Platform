@@ -1110,25 +1110,47 @@ export async function suggestNewQuestions(
   const readingQuestionCount = Math.max(0, Math.min(5, Math.floor(counts.readingQuestionCount || 0)));
   const speakingCount = Math.max(0, Math.min(5, Math.floor(counts.speakingCount || 0)));
 
-  const systemPrompt = `You are an expert technical interviewer and question-bank author. Unlike a librarian picking from an existing catalog, your job here is to WRITE brand-new, original assessment questions from scratch, tailored precisely to the job profile given. Never write generic filler questions — every question must genuinely probe one of the required skills at the requested difficulty. Always respond with a valid JSON object only, no prose outside the JSON. Every string value must be valid JSON: escape all newlines as \\n, tabs as \\t, and double quotes as \\" — this matters most in multi-line fields like a coding question's description, sampleInput, sampleOutput, or a test case's input/expectedOutput. Never place a literal, unescaped line break inside a JSON string. Never use a bare double quote to emphasize or quote a word/phrase inside a string value (e.g. do NOT write "the "primitive" types") — use single quotes for that instead (e.g. "the 'primitive' types"), or escape it as \\". Keep every question concise enough that the full response comfortably fits the token budget — never truncate a question mid-way; if you are running low on space, write fewer questions rather than cutting one off.`;
+  // Shared JSON-formatting rules for every per-category call below.
+  const basePrompt = `You are an expert technical interviewer and question-bank author. Unlike a librarian picking from an existing catalog, your job here is to WRITE brand-new, original assessment questions from scratch, tailored precisely to the job profile given. Never write generic filler questions — every question must genuinely probe one of the required skills at the requested difficulty. Always respond with a valid JSON object only, no prose outside the JSON. Every string value must be valid JSON: escape all newlines as \\n, tabs as \\t, and double quotes as \\" — this matters most in multi-line fields like a coding question's description, sampleInput, sampleOutput, or a test case's input/expectedOutput. Never place a literal, unescaped line break inside a JSON string. Never use a bare double quote to emphasize or quote a word/phrase inside a string value (e.g. do NOT write "the "primitive" types") — use single quotes for that instead (e.g. "the 'primitive' types"), or escape it as \\". Keep every question concise enough that the full response comfortably fits the token budget — never truncate a question mid-way; if you are running low on space, write fewer questions rather than cutting one off.`;
 
-  const userPrompt = `Author new assessment questions for this role:
-
-**Job Title:** ${jobProfile.title}
+  const jobBrief = `**Job Title:** ${jobProfile.title}
 **Experience Level:** ${jobProfile.experience}
 ${jobProfile.description ? `**Job Description:** ${jobProfile.description}` : ''}
 **Required Skills:** ${skills.join(', ')}
-**Difficulty Level:** ${difficulty}
+**Difficulty Level:** ${difficulty}`;
 
-Write exactly:
-- ${mcqCount} multiple-choice question(s)
-- ${codingCount} coding question(s)
-- ${behavioralCount} behavioral question(s)
-- ${writtenCount} written-response question(s) (a Communication sub-type: candidate types a free-text answer to a prompt, graded on grammar/wording/coherence)
-- ${readingQuestionCount > 0 ? `1 reading passage with ${readingQuestionCount} linked multiple-choice question(s) about it` : '0 reading passages'} (a Communication sub-type)
-- ${speakingCount} speaking-topic question(s) (a Communication sub-type: candidate records a spoken answer to a topic, so only write the topic/prompt text, not the answer)
+  // Each question category used to be authored in a single mega-call sharing one token
+  // budget across all of them (up to 10 MCQ + 5 coding + 5 behavioral + 5 written + a
+  // reading passage + 5 speaking questions at once). That made truncation likely (one
+  // long-winded category could starve the rest, breaking the whole JSON response) and
+  // made the whole request slow enough to trip the reverse proxy's read timeout. Splitting
+  // into one call per category — run in parallel, each with its own generous budget —
+  // fixes both: a single category running long can't sink the others, and the categories
+  // that were previously serialized into one big call now happen concurrently instead.
+  type CategoryJob<T> = { key: string; run: () => Promise<T> };
 
-(If a count is 0, return an empty array for that section. For "reading", if ${readingQuestionCount} is 0, return null instead of an object.)
+  async function runCategory<T>(key: string, fallback: T, fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (err) {
+      console.error(`suggestNewQuestions: "${key}" category failed, returning empty for it:`, err);
+      return fallback;
+    }
+  }
+
+  const jobs: CategoryJob<unknown>[] = [];
+
+  if (mcqCount > 0) {
+    jobs.push({
+      key: 'mcq',
+      run: () => runCategory('mcq', [] as SuggestedMCQQuestion[], async () => {
+        const response = await callLLM([
+          { role: 'system', content: basePrompt },
+          { role: 'user', content: `Author new assessment questions for this role:
+
+${jobBrief}
+
+Write exactly ${mcqCount} multiple-choice question(s).
 
 Respond with a JSON object shaped exactly like this:
 {
@@ -1145,7 +1167,32 @@ Respond with a JSON object shaped exactly like this:
       "tags": ["skill1", "skill2"],
       "suggestedTimeEstimateSec": 45
     }
-  ],
+  ]
+}` }
+        ], { temperature: 0.6, maxTokens: 4096 });
+        const parsed = parseJSONFromLLM(response.content) as Record<string, unknown>;
+        return (Array.isArray(parsed.mcq) ? parsed.mcq : [])
+          .map(raw => normalizeMCQSuggestion(raw as Record<string, unknown>))
+          .filter((q): q is SuggestedMCQQuestion => q !== null)
+          .slice(0, mcqCount);
+      })
+    });
+  }
+
+  if (codingCount > 0) {
+    jobs.push({
+      key: 'coding',
+      run: () => runCategory('coding', [] as SuggestedCodingQuestion[], async () => {
+        const response = await callLLM([
+          { role: 'system', content: basePrompt },
+          { role: 'user', content: `Author new assessment questions for this role:
+
+${jobBrief}
+
+Write exactly ${codingCount} coding question(s).
+
+Respond with a JSON object shaped exactly like this:
+{
   "coding": [
     {
       "title": "...",
@@ -1164,7 +1211,32 @@ Respond with a JSON object shaped exactly like this:
       "topic": "short category name",
       "tags": ["skill1", "skill2"]
     }
-  ],
+  ]
+}` }
+        ], { temperature: 0.6, maxTokens: 6144 });
+        const parsed = parseJSONFromLLM(response.content) as Record<string, unknown>;
+        return (Array.isArray(parsed.coding) ? parsed.coding : [])
+          .map(raw => normalizeCodingSuggestion(raw as Record<string, unknown>))
+          .filter((q): q is SuggestedCodingQuestion => q !== null)
+          .slice(0, codingCount);
+      })
+    });
+  }
+
+  if (behavioralCount > 0) {
+    jobs.push({
+      key: 'behavioral',
+      run: () => runCategory('behavioral', [] as SuggestedBehavioralQuestion[], async () => {
+        const response = await callLLM([
+          { role: 'system', content: basePrompt },
+          { role: 'user', content: `Author new assessment questions for this role:
+
+${jobBrief}
+
+Write exactly ${behavioralCount} behavioral question(s).
+
+Respond with a JSON object shaped exactly like this:
+{
   "behavioral": [
     {
       "title": "short scenario title",
@@ -1176,7 +1248,32 @@ Respond with a JSON object shaped exactly like this:
       "tags": ["communication", "teamwork"],
       "suggestedTimeEstimateSec": 120
     }
-  ],
+  ]
+}` }
+        ], { temperature: 0.6, maxTokens: 3072 });
+        const parsed = parseJSONFromLLM(response.content) as Record<string, unknown>;
+        return (Array.isArray(parsed.behavioral) ? parsed.behavioral : [])
+          .map(raw => normalizeBehavioralSuggestion(raw as Record<string, unknown>))
+          .filter((q): q is SuggestedBehavioralQuestion => q !== null)
+          .slice(0, behavioralCount);
+      })
+    });
+  }
+
+  if (writtenCount > 0) {
+    jobs.push({
+      key: 'written',
+      run: () => runCategory('written', [] as SuggestedWrittenQuestion[], async () => {
+        const response = await callLLM([
+          { role: 'system', content: basePrompt },
+          { role: 'user', content: `Author new assessment questions for this role:
+
+${jobBrief}
+
+Write exactly ${writtenCount} written-response question(s) (a Communication sub-type: candidate types a free-text answer to a prompt, graded on grammar/wording/coherence).
+
+Respond with a JSON object shaped exactly like this:
+{
   "written": [
     {
       "title": "short label for this question (e.g. 'Describe your ideal work environment')",
@@ -1188,7 +1285,32 @@ Respond with a JSON object shaped exactly like this:
       "tags": ["skill1", "skill2"],
       "suggestedTimeEstimateSec": 300
     }
-  ],
+  ]
+}` }
+        ], { temperature: 0.6, maxTokens: 4096 });
+        const parsed = parseJSONFromLLM(response.content) as Record<string, unknown>;
+        return (Array.isArray(parsed.written) ? parsed.written : [])
+          .map(raw => normalizeWrittenSuggestion(raw as Record<string, unknown>))
+          .filter((q): q is SuggestedWrittenQuestion => q !== null)
+          .slice(0, writtenCount);
+      })
+    });
+  }
+
+  if (readingQuestionCount > 0) {
+    jobs.push({
+      key: 'reading',
+      run: () => runCategory('reading', null as SuggestedReadingGroup | null, async () => {
+        const response = await callLLM([
+          { role: 'system', content: basePrompt },
+          { role: 'user', content: `Author a new assessment question for this role:
+
+${jobBrief}
+
+Write exactly 1 reading passage with ${readingQuestionCount} linked multiple-choice question(s) about it (a Communication sub-type).
+
+Respond with a JSON object shaped exactly like this:
+{
   "reading": {
     "passage": { "title": "short passage title", "passageText": "the full passage text the candidate reads" },
     "questions": [
@@ -1203,7 +1325,29 @@ Respond with a JSON object shaped exactly like this:
         "tags": ["skill1", "skill2"]
       }
     ]
-  },
+  }
+}` }
+        ], { temperature: 0.6, maxTokens: 4096 });
+        const parsed = parseJSONFromLLM(response.content) as Record<string, unknown>;
+        return normalizeReadingGroup(parsed.reading as Record<string, unknown> | undefined, readingQuestionCount);
+      })
+    });
+  }
+
+  if (speakingCount > 0) {
+    jobs.push({
+      key: 'speaking',
+      run: () => runCategory('speaking', [] as SuggestedSpeakingQuestion[], async () => {
+        const response = await callLLM([
+          { role: 'system', content: basePrompt },
+          { role: 'user', content: `Author new assessment questions for this role:
+
+${jobBrief}
+
+Write exactly ${speakingCount} speaking-topic question(s) (a Communication sub-type: candidate records a spoken answer to a topic, so only write the topic/prompt text, not the answer).
+
+Respond with a JSON object shaped exactly like this:
+{
   "speaking": [
     {
       "title": "short label for this question (e.g. 'Handling a scheduling conflict')",
@@ -1217,56 +1361,28 @@ Respond with a JSON object shaped exactly like this:
       "suggestedTimeEstimateSec": 180
     }
   ]
-}`;
-
-  // Generous headroom: up to 10 MCQ + 5 coding (each with multiple test cases) + 5 behavioral
-  // questions can easily exceed a few thousand tokens — a response cut off mid-string by hitting
-  // the token limit is genuinely incomplete JSON, which no amount of post-hoc repair can fix, so
-  // the real defense is not running out of room in the first place.
-  const response = await callLLM([
-    { role: 'system', content: systemPrompt },
-    { role: 'user', content: userPrompt }
-  ], { temperature: 0.6, maxTokens: 8192 });
-
-  let parsed: Record<string, unknown>;
-  try {
-    parsed = parseJSONFromLLM(response.content) as Record<string, unknown>;
-  } catch (err) {
-    // Log the raw response so a future parse failure can actually be diagnosed instead of guessed at.
-    console.error('suggestNewQuestions: failed to parse LLM JSON response. Raw content:\n', response.content);
-    throw err;
+}` }
+        ], { temperature: 0.6, maxTokens: 3072 });
+        const parsed = parseJSONFromLLM(response.content) as Record<string, unknown>;
+        return (Array.isArray(parsed.speaking) ? parsed.speaking : [])
+          .map(raw => normalizeSpeakingSuggestion(raw as Record<string, unknown>))
+          .filter((q): q is SuggestedSpeakingQuestion => q !== null)
+          .slice(0, speakingCount);
+      })
+    });
   }
 
-  const mcq = (Array.isArray(parsed.mcq) ? parsed.mcq : [])
-    .map(raw => normalizeMCQSuggestion(raw as Record<string, unknown>))
-    .filter((q): q is SuggestedMCQQuestion => q !== null)
-    .slice(0, mcqCount);
+  const results = new Map<string, unknown>();
+  await Promise.all(jobs.map(async job => { results.set(job.key, await job.run()); }));
 
-  const coding = (Array.isArray(parsed.coding) ? parsed.coding : [])
-    .map(raw => normalizeCodingSuggestion(raw as Record<string, unknown>))
-    .filter((q): q is SuggestedCodingQuestion => q !== null)
-    .slice(0, codingCount);
-
-  const behavioral = (Array.isArray(parsed.behavioral) ? parsed.behavioral : [])
-    .map(raw => normalizeBehavioralSuggestion(raw as Record<string, unknown>))
-    .filter((q): q is SuggestedBehavioralQuestion => q !== null)
-    .slice(0, behavioralCount);
-
-  const written = (Array.isArray(parsed.written) ? parsed.written : [])
-    .map(raw => normalizeWrittenSuggestion(raw as Record<string, unknown>))
-    .filter((q): q is SuggestedWrittenQuestion => q !== null)
-    .slice(0, writtenCount);
-
-  const reading = readingQuestionCount > 0
-    ? normalizeReadingGroup(parsed.reading as Record<string, unknown> | undefined, readingQuestionCount)
-    : null;
-
-  const speaking = (Array.isArray(parsed.speaking) ? parsed.speaking : [])
-    .map(raw => normalizeSpeakingSuggestion(raw as Record<string, unknown>))
-    .filter((q): q is SuggestedSpeakingQuestion => q !== null)
-    .slice(0, speakingCount);
-
-  return { mcq, coding, behavioral, written, reading, speaking };
+  return {
+    mcq: (results.get('mcq') as SuggestedMCQQuestion[] | undefined) || [],
+    coding: (results.get('coding') as SuggestedCodingQuestion[] | undefined) || [],
+    behavioral: (results.get('behavioral') as SuggestedBehavioralQuestion[] | undefined) || [],
+    written: (results.get('written') as SuggestedWrittenQuestion[] | undefined) || [],
+    reading: (results.get('reading') as SuggestedReadingGroup | null | undefined) ?? null,
+    speaking: (results.get('speaking') as SuggestedSpeakingQuestion[] | undefined) || []
+  };
 }
 
 export async function suggestQuestionTags(
