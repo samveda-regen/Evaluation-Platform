@@ -1,6 +1,9 @@
 import prisma from '../utils/db.js';
 import { sendAlert } from './alerting.js';
 import { invalidateAdminSecurityCache } from './sessionSecurity.js';
+import { isFeatureEnabledForAdmin } from '../middleware/featureLock.js';
+
+const ANOMALY_LOCK_FEATURE_KEY = 'anomaly_auto_lock';
 
 // Compares each admin's last-hour action count against their own 7-day
 // baseline hourly rate. Flags (and locks) only when BOTH the relative
@@ -38,6 +41,11 @@ export async function runAnomalyDetection(): Promise<void> {
       const baselineHourlyRate = (weeklyMap.get(recent.adminId) ?? 0) / hoursInBaselineWindow;
       if (baselineHourlyRate < MIN_BASELINE_HOURLY_RATE) continue;
       if (recent._count._all < baselineHourlyRate * SPIKE_MULTIPLIER) continue;
+
+      // Platform default + per-admin override, same as every other feature lock —
+      // a superadmin can disable this globally or exempt one account from it.
+      const enabled = await isFeatureEnabledForAdmin(ANOMALY_LOCK_FEATURE_KEY, recent.adminId);
+      if (!enabled) continue;
 
       const admin = await prisma.admin.findUnique({
         where: { id: recent.adminId },

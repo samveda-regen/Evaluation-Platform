@@ -6,9 +6,11 @@ import { emitToSuperAdminRoom } from '../services/socketService.js';
 import { createAuditLogEntry } from '../services/auditChain.js';
 
 // The curated, initial set of lockable features — matches what's actually
-// wired into backend/src/routes/admin.ts via requireFeatureEnabled(). Not
-// meant to be exhaustive; extending this list means adding both a row here
-// and a requireFeatureEnabled(key) call on the route(s) it should gate.
+// wired into backend/src/routes/admin.ts via requireFeatureEnabled(), plus
+// anomaly_auto_lock which gates services/anomalyLock.ts directly rather than
+// a route. Not meant to be exhaustive; extending this list means adding both
+// a row here and a requireFeatureEnabled(key) call (or equivalent check) on
+// whatever it should gate.
 export const DEFAULT_FEATURE_FLAGS: { key: string; label: string; description: string }[] = [
   { key: 'test_creation', label: 'Test creation', description: 'Admins can create new tests.' },
   {
@@ -26,6 +28,11 @@ export const DEFAULT_FEATURE_FLAGS: { key: string; label: string; description: s
     key: 'question_repository_writes',
     label: 'Question repository writes',
     description: 'Admins can create, edit, or delete MCQ/coding/behavioral questions.',
+  },
+  {
+    key: 'anomaly_auto_lock',
+    label: 'Automatic anomaly lock',
+    description: 'Automatically locks an admin account when its hourly activity spikes far above its own baseline.',
   },
 ];
 

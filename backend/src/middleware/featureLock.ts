@@ -67,11 +67,25 @@ async function getOverride(key: string, adminId: string): Promise<{ enabled: boo
   return value;
 }
 
-// Applied per-route to a curated set of mutating admin endpoints. If a
-// FeatureFlag row for `key` doesn't exist yet, the feature is treated as
-// enabled (fail-open) rather than silently blocking undefined features.
-// A per-admin FeatureFlagOverride, if present, always wins over the global
-// FeatureFlag.enabled value for that admin.
+// Resolves whether `key` is enabled for one admin (or the platform default,
+// if adminId is omitted): a per-admin FeatureFlagOverride always wins over
+// the global FeatureFlag.enabled value. If the flag row doesn't exist yet,
+// the feature is treated as enabled (fail-open) rather than silently
+// blocking undefined features. Shared by the route middleware below and by
+// callers like anomalyLock.ts that need the same answer outside a request.
+export async function isFeatureEnabledForAdmin(key: string, adminId?: string | null): Promise<boolean> {
+  const flag = await getGlobalFlag(key);
+  if (!flag) return true;
+
+  if (adminId) {
+    const override = await getOverride(key, adminId);
+    if (override) return override.enabled;
+  }
+
+  return flag.enabled;
+}
+
+// Applied per-route to a curated set of mutating admin endpoints.
 export function requireFeatureEnabled(key: string) {
   return async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -81,13 +95,7 @@ export function requireFeatureEnabled(key: string) {
         return;
       }
 
-      let effectiveEnabled = flag.enabled;
-      if (req.admin?.id) {
-        const override = await getOverride(key, req.admin.id);
-        if (override) {
-          effectiveEnabled = override.enabled;
-        }
-      }
+      const effectiveEnabled = await isFeatureEnabledForAdmin(key, req.admin?.id);
 
       if (effectiveEnabled) {
         next();
