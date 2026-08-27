@@ -10,7 +10,7 @@ export default function MaintenancePage({ message }: MaintenancePageProps) {
       <img
         src={maintenanceIcon}
         alt=""
-        className="h-16 w-16 text-[#0f766e] animate-[spin_3s_linear_infinite]"
+        className="h-20 w-20 animate-[spin_3s_linear_infinite]"
       />
       <div className="max-w-md">
         <h1 className="text-2xl font-bold text-gray-900">Under Maintenance</h1>
