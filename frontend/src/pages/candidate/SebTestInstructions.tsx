@@ -591,6 +591,42 @@ export default function TestInstructions() {
                   </p>
                 </div>
               </div>
+
+              {/* Default mouse cursor required — Safe Exam Browser refuses to start
+                  a session if any Windows cursor (e.g. the "Hand" pointer) has been
+                  swapped for a custom .cur file outside its own default cursor
+                  folders, treating it as a tampering risk and aborting with
+                  "Failed to ensure session integrity!" before the exam ever loads. */}
+              <div className="flex items-start gap-4">
+                <div
+                  className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: '#FFF6EE' }}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="w-5 h-5 text-amber-600"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={1.8}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M5 3l14 8-6.5 1.5L11 19 5 3z"
+                    />
+                  </svg>
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900 text-sm">Default mouse cursor required</p>
+                  <p className="text-gray-500 text-sm mt-0.5">
+                    If you use a custom cursor theme, Secure Exam Browser will fail to start.
+                    Reset it to the Windows default first: Settings → Bluetooth &amp; devices →
+                    Mouse → Additional mouse settings → Pointers tab → Scheme:
+                    &quot;Windows Default (system scheme)&quot; → Apply.
+                  </p>
+                </div>
+              </div>
             </div>
 
             {/* Custom instructions */}
