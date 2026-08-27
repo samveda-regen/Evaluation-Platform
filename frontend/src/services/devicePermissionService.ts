@@ -35,6 +35,21 @@ export function getCachedStreams(): CachedDeviceStreams {
   };
 }
 
+// A mid-exam getUserMedia() call (e.g. AudioRecorder falling back to a fresh
+// request when the cached mic track has died) can make some browsers/kiosk
+// shells (SEB) surface a native permission dialog that steals window focus.
+// That focus loss isn't the candidate switching away, so callers making such
+// a call should suppress the window-blur violation for a short grace window.
+let ignoreBlurUntil = 0;
+
+export function suppressBlurViolation(ms = 5000): void {
+  ignoreBlurUntil = Date.now() + ms;
+}
+
+export function isBlurViolationSuppressed(): boolean {
+  return Date.now() < ignoreBlurUntil;
+}
+
 export function clearCachedStreams(stopTracks = true): void {
   if (stopTracks) {
     cachedStreams.cameraStream?.getTracks().forEach(track => track.stop());

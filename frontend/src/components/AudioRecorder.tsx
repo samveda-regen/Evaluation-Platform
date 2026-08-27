@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Mic, Square, RotateCcw, Loader2 } from 'lucide-react';
-import { getCachedStreams } from '../services/devicePermissionService';
+import { getCachedStreams, suppressBlurViolation } from '../services/devicePermissionService';
 
 interface AudioRecorderProps {
   maxDurationSec: number;
@@ -61,9 +61,17 @@ export default function AudioRecorder({ maxDurationSec, onSubmitRecording, disab
       // and MediaStreamTrack.stop() affects the underlying track everywhere it's referenced, which
       // would otherwise kill the cached stream for subsequent Speaking questions.
       const cachedMic = getCachedStreams().microphoneStream;
-      const stream = cachedMic
-        ? new MediaStream(cachedMic.getAudioTracks().map(t => t.clone()))
-        : await navigator.mediaDevices.getUserMedia({ audio: true });
+      let stream: MediaStream;
+      if (cachedMic) {
+        stream = new MediaStream(cachedMic.getAudioTracks().map(t => t.clone()));
+      } else {
+        // The cached mic died (rare) and we have to request it fresh. Some
+        // browsers/kiosk shells (SEB) surface a native permission dialog for
+        // this, which steals window focus — suppress the resulting false
+        // "window lost focus" violation for a few seconds.
+        suppressBlurViolation();
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
       streamRef.current = stream;
       const mimeType = pickSupportedMimeType();
       const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);

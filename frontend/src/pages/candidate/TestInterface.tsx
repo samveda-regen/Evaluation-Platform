@@ -19,6 +19,7 @@ import {
   normalizeCustomAIViolationSelection,
 } from '../../constants/customAIViolations';
 import talentstaQLogoLight from '../../assets/assessment-icons/icons/TalentstaQ logo-light.svg';
+import { isBlurViolationSuppressed } from '../../services/devicePermissionService';
 
 const HIGH_PRIORITY_VIOLATIONS = new Set([
   'multiple_faces', 'phone_detected', 'looking_away', 'tab_switch',
@@ -391,7 +392,7 @@ export default function TestInterface() {
 
   useEffect(() => {
     const handleBlur = () => {
-      if (document.hidden || isSubmitted) return;
+      if (document.hidden || isSubmitted || isBlurViolationSuppressed()) return;
       blurAtRef.current = Date.now();
       handleViolation('window_exit', 'Test window lost focus');
     };
