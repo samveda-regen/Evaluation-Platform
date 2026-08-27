@@ -34,6 +34,11 @@ export const DEFAULT_FEATURE_FLAGS: { key: string; label: string; description: s
     label: 'Automatic anomaly lock',
     description: 'Automatically locks an admin account when its hourly activity spikes far above its own baseline.',
   },
+  {
+    key: 'maintenance_mode',
+    label: 'Maintenance mode',
+    description: 'Blocks admin console logins and actions platform-wide. Candidates already taking a test are never affected.',
+  },
 ];
 
 export async function ensureDefaultFeatureFlags(): Promise<void> {

@@ -311,6 +311,48 @@ export interface OverviewTrends {
   testsCreatedPerWeek: { weekStart: string; count: number }[];
 }
 
+export interface CompanyStorageRow {
+  companyId: string;
+  companyName: string;
+  mediaBytes: number;
+  fileStorageBytes: number;
+  recordingBytes: number;
+  totalBytes: number;
+}
+
+export interface CompanySummary {
+  id: string;
+  externalCompanyId: string;
+  name: string;
+  webhookConfigured: boolean;
+  createdAt: string;
+  adminCount: number;
+  testCount: number;
+  candidateCount: number;
+}
+
+export interface CompanyAdminRow {
+  id: string;
+  email: string;
+  name: string;
+  createdAt: string;
+  status: 'online' | 'offline';
+}
+
+export interface WebhookDelivery {
+  id: string;
+  companyId: string;
+  companyName: string;
+  event: string;
+  url: string;
+  statusCode: number | null;
+  success: boolean;
+  error: string | null;
+  durationMs: number | null;
+  attempt: number;
+  createdAt: string;
+}
+
 export const superAdminApi = {
   login: (data: { email: string; password: string; totpCode?: string }) =>
     superAdminHttp.post<{
@@ -453,6 +495,25 @@ export const superAdminApi = {
   sendTestAlert: () => superAdminHttp.post<{ message: string }>('/superadmin/alerts/test'),
   listAlerts: (params?: { page?: number; limit?: number }) =>
     superAdminHttp.get<{ entries: AlertLogEntry[]; total: number }>('/superadmin/alerts', { params }),
+
+  // ---- Storage ----
+  listCompanyStorage: () => superAdminHttp.get<{ companies: CompanyStorageRow[] }>('/superadmin/storage'),
+
+  // ---- Companies ----
+  listCompanies: () => superAdminHttp.get<{ companies: CompanySummary[] }>('/superadmin/companies'),
+  getCompanyDetail: (companyId: string) =>
+    superAdminHttp.get<{ company: CompanySummary; admins: CompanyAdminRow[] }>(`/superadmin/companies/${companyId}`),
+  renameCompany: (companyId: string, name: string) =>
+    superAdminHttp.patch<{ company: { id: string; name: string } }>(`/superadmin/companies/${companyId}`, { name }),
+
+  // ---- Webhooks ----
+  listWebhookDeliveries: (params?: { companyId?: string; success?: 'true' | 'false'; page?: number }) =>
+    superAdminHttp.get<{ deliveries: WebhookDelivery[]; total: number; page: number; pageSize: number }>(
+      '/superadmin/webhooks',
+      { params }
+    ),
+  retryWebhookDelivery: (logId: string) =>
+    superAdminHttp.post<{ message: string }>(`/superadmin/webhooks/${logId}/retry`),
 };
 
 export default superAdminHttp;

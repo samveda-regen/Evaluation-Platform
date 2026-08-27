@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { verifyToken } from '../utils/jwt.js';
 import { resolvePartnerForToken } from '../services/integrationPartnerService.js';
 import { getAdminSecurityState, getSuperAdminSecurityState } from '../services/sessionSecurity.js';
+import { isFeatureEnabledForAdmin } from './featureLock.js';
 import {
   AuthenticatedRequest,
   AdminPayload,
@@ -108,6 +109,18 @@ export async function adminAuth(req: AuthenticatedRequest, res: Response, next: 
       res.status(403).json({
         error: 'account_locked',
         message: `Your account has been locked${state.securityLockReason ? `: ${state.securityLockReason}` : ''}.`,
+      });
+      return;
+    }
+    // Platform-wide switch (no adminId — see superAdminFeatureFlags.ts DEFAULT_FEATURE_FLAGS),
+    // admin-console only: candidate routes never check this. Same 423/feature_locked shape as
+    // requireFeatureEnabled() so the existing frontend toast handling picks it up for free.
+    const maintenanceEnabled = await isFeatureEnabledForAdmin('maintenance_mode');
+    if (!maintenanceEnabled) {
+      res.status(423).json({
+        error: 'feature_locked',
+        feature: 'maintenance_mode',
+        message: 'The platform is temporarily down for maintenance. Please try again shortly.',
       });
       return;
     }

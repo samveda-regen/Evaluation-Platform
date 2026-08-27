@@ -1,4 +1,5 @@
 import { createHmac } from 'crypto';
+import { Prisma } from '@prisma/client';
 import prisma from '../utils/db.js';
 import { decryptSecret } from '../utils/secretEncryption.js';
 
@@ -59,13 +60,51 @@ export async function sendCandidateScoreWebhook(payload: CandidateScoreWebhookPa
   }
 }
 
+interface WebhookDeliveryLogInput {
+  companyId: string;
+  event: string;
+  url: string;
+  payload: Record<string, unknown>;
+  statusCode: number | null;
+  success: boolean;
+  error: string | null;
+  durationMs: number;
+  attempt: number;
+}
+
+// Fire-and-forget by design (own try/catch) — a logging failure must never surface
+// as a webhook-dispatch failure, and dispatchCompanyWebhookEvent's callers don't
+// expect this side-channel write to affect their own await/error handling.
+async function logWebhookDelivery(input: WebhookDeliveryLogInput): Promise<void> {
+  try {
+    await prisma.webhookDeliveryLog.create({
+      data: {
+        companyId: input.companyId,
+        event: input.event,
+        url: input.url,
+        payload: input.payload as Prisma.InputJsonValue,
+        statusCode: input.statusCode,
+        success: input.success,
+        error: input.error,
+        durationMs: input.durationMs,
+        attempt: input.attempt,
+      },
+    });
+  } catch (error) {
+    console.error('Failed to record webhook delivery log:', error);
+  }
+}
+
 // Per-company push events (invitation.sent, test.started, test.completed) for
 // recruiter-platform partners that configured a webhookUrl on their Company row,
-// as an alternative to polling GET /integration/tests/:testId/results.
+// as an alternative to polling GET /integration/tests/:testId/results. Every
+// attempt (success or failure) is recorded to WebhookDeliveryLog so a superadmin
+// can see delivery health and replay a failed payload — see superAdminWebhooks.ts.
 export async function dispatchCompanyWebhookEvent(
   companyId: string | null | undefined,
   event: string,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
+  attempt: number = 1
 ): Promise<void> {
   if (!companyId) {
     return;
@@ -88,6 +127,7 @@ export async function dispatchCompanyWebhookEvent(
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), getTimeoutMs());
+    const startedAt = Date.now();
 
     try {
       const response = await fetch(company.webhookUrl, {
@@ -99,16 +139,32 @@ export async function dispatchCompanyWebhookEvent(
         body,
         signal: controller.signal,
       });
+      const durationMs = Date.now() - startedAt;
 
       if (!response.ok) {
         const responseText = await response.text().catch(() => '');
-        console.error(
-          `Company webhook (${event}) failed with status ${response.status}: ${responseText || response.statusText}`
-        );
+        const errorMessage = responseText || response.statusText;
+        console.error(`Company webhook (${event}) failed with status ${response.status}: ${errorMessage}`);
+        await logWebhookDelivery({
+          companyId, event, url: company.webhookUrl, payload: data,
+          statusCode: response.status, success: false, error: errorMessage, durationMs, attempt,
+        });
         return;
       }
 
       console.info(`Company webhook (${event}) sent for company ${companyId}`);
+      await logWebhookDelivery({
+        companyId, event, url: company.webhookUrl, payload: data,
+        statusCode: response.status, success: true, error: null, durationMs, attempt,
+      });
+    } catch (fetchError) {
+      const durationMs = Date.now() - startedAt;
+      const errorMessage = fetchError instanceof Error ? fetchError.message : 'Unknown error';
+      console.error(`Company webhook (${event}) error:`, fetchError);
+      await logWebhookDelivery({
+        companyId, event, url: company.webhookUrl, payload: data,
+        statusCode: null, success: false, error: errorMessage, durationMs, attempt,
+      });
     } finally {
       clearTimeout(timeout);
     }

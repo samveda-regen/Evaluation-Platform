@@ -102,9 +102,31 @@ model Company {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  admins     Admin[]
-  tests      Test[]
-  candidates Candidate[]
+  admins              Admin[]
+  tests               Test[]
+  candidates          Candidate[]
+  webhookDeliveryLogs WebhookDeliveryLog[]
+}
+
+// One row per attempted delivery of dispatchCompanyWebhookEvent (candidateScoreWebhookService.ts) —
+// lets a superadmin see whether a company's configured webhookUrl is actually receiving events,
+// and replay a failed payload without re-triggering the original test/invitation event.
+model WebhookDeliveryLog {
+  id         String   @id @default(uuid())
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  event      String
+  url        String
+  payload    Json
+  statusCode Int?
+  success    Boolean
+  error      String?
+  durationMs Int?
+  attempt    Int      @default(1)
+  createdAt  DateTime @default(now())
+
+  @@index([companyId])
+  @@index([createdAt])
 }
 
 // One row per recruitment-platform partner integrated via /api/integration.

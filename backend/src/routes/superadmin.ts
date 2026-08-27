@@ -67,6 +67,9 @@ import {
   sendTestAlert,
   listAlerts,
 } from '../controllers/superAdminAlerts.js';
+import { listCompanyStorage } from '../controllers/superAdminStorage.js';
+import { listCompanies, getCompanyDetail, renameCompany } from '../controllers/superAdminCompanies.js';
+import { listWebhookDeliveries, retryWebhookDelivery } from '../controllers/superAdminWebhooks.js';
 
 const router = Router();
 
@@ -160,5 +163,17 @@ router.get('/alerts/config', superAdminAuth, getAlertConfigSettings);
 router.patch('/alerts/config', superAdminAuth, requireFullControl, updateAlertConfigSettings);
 router.post('/alerts/test', superAdminAuth, requireFullControl, sendTestAlert);
 router.get('/alerts', superAdminAuth, listAlerts);
+
+// ---- Storage ----
+router.get('/storage', superAdminAuth, listCompanyStorage);
+
+// ---- Companies ----
+router.get('/companies', superAdminAuth, listCompanies);
+router.get('/companies/:companyId', superAdminAuth, getCompanyDetail);
+router.patch('/companies/:companyId', superAdminAuth, requireFullControl, renameCompany);
+
+// ---- Webhooks ----
+router.get('/webhooks', superAdminAuth, listWebhookDeliveries);
+router.post('/webhooks/:logId/retry', superAdminAuth, requireFullControl, retryWebhookDelivery);
 
 export default router;

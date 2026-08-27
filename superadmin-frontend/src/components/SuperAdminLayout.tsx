@@ -13,6 +13,9 @@ import {
   CreditCard,
   ShieldCheck,
   BellRing,
+  HardDrive,
+  Building2,
+  Webhook,
 } from 'lucide-react';
 import { useSuperAdminStore } from '../context/superAdminStore';
 import { getRealtimeSocket } from '../services/realtimeService';
@@ -22,9 +25,12 @@ const navItems = [
   { path: '/superadmin/overview', label: 'Overview', icon: LayoutGrid },
   { path: '/superadmin/live-monitor', label: 'Live Monitor', icon: Eye },
   { path: '/superadmin/accounts', label: 'Accounts', icon: Users },
+  { path: '/superadmin/companies', label: 'Companies', icon: Building2 },
   { path: '/superadmin/audit-log', label: 'Audit Log', icon: History },
   { path: '/superadmin/feature-locks', label: 'Feature Locks', icon: Lock },
   { path: '/superadmin/billing', label: 'Billing', icon: CreditCard },
+  { path: '/superadmin/storage', label: 'Storage', icon: HardDrive },
+  { path: '/superadmin/webhooks', label: 'Webhooks', icon: Webhook },
   { path: '/superadmin/telemetry', label: 'Telemetry', icon: Activity },
   { path: '/superadmin/security', label: 'Security', icon: ShieldCheck },
   { path: '/superadmin/alerts', label: 'Alerts', icon: BellRing },

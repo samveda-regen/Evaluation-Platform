@@ -14,6 +14,7 @@ import {
   checkNewDeviceLogin,
 } from '../services/loginSecurity.js';
 import { issueAdminRefreshToken, rotateAdminRefreshToken } from '../services/refreshTokens.js';
+import { isFeatureEnabledForAdmin } from '../middleware/featureLock.js';
 
 // The global adminActionLogger middleware only sees `req.admin`, which is
 // never set for a login request (there's no valid token yet) — so login
@@ -184,6 +185,24 @@ export async function registerAdminFromIntegration(req: AuthenticatedRequest, re
 
 export async function loginAdmin(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
+    // Checked before the credential lookup so a maintenance window doesn't leak
+    // whether an email exists. Own try/catch to fail open, same as elsewhere
+    // maintenance_mode is checked (middleware/auth.ts) — a transient DB hiccup
+    // here must never lock every admin out of logging in.
+    try {
+      const maintenanceEnabled = await isFeatureEnabledForAdmin('maintenance_mode');
+      if (!maintenanceEnabled) {
+        res.status(423).json({
+          error: 'feature_locked',
+          feature: 'maintenance_mode',
+          message: 'The platform is temporarily down for maintenance. Please try again shortly.',
+        });
+        return;
+      }
+    } catch (error) {
+      console.error('loginAdmin maintenance-mode check failed, failing open:', error);
+    }
+
     const { email, password } = req.body;
 
     const sanitizedEmail = sanitizeInput(email).toLowerCase();

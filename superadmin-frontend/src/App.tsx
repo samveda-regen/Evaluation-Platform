@@ -13,6 +13,9 @@ import SuperAdminAiAssistant from './pages/superadmin/AiAssistant';
 import SuperAdminBilling from './pages/superadmin/Billing';
 import SuperAdminSecurity from './pages/superadmin/Security';
 import SuperAdminAlerts from './pages/superadmin/Alerts';
+import SuperAdminStorage from './pages/superadmin/Storage';
+import SuperAdminCompanies from './pages/superadmin/Companies';
+import SuperAdminWebhooks from './pages/superadmin/Webhooks';
 
 function ProtectedSuperAdminRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useSuperAdminStore((state) => state.isSuperAdminAuthenticated);
@@ -43,6 +46,9 @@ export default function App() {
         <Route path="security" element={<SuperAdminSecurity />} />
         <Route path="alerts" element={<SuperAdminAlerts />} />
         <Route path="ai-assistant" element={<SuperAdminAiAssistant />} />
+        <Route path="storage" element={<SuperAdminStorage />} />
+        <Route path="companies" element={<SuperAdminCompanies />} />
+        <Route path="webhooks" element={<SuperAdminWebhooks />} />
       </Route>
       <Route path="*" element={<Navigate to="/superadmin/overview" replace />} />
     </Routes>
