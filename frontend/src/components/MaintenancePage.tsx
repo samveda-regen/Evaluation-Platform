@@ -1,5 +1,3 @@
-import maintenanceIcon from '../assets/maintenance-icon.svg';
-
 interface MaintenancePageProps {
   message?: string;
 }
@@ -8,7 +6,7 @@ export default function MaintenancePage({ message }: MaintenancePageProps) {
   return (
     <div className="fixed inset-0 z-[9999] flex min-h-screen w-full flex-col items-center justify-center gap-6 bg-white px-6 text-center">
       <img
-        src={maintenanceIcon}
+        src="/maintenance-icon.png"
         alt=""
         className="h-20 w-20 animate-[spin_3s_linear_infinite]"
       />
