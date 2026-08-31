@@ -918,7 +918,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
   }, [getActiveVideoElement, analysisFrameQuality, analysisFrameMaxWidth]);
 
   /**
-   * Snapshot-based analysis: every few seconds, run the exp-1 ONNX model
+   * Snapshot-based analysis: every few seconds, run the yolo26n ONNX model
    * directly against the live camera feed in-browser (clientVisionService.ts)
    * and report whatever it finds. A JPEG snapshot is still taken and sent
    * alongside purely as violation evidence (and as an automatic fallback:
@@ -942,10 +942,10 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
         try {
           const activeVideo = getActiveVideoElement();
           if (activeVideo) {
-            // MediaPipe gaze runs in its own try/catch, inside the exp-1 one.
+            // MediaPipe gaze runs in its own try/catch, inside the YOLO one.
             // The two models are independent signals: if the landmarker can't
-            // load or infer, exp-1 detection must still produce this cycle's
-            // violations (with its own gaze classes as the fallback) rather
+            // load or infer, YOLO detection must still produce this cycle's
+            // violations (just with no gaze verdict this cycle) rather
             // than the whole client path dropping to the server.
             try {
               const faceMesh = await loadClientFaceMesh();

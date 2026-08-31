@@ -1,23 +1,27 @@
-// Client-side proctoring inference. Runs the exp-1 ONNX model directly in the
-// candidate's browser via onnxruntime-web, replacing per-frame uploads to
-// python_cv_service. Model I/O confirmed via `onnxruntime` on the model file
-// directly (not assumed from the Python service, which loads it through
-// ultralytics and never needed to know the raw shape):
+// Client-side proctoring inference. Runs yolo26n.onnx (standard COCO-80
+// object detector) directly in the candidate's browser via onnxruntime-web,
+// replacing per-frame uploads to python_cv_service — same model file the
+// server itself loads (python_cv_service/app.py's YOLO_MODEL_PATH), so
+// client and server detection are the same model. Model I/O confirmed via
+// `onnxruntime` on the model file directly:
 //   input  "images": float32 [1, 3, 640, 640]
 //   output "output0": float32 [1, 300, 6]  (already NMS'd: x1,y1,x2,y2,score,cls)
 //
-// Class map (python_cv_service/video_proctoring_test.py, app.py comment):
-//   0 head phones, 1 laptop, 2 looking down, 3 looking left, 4 looking right,
-//   5 looking straight, 6 looking up, 7 mobile phones, 8 note books,
-//   9 person, 10 tv
+// This replaces the earlier exp-1.onnx custom model, which had its own
+// Person/Laptop/Mobile Phones/TV/Note Books/Head Phones/gaze classes. COCO
+// has no gaze classes and no "headphones" class — gaze is MediaPipe-only now
+// (see below), and headphones detection has no equivalent, dropped rather
+// than mapped to a misleading proxy. "Note books" maps to COCO's "book",
+// the closest visual analog.
 
-// Gaze comes from MediaPipe rather than from this model's own gaze classes
-// wherever MediaPipe has a face to work with — see clientFaceMeshService.ts,
-// which runs the FaceLandmarker in-browser via @mediapipe/tasks-vision WASM
-// and is the port of the server's FaceMesh gaze path. detectionsToViolations
-// takes that signal as an optional second argument and gives it precedence;
-// the exp-1 gaze classes below stay in as the fallback for cycles where
-// MediaPipe found no face or failed to load. See the precedence note there.
+// Gaze comes entirely from MediaPipe FaceLandmarker — see
+// clientFaceMeshService.ts, which runs it in-browser via
+// @mediapipe/tasks-vision WASM and is the port of the server's FaceMesh gaze
+// path (gaze never came from YOLO server-side either, exp-1's gaze classes
+// were a client-only stopgap that no longer exists once the model is COCO).
+// detectionsToViolations' second argument carries that signal; when it's
+// absent (landmarker still loading, no face this cycle, or it threw) there is
+// simply no gaze verdict for that cycle — no class-based fallback anymore.
 
 // Type-only import: erased at compile time, no runtime side effect. The
 // actual onnxruntime-web module is loaded dynamically inside loadOrt()
@@ -32,7 +36,7 @@
 import type * as OrtNamespace from 'onnxruntime-web';
 import { gazeSustainedAway, type FaceMeshSignal } from './clientFaceMeshService';
 
-const MODEL_URL = '/models/exp-1.onnx';
+const MODEL_URL = '/models/yolo26n.onnx';
 const INPUT_SIZE = 640;
 const SCORE_THRESHOLD = 0.5;
 
@@ -56,17 +60,31 @@ function loadOrt(): Promise<typeof OrtNamespace> {
   return ortModulePromise;
 }
 
+// Standard COCO-80 class order — matches yolo26n.onnx's embedded metadata
+// (confirmed via onnxruntime's get_modelmeta on the model file directly).
 const CLASS_NAMES = [
-  'headphones', 'laptop', 'looking_down', 'looking_left', 'looking_right',
-  'looking_straight', 'looking_up', 'mobile_phone', 'notebook', 'person', 'tv',
+  'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck',
+  'boat', 'traffic light', 'fire hydrant', 'stop sign', 'parking meter', 'bench',
+  'bird', 'cat', 'dog', 'horse', 'sheep', 'cow', 'elephant', 'bear', 'zebra',
+  'giraffe', 'backpack', 'umbrella', 'handbag', 'tie', 'suitcase', 'frisbee',
+  'skis', 'snowboard', 'sports ball', 'kite', 'baseball bat', 'baseball glove',
+  'skateboard', 'surfboard', 'tennis racket', 'bottle', 'wine glass', 'cup',
+  'fork', 'knife', 'spoon', 'bowl', 'banana', 'apple', 'sandwich', 'orange',
+  'broccoli', 'carrot', 'hot dog', 'pizza', 'donut', 'cake', 'chair', 'couch',
+  'potted plant', 'bed', 'dining table', 'toilet', 'tv', 'laptop', 'mouse',
+  'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink',
+  'refrigerator', 'book', 'clock', 'vase', 'scissors', 'teddy bear', 'hair drier',
+  'toothbrush',
 ] as const;
 
-const GAZE_AWAY_CLASSES = new Set([2, 3, 4, 6]); // down/left/right/up
-const GAZE_STRAIGHT_CLASS = 5;
-const PHONE_CLASS = 7;
-const SECONDARY_SCREEN_CLASSES = new Set([1, 10]); // laptop, tv
-const UNAUTHORIZED_OBJECT_CLASSES = new Set([0, 8]); // headphones, notebook
-const PERSON_CLASS = 9;
+const PERSON_CLASS = 0;
+const PHONE_CLASS = 67; // cell phone
+const SECONDARY_SCREEN_CLASSES = new Set([62, 63]); // tv, laptop
+// "book" is the closest COCO analog to exp-1's "note books" class; COCO has
+// no headphones equivalent, so that detection is dropped rather than mapped
+// to a misleading proxy (matches python_cv_service/app.py's
+// UNAUTHORIZED_OBJECT_LABELS, which also only ever mapped "laptop").
+const UNAUTHORIZED_OBJECT_CLASSES = new Set([73]); // book
 
 export interface RawDetection {
   classId: number;
@@ -251,15 +269,11 @@ export function detectionsToViolations(
     }
   }
 
-  // Gaze — MediaPipe first, exp-1's gaze classes as fallback.
-  //
-  // MediaPipe is preferred because it is what the server used: gaze there came
-  // from FaceMesh landmark geometry, never from YOLO's gaze classes, so
-  // routing through it keeps the client's verdicts comparable to the frames
-  // that still go to python_cv_service (the fallback path in useProctoring.ts).
-  // It also carries the server's sustained-gaze requirement — a single
-  // off-screen frame is not a violation, LOOK_AWAY_SECONDS of them is —
-  // which the exp-1 class path has no notion of.
+  // Gaze — MediaPipe only. COCO has no gaze classes (unlike exp-1.onnx, which
+  // had its own looking_left/right/up/down/straight classes as a client-only
+  // stopgap); the server never used YOLO for gaze either, always FaceMesh.
+  // If MediaPipe has no face this cycle (still loading, threw, or genuinely no
+  // face), there is simply no gaze verdict for that cycle — no fallback.
   if (faceMesh && faceMesh.faceCount > 0 && faceMesh.gazeDirection !== 'unknown') {
     if (gazeSustainedAway(faceMesh)) {
       violations.push({
@@ -272,21 +286,6 @@ export function detectionsToViolations(
           faceCount: faceMesh.faceCount,
         },
       });
-    }
-  } else {
-    // Take whichever gaze class had the single highest score this frame.
-    const gazeClasses = [...GAZE_AWAY_CLASSES, GAZE_STRAIGHT_CLASS];
-    const gazeDetections = dets.filter(d => gazeClasses.includes(d.classId));
-    if (gazeDetections.length > 0) {
-      const bestGaze = gazeDetections.sort((a, b) => b.score - a.score)[0];
-      if (GAZE_AWAY_CLASSES.has(bestGaze.classId)) {
-        violations.push({
-          eventType: 'looking_away',
-          confidence: Math.round(bestGaze.score * 100),
-          description: `Candidate ${bestGaze.className.replace('_', ' ')}`,
-          metadata: { source: 'exp-1' },
-        });
-      }
     }
   }
 

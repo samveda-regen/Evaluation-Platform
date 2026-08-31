@@ -96,9 +96,11 @@ def _env_int(name: str, default: int) -> int:
 VIOLATION_COOLDOWN_SECONDS = _env_float("VIOLATION_COOLDOWN_SECONDS", 3.0)
 
 # New-engine detection behavior (adapted for frame API)
-# exp-1.onnx is a custom-trained model (Person/Laptop/Mobile Phones/TV/Note
-# Books/Head Phones/gaze classes) — only Person, Laptop, and Mobile Phones are
-# actually mapped to violations below; everything else is ignored by label.
+# yolo26n.onnx is a standard COCO-80 model — only "person", "cell phone", and
+# "laptop" are mapped to violations below (see _object_detections /
+# UNAUTHORIZED_OBJECT_LABELS); every other COCO class is ignored by label.
+# Gaze never came from this model even under exp-1.onnx — it's a separate
+# MediaPipe FaceMesh pass (_gaze_signal below), unaffected by this swap.
 PHONE_CONF = _env_float("PHONE_CONF", 0.10)
 PERSON_CONF = _env_float("PERSON_CONF", 0.30)
 PHONE_MIN_AREA_RATIO = _env_float("PHONE_MIN_AREA_RATIO", 0.00005)
@@ -114,7 +116,7 @@ FACE_MIN_CONF = _env_float("FACE_MIN_CONF", 0.45)
 GAZE_LEFT_RIGHT_THRESHOLD = _env_float("GAZE_LEFT_RIGHT_THRESHOLD", 0.35)
 CAMERA_BLOCKED_DARK_THRESHOLD = _env_float("CAMERA_BLOCKED_DARK_THRESHOLD", 18.0)
 CAMERA_BLOCKED_UNIFORM_THRESHOLD = _env_float("CAMERA_BLOCKED_UNIFORM_THRESHOLD", 8.0)
-YOLO_MODEL_PATH = os.getenv("YOLO_MODEL", "exp-1.onnx").strip() or "exp-1.onnx"
+YOLO_MODEL_PATH = os.getenv("YOLO_MODEL", "yolo26n.onnx").strip() or "yolo26n.onnx"
 CV_ENABLED_EVENTS = {
     x.strip()
     for x in os.getenv(

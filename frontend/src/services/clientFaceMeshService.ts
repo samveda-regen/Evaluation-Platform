@@ -2,7 +2,7 @@
 //
 // This is the browser port of the FaceMesh half of python_cv_service/app.py
 // (`_face_mesh` + `_gaze_signal`). Together with clientVisionService.ts (the
-// exp-1 ONNX detector), it means a SEB session runs BOTH proctoring models
+// yolo26n ONNX detector), it means a SEB session runs BOTH proctoring models
 // locally: no frame round-trip to the Python service is needed for either
 // object detection or gaze.
 //
