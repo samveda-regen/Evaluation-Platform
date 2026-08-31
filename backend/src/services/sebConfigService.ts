@@ -7,6 +7,35 @@
 // version — see talentstaq-exam.seb at the repo root for the manually
 // tested baseline this mirrors.
 
+import crypto from 'crypto';
+
+// SEB's settings/menu (Ctrl+Q while SEB is running) is unlocked unless
+// hashedAdminPassword is set — a blank value (the previous state here) let
+// any candidate open it mid-exam and disable the lockdown themselves. SEB
+// verifies the password locally against this hash, so the hash necessarily
+// ships inside the config the candidate's SEB installation reads; that's
+// inherent to how SEB's own admin-password feature works, not something this
+// change introduces. What this guards against is a candidate without the
+// plaintext password guessing or bypassing it, not server-side tampering —
+// that would need SEB's separate Browser Exam Key / Config Key mechanism,
+// which nothing in this codebase currently verifies server-side either.
+const SEB_ADMIN_PASSWORD = process.env.SEB_ADMIN_PASSWORD || '';
+if (!SEB_ADMIN_PASSWORD) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    '[sebConfigService] SEB_ADMIN_PASSWORD is not set — generated SEB configs ship with ' +
+    'hashedAdminPassword blank, so any candidate can open SEB\'s own settings/menu mid-exam ' +
+    'and alter or disable the lockdown config. Set SEB_ADMIN_PASSWORD before distributing to ' +
+    'real candidates.'
+  );
+}
+// SEB stores/compares this as the SHA-256 hex digest of the plaintext
+// password, matching the format community .seb config generators use for
+// hashedAdminPassword/hashedQuitPassword.
+const HASHED_ADMIN_PASSWORD = SEB_ADMIN_PASSWORD
+  ? crypto.createHash('sha256').update(SEB_ADMIN_PASSWORD, 'utf8').digest('hex')
+  : '';
+
 function xmlEscape(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -156,7 +185,7 @@ export function buildSebConfigXml(startUrl: string, quitUrl: string): string {
   <integer>0</integer>
 
   <key>hashedAdminPassword</key>
-  <string></string>
+  <string>${HASHED_ADMIN_PASSWORD}</string>
 
   <key>originatorVersion</key>
   <string>SEB_Win_3.6.0</string>
