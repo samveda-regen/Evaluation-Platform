@@ -7,7 +7,7 @@ const SWEEP_INTERVAL_MS = 15_000;
 // abandoned (tab closed, browser crash, network loss) and auto-submitted — well before the
 // full test duration would otherwise elapse. Generous relative to the ~15s heartbeat interval
 // so normal jitter/backgrounding throttling never trips it.
-const ABANDONMENT_GRACE_MS = 2 * 60_000;
+const ABANDONMENT_GRACE_MS = 5 * 60_000;
 
 let sweepTimer: ReturnType<typeof setInterval> | null = null;
 let sweepInFlight = false;
@@ -57,7 +57,7 @@ export async function sweepExpiredAttempts(): Promise<void> {
         // out of time and quiet is more usefully described by "time's up" than "went inactive".
         const reason = durationElapsed
           ? 'Time limit reached'
-          : 'Candidate went inactive (no heartbeat received for over 2 minutes)';
+          : 'Candidate went inactive (no heartbeat received for over 5 minutes)';
 
         return { id: attempt.id, testId: attempt.testId, reason };
       })
