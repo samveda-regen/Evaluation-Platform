@@ -161,6 +161,9 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
   // reported to the backend so the Superadmin Observer's live telemetry
   // reflects the achieved proctoring refresh rate, not the configured one.
   const lastAnalysisAtRef = useRef<number | null>(null);
+  // Epoch ms of the last analysis cycle that actually captured+uploaded a
+  // frame. 0 so the very first cycle always uploads one. See runSnapshotAnalysis.
+  const lastFrameUploadAtRef = useRef<number>(0);
 
   const serverViolationSeenRef = useRef<Record<string, number>>({});
   const obstructionStateRef = useRef<{
@@ -176,6 +179,13 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
   });
 
   const analysisIntervalMs = Number((import.meta as any).env?.VITE_PROCTOR_ANALYSIS_INTERVAL_MS || 1000);
+  // How often a webcam frame is actually captured+uploaded during the 1s
+  // analysis loop when client-side detection is healthy and finds nothing —
+  // see runSnapshotAnalysis. Kept comfortably under the backend's evidence
+  // cache TTL (PROCTOR_EVIDENCE_FRAME_TTL_MS, default 30000ms in
+  // proctoring.ts) so a violation from a non-vision signal (tab switch,
+  // window blur, monitor count) still finds a recent-enough cached frame.
+  const evidenceFrameRefreshMs = Number((import.meta as any).env?.VITE_PROCTOR_EVIDENCE_FRAME_REFRESH_MS || 15000);
   const recordingChunkMs = Number((import.meta as any).env?.VITE_PROCTOR_RECORDING_CHUNK_MS || 30000);
   // LiveKit Participant Egress is the primary recorder. The legacy browser
   // recorder remains available only as an explicit emergency fallback.
@@ -920,12 +930,27 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
   /**
    * Snapshot-based analysis: every few seconds, run the yolo26n ONNX model
    * directly against the live camera feed in-browser (clientVisionService.ts)
-   * and report whatever it finds. A JPEG snapshot is still taken and sent
-   * alongside purely as violation evidence (and as an automatic fallback:
-   * if client-side inference didn't produce a result this cycle — model
-   * still loading, inference error, etc — the backend falls back to its
-   * own python_cv_service call on that frame, so proctoring never goes
-   * fully dark just because the in-browser model hiccups).
+   * and report whatever it finds.
+   *
+   * A JPEG snapshot is captured and sent alongside, but NOT on every cycle —
+   * only when it's actually needed:
+   *   - detectionMode isn't 'client' (server does its own detection and needs
+   *     the pixels), or client-side inference didn't produce a result this
+   *     cycle (model still loading, inference error, etc) — same fallback
+   *     need, so proctoring never goes fully dark just because the in-browser
+   *     model hiccups;
+   *   - this cycle actually found a violation (attached as evidence); or
+   *   - the evidence cache is due for a refresh (evidenceFrameRefreshMs) so a
+   *     violation from a non-vision signal (tab switch, window blur, monitor
+   *     count) still has a recent frame to fall back to server-side
+   *     (getRecentEvidenceFrame in proctoring.ts).
+   * On a healthy client-mode cycle with nothing to report, none of that
+   * applies and the frame is skipped entirely. Capturing (canvas draw + JPEG
+   * encode) and uploading (~50-100KB base64) a frame every single second for
+   * the whole exam was previously unconditional here — sustained upload
+   * traffic competing with the candidate's own answer-save/question-load
+   * requests on the same connection, especially on asymmetric home links
+   * where upload bandwidth is the scarce direction.
    */
   const runSnapshotAnalysis = useCallback(async () => {
     if (!session) return;
@@ -934,8 +959,6 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     snapshotAnalysisInFlightRef.current = true;
 
     try {
-      const frameData = await takeWebcamSnapshot();
-
       let clientViolations: ReturnType<typeof detectionsToViolations> | undefined;
       let faceMeshSignal: FaceMeshSignal | null = null;
       if (session.detectionMode === 'client') {
@@ -980,10 +1003,18 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
         }
       }
 
+      const needsServerFallback = session.detectionMode !== 'client' || !clientViolations;
+      const hasViolationThisCycle = !!clientViolations?.length;
+      const evidenceRefreshDue = Date.now() - lastFrameUploadAtRef.current >= evidenceFrameRefreshMs;
+      const shouldCaptureFrame = needsServerFallback || hasViolationThisCycle || evidenceRefreshDue;
+      const frameData = shouldCaptureFrame ? await takeWebcamSnapshot() : null;
+      if (frameData) lastFrameUploadAtRef.current = Date.now();
+
       traceLog('snapshot_analysis', {
         sessionId: session.sessionId,
         frameAttached: !!frameData,
         frameLength: frameData?.length || 0,
+        frameSkippedReason: frameData ? null : 'healthy_client_cycle',
         monitorCount: status.monitorCount,
         fullscreen: !!document.fullscreenElement,
         tabVisible: !document.hidden,
@@ -1076,7 +1107,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     } finally {
       snapshotAnalysisInFlightRef.current = false;
     }
-  }, [session, status.monitorCount, finalConfig, takeWebcamSnapshot, canEmitClientViolation, traceLog]);
+  }, [session, status.monitorCount, finalConfig, takeWebcamSnapshot, evidenceFrameRefreshMs, canEmitClientViolation, traceLog]);
 
   // Monitor for external monitors
   useEffect(() => {

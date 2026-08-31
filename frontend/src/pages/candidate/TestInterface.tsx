@@ -597,13 +597,26 @@ export default function TestInterface() {
     } catch (error) { console.error('Failed to auto-save:', error); }
   };
 
+  // Without this guard, a click during a slow save (congested network, or the
+  // main thread busy with a proctoring inference cycle) looked like it did
+  // nothing, so candidates clicked again -- each extra click fired its own
+  // independent saveCurrentAnswer() network call, stacking concurrent
+  // requests that made the underlying slowness worse. The button now shows
+  // "Saving..." and ignores re-entrant clicks until the in-flight save
+  // resolves.
+  const [savingAndNext, setSavingAndNext] = useState(false);
   const handleSaveAndNext = async () => {
-    if (isTestFrozen) return;
-    await saveCurrentAnswer();
-    if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestion(currentQuestionIndex + 1);
-    } else {
-      setShowConfirmSubmit(true);
+    if (isTestFrozen || savingAndNext) return;
+    setSavingAndNext(true);
+    try {
+      await saveCurrentAnswer();
+      if (currentQuestionIndex < questions.length - 1) {
+        setCurrentQuestion(currentQuestionIndex + 1);
+      } else {
+        setShowConfirmSubmit(true);
+      }
+    } finally {
+      setSavingAndNext(false);
     }
   };
 
@@ -925,12 +938,12 @@ export default function TestInterface() {
 
       <button
         onClick={handleSaveAndNext}
-        disabled={isTestFrozen}
+        disabled={isTestFrozen || savingAndNext}
         className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity disabled:opacity-50"
         style={{ background: currentQuestionIndex === questions.length - 1 ? '#DC2626' : 'var(--admin-accent)' }}
       >
-        {currentQuestionIndex === questions.length - 1 ? 'Submit Test' : 'Save & Next'}
-        {currentQuestionIndex < questions.length - 1 && (
+        {savingAndNext ? 'Saving...' : currentQuestionIndex === questions.length - 1 ? 'Submit Test' : 'Save & Next'}
+        {!savingAndNext && currentQuestionIndex < questions.length - 1 && (
           <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
           </svg>
