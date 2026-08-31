@@ -32,6 +32,12 @@ import type { CameraDiagnostics } from '../services/cameraDeviceService';
 import { clearCachedStreams, getCachedStreams } from '../services/devicePermissionService';
 import { candidateApi } from '../services/api';
 import { loadClientVisionModel, runClientDetection, detectionsToViolations } from '../services/clientVisionService';
+import {
+  loadClientFaceMesh,
+  runClientFaceMesh,
+  resetGazeTracking,
+  type FaceMeshSignal,
+} from '../services/clientFaceMeshService';
 
 export interface ProctorStatus {
   isInitialized: boolean;
@@ -574,6 +580,23 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
         screenShareEnabled,
       });
 
+      if (proctorSession.detectionMode === 'client' && cameraEnabled) {
+        // Clear any gaze timer left over from a previous session in this tab,
+        // then start fetching the MediaPipe landmarker in the background. Its
+        // WASM runtime plus model is ~15MB, so a cold load on the first
+        // analysis cycle would leave the opening cycles with no gaze signal.
+        // Fire-and-forget on purpose: the promise is cached inside
+        // clientFaceMeshService, so the first analysis cycle either finds it
+        // ready or awaits the same in-flight load, and a failure here must
+        // not block or fail session start.
+        resetGazeTracking();
+        loadClientFaceMesh().catch(err => {
+          traceLog('client_face_mesh_warmup_error', {
+            message: err instanceof Error ? err.message : 'unknown',
+          });
+        });
+      }
+
       const startChunkedRecorder = (
         mediaStream: MediaStream,
         recordingType: 'webcam' | 'screen',
@@ -914,18 +937,36 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
       const frameData = await takeWebcamSnapshot();
 
       let clientViolations: ReturnType<typeof detectionsToViolations> | undefined;
+      let faceMeshSignal: FaceMeshSignal | null = null;
       if (session.detectionMode === 'client') {
         try {
           const activeVideo = getActiveVideoElement();
           if (activeVideo) {
+            // MediaPipe gaze runs in its own try/catch, inside the exp-1 one.
+            // The two models are independent signals: if the landmarker can't
+            // load or infer, exp-1 detection must still produce this cycle's
+            // violations (with its own gaze classes as the fallback) rather
+            // than the whole client path dropping to the server.
+            try {
+              const faceMesh = await loadClientFaceMesh();
+              faceMeshSignal = runClientFaceMesh(faceMesh, activeVideo);
+            } catch (faceMeshError) {
+              traceLog('client_face_mesh_error', {
+                sessionId: session.sessionId,
+                message: faceMeshError instanceof Error ? faceMeshError.message : 'unknown',
+              });
+            }
+
             const clientSession = await loadClientVisionModel();
             const detections = await runClientDetection(clientSession, activeVideo);
-            clientViolations = detectionsToViolations(detections);
+            clientViolations = detectionsToViolations(detections, faceMeshSignal);
             traceLog('client_vision_detection', {
               sessionId: session.sessionId,
               detectionCount: detections.length,
               violationCount: clientViolations.length,
               violationTypes: clientViolations.map(v => v.eventType),
+              faceMeshFaceCount: faceMeshSignal?.faceCount,
+              faceMeshGaze: faceMeshSignal?.gazeDirection,
             });
           }
         } catch (clientVisionError) {
@@ -965,6 +1006,18 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
           frameData: frameData || undefined,
           ...(audioResult ? { audio: audioResult } : {}),
           ...(clientViolations ? { clientViolations } : {}),
+          // Gaze telemetry for the observer dashboard. This is the same shape
+          // the backend used to get back from python_cv_service's MediaPipe
+          // pass; it now comes from the in-browser landmarker instead.
+          ...(faceMeshSignal
+            ? {
+                gaze: {
+                  gazeDirection: faceMeshSignal.gazeDirection,
+                  confidence: faceMeshSignal.gazeConfidence,
+                  isLookingAtScreen: faceMeshSignal.isLookingAtScreen,
+                },
+              }
+            : {}),
           screenInfo: {
             monitorCount: status.monitorCount,
             isFullscreen: !!document.fullscreenElement,
@@ -1292,6 +1345,10 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     if (audioAnalyzerRef.current) {
       audioAnalyzerRef.current.destroy();
     }
+    // The sustained-gaze timer and the VIDEO-mode timestamp counter are module
+    // state in clientFaceMeshService, so they must be cleared here or a
+    // part-used look-away window would carry into the next session in this tab.
+    resetGazeTracking();
     clearCachedStreams(true);
     if (webcamRecorderRef.current && webcamRecorderRef.current.state !== 'inactive') {
       webcamRecorderRef.current.stop();

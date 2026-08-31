@@ -11,6 +11,14 @@
 //   5 looking straight, 6 looking up, 7 mobile phones, 8 note books,
 //   9 person, 10 tv
 
+// Gaze comes from MediaPipe rather than from this model's own gaze classes
+// wherever MediaPipe has a face to work with — see clientFaceMeshService.ts,
+// which runs the FaceLandmarker in-browser via @mediapipe/tasks-vision WASM
+// and is the port of the server's FaceMesh gaze path. detectionsToViolations
+// takes that signal as an optional second argument and gives it precedence;
+// the exp-1 gaze classes below stay in as the fallback for cycles where
+// MediaPipe found no face or failed to load. See the precedence note there.
+
 // Type-only import: erased at compile time, no runtime side effect. The
 // actual onnxruntime-web module is loaded dynamically inside loadOrt()
 // below, guarded by try/catch — a static top-level `import * as ort from
@@ -22,6 +30,7 @@
 // — including useProctoring.ts, which also owns the camera preview and the
 // rest of the analysis loop, not just this feature.
 import type * as OrtNamespace from 'onnxruntime-web';
+import { gazeSustainedAway, type FaceMeshSignal } from './clientFaceMeshService';
 
 const MODEL_URL = '/models/exp-1.onnx';
 const INPUT_SIZE = 640;
@@ -168,7 +177,18 @@ export async function runClientDetection(
 // category per cycle — the backend's own cooldown (canStoreViolationNow)
 // handles cross-cycle deduping, this just avoids stacking duplicates from a
 // single frame's multiple overlapping boxes.
-export function detectionsToViolations(dets: RawDetection[]): ClientViolation[] {
+//
+// `faceMesh` is this cycle's MediaPipe result (clientFaceMeshService.ts) when
+// one is available. Pass it and gaze is decided by MediaPipe; omit it (or pass
+// null, e.g. the landmarker is still loading or threw) and gaze falls back to
+// exp-1's own gaze classes. Face/person counting always stays with exp-1
+// either way — the server counted people with YOLO too, and MediaPipe only
+// sees faces, so a candidate turned fully away is a person to one model and no
+// face to the other. Its face count rides along in the metadata instead.
+export function detectionsToViolations(
+  dets: RawDetection[],
+  faceMesh?: FaceMeshSignal | null
+): ClientViolation[] {
   const violations: ClientViolation[] = [];
   const byClass = new Map<number, RawDetection>();
   for (const d of dets) {
@@ -176,12 +196,18 @@ export function detectionsToViolations(dets: RawDetection[]): ClientViolation[] 
     if (!existing || existing.score < d.score) byClass.set(d.classId, d);
   }
 
+  // MediaPipe's own face count is recorded alongside exp-1's person count
+  // rather than driving the event, so a reviewer can see when the two models
+  // disagreed (person but no face = candidate turned away or occluded).
+  const faceCountMeta = faceMesh ? { mediapipeFaceCount: faceMesh.faceCount } : {};
+
   const personCount = dets.filter(d => d.classId === PERSON_CLASS).length;
   if (personCount === 0) {
     violations.push({
       eventType: 'face_not_detected',
       confidence: 80,
       description: 'No person detected in frame',
+      metadata: { ...faceCountMeta },
     });
   } else if (personCount >= 2) {
     const best = dets.filter(d => d.classId === PERSON_CLASS).sort((a, b) => b.score - a.score)[0];
@@ -189,7 +215,7 @@ export function detectionsToViolations(dets: RawDetection[]): ClientViolation[] 
       eventType: 'multiple_faces',
       confidence: Math.round(best.score * 100),
       description: `${personCount} people detected in frame`,
-      metadata: { personCount },
+      metadata: { personCount, ...faceCountMeta },
     });
   }
 
@@ -225,17 +251,42 @@ export function detectionsToViolations(dets: RawDetection[]): ClientViolation[] 
     }
   }
 
-  // Gaze: take whichever gaze class had the single highest score this frame.
-  const gazeClasses = [...GAZE_AWAY_CLASSES, GAZE_STRAIGHT_CLASS];
-  const gazeDetections = dets.filter(d => gazeClasses.includes(d.classId));
-  if (gazeDetections.length > 0) {
-    const bestGaze = gazeDetections.sort((a, b) => b.score - a.score)[0];
-    if (GAZE_AWAY_CLASSES.has(bestGaze.classId)) {
+  // Gaze — MediaPipe first, exp-1's gaze classes as fallback.
+  //
+  // MediaPipe is preferred because it is what the server used: gaze there came
+  // from FaceMesh landmark geometry, never from YOLO's gaze classes, so
+  // routing through it keeps the client's verdicts comparable to the frames
+  // that still go to python_cv_service (the fallback path in useProctoring.ts).
+  // It also carries the server's sustained-gaze requirement — a single
+  // off-screen frame is not a violation, LOOK_AWAY_SECONDS of them is —
+  // which the exp-1 class path has no notion of.
+  if (faceMesh && faceMesh.faceCount > 0 && faceMesh.gazeDirection !== 'unknown') {
+    if (gazeSustainedAway(faceMesh)) {
       violations.push({
         eventType: 'looking_away',
-        confidence: Math.round(bestGaze.score * 100),
-        description: `Candidate ${bestGaze.className.replace('_', ' ')}`,
+        confidence: Math.round(faceMesh.gazeConfidence),
+        description: `Candidate looking ${faceMesh.gazeDirection} (sustained)`,
+        metadata: {
+          source: 'mediapipe',
+          gazeDirection: faceMesh.gazeDirection,
+          faceCount: faceMesh.faceCount,
+        },
       });
+    }
+  } else {
+    // Take whichever gaze class had the single highest score this frame.
+    const gazeClasses = [...GAZE_AWAY_CLASSES, GAZE_STRAIGHT_CLASS];
+    const gazeDetections = dets.filter(d => gazeClasses.includes(d.classId));
+    if (gazeDetections.length > 0) {
+      const bestGaze = gazeDetections.sort((a, b) => b.score - a.score)[0];
+      if (GAZE_AWAY_CLASSES.has(bestGaze.classId)) {
+        violations.push({
+          eventType: 'looking_away',
+          confidence: Math.round(bestGaze.score * 100),
+          description: `Candidate ${bestGaze.className.replace('_', ' ')}`,
+          metadata: { source: 'exp-1' },
+        });
+      }
     }
   }
 
