@@ -136,7 +136,7 @@ function CandidateVideo({
           inset: 0,
           width: '100%',
           height: '100%',
-          objectFit: 'cover',
+          objectFit: 'contain',
           backgroundColor: '#020617',
         }}
       />
@@ -745,8 +745,8 @@ export default function LiveProctoring() {
         >
           <div
             style={{
-              width: 'min(1120px, 96vw)',
-              height: 'min(720px, 92vh)',
+              width: 'min(1320px, 96vw)',
+              height: 'min(900px, 94vh)',
               borderRadius: '12px',
               overflow: 'hidden',
               backgroundColor: 'white',
