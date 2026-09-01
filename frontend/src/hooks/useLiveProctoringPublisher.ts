@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Room, Track } from 'livekit-client';
+import { RemoteParticipant, Room, RoomEvent, Track } from 'livekit-client';
 import { candidateApi } from '../services/api';
+
+export interface AdminLiveMessage {
+  id: string;
+  text: string;
+  at: number;
+}
 
 interface UseLiveProctoringPublisherOptions {
   enabled: boolean;
@@ -9,6 +15,7 @@ interface UseLiveProctoringPublisherOptions {
   cameraStream?: MediaStream | null;
   microphoneStream?: MediaStream | null;
   screenStream?: MediaStream | null;
+  onAdminMessage?: (message: AdminLiveMessage) => void;
 }
 
 export function useLiveProctoringPublisher({
@@ -18,11 +25,17 @@ export function useLiveProctoringPublisher({
   cameraStream,
   microphoneStream,
   screenStream,
+  onAdminMessage,
 }: UseLiveProctoringPublisherOptions) {
   const roomRef = useRef<Room | null>(null);
   const publishedTrackIdsRef = useRef<Set<string>>(new Set());
+  const onAdminMessageRef = useRef(onAdminMessage);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    onAdminMessageRef.current = onAdminMessage;
+  }, [onAdminMessage]);
 
   useEffect(() => {
     if (!enabled || !attemptId || !cameraStream) return;
@@ -40,6 +53,23 @@ export function useLiveProctoringPublisher({
       },
     });
     roomRef.current = room;
+
+    const handleAdminData = (payload: Uint8Array, participant?: RemoteParticipant) => {
+      if (participant && !participant.identity?.startsWith('admin:')) return;
+      try {
+        const decoded = JSON.parse(new TextDecoder().decode(payload));
+        if (decoded && decoded.type === 'admin-message' && typeof decoded.text === 'string') {
+          onAdminMessageRef.current?.({
+            id: typeof decoded.id === 'string' ? decoded.id : `${Date.now()}`,
+            text: decoded.text,
+            at: typeof decoded.at === 'number' ? decoded.at : Date.now(),
+          });
+        }
+      } catch {
+        // Ignore malformed proctor data packets.
+      }
+    };
+    room.on(RoomEvent.DataReceived, handleAdminData);
 
     const publishMediaTrack = async (
       mediaTrack: MediaStreamTrack | undefined,
@@ -117,6 +147,7 @@ export function useLiveProctoringPublisher({
       cancelled = true;
       setConnected(false);
       publishedTrackIdsRef.current.clear();
+      room.off(RoomEvent.DataReceived, handleAdminData);
       room.disconnect();
       if (roomRef.current === room) roomRef.current = null;
     };

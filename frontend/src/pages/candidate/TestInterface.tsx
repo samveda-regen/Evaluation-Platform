@@ -108,6 +108,7 @@ export default function TestInterface() {
   const [faceFrozen, setFaceFrozen] = useState(false);
   const [policyPaused, setPolicyPaused] = useState(false);
   const [policyPauseReason, setPolicyPauseReason] = useState('');
+  const [proctorMessage, setProctorMessage] = useState<{ id: string; text: string; at: number } | null>(null);
   // New state for redesigned UI
   const [markedForReview, setMarkedForReview] = useState<Set<number>>(new Set());
   const [autoSaved, setAutoSaved] = useState(false);
@@ -250,6 +251,10 @@ export default function TestInterface() {
     publishMicrophone: requireMicrophone,
     cameraStream,
     screenStream,
+    onAdminMessage: (message) => {
+      setProctorMessage(message);
+      toast('New message from your proctor', { icon: '💬', duration: 5000 });
+    },
   });
 
   const proctorStatusRef = useRef(proctorStatus);
@@ -991,6 +996,28 @@ export default function TestInterface() {
             >
               &times;
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Proctor message */}
+      {proctorMessage && (
+        <div className="fixed bottom-4 right-4 z-50 w-[calc(100%-2rem)] max-w-sm sm:w-96">
+          <div className="overflow-hidden rounded-xl bg-indigo-600 text-white shadow-2xl ring-1 ring-black/10">
+            <div className="flex items-center justify-between bg-indigo-700 px-4 py-2">
+              <span className="text-xs font-bold uppercase tracking-wide">Message from Proctor</span>
+              <button
+                type="button"
+                aria-label="Dismiss proctor message"
+                onClick={() => setProctorMessage(null)}
+                className="flex h-6 w-6 items-center justify-center rounded text-lg leading-none transition-colors hover:bg-white/15"
+              >
+                &times;
+              </button>
+            </div>
+            <p className="whitespace-pre-wrap break-words px-4 py-3 text-sm font-medium">
+              {proctorMessage.text}
+            </p>
           </div>
         </div>
       )}
