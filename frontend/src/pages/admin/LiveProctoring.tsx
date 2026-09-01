@@ -746,10 +746,9 @@ export default function LiveProctoring() {
           <div
             style={{
               width: 'min(1120px, 96vw)',
-              maxHeight: '92vh',
+              height: 'min(720px, 92vh)',
               borderRadius: '12px',
-              overflowY: 'auto',
-              overflowX: 'hidden',
+              overflow: 'hidden',
               backgroundColor: 'white',
               boxShadow: '0 24px 70px rgba(15, 23, 42, 0.34)',
               display: 'flex',
@@ -760,6 +759,7 @@ export default function LiveProctoring() {
             <div
               style={{
                 height: '56px',
+                flexShrink: 0,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
@@ -799,10 +799,10 @@ export default function LiveProctoring() {
             <div
               style={{
                 position: 'relative',
-                aspectRatio: '16 / 9',
+                flex: 1,
+                minHeight: 0,
                 width: '100%',
                 backgroundColor: '#0F172A',
-                flexShrink: 0,
               }}
             >
               <CandidateVideo attemptId={viewerCandidate.attemptId} active onRoom={setViewerRoom} />
@@ -834,7 +834,8 @@ export default function LiveProctoring() {
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '10px',
-                minHeight: 0,
+                flexShrink: 0,
+                backgroundColor: 'white',
               }}
             >
               <p

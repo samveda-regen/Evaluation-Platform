@@ -253,7 +253,6 @@ export default function TestInterface() {
     screenStream,
     onAdminMessage: (message) => {
       setProctorMessage(message);
-      toast('New message from your proctor', { icon: '💬', duration: 5000 });
     },
   });
 
@@ -1002,10 +1001,10 @@ export default function TestInterface() {
 
       {/* Proctor message */}
       {proctorMessage && (
-        <div className="fixed bottom-4 right-4 z-50 w-[calc(100%-2rem)] max-w-sm sm:w-96">
+        <div className="fixed top-16 right-4 z-50 w-[calc(100%-2rem)] max-w-sm sm:w-96">
           <div className="overflow-hidden rounded-xl bg-indigo-600 text-white shadow-2xl ring-1 ring-black/10">
             <div className="flex items-center justify-between bg-indigo-700 px-4 py-2">
-              <span className="text-xs font-bold uppercase tracking-wide">Message from Proctor</span>
+              <span className="text-xs font-bold uppercase tracking-wide">Message from Invigilator</span>
               <button
                 type="button"
                 aria-label="Dismiss proctor message"
