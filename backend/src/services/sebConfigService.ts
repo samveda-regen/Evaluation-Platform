@@ -139,7 +139,7 @@ export function buildSebConfigXml(startUrl: string, quitUrl: string): string {
        prohibitedProcesses, so this flag was mostly just breaking our own
        feature rather than adding real security.
        browserMediaCaptureScreen is the Mac-specific equivalent (default false,
-       same "(Win)"-only gap as the camera/mic keys above) -- SEB macOS 3.0's
+       same "(Win)"-only gap as the camera/mic keys above) — SEB macOS 3.0's
        WKWebView engine originally had no getDisplayMedia() support at all, and
        3.1.1 added it gated behind this key. -->
   <key>allowScreenSharing</key>
