@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import prisma from '../utils/db.js';
 import { AuthenticatedRequest } from '../types/index.js';
+import { b2Configured, getB2BucketAnalytics, type B2BucketAnalytics } from '../utils/b2Storage.js';
 
 interface CompanyBytesRow {
   companyId: string;
@@ -84,5 +85,34 @@ export async function listCompanyStorage(_req: AuthenticatedRequest, res: Respon
   } catch (error) {
     console.error('List company storage error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// A full bucket walk is expensive, so the result is memoised for a few minutes.
+// ?refresh=1 forces a fresh scan.
+const B2_ANALYTICS_TTL_MS = 5 * 60 * 1000;
+let b2AnalyticsCache: { at: number; data: B2BucketAnalytics } | null = null;
+
+export async function getB2StorageAnalytics(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    if (!b2Configured()) {
+      res.json({ configured: false });
+      return;
+    }
+
+    const refreshParam = String(req.query.refresh ?? '');
+    const forceRefresh = refreshParam === '1' || refreshParam === 'true';
+    const now = Date.now();
+    if (!forceRefresh && b2AnalyticsCache && now - b2AnalyticsCache.at < B2_ANALYTICS_TTL_MS) {
+      res.json({ configured: true, cached: true, ageMs: now - b2AnalyticsCache.at, ...b2AnalyticsCache.data });
+      return;
+    }
+
+    const data = await getB2BucketAnalytics();
+    b2AnalyticsCache = { at: now, data };
+    res.json({ configured: true, cached: false, ageMs: 0, ...data });
+  } catch (error) {
+    console.error('B2 storage analytics error:', error);
+    res.status(502).json({ error: 'Failed to read bucket analytics from B2' });
   }
 }

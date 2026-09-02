@@ -320,6 +320,20 @@ export interface CompanyStorageRow {
   totalBytes: number;
 }
 
+export interface B2StorageAnalytics {
+  configured: boolean;
+  cached?: boolean;
+  ageMs?: number;
+  bucket?: string;
+  generatedAt?: string;
+  totalObjects?: number;
+  totalBytes?: number;
+  truncated?: boolean;
+  byType?: { type: 'recording' | 'snapshot' | 'metadata' | 'other'; objects: number; bytes: number }[];
+  topFolders?: { folder: string; objects: number; bytes: number }[];
+  largestObjects?: { key: string; bytes: number; lastModified: string | null }[];
+}
+
 export interface CompanySummary {
   id: string;
   externalCompanyId: string;
@@ -498,6 +512,8 @@ export const superAdminApi = {
 
   // ---- Storage ----
   listCompanyStorage: () => superAdminHttp.get<{ companies: CompanyStorageRow[] }>('/superadmin/storage'),
+  getB2StorageAnalytics: (refresh = false) =>
+    superAdminHttp.get<B2StorageAnalytics>('/superadmin/storage/b2', refresh ? { params: { refresh: 1 } } : undefined),
 
   // ---- Companies ----
   listCompanies: () => superAdminHttp.get<{ companies: CompanySummary[] }>('/superadmin/companies'),
