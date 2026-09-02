@@ -72,6 +72,13 @@ export default function TestInstructions() {
   // Windows Hello camera got picked, or the driver never warmed up) — distinct from "no
   // camera at all" so the UI can tell the candidate what's actually wrong.
   const [cameraFrameIssue, setCameraFrameIssue] = useState(false);
+  // On-screen dump of the last camera-check attempt's raw diagnostics (device count,
+  // labels, per-attempt getUserMedia error names) — same idea as the TEMPORARY block in
+  // TestInterface.tsx's camera panel. This page has no SEB devtools console on most
+  // configs, so a candidate/tester hitting "cannot access camera" here has no way to see
+  // *which* failure it actually was (permission denied vs. camera busy vs. SEB's own
+  // media-capture gate) without this being visible directly on screen.
+  const [lastCameraDiagnostics, setLastCameraDiagnostics] = useState<CameraDiagnostics | null>(null);
   const [connectionLatency, setConnectionLatency] = useState<number | null>(null);
   const cameraPreviewRef = useRef<HTMLVideoElement | null>(null);
   const navigate = useNavigate();
@@ -276,6 +283,7 @@ export default function TestInstructions() {
         height: { ideal: 720 },
       });
       cameraDiagnostics = result.diagnostics;
+      setLastCameraDiagnostics(cameraDiagnostics);
       // Fire-and-forget: report this from the pre-check itself, not just at exam start —
       // a candidate whose camera fails here never proceeds to the exam at all, so this is
       // the only chance to see what happened on their machine server-side.
@@ -724,6 +732,29 @@ export default function TestInstructions() {
                   okLabel="Connected"
                   pendingLabel={test.requireCamera ? 'Pending' : 'Not required'}
                 />
+
+                {/* TEMPORARY diagnostic dump — remove once the SEB camera-access issue is
+                    confirmed fixed. Same reasoning as the block in TestInterface.tsx's
+                    camera panel: lets whoever's testing on a machine we have no remote
+                    access to just screenshot the actual reason instead of the generic
+                    "Could not access camera" toast. */}
+                {test.requireCamera && !checkingDevices && !deviceStatus.camera && lastCameraDiagnostics && (
+                  <div
+                    className="text-left w-full rounded px-2 py-1.5"
+                    style={{ background: 'rgba(0,0,0,0.85)', fontSize: '10px', lineHeight: 1.4, color: '#F59E0B', fontFamily: 'monospace' }}
+                  >
+                    <div>devicesFound: {lastCameraDiagnostics.devicesFound}</div>
+                    <div>deviceLabels: {lastCameraDiagnostics.deviceLabels.join(', ') || '(none)'}</div>
+                    <div>framesVerified: {String(lastCameraDiagnostics.framesVerified)}</div>
+                    <div>chosenLabel: {lastCameraDiagnostics.chosenLabel || '(none)'}</div>
+                    {lastCameraDiagnostics.attempts.map((a, i) => (
+                      <div key={i}>
+                        #{i} {a.label} framesOk={String(a.framesOk)} color={a.colorfulness.toFixed(1)}
+                        {a.error ? ` error=${a.error}` : ''}
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Microphone */}
                 <SystemCheckRow
