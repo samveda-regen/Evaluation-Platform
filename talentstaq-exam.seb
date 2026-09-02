@@ -47,12 +47,12 @@
   <!-- Per your call: no quit password, candidates can exit normally. -->
   <key>allowQuit</key>
   <true/>
-  <!-- Exactly startURL above, unmodified -- the one URL guaranteed to pass
+  <!-- Exactly startURL above, unmodified — the one URL guaranteed to pass
        URLFilterEnable's auto-generated allow rule (which only covers an exact match to
        startURL). A distinct /test/seb-quit path was tried first and hard-blocked with a
        "Page Blocked" dialog. TestComplete.tsx's "Close" button navigates back to this
        same exact URL (real navigation, not client-side routing) when running inside SEB,
-       via a value CandidateLogin.tsx stashes in localStorage at login time -- for real
+       via a value CandidateLogin.tsx stashes in localStorage at login time — for real
        per-candidate configs (sebConfigService.ts) that value includes a one-time
        invitation token, so it can't be hardcoded here the way this static reference file
        can. Needs verification on a real exam session that SEB actually recognizes this
@@ -84,16 +84,26 @@
   <!-- ==================== CAMERA / MIC ACCESS ==================== -->
   <!-- REQUIRED: your webcam + audio proctoring (WebcamCapture.tsx,
        useProctoring.ts) uses getUserMedia in-browser. SEB blocks media
-       capture by default. The two keys below are what recent SEB
-       versions (Win 3.3+/Mac 3.0+) use to permit it, but I'm not fully
-       certain these exact key names match your candidates' installed
-       SEB version — verify with the SEB Config Tool (see note below)
-       and test a real exam session with camera preview BEFORE sending
-       this to real candidates. If camera access silently fails, your
-       whole proctoring pipeline goes dark for that session. -->
+       capture by default.
+
+       CONFIRMED against a real Mac candidate machine: allowAudioCapture/
+       allowVideoCapture are Windows-only — SEB's own macOS user manual labels
+       them "(Win)" explicitly. SEB Mac (3.1.1+) ignores them entirely and
+       needs browserMediaCaptureCamera/browserMediaCaptureMicrophone instead,
+       which default to off. Without those, SEB Mac refuses getUserMedia()
+       *internally*, before macOS's own permission system is ever asked — no
+       system dialog, no denied-permission indicator, nothing visible at all,
+       which is exactly the failure this was root-caused against. Both sets
+       of keys are set so one config works on both platforms; each OS only
+       reads the keys relevant to it.
+       Source: safeexambrowser.org/macosx/mac_release_notes_en.html (v3.1.1). -->
   <key>allowAudioCapture</key>
   <true/>
   <key>allowVideoCapture</key>
+  <true/>
+  <key>browserMediaCaptureCamera</key>
+  <true/>
+  <key>browserMediaCaptureMicrophone</key>
   <true/>
 
   <!-- ==================== LOCKDOWN HARDENING ==================== -->
@@ -103,8 +113,15 @@
        over the webcam when a violation fires (see useProctoring.ts
        captureViolationEvidenceFrame). Blocking screen sharing here
        silently killed evidence capture. Real screen-sharing/remote-access
-       software is already blocked via prohibitedProcesses below. -->
+       software is already blocked via prohibitedProcesses below.
+
+       browserMediaCaptureScreen is the Mac equivalent, same "(Win)"-only gap
+       as the camera/mic keys above — default false. SEB macOS 3.0's WKWebView
+       engine originally had no getDisplayMedia() support at all; 3.1.1 added
+       it gated behind this key. -->
   <key>allowScreenSharing</key>
+  <true/>
+  <key>browserMediaCaptureScreen</key>
   <true/>
   <key>allowSiri</key>
   <false/>

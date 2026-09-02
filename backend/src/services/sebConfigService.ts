@@ -109,9 +109,23 @@ export function buildSebConfigXml(startUrl: string, quitUrl: string): string {
   <key>URLFilterEnableContentFilter</key>
   <false/>
 
+  <!-- allowAudioCapture/allowVideoCapture are Windows-only — confirmed via SEB's own
+       macOS user manual, which labels them "(Win)" explicitly. SEB Mac (3.1.1+) ignores
+       them entirely and looks at browserMediaCaptureCamera/browserMediaCaptureMicrophone
+       instead, which default to off. Without those set, SEB Mac refuses getUserMedia()
+       internally before macOS's own permission system is ever consulted — no OS dialog,
+       no denied-permission indicator, nothing, which is exactly the failure mode this was
+       confirmed against on a real Mac candidate machine (SEB macOS release notes,
+       safeexambrowser.org/macosx/mac_release_notes_en.html). Both sets of keys are set so
+       one config works correctly on both platforms; SEB on each OS only reads the keys
+       relevant to it. -->
   <key>allowAudioCapture</key>
   <true/>
   <key>allowVideoCapture</key>
+  <true/>
+  <key>browserMediaCaptureCamera</key>
+  <true/>
+  <key>browserMediaCaptureMicrophone</key>
   <true/>
 
   <key>allowVirtualMachine</key>
@@ -123,8 +137,14 @@ export function buildSebConfigXml(startUrl: string, quitUrl: string): string {
        no evidence image. Actual screen-sharing/remote-access SOFTWARE
        (TeamViewer, AnyDesk, Discord, etc.) is already blocked below via
        prohibitedProcesses, so this flag was mostly just breaking our own
-       feature rather than adding real security. -->
+       feature rather than adding real security.
+       browserMediaCaptureScreen is the Mac-specific equivalent (default false,
+       same "(Win)"-only gap as the camera/mic keys above) -- SEB macOS 3.0's
+       WKWebView engine originally had no getDisplayMedia() support at all, and
+       3.1.1 added it gated behind this key. -->
   <key>allowScreenSharing</key>
+  <true/>
+  <key>browserMediaCaptureScreen</key>
   <true/>
   <key>allowSiri</key>
   <false/>

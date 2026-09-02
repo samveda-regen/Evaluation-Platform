@@ -192,6 +192,13 @@ export default function TestForm() {
   const [step, setStep] = useState(0);
   const [titleError, setTitleError] = useState(false);
   const [loading, setLoading] = useState(false);
+  // Only known once an existing test is loaded for editing — a brand-new test (tests/new)
+  // hasn't had its assessment mode chosen yet (that happens later, on the separate
+  // TestSettings page), so this stays null during creation and the checkbox below just
+  // shows normally in that case. SEB's own kiosk lockdown already covers most of what
+  // screen share would catch, and getDisplayMedia() is unsupported on some SEB Mac
+  // versions regardless of any .seb config -- confirmed against a real candidate machine.
+  const [testAssessmentMode, setTestAssessmentMode] = useState<'SEB' | 'NORMAL_BROWSER' | null>(null);
   const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard' | 'mixed'>('mixed');
   const [srcs, setSrcs] = useState({ library: true, write: true });
   const [isCustomCategory, setIsCustomCategory] = useState(false);
@@ -322,6 +329,7 @@ export default function TestForm() {
     try {
       const { data } = await adminApi.getTest(testId!);
       const test = data.test;
+      setTestAssessmentMode(test.assessmentMode === 'NORMAL_BROWSER' ? 'NORMAL_BROWSER' : 'SEB');
       const testSettings = test.proctoringSettings && typeof test.proctoringSettings === 'object' && !Array.isArray(test.proctoringSettings)
         ? test.proctoringSettings as Record<string, unknown>
         : {};
@@ -345,7 +353,9 @@ export default function TestForm() {
         proctorEnabled: test.proctorEnabled || false,
         requireCamera: test.requireCamera || false,
         requireMicrophone: test.requireMicrophone || false,
-        requireScreenShare: test.requireScreenShare || false,
+        // SEB tests never require screen share regardless of what's stored — see
+        // testAssessmentMode above.
+        requireScreenShare: test.assessmentMode === 'SEB' ? false : (test.requireScreenShare || false),
         requireIdVerification: test.requireIdVerification || false,
       });
       setIsCustomCategory(loadedCategoryIsCustom);
@@ -387,6 +397,9 @@ export default function TestForm() {
         duration: formData.duration,
         endTime: endTimeIso || undefined,
         passingMarks: percentToMarks(formData.passingScorePercent, formData.totalMarks),
+        // Belt-and-suspenders alongside the hidden checkbox above -- makes sure a SEB
+        // test's requireScreenShare can't end up true no matter how this got here.
+        requireScreenShare: testAssessmentMode === 'SEB' ? false : formData.requireScreenShare,
       };
 
       if (isEditing) {
@@ -670,7 +683,16 @@ export default function TestForm() {
                   <CheckOption name="proctorEnabled" checked={formData.proctorEnabled} onChange={handleChange} label="Enable live AI proctoring" />
                   <CheckOption name="requireCamera" checked={formData.requireCamera} onChange={handleChange} label="Require camera access" disabled={!formData.proctorEnabled} />
                   <CheckOption name="requireMicrophone" checked={formData.requireMicrophone} onChange={handleChange} label="Require microphone access" disabled={!formData.proctorEnabled} />
-                  <CheckOption name="requireScreenShare" checked={formData.requireScreenShare} onChange={handleChange} label="Require screen share" disabled={!formData.proctorEnabled} />
+                  {testAssessmentMode !== 'SEB' && (
+                    <CheckOption name="requireScreenShare" checked={formData.requireScreenShare} onChange={handleChange} label="Require screen share" disabled={!formData.proctorEnabled} />
+                  )}
+                  {testAssessmentMode === 'SEB' && (
+                    <p className="text-xs text-gray-400 pl-1">
+                      Screen share isn't available for Safe Exam Browser tests — SEB's own lockdown already
+                      prevents switching apps/windows, and screen capture isn't reliably supported across all
+                      SEB versions.
+                    </p>
+                  )}
                   <CheckOption name="requireIdVerification" checked={formData.requireIdVerification} onChange={handleChange} label="Require ID verification before test" />
                 </div>
               </section>
