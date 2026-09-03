@@ -284,6 +284,7 @@ export default function TestSettings() {
   const [emailSaving,       setEmailSaving]        = useState(false);
   const [reminderHoursDraft, setReminderHoursDraft] = useState<number>(24);
   const [reminderHoursSaving, setReminderHoursSaving] = useState(false);
+  const [manualReminderSending, setManualReminderSending] = useState(false);
   useEffect(() => { if (testId) void load(); }, [testId]);
 
   const load = async () => {
@@ -382,6 +383,19 @@ const insertEmailToken = (token: string) => {
       toast.success('Reminder timing saved');
     } catch { toast.error('Failed to save reminder timing'); }
     finally { setReminderHoursSaving(false); }
+  };
+
+  const handleManualReminderSend = async () => {
+    if (!testId || manualReminderSending) return;
+    if (!window.confirm('Send the reminder email now to every candidate who has been invited but hasn\'t started this test yet?')) return;
+    setManualReminderSending(true);
+    try {
+      const res = await adminApi.sendReminderEmailsNow(testId);
+      const { sent = 0, message } = res.data as { sent?: number; failed?: number; message?: string };
+      if (sent > 0) toast.success(message ?? `Reminder sent to ${sent} candidate${sent === 1 ? '' : 's'}.`);
+      else toast(message ?? 'No candidates are waiting to start — nothing to send.');
+    } catch { toast.error('Failed to send reminder emails'); }
+    finally { setManualReminderSending(false); }
   };
 
   const patch = (p: Partial<FormState>) => setForm(prev => prev ? { ...prev, ...p } : prev);
@@ -882,15 +896,25 @@ const insertEmailToken = (token: string) => {
                             style={{ width:'70px', fontSize:'13px', padding:'6px 8px' }}
                           />
                           <span style={{ fontSize:'12px', color:'var(--admin-text-muted)' }}>hours before the test closes</span>
-                          {reminderHoursDraft !== emailTemplates.reminderHoursBeforeClose && (
+                          <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:'8px' }}>
+                            {reminderHoursDraft !== emailTemplates.reminderHoursBeforeClose && (
+                              <button type="button"
+                                onClick={handleReminderHoursSave}
+                                disabled={reminderHoursSaving}
+                                className="btn btn-primary"
+                                style={{ padding:'4px 14px', fontSize:'12px' }}>
+                                {reminderHoursSaving ? 'Saving…' : 'Save'}
+                              </button>
+                            )}
                             <button type="button"
-                              onClick={handleReminderHoursSave}
-                              disabled={reminderHoursSaving}
-                              className="btn btn-primary"
-                              style={{ marginLeft:'auto', padding:'4px 14px', fontSize:'12px' }}>
-                              {reminderHoursSaving ? 'Saving…' : 'Save'}
+                              onClick={handleManualReminderSend}
+                              disabled={manualReminderSending}
+                              className="btn btn-secondary"
+                              title="Send the reminder email now to every candidate who was invited but hasn't started yet, regardless of the timer above."
+                              style={{ padding:'4px 14px', fontSize:'12px', whiteSpace:'nowrap' }}>
+                              {manualReminderSending ? 'Sending…' : 'Manual send'}
                             </button>
-                          )}
+                          </div>
                         </div>
                       )}
 

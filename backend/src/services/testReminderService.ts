@@ -7,6 +7,74 @@ const SWEEP_INTERVAL_MS = 30 * 60 * 1000; // reminders aren't second-precision, 
 let sweepTimer: ReturnType<typeof setInterval> | null = null;
 let sweepInFlight = false;
 
+type ReminderInvitation = {
+  id: string;
+  email: string;
+  name: string;
+  token: string;
+  accessCode: string | null;
+  test: {
+    name: string;
+    duration: number;
+    endTime: Date | null;
+    reminderEmailSubject: string | null;
+    reminderEmailBody: string | null;
+    normalBrowserReminderEmailSubject: string | null;
+    normalBrowserReminderEmailBody: string | null;
+    assessmentMode: string | null;
+    reminderHoursBeforeClose: number;
+    admin: { company: { name: string } | null } | null;
+  };
+};
+
+const REMINDER_INVITATION_INCLUDE = {
+  test: {
+    select: {
+      name: true,
+      duration: true,
+      endTime: true,
+      reminderEmailSubject: true,
+      reminderEmailBody: true,
+      normalBrowserReminderEmailSubject: true,
+      normalBrowserReminderEmailBody: true,
+      assessmentMode: true,
+      reminderHoursBeforeClose: true,
+      admin: { select: { company: { select: { name: true } } } },
+    },
+  },
+} as const;
+
+// Emails one invited-but-not-started candidate their reminder, reusing the exact
+// invite link/token originally sent — no new token minted — and stamps reminderSentAt
+// so the automatic sweep won't email them again. Picks the SEB or normal-browser
+// reminder template to match the test's assessmentMode.
+async function deliverReminder(invitation: ReminderInvitation): Promise<void> {
+  const isNormalBrowser = invitation.test.assessmentMode === 'NORMAL_BROWSER';
+
+  await sendTestReminderEmail({
+    to: invitation.email,
+    candidateName: invitation.name,
+    testName: invitation.test.name,
+    testLink: buildInviteLink(invitation.token),
+    accessCode: invitation.accessCode ?? '',
+    closesAt: formatExamDate(invitation.test.endTime) ?? 'soon',
+    companyName: invitation.test.admin?.company?.name ?? undefined,
+    estimatedTime: `${invitation.test.duration} minutes`,
+    reminderEmailSubject: isNormalBrowser
+      ? invitation.test.normalBrowserReminderEmailSubject
+      : invitation.test.reminderEmailSubject,
+    reminderEmailBody: isNormalBrowser
+      ? invitation.test.normalBrowserReminderEmailBody
+      : invitation.test.reminderEmailBody,
+    assessmentMode: isNormalBrowser ? 'NORMAL_BROWSER' : 'SEB',
+  });
+
+  await prisma.testInvitation.update({
+    where: { id: invitation.id },
+    data: { reminderSentAt: new Date() },
+  });
+}
+
 // Nudges candidates who were invited but never started, while their access window is
 // closing soon. Only applies to tests with a fixed endTime — an open-ended test has no
 // "closing soon" signal to react to. How far ahead of closing that is is configurable
@@ -30,22 +98,7 @@ export async function sweepInvitationReminders(): Promise<void> {
           endTime: { gte: now },
         },
       },
-      include: {
-        test: {
-          select: {
-            name: true,
-            duration: true,
-            endTime: true,
-            reminderEmailSubject: true,
-            reminderEmailBody: true,
-            normalBrowserReminderEmailSubject: true,
-            normalBrowserReminderEmailBody: true,
-            assessmentMode: true,
-            reminderHoursBeforeClose: true,
-            admin: { select: { company: { select: { name: true } } } },
-          },
-        },
-      },
+      include: REMINDER_INVITATION_INCLUDE,
     });
 
     const dueInvitations = candidates.filter((invitation) => {
@@ -55,29 +108,7 @@ export async function sweepInvitationReminders(): Promise<void> {
 
     for (const invitation of dueInvitations) {
       try {
-        await sendTestReminderEmail({
-          to: invitation.email,
-          candidateName: invitation.name,
-          testName: invitation.test.name,
-          // Reuses the exact invite link/token originally sent — no new token minted.
-          testLink: buildInviteLink(invitation.token),
-          accessCode: invitation.accessCode ?? '',
-          closesAt: formatExamDate(invitation.test.endTime) ?? 'soon',
-          companyName: invitation.test.admin?.company?.name ?? undefined,
-          estimatedTime: `${invitation.test.duration} minutes`,
-          reminderEmailSubject: invitation.test.assessmentMode === 'NORMAL_BROWSER'
-            ? invitation.test.normalBrowserReminderEmailSubject
-            : invitation.test.reminderEmailSubject,
-          reminderEmailBody: invitation.test.assessmentMode === 'NORMAL_BROWSER'
-            ? invitation.test.normalBrowserReminderEmailBody
-            : invitation.test.reminderEmailBody,
-          assessmentMode: invitation.test.assessmentMode === 'NORMAL_BROWSER' ? 'NORMAL_BROWSER' : 'SEB',
-        });
-
-        await prisma.testInvitation.update({
-          where: { id: invitation.id },
-          data: { reminderSentAt: new Date() },
-        });
+        await deliverReminder(invitation as ReminderInvitation);
       } catch (error) {
         console.error(`Reminder email failed for invitation ${invitation.id} (${invitation.email}):`, error);
       }
@@ -87,6 +118,40 @@ export async function sweepInvitationReminders(): Promise<void> {
   } finally {
     sweepInFlight = false;
   }
+}
+
+// Admin-triggered "Manual send" from the Reminder Email settings panel. Unlike the
+// automatic sweep this ignores the timer entirely (no reminderHoursBeforeClose window,
+// no fixed-endTime requirement) and the reminderSentAt gate, so an admin can nudge every
+// candidate who hasn't started yet on demand. Still only targets active tests and
+// invitations that were sent but never consumed.
+export async function sendManualInvitationReminders(
+  testId: string,
+): Promise<{ sent: number; failed: number }> {
+  const invitations = await prisma.testInvitation.findMany({
+    where: {
+      testId,
+      status: 'SENT',
+      consumedAt: null,
+      test: { isActive: true },
+    },
+    include: REMINDER_INVITATION_INCLUDE,
+  });
+
+  let sent = 0;
+  let failed = 0;
+
+  for (const invitation of invitations) {
+    try {
+      await deliverReminder(invitation as ReminderInvitation);
+      sent += 1;
+    } catch (error) {
+      failed += 1;
+      console.error(`Manual reminder email failed for invitation ${invitation.id} (${invitation.email}):`, error);
+    }
+  }
+
+  return { sent, failed };
 }
 
 export function startInvitationReminderSweep(): void {

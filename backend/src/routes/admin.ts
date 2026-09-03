@@ -46,6 +46,7 @@ import {
   reorderTestQuestions,
   getEmailTemplates,
   updateEmailTemplates,
+  sendReminderEmailsNow,
 } from '../controllers/test.js';
 import {
   createMCQQuestion,
@@ -213,6 +214,7 @@ router.delete('/tests/:testId/sections/:sectionId', adminAuth, deleteTestSection
 // Email templates
 router.get('/tests/:testId/email-templates', adminAuth, getEmailTemplates);
 router.put('/tests/:testId/email-templates', adminAuth, updateEmailTemplates);
+router.post('/tests/:testId/reminder-emails/send-now', adminAuth, sendReminderEmailsNow);
 
 // Test questions management
 router.post('/tests/:testId/questions', adminAuth, addQuestionToTest);

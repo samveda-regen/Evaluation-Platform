@@ -263,6 +263,9 @@ export const adminApi = {
     templateMode?: 'SEB' | 'NORMAL_BROWSER';
   }) => api.put(`/admin/tests/${testId}/email-templates`, data),
 
+  sendReminderEmailsNow: (testId: string) =>
+    api.post(`/admin/tests/${testId}/reminder-emails/send-now`),
+
   // MCQ Questions
   createMCQ: (data: Record<string, unknown>) =>
     api.post('/admin/mcq', data),
