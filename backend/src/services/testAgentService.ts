@@ -1,7 +1,10 @@
 import { callLLM, parseJSONFromLLM } from './llmService.js';
 import prisma from '../utils/db.js';
 import { Prisma } from '@prisma/client';
-import { DEFAULT_CUSTOM_AI_VIOLATION_EVENTS } from '../utils/proctoringConfig.js';
+import {
+  DEFAULT_CUSTOM_AI_VIOLATION_EVENTS,
+  filterViolationsForAssessmentMode,
+} from '../utils/proctoringConfig.js';
 
 const MAX_TEST_VIOLATIONS = 150;
 
@@ -614,7 +617,12 @@ export async function createTestFromSelection(
         shuffleQuestions: testSettings.shuffleQuestions ?? false,
         shuffleOptions: testSettings.shuffleOptions ?? false,
         maxViolations: normalizeMaxViolations(testSettings.maxViolations),
-        customAIViolations: JSON.stringify(DEFAULT_CUSTOM_AI_VIOLATION_EVENTS),
+        // AI-generated tests default to SEB mode (schema default), where SEB's own
+        // lockdown already covers the browser-native violations — keep the stored set
+        // consistent with that.
+        customAIViolations: JSON.stringify(
+          filterViolationsForAssessmentMode(DEFAULT_CUSTOM_AI_VIOLATION_EVENTS, 'SEB'),
+        ),
         adminId,
         isAiGenerated: true,
         ...(testSettings.companyId ? { companyId: testSettings.companyId } : {})

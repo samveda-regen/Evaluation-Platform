@@ -7,6 +7,8 @@ import {
   CUSTOM_AI_VIOLATION_OPTIONS,
   DEFAULT_CUSTOM_AI_VIOLATIONS,
   normalizeCustomAIViolationSelection,
+  filterViolationsForAssessmentMode,
+  isSebRedundantViolation,
 } from '../../constants/customAIViolations';
 import { Camera, Mic, MonitorPlay, Maximize2, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
@@ -87,7 +89,12 @@ export default function TestAIProctoring() {
       const loaded = data.test as Test;
       setTest(loaded);
       setProctorEnabled(Boolean(loaded.proctorEnabled));
-      setSelectedEvents(normalizeCustomAIViolationSelection(loaded.customAIViolations || DEFAULT_CUSTOM_AI_VIOLATIONS));
+      setSelectedEvents(
+        filterViolationsForAssessmentMode(
+          normalizeCustomAIViolationSelection(loaded.customAIViolations || DEFAULT_CUSTOM_AI_VIOLATIONS),
+          loaded.assessmentMode,
+        ),
+      );
       setMaxViolations(typeof loaded.maxViolations === 'number' ? loaded.maxViolations : 3);
 
       /* restore extended proctoring settings */
@@ -108,6 +115,10 @@ export default function TestAIProctoring() {
           setWebcamOn(true); setMicOn(true); setScreenOn(true); setFullscreenOn(true);
         }
       } catch { /* ignore */ }
+
+      // SEB tests never use screen share — SEB's lockdown covers it. Force the
+      // Screen tile off regardless of what's stored.
+      if (loaded.assessmentMode === 'SEB') setScreenOn(false);
 
       /* backward compat: violationPopupSettings */
       try {
@@ -137,20 +148,22 @@ export default function TestAIProctoring() {
     if (!testId) return;
     setSaving(true);
     try {
+      // SEB tests never use screen share — SEB's lockdown covers it. Never send it on.
+      const effectiveScreenOn = test?.assessmentMode === 'SEB' ? false : screenOn;
       await adminApi.updateTest(testId, {
         proctorEnabled,
         // Explicitly send device requirements so the candidate "Before you begin"
         // page always reflects the current monitoring tile settings.
         requireCamera: proctorEnabled && webcamOn,
         requireMicrophone: proctorEnabled && micOn,
-        requireScreenShare: proctorEnabled && screenOn,
-        customAIViolations: selectedEvents,
+        requireScreenShare: proctorEnabled && effectiveScreenOn,
+        customAIViolations: filterViolationsForAssessmentMode(selectedEvents, test?.assessmentMode),
         // "Auto-submit after 3 warnings" is a fixed built-in cutoff; ignore the
         // custom max-violations count while it's on so the two can't disagree.
         maxViolations: autoSubmit ? 3 : maxViolations,
         proctoringSettings: {
           autoFlagThreshold, warnOnViolation, captureSnapshot, autoSubmit,
-          webcamOn, micOn, screenOn, fullscreenOn,
+          webcamOn, micOn, screenOn: effectiveScreenOn, fullscreenOn,
         },
         violationPopupSettings: { enabled: warnOnViolation, durationSeconds: 2 },
       });
@@ -172,10 +185,20 @@ export default function TestAIProctoring() {
     );
   }
 
+  const isSeb = test?.assessmentMode === 'SEB';
+  // SEB's own kiosk lockdown already blocks tab switching, window blur, full-screen
+  // exit, dev tools, clipboard, extra monitors and needs no screen share — so those
+  // toggles are hidden for SEB tests and never sent to the server.
+  const visibleViolationOptions = isSeb
+    ? CUSTOM_AI_VIOLATION_OPTIONS.filter((opt) => !isSebRedundantViolation(opt.eventType))
+    : CUSTOM_AI_VIOLATION_OPTIONS;
+
   const monitorModes = [
     { label: 'Webcam',      icon: <Camera size={22} />,      on: webcamOn,     toggle: () => setWebcamOn(p => !p) },
     { label: 'Microphone',  icon: <Mic size={22} />,         on: micOn,        toggle: () => setMicOn(p => !p) },
-    { label: 'Screen',      icon: <MonitorPlay size={22} />, on: screenOn,     toggle: () => setScreenOn(p => !p) },
+    // Screen share isn't offered for SEB tests — SEB's lockdown covers it and
+    // getDisplayMedia() is unreliable inside SEB.
+    ...(isSeb ? [] : [{ label: 'Screen', icon: <MonitorPlay size={22} />, on: screenOn, toggle: () => setScreenOn(p => !p) }]),
     { label: 'Full-screen', icon: <Maximize2 size={22} />,   on: fullscreenOn, toggle: () => setFullscreenOn(p => !p) },
   ];
 
@@ -198,12 +221,12 @@ export default function TestAIProctoring() {
                 <Toggle on={proctorEnabled} onChange={() => {
                   const next = !proctorEnabled;
                   setProctorEnabled(next);
-                  if (next) { setWebcamOn(true); setMicOn(true); setScreenOn(true); setFullscreenOn(true); }
+                  if (next) { setWebcamOn(true); setMicOn(true); setScreenOn(!isSeb); setFullscreenOn(true); }
                 }} />
               </div>
 
               {/* Monitoring mode tiles */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(${monitorModes.length}, 1fr)`, gap: '10px' }}>
                 {monitorModes.map(({ label, icon, on, toggle }) => {
                   const active = on && proctorEnabled;
                   return (
@@ -241,15 +264,23 @@ export default function TestAIProctoring() {
                 Toggle what counts against the trust score.
               </p>
 
+              {isSeb && (
+                <p style={{ fontSize: '11px', color: 'var(--admin-text-subtle)', marginTop: '-8px', marginBottom: '16px', lineHeight: 1.5 }}>
+                  Tab switch, window focus, full-screen exit, dev tools, copy/paste, secondary
+                  monitor and screen-share checks aren't shown here — Safe Exam Browser's own
+                  lockdown already prevents them. Only camera and microphone checks apply in SEB mode.
+                </p>
+              )}
+
               {/* Violation rows */}
               <div>
-                {CUSTOM_AI_VIOLATION_OPTIONS.map((opt, idx) => {
+                {visibleViolationOptions.map((opt, idx) => {
                   const meta = VIOLATION_META[opt.eventType] ?? {
                     label: opt.label, desc: opt.description, severity: 'Medium' as Severity,
                   };
                   const on = selectedSet.has(opt.eventType);
                   const sevColor = SEV_COLOR[meta.severity];
-                  const isLast = idx === CUSTOM_AI_VIOLATION_OPTIONS.length - 1;
+                  const isLast = idx === visibleViolationOptions.length - 1;
 
                   return (
                     <div key={opt.eventType} style={{

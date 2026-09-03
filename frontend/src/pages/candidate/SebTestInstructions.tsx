@@ -9,7 +9,7 @@ import IDVerification from '../../components/IDVerification';
 import { clearCachedStreams, getCachedStreams, setCachedStreams } from '../../services/devicePermissionService';
 import { requestScreenShare, getScreenShareErrorMessage } from '../../services/proctorService';
 import { acquireVerifiedCameraStream, type CameraDiagnostics } from '../../services/cameraDeviceService';
-import { DEFAULT_CUSTOM_AI_VIOLATIONS, normalizeCustomAIViolationSelection } from '../../constants/customAIViolations';
+import { DEFAULT_CUSTOM_AI_VIOLATIONS, normalizeCustomAIViolationSelection, filterViolationsForAssessmentMode } from '../../constants/customAIViolations';
 import talentstaQLogo from '../../assets/assessment-icons/icons/Talentstaq logo dark.svg';
 
 interface TestDetails {
@@ -211,8 +211,14 @@ export default function TestInstructions() {
         requireCamera: data.test.requireCamera,
         requireMicrophone: microphoneRequired,
         requireScreenShare: data.test.requireScreenShare,
-        customAIViolations: normalizeCustomAIViolationSelection(
-          data.test.customAIViolations || DEFAULT_CUSTOM_AI_VIOLATIONS,
+        // SEB assessments run inside Safe Exam Browser's kiosk lockdown, which already
+        // blocks tab/window/full-screen/dev-tools/clipboard/extra-monitor escapes, so
+        // strip those events here — only camera/mic checks stay live.
+        customAIViolations: filterViolationsForAssessmentMode(
+          normalizeCustomAIViolationSelection(
+            data.test.customAIViolations || DEFAULT_CUSTOM_AI_VIOLATIONS,
+          ),
+          'SEB',
         ),
         violationPopupSettings: (() => {
           try {

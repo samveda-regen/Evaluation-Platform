@@ -88,6 +88,41 @@ export const DEFAULT_CUSTOM_AI_VIOLATION_EVENTS: string[] = CUSTOM_AI_VIOLATION_
 
 const CUSTOM_AI_VIOLATION_SET = new Set(DEFAULT_CUSTOM_AI_VIOLATION_EVENTS);
 
+/**
+ * Browser-lockdown violations that Safe Exam Browser already enforces natively:
+ * SEB runs a single kiosk window (no tabs, no window blur), stays full-screen,
+ * blocks app switching and dev tools, caps displays at one, and SEB tests never
+ * use screen share. Re-detecting these in SEB mode is pure noise, so we strip
+ * them from the enabled set whenever assessmentMode is 'SEB'.
+ *
+ * `camera_blocked` is deliberately NOT in this list — it's a webcam-feed check
+ * (covered/obstructed camera) that SEB does not perform, so it stays active in
+ * both modes.
+ */
+export const SEB_REDUNDANT_VIOLATION_EVENTS: string[] = [
+  'secondary_monitor_detected',
+  'tab_switch',
+  'window_blur',
+  'fullscreen_exit',
+  'screen_share_stopped',
+  'copy_paste_attempt',
+  'devtools_open',
+];
+
+const SEB_REDUNDANT_VIOLATION_SET = new Set(SEB_REDUNDANT_VIOLATION_EVENTS);
+
+/**
+ * Drop SEB-redundant violation events when the test runs in Safe Exam Browser
+ * mode. Any other mode is returned unchanged.
+ */
+export function filterViolationsForAssessmentMode(
+  events: string[],
+  assessmentMode: string | null | undefined
+): string[] {
+  if (assessmentMode !== 'SEB') return events;
+  return events.filter((eventType) => !SEB_REDUNDANT_VIOLATION_SET.has(eventType));
+}
+
 function normalizeEventType(value: string): string {
   return value.trim().toLowerCase().replace(/[\s-]+/g, '_');
 }

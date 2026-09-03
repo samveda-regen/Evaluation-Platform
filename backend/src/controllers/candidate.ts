@@ -15,7 +15,10 @@ import {
 } from '../services/invitationService.js';
 import { uploadSnapshot, uploadRecording } from '../services/fileStorageService.js';
 import { transcribeAudio, isSpeechServiceConfigured } from '../services/speechService.js';
-import { parseStoredCustomAIViolationEvents } from '../utils/proctoringConfig.js';
+import {
+  parseStoredCustomAIViolationEvents,
+  filterViolationsForAssessmentMode,
+} from '../utils/proctoringConfig.js';
 import { sendCandidateScoreWebhook, dispatchCompanyWebhookEvent } from '../services/candidateScoreWebhookService.js';
 import { sendConfirmationEmail, sendResultEmail } from '../services/emailService.js';
 import { saveNotification, ensureNotificationTable } from './notifications.js';
@@ -630,6 +633,10 @@ export async function getTestDetails(req: AuthenticatedRequest, res: Response): 
       } catch { /* column not yet created — use DB fields as-is */ }
     }
 
+    // SEB tests never prompt for screen share — SEB's own lockdown covers it and
+    // getDisplayMedia() is unreliable inside SEB. Override any stale stored flag.
+    if (test.assessmentMode === 'SEB') requireScreenShare = false;
+
     res.json({
       test: {
         ...test,
@@ -637,7 +644,10 @@ export async function getTestDetails(req: AuthenticatedRequest, res: Response): 
         requireMicrophone,
         requireScreenShare,
         hasSpeakingQuestion,
-        customAIViolations: parseStoredCustomAIViolationEvents(test.customAIViolations),
+        customAIViolations: filterViolationsForAssessmentMode(
+          parseStoredCustomAIViolationEvents(test.customAIViolations),
+          test.assessmentMode,
+        ),
       },
       attempt: {
         id: attempt.id,
@@ -1050,6 +1060,10 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
       } catch { /* ignore malformed JSON */ }
     }
 
+    // SEB tests never prompt for screen share (SEB lockdown covers it; getDisplayMedia()
+    // is unreliable inside SEB) — override any stale stored flag.
+    if (test.assessmentMode === 'SEB') startRequireScreenShare = false;
+
     res.json({
       test: {
         id: test.id,
@@ -1063,7 +1077,10 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
         requireScreenShare: startRequireScreenShare,
         maxViolations: test.maxViolations,
         assessmentMode: test.assessmentMode === 'NORMAL_BROWSER' ? 'NORMAL_BROWSER' : 'SEB',
-        customAIViolations: parseStoredCustomAIViolationEvents(test.customAIViolations),
+        customAIViolations: filterViolationsForAssessmentMode(
+          parseStoredCustomAIViolationEvents(test.customAIViolations),
+          test.assessmentMode,
+        ),
         violationPopupSettings: violationPopupSettingsRaw || undefined,
         showTimer: startShowTimer,
         autoSubmitOnTimeout: startAutoSubmitOnTimeout,
@@ -1422,6 +1439,7 @@ export async function logActivity(req: AuthenticatedRequest, res: Response): Pro
             maxViolations: true,
             customAIViolations: true,
             proctorEnabled: true,
+            assessmentMode: true,
           },
         },
       },
@@ -1501,7 +1519,12 @@ export async function logActivity(req: AuthenticatedRequest, res: Response): Pro
       const mappedType = violationEventMap[normalizedEventType];
       const mappedSeverity = violationSeverityMap[mappedType] || 'medium';
 
-      const enabledViolations = new Set(parseStoredCustomAIViolationEvents(attempt.test.customAIViolations));
+      const enabledViolations = new Set(
+        filterViolationsForAssessmentMode(
+          parseStoredCustomAIViolationEvents(attempt.test.customAIViolations),
+          attempt.test.assessmentMode,
+        ),
+      );
       if (!enabledViolations.has(mappedType)) {
         res.json({
           message: 'Activity logged',

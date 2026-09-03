@@ -17,7 +17,10 @@ import {
 } from '../services/fileStorageService';
 import { emitToProctorTargets } from '../services/socketService';
 import { analyzeFrameWithPythonForSession } from '../services/pythonVisionService';
-import { parseStoredCustomAIViolationEvents } from '../utils/proctoringConfig.js';
+import {
+  parseStoredCustomAIViolationEvents,
+  filterViolationsForAssessmentMode,
+} from '../utils/proctoringConfig.js';
 import { recordFrameIntervalSample } from '../services/telemetryRingBuffer.js';
 import { stopCandidateEgressRecording } from '../services/liveKitEgressService.js';
 
@@ -404,8 +407,9 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
     if (existingSession) {
       // Update existing session
       const normalizedMonitorCount = Math.max(1, Number(monitorCount) || 1);
-      const enabledAIViolations = parseStoredCustomAIViolationEvents(
-        attempt.test.customAIViolations
+      const enabledAIViolations = filterViolationsForAssessmentMode(
+        parseStoredCustomAIViolationEvents(attempt.test.customAIViolations),
+        attempt.test.assessmentMode
       );
       const metadataPatch = {
         cameraEnabled,
@@ -480,8 +484,9 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
 
     // Create new proctoring session
     const normalizedMonitorCount = Math.max(1, Number(monitorCount) || 1);
-    const enabledAIViolations = parseStoredCustomAIViolationEvents(
-      attempt.test.customAIViolations
+    const enabledAIViolations = filterViolationsForAssessmentMode(
+      parseStoredCustomAIViolationEvents(attempt.test.customAIViolations),
+      attempt.test.assessmentMode
     );
     const metadataPatch = {
       cameraEnabled,
@@ -636,7 +641,10 @@ export const submitAnalysis = async (req: Request, res: Response): Promise<void>
     }
     sessionAnalysisLastMs.set(sessionId, nowMs);
     const enabledEvents = new Set(
-      parseStoredCustomAIViolationEvents(session.attempt.test.customAIViolations)
+      filterViolationsForAssessmentMode(
+        parseStoredCustomAIViolationEvents(session.attempt.test.customAIViolations),
+        session.attempt.test.assessmentMode
+      )
     );
     const useServerVision = session.attempt.test.assessmentMode === 'NORMAL_BROWSER';
 
@@ -919,7 +927,7 @@ export const reportViolation = async (req: Request, res: Response): Promise<void
         attempt: {
           include: {
             test: {
-              select: { maxViolations: true, customAIViolations: true },
+              select: { maxViolations: true, customAIViolations: true, assessmentMode: true },
             },
           },
         },
@@ -930,7 +938,10 @@ export const reportViolation = async (req: Request, res: Response): Promise<void
       return;
     }
     const enabledEvents = new Set(
-      parseStoredCustomAIViolationEvents(proctorSession.attempt.test.customAIViolations)
+      filterViolationsForAssessmentMode(
+        parseStoredCustomAIViolationEvents(proctorSession.attempt.test.customAIViolations),
+        proctorSession.attempt.test.assessmentMode
+      )
     );
 
     const normalizedEventType = normalizeViolationEventType(req.body?.eventType || '');
@@ -1098,6 +1109,7 @@ export const ingestExternalEngineEvent = async (req: Request, res: Response): Pr
             test: {
               select: {
                 customAIViolations: true,
+                assessmentMode: true,
               },
             },
           },
@@ -1109,7 +1121,10 @@ export const ingestExternalEngineEvent = async (req: Request, res: Response): Pr
       return;
     }
     const enabledEvents = new Set(
-      parseStoredCustomAIViolationEvents(sessionConfig.attempt.test.customAIViolations)
+      filterViolationsForAssessmentMode(
+        parseStoredCustomAIViolationEvents(sessionConfig.attempt.test.customAIViolations),
+        sessionConfig.attempt.test.assessmentMode
+      )
     );
 
     if (!isAllowedEvent(mappedEventType, enabledEvents)) {
@@ -1842,6 +1857,7 @@ export const updateMonitorCount = async (req: Request, res: Response): Promise<v
         test: {
           select: {
             customAIViolations: true,
+            assessmentMode: true,
           },
         },
       },
@@ -1850,7 +1866,10 @@ export const updateMonitorCount = async (req: Request, res: Response): Promise<v
     // Trigger violation only when transitioning from single-monitor to multi-monitor.
     if (attempt && parsedMonitorCount > 1 && previousMonitorCount <= 1) {
       const enabledEvents = new Set(
-        parseStoredCustomAIViolationEvents(attempt.test.customAIViolations)
+        filterViolationsForAssessmentMode(
+          parseStoredCustomAIViolationEvents(attempt.test.customAIViolations),
+          attempt.test.assessmentMode
+        )
       );
       await emitSecondaryMonitorViolation(
         sessionId,

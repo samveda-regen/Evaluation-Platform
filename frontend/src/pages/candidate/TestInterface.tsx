@@ -17,6 +17,7 @@ import {
 import {
   normalizeAIViolationType,
   normalizeCustomAIViolationSelection,
+  filterViolationsForAssessmentMode,
 } from '../../constants/customAIViolations';
 import talentstaQLogoLight from '../../assets/assessment-icons/icons/TalentstaQ logo-light.svg';
 import { isBlurViolationSuppressed } from '../../services/devicePermissionService';
@@ -85,7 +86,7 @@ export default function TestInterface() {
   const {
     testId, testCode, testName, duration, attemptId, maxViolations,
     proctorEnabled, requireCamera, requireMicrophone, requireScreenShare,
-    customAIViolations, startTime, questions, currentQuestionIndex,
+    customAIViolations, assessmentMode, startTime, questions, currentQuestionIndex,
     mcqAnswers, codingAnswers, behavioralAnswers, communicationAnswers,
     communicationSelectedAnswers, communicationReplayCounts, communicationRetakeCounts, communicationAudioAnswers, isSubmitted,
     setCurrentQuestion, saveMCQAnswer, saveCodingAnswer, saveBehavioralAnswer, saveCommunicationAnswer,
@@ -132,8 +133,13 @@ export default function TestInterface() {
 
   const currentQuestion = questions[currentQuestionIndex] as RichQuestion | undefined;
   const enabledViolationSet = useMemo(
-    () => new Set(normalizeCustomAIViolationSelection(customAIViolations)),
-    [customAIViolations],
+    () => new Set(
+      filterViolationsForAssessmentMode(
+        normalizeCustomAIViolationSelection(customAIViolations),
+        assessmentMode,
+      ),
+    ),
+    [customAIViolations, assessmentMode],
   );
   const isViolationEnabled = useCallback(
     (eventType: string) => enabledViolationSet.has(normalizeAIViolationType(eventType)),

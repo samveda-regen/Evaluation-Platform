@@ -23,6 +23,7 @@ import {
   DEFAULT_CUSTOM_AI_VIOLATION_EVENTS,
   normalizeCustomAIViolationEvents,
   parseStoredCustomAIViolationEvents,
+  filterViolationsForAssessmentMode,
 } from '../utils/proctoringConfig.js';
 import { buildCreateData as buildCommunicationCreateData, VALID_SUB_TYPES as VALID_COMMUNICATION_SUB_TYPES, serializeCommunicationQuestion } from './communicationQuestion.js';
 import { sendManualInvitationReminders } from '../services/testReminderService.js';
@@ -284,10 +285,15 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
       return;
     }
 
-    const enabledAIViolations =
+    const resolvedAssessmentMode =
+      req.body.assessmentMode === 'NORMAL_BROWSER' ? 'NORMAL_BROWSER' : 'SEB';
+
+    const enabledAIViolations = filterViolationsForAssessmentMode(
       customAIViolations === undefined
         ? [...DEFAULT_CUSTOM_AI_VIOLATION_EVENTS]
-        : normalizeCustomAIViolationEvents(customAIViolations);
+        : normalizeCustomAIViolationEvents(customAIViolations),
+      resolvedAssessmentMode,
+    );
 
     const adminRecord = await prisma.admin.findUnique({
       where: { id: req.admin!.id },
@@ -305,7 +311,6 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
     }
 
     const testCode = generateTestCode();
-     const resolvedAssessmentMode = req.body.assessmentMode === 'NORMAL_BROWSER' ? 'NORMAL_BROWSER' : 'SEB';
     const test = await prisma.test.create({
       data: {
         testCode,
@@ -325,8 +330,9 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
         proctorEnabled: proctorEnabled || false,
         requireCamera: requireCamera || false,
         requireMicrophone: requireMicrophone || false,
-                // SEB tests must never carry requireScreenShare: true — see the matching
-        // enforcement in updateTest for why this can't just live in the admin UI.
+        // SEB tests never carry requireScreenShare: true — SEB's lockdown covers it,
+        // getDisplayMedia() is unreliable inside SEB, and this can't just live in the
+        // admin UI (see the matching enforcement in updateTest for why).
         requireScreenShare: resolvedAssessmentMode === 'SEB' ? false : (requireScreenShare || false),
         requireIdVerification: requireIdVerification || false,
         customAIViolations: JSON.stringify(enabledAIViolations),
@@ -672,14 +678,35 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
       return;
     }
 
-    if (updates.customAIViolations !== undefined) {
-      const parsedCustomAIViolations = normalizeCustomAIViolationEvents(updates.customAIViolations);
-      sanitizedUpdates.customAIViolations = JSON.stringify(parsedCustomAIViolations);
-    }
     if (updates.assessmentMode !== undefined) {
       sanitizedUpdates.assessmentMode = updates.assessmentMode === 'NORMAL_BROWSER'
         ? 'NORMAL_BROWSER'
         : 'SEB';
+    }
+
+    // Resolve the mode this test will run in after the update lands (either
+    // just-changed via sanitizedUpdates.assessmentMode, or the existing stored value
+    // when this update doesn't touch mode). Used below to strip SEB-redundant
+    // violation events and force screen share off for SEB tests.
+    const effectiveAssessmentMode =
+      (sanitizedUpdates.assessmentMode as string | undefined) ?? test.assessmentMode;
+
+    if (updates.customAIViolations !== undefined) {
+      const parsedCustomAIViolations = filterViolationsForAssessmentMode(
+        normalizeCustomAIViolationEvents(updates.customAIViolations),
+        effectiveAssessmentMode,
+      );
+      sanitizedUpdates.customAIViolations = JSON.stringify(parsedCustomAIViolations);
+    } else if (
+      sanitizedUpdates.assessmentMode === 'SEB' &&
+      test.assessmentMode !== 'SEB'
+    ) {
+      sanitizedUpdates.customAIViolations = JSON.stringify(
+        filterViolationsForAssessmentMode(
+          parseStoredCustomAIViolationEvents(test.customAIViolations ?? null),
+          'SEB',
+        ),
+      );
     }
 
     if (updates.totalMarks) sanitizedUpdates.totalMarks = parseInt(updates.totalMarks);
@@ -726,8 +753,6 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
 
     // If the master proctoring switch is explicitly turned OFF, clear all device requirements
     // so the candidate instructions page correctly shows "Not required".
-        // If the master proctoring switch is explicitly turned OFF, clear all device requirements
-    // so the candidate instructions page correctly shows "Not required".
     if (updates.proctorEnabled === false) {
       sanitizedUpdates.requireCamera = false;
       sanitizedUpdates.requireMicrophone = false;
@@ -738,11 +763,8 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
     // (not just hidden in the admin UI) because assessmentMode and requireScreenShare are
     // edited from two different admin pages (TestForm and TestSettings) that don't share
     // state, so a test could otherwise end up SEB + requireScreenShare:true depending on
-    // which page was touched last. Resolve against the mode this update actually results
-    // in (either just-changed via sanitizedUpdates.assessmentMode, or the existing stored
-    // value if this update doesn't touch mode at all).
-    const resolvedAssessmentMode = (sanitizedUpdates.assessmentMode as string | undefined) ?? test.assessmentMode;
-    if (resolvedAssessmentMode === 'SEB') {
+    // which page was touched last. getDisplayMedia() is also unreliable inside SEB.
+    if (effectiveAssessmentMode === 'SEB') {
       sanitizedUpdates.requireScreenShare = false;
     }
 
@@ -775,6 +797,9 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
           ...existingSettings,
           ...(incomingProctoringSettings ?? {}),
           ...rawPreferenceUpdates,
+          // Keep the screen-monitoring flag consistent with the SEB screen-share rule
+          // above so the candidate endpoints don't re-derive requireScreenShare: true.
+          ...(effectiveAssessmentMode === 'SEB' ? { screenOn: false } : {}),
         });
       }
 

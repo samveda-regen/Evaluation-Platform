@@ -29,6 +29,35 @@ export const DEFAULT_CUSTOM_AI_VIOLATIONS = CUSTOM_AI_VIOLATION_OPTIONS.map(
   (option) => option.eventType
 );
 
+/**
+ * Browser-lockdown violations that Safe Exam Browser already enforces on its own
+ * (single kiosk window, always full-screen, no app switching, dev tools blocked,
+ * one display max, no screen share). Detecting them again in SEB mode is noise,
+ * so they're hidden in the admin UI and filtered out of the live enabled set
+ * whenever assessmentMode is 'SEB'.
+ *
+ * `camera_blocked` is intentionally excluded — it's a webcam-feed check SEB does
+ * not perform, so it stays available in both modes.
+ */
+export const SEB_REDUNDANT_VIOLATIONS: string[] = CUSTOM_AI_VIOLATION_OPTIONS
+  .filter((option) => !option.isAI && option.eventType !== 'camera_blocked')
+  .map((option) => option.eventType);
+
+const SEB_REDUNDANT_VIOLATION_SET = new Set(SEB_REDUNDANT_VIOLATIONS);
+
+export function isSebRedundantViolation(eventType: string): boolean {
+  return SEB_REDUNDANT_VIOLATION_SET.has(normalizeAIViolationType(eventType));
+}
+
+/** Drop SEB-redundant violations when the test runs in Safe Exam Browser mode. */
+export function filterViolationsForAssessmentMode(
+  events: string[],
+  assessmentMode: 'SEB' | 'NORMAL_BROWSER' | string | null | undefined,
+): string[] {
+  if (assessmentMode !== 'SEB') return events;
+  return events.filter((eventType) => !isSebRedundantViolation(eventType));
+}
+
 const ALIAS_MAP: Record<string, string> = {
   focus_loss: 'window_blur',
   window_exit: 'window_blur',
