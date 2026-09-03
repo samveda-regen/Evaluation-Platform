@@ -304,7 +304,7 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
     }
 
     const testCode = generateTestCode();
-
+     const resolvedAssessmentMode = req.body.assessmentMode === 'NORMAL_BROWSER' ? 'NORMAL_BROWSER' : 'SEB';
     const test = await prisma.test.create({
       data: {
         testCode,
@@ -324,10 +324,12 @@ export async function createTest(req: AuthenticatedRequest, res: Response): Prom
         proctorEnabled: proctorEnabled || false,
         requireCamera: requireCamera || false,
         requireMicrophone: requireMicrophone || false,
-        requireScreenShare: requireScreenShare || false,
+                // SEB tests must never carry requireScreenShare: true — see the matching
+        // enforcement in updateTest for why this can't just live in the admin UI.
+        requireScreenShare: resolvedAssessmentMode === 'SEB' ? false : (requireScreenShare || false),
         requireIdVerification: requireIdVerification || false,
         customAIViolations: JSON.stringify(enabledAIViolations),
-        assessmentMode: req.body.assessmentMode === 'NORMAL_BROWSER' ? 'NORMAL_BROWSER' : 'SEB',
+        assessmentMode: resolvedAssessmentMode,
         adminId: req.admin!.id,
         ...(adminRecord.companyId ? { companyId: adminRecord.companyId } : {})
       }
@@ -723,9 +725,23 @@ export async function updateTest(req: AuthenticatedRequest, res: Response): Prom
 
     // If the master proctoring switch is explicitly turned OFF, clear all device requirements
     // so the candidate instructions page correctly shows "Not required".
+        // If the master proctoring switch is explicitly turned OFF, clear all device requirements
+    // so the candidate instructions page correctly shows "Not required".
     if (updates.proctorEnabled === false) {
       sanitizedUpdates.requireCamera = false;
       sanitizedUpdates.requireMicrophone = false;
+      sanitizedUpdates.requireScreenShare = false;
+    }
+
+    // SEB tests must never carry requireScreenShare: true. This has to be enforced here
+    // (not just hidden in the admin UI) because assessmentMode and requireScreenShare are
+    // edited from two different admin pages (TestForm and TestSettings) that don't share
+    // state, so a test could otherwise end up SEB + requireScreenShare:true depending on
+    // which page was touched last. Resolve against the mode this update actually results
+    // in (either just-changed via sanitizedUpdates.assessmentMode, or the existing stored
+    // value if this update doesn't touch mode at all).
+    const resolvedAssessmentMode = (sanitizedUpdates.assessmentMode as string | undefined) ?? test.assessmentMode;
+    if (resolvedAssessmentMode === 'SEB') {
       sanitizedUpdates.requireScreenShare = false;
     }
 

@@ -45,11 +45,75 @@ function xmlEscape(value: string): string {
     .replace(/'/g, '&apos;');
 }
 
+// Self-check run on every generated document (not just in tests) so a malformed
+// config can never silently reach a candidate's SEB install — it fails loudly
+// server-side instead. This is intentionally dependency-free rather than pulling
+// in a full XML/DOM parser: it only needs to catch the two failure modes that
+// have actually bitten this file (a stray "--" breaking a comment, and a
+// mismatched/unclosed tag), not validate arbitrary XML.
+//
+// This does NOT replace testing against a real plist/XML parser or SEB itself —
+// it's a fast, in-process tripwire for the specific mistakes free-text comments
+// in this template have introduced twice already.
+function assertWellFormedXml(xml: string): void {
+  // 1) XML comments may not contain "--" anywhere except immediately before
+  // the closing "-->" (the XML spec forbids it). This is exactly the bug that
+  // broke this file before: a bare "--" used as a text dash inside a comment.
+  const commentBodyRegex = /<!--([\s\S]*?)-->/g;
+  let match: RegExpExecArray | null;
+  while ((match = commentBodyRegex.exec(xml)) !== null) {
+    if (match[1].includes('--')) {
+      throw new Error(
+        'sebConfigService: generated XML is invalid — a comment body contains a bare ' +
+        '"--", which is not allowed inside XML comments. Use an em dash (—) or restructure ' +
+        'the sentence instead. Offending comment: ' + match[1].trim().slice(0, 120)
+      );
+    }
+  }
+
+  // 2) Basic tag-balance check: strip comments/doctype/xml-declaration, then
+  // walk the remaining tags with a stack. Catches unclosed/mismatched tags
+  // (e.g. a <dict> or <array> left open) without needing a full parser.
+  const withoutCommentsAndDecls = xml
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<\?xml[\s\S]*?\?>/g, '')
+    .replace(/<!DOCTYPE[\s\S]*?>/g, '');
+
+  const tagRegex = /<\/?([a-zA-Z][\w.-]*)\b[^>]*?(\/?)>/g;
+  const stack: string[] = [];
+  let tagMatch: RegExpExecArray | null;
+  while ((tagMatch = tagRegex.exec(withoutCommentsAndDecls)) !== null) {
+    const [fullTag, tagName, selfClosingSlash] = tagMatch;
+    const isClosingTag = fullTag.startsWith('</');
+    const isSelfClosing = selfClosingSlash === '/';
+
+    if (isSelfClosing) {
+      continue;
+    }
+    if (isClosingTag) {
+      const expected = stack.pop();
+      if (expected !== tagName) {
+        throw new Error(
+          `sebConfigService: generated XML is invalid — expected closing tag </${expected ?? '(none)'}> ` +
+          `but found </${tagName}>. The document is unbalanced.`
+        );
+      }
+    } else {
+      stack.push(tagName);
+    }
+  }
+  if (stack.length > 0) {
+    throw new Error(
+      `sebConfigService: generated XML is invalid — unclosed tag(s): ${stack.join(', ')}.`
+    );
+  }
+}
+
 export function buildSebConfigXml(startUrl: string, quitUrl: string): string {
  const escapedStartUrl = xmlEscape(startUrl);
  const escapedQuitUrl = xmlEscape(quitUrl);
 
-  return `<?xml version="1.0" encoding="UTF-8"?>
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -213,4 +277,7 @@ export function buildSebConfigXml(startUrl: string, quitUrl: string): string {
 </dict>
 </plist>
 `;
+
+  assertWellFormedXml(xml);
+  return xml;
 }
