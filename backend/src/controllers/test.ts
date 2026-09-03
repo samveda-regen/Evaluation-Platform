@@ -19,6 +19,7 @@ import {
   parseStoredCustomAIViolationEvents,
 } from '../utils/proctoringConfig.js';
 import { buildCreateData as buildCommunicationCreateData, VALID_SUB_TYPES as VALID_COMMUNICATION_SUB_TYPES, serializeCommunicationQuestion } from './communicationQuestion.js';
+import { sendManualInvitationReminders } from '../services/testReminderService.js';
 
 const TEST_SCOPED_TAG = '__test_scoped__';
 const MAX_TEST_VIOLATIONS = 150;
@@ -1764,6 +1765,37 @@ export async function updateEmailTemplates(req: AuthenticatedRequest, res: Respo
     res.json({ message: 'Email templates saved' });
   } catch (error) {
     console.error('Update email templates error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// Admin clicks "Manual send" in the Reminder Email panel: fire the reminder email now to
+// every candidate invited to this test who hasn't started yet, ignoring the timer window.
+export async function sendReminderEmailsNow(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { testId } = req.params;
+
+    const exists = await prisma.test.findFirst({
+      where: testOwnershipWhere(req, testId),
+      select: { id: true },
+    });
+
+    if (!exists) {
+      res.status(404).json({ error: 'Test not found' });
+      return;
+    }
+
+    const { sent, failed } = await sendManualInvitationReminders(testId);
+
+    res.json({
+      message: sent === 0 && failed === 0
+        ? 'No candidates are waiting to start — nothing to send.'
+        : `Reminder sent to ${sent} candidate${sent === 1 ? '' : 's'}${failed ? `, ${failed} failed` : ''}.`,
+      sent,
+      failed,
+    });
+  } catch (error) {
+    console.error('Manual reminder send error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }
