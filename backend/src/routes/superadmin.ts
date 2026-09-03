@@ -67,7 +67,7 @@ import {
   sendTestAlert,
   listAlerts,
 } from '../controllers/superAdminAlerts.js';
-import { listCompanyStorage } from '../controllers/superAdminStorage.js';
+import { listCompanyStorage, getB2StorageAnalytics } from '../controllers/superAdminStorage.js';
 import { listCompanies, getCompanyDetail, renameCompany } from '../controllers/superAdminCompanies.js';
 import { listWebhookDeliveries, retryWebhookDelivery } from '../controllers/superAdminWebhooks.js';
 
@@ -166,6 +166,7 @@ router.get('/alerts', superAdminAuth, listAlerts);
 
 // ---- Storage ----
 router.get('/storage', superAdminAuth, listCompanyStorage);
+router.get('/storage/b2', superAdminAuth, getB2StorageAnalytics);
 
 // ---- Companies ----
 router.get('/companies', superAdminAuth, listCompanies);
