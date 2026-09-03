@@ -241,7 +241,6 @@ export default function TestInterface() {
     enableMonitorDetection: true,
     enabledViolationEvents: Array.from(enabledViolationSet),
     assessmentMode,
-    assessmentMode,
     onViolation: (violation) => {
       handleProctorViolationUI(violation.eventType, violation.description);
       if (testId && attemptId) {
