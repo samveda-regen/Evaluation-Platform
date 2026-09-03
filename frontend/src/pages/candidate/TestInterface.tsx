@@ -132,6 +132,11 @@ export default function TestInterface() {
   const policyPauseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const currentQuestion = questions[currentQuestionIndex] as RichQuestion | undefined;
+  // Inside Safe Exam Browser the kiosk mode is already full-screen and the browser
+  // Fullscreen API is unavailable/redundant — SEB is the sole fullscreen authority,
+  // so skip the JS requestFullscreen() call, the fullscreenchange handling and the
+  // "Fullscreen Required" prompt entirely.
+  const isSebMode = assessmentMode === 'SEB';
   const enabledViolationSet = useMemo(
     () => new Set(
       filterViolationsForAssessmentMode(
@@ -235,6 +240,8 @@ export default function TestInterface() {
     enableAudioAnalysis: !TEMP_DISABLE_AUDIO_PROCTORING,
     enableMonitorDetection: true,
     enabledViolationEvents: Array.from(enabledViolationSet),
+    assessmentMode,
+    assessmentMode,
     onViolation: (violation) => {
       handleProctorViolationUI(violation.eventType, violation.description);
       if (testId && attemptId) {
@@ -355,6 +362,10 @@ export default function TestInterface() {
   }, [startTime, duration, isSubmitted, autoSubmitOnTimeout]);
 
   useEffect(() => {
+    // SEB already runs the exam in its own kiosk full-screen — don't layer the
+    // browser Fullscreen API on top (it's blocked/redundant there and its failure
+    // pops the "Fullscreen Required" prompt at the start of the test).
+    if (isSebMode) { isFullscreenRef.current = true; return; }
     const requestFullscreen = async () => {
       try {
         await document.documentElement.requestFullscreen();
@@ -367,9 +378,10 @@ export default function TestInterface() {
     };
     setTimeout(requestFullscreen, 500);
     return () => { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); };
-  }, []);
+  }, [isSebMode]);
 
   useEffect(() => {
+    if (isSebMode) return;
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement && isFullscreenRef.current && !isSubmitted) {
         // Show the "Continue in Fullscreen" prompt immediately from the local browser
@@ -383,7 +395,7 @@ export default function TestInterface() {
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, [isSubmitted]);
+  }, [isSubmitted, isSebMode]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -560,9 +572,9 @@ export default function TestInterface() {
         socket.emit('candidate-activity', { testId, activity: { attemptId, eventType: normalizedEventType, message, timestamp: new Date().toISOString() } });
       }
       if (response.data.autoSubmit === true) handleAutoSubmit();
-      else if (!document.fullscreenElement) setShowFullscreenPrompt(true);
+      else if (!isSebMode && !document.fullscreenElement) setShowFullscreenPrompt(true);
     } catch (error) { console.error('Failed to log activity:', error); }
-  }, [incrementViolations, isSubmitted, captureEvidenceFrame, isViolationEnabled, violationPopupSettings, triggerPolicyPause]);
+  }, [incrementViolations, isSubmitted, captureEvidenceFrame, isViolationEnabled, violationPopupSettings, triggerPolicyPause, isSebMode]);
 
   const handleReenterFullscreen = async () => {
     try {
@@ -1027,8 +1039,8 @@ export default function TestInterface() {
         </div>
       )}
 
-      {/* Fullscreen prompt */}
-      {showFullscreenPrompt && (
+      {/* Fullscreen prompt — never shown under SEB, whose kiosk mode owns full-screen */}
+      {showFullscreenPrompt && !isSebMode && (
         <div className="fixed inset-0 bg-black/75 flex items-center justify-center z-50">
           <div className="bg-white rounded-2xl p-8 max-w-sm w-full text-center shadow-2xl">
             <div className="w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: '#FEF2F2' }}>

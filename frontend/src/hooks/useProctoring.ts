@@ -67,6 +67,10 @@ export interface ProctorConfig {
   enableAudioAnalysis: boolean;
   enableMonitorDetection: boolean;
   enabledViolationEvents?: string[];
+  // Under Safe Exam Browser the kiosk owns full-screen and the JS Fullscreen API
+  // reads as "not full-screen" — report full-screen telemetry as always-on so the
+  // observer view and screenInfo aren't misled.
+  assessmentMode?: 'SEB' | 'NORMAL_BROWSER';
   faceDetectionInterval: number;
   snapshotInterval: number;
   onViolation?: (violation: ViolationData) => void;
@@ -1016,7 +1020,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
         frameLength: frameData?.length || 0,
         frameSkippedReason: frameData ? null : 'healthy_client_cycle',
         monitorCount: status.monitorCount,
-        fullscreen: !!document.fullscreenElement,
+        fullscreen: finalConfig.assessmentMode === 'SEB' || !!document.fullscreenElement,
         tabVisible: !document.hidden,
       });
 
@@ -1051,7 +1055,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
             : {}),
           screenInfo: {
             monitorCount: status.monitorCount,
-            isFullscreen: !!document.fullscreenElement,
+            isFullscreen: finalConfig.assessmentMode === 'SEB' || !!document.fullscreenElement,
             tabVisible: !document.hidden,
           },
           ...(actualIntervalMs !== undefined ? { actualIntervalMs } : {}),
