@@ -19,7 +19,7 @@ import {
   parseStoredCustomAIViolationEvents,
 } from '../utils/proctoringConfig.js';
 import { buildCreateData as buildCommunicationCreateData, VALID_SUB_TYPES as VALID_COMMUNICATION_SUB_TYPES, serializeCommunicationQuestion } from './communicationQuestion.js';
-import { sendManualInvitationReminders } from '../services/testReminderService.js';
+import { sendManualInvitationReminders, type ReminderAudience } from '../services/testReminderService.js';
 
 const TEST_SCOPED_TAG = '__test_scoped__';
 const MAX_TEST_VIOLATIONS = 150;
@@ -1769,11 +1769,21 @@ export async function updateEmailTemplates(req: AuthenticatedRequest, res: Respo
   }
 }
 
+const REMINDER_AUDIENCES: ReminderAudience[] = ['invited', 'permission', 'both'];
+
 // Admin clicks "Manual send" in the Reminder Email panel: fire the reminder email now to
-// every candidate invited to this test who hasn't started yet, ignoring the timer window.
+// candidates who haven't started this test yet, ignoring the timer window. The dropdown
+// on the button picks which not-started group to nudge — invited-only, permission-only,
+// or both.
 export async function sendReminderEmailsNow(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { testId } = req.params;
+    const audience = (req.body?.audience ?? 'both') as ReminderAudience;
+
+    if (!REMINDER_AUDIENCES.includes(audience)) {
+      res.status(400).json({ error: `audience must be one of: ${REMINDER_AUDIENCES.join(', ')}` });
+      return;
+    }
 
     const exists = await prisma.test.findFirst({
       where: testOwnershipWhere(req, testId),
@@ -1785,11 +1795,11 @@ export async function sendReminderEmailsNow(req: AuthenticatedRequest, res: Resp
       return;
     }
 
-    const { sent, failed } = await sendManualInvitationReminders(testId);
+    const { sent, failed } = await sendManualInvitationReminders(testId, audience);
 
     res.json({
       message: sent === 0 && failed === 0
-        ? 'No candidates are waiting to start — nothing to send.'
+        ? 'No candidates in that group are waiting to start — nothing to send.'
         : `Reminder sent to ${sent} candidate${sent === 1 ? '' : 's'}${failed ? `, ${failed} failed` : ''}.`,
       sent,
       failed,
