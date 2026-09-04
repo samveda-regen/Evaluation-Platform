@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { adminApi } from '../../services/api';
 import { Test } from '../../types';
-import { ChevronRight, Pencil, Check, Trash2, Info } from 'lucide-react';
+import { ChevronRight, ChevronDown, Pencil, Check, Trash2, Info } from 'lucide-react';
 import DateTimePicker from '../../components/DateTimePicker';
 import CustomSelect from '../../components/CustomSelect';
 
@@ -269,7 +269,18 @@ export default function TestSettings() {
   const [reminderHoursDraft, setReminderHoursDraft] = useState<number>(24);
   const [reminderHoursSaving, setReminderHoursSaving] = useState(false);
   const [manualReminderSending, setManualReminderSending] = useState(false);
+  const [manualMenuOpen, setManualMenuOpen] = useState(false);
+  const manualMenuRef = useRef<HTMLDivElement>(null);
   useEffect(() => { if (testId) void load(); }, [testId]);
+
+  useEffect(() => {
+    if (!manualMenuOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (manualMenuRef.current && !manualMenuRef.current.contains(e.target as Node)) setManualMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [manualMenuOpen]);
 
   const load = async () => {
     setLoading(true);
@@ -331,15 +342,23 @@ export default function TestSettings() {
     finally { setReminderHoursSaving(false); }
   };
 
-  const handleManualReminderSend = async () => {
+  const MANUAL_REMINDER_OPTIONS: { value: 'invited' | 'permission' | 'both'; label: string; confirm: string }[] = [
+    { value: 'invited',    label: 'Invited stage only',    confirm: 'Send the reminder email now to candidates who were invited but have never opened the test link?' },
+    { value: 'permission', label: 'Permission stage only', confirm: 'Send the reminder email now to candidates who logged in but are still stuck on the permission/setup stage?' },
+    { value: 'both',       label: 'Both',                  confirm: 'Send the reminder email now to every candidate who hasn\'t started this test yet (invited + permission stage)?' },
+  ];
+
+  const handleManualReminderSend = async (audience: 'invited' | 'permission' | 'both') => {
     if (!testId || manualReminderSending) return;
-    if (!window.confirm('Send the reminder email now to every candidate who has been invited but hasn\'t started this test yet?')) return;
+    setManualMenuOpen(false);
+    const opt = MANUAL_REMINDER_OPTIONS.find(o => o.value === audience)!;
+    if (!window.confirm(opt.confirm)) return;
     setManualReminderSending(true);
     try {
-      const res = await adminApi.sendReminderEmailsNow(testId);
+      const res = await adminApi.sendReminderEmailsNow(testId, audience);
       const { sent = 0, message } = res.data as { sent?: number; failed?: number; message?: string };
       if (sent > 0) toast.success(message ?? `Reminder sent to ${sent} candidate${sent === 1 ? '' : 's'}.`);
-      else toast(message ?? 'No candidates are waiting to start — nothing to send.');
+      else toast(message ?? 'No candidates in that group are waiting to start — nothing to send.');
     } catch { toast.error('Failed to send reminder emails'); }
     finally { setManualReminderSending(false); }
   };
@@ -763,14 +782,38 @@ export default function TestSettings() {
                                 {reminderHoursSaving ? 'Saving…' : 'Save'}
                               </button>
                             )}
-                            <button type="button"
-                              onClick={handleManualReminderSend}
-                              disabled={manualReminderSending}
-                              className="btn btn-secondary"
-                              title="Send the reminder email now to every candidate who was invited but hasn't started yet, regardless of the timer above."
-                              style={{ padding:'4px 14px', fontSize:'12px', whiteSpace:'nowrap' }}>
-                              {manualReminderSending ? 'Sending…' : 'Manual send'}
-                            </button>
+                            <div ref={manualMenuRef} style={{ position:'relative' }}>
+                              <button type="button"
+                                onClick={() => setManualMenuOpen(o => !o)}
+                                disabled={manualReminderSending}
+                                className="btn btn-secondary"
+                                title="Send the reminder email now to candidates who haven't started yet, regardless of the timer above. Choose which group to send to."
+                                style={{ padding:'4px 12px', fontSize:'12px', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:'6px' }}>
+                                {manualReminderSending ? 'Sending…' : 'Manual send'}
+                                <ChevronDown size={13} style={{ transform: manualMenuOpen ? 'rotate(180deg)' : 'none', transition:'transform 0.15s' }} />
+                              </button>
+                              {manualMenuOpen && !manualReminderSending && (
+                                <div style={{
+                                  position:'absolute', top:'calc(100% + 6px)', right:0, zIndex:20,
+                                  minWidth:'210px', backgroundColor:'#fff', border:'1px solid var(--admin-border)',
+                                  borderRadius:'10px', boxShadow:'0 8px 24px rgba(0,0,0,0.12)', padding:'4px',
+                                }}>
+                                  {MANUAL_REMINDER_OPTIONS.map(opt => (
+                                    <button key={opt.value} type="button"
+                                      onClick={() => void handleManualReminderSend(opt.value)}
+                                      style={{
+                                        display:'block', width:'100%', textAlign:'left', padding:'8px 10px',
+                                        fontSize:'12px', color:'var(--admin-text-muted)', background:'none',
+                                        border:'none', borderRadius:'6px', cursor:'pointer',
+                                      }}
+                                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--admin-border)')}
+                                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}>
+                                      {opt.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       )}
