@@ -120,6 +120,15 @@ export async function sweepInvitationReminders(): Promise<void> {
   }
 }
 
+// Which not-yet-started candidates a "Manual send" targets:
+//   - 'invited':    invited but never logged in (no attempt row yet)
+//   - 'permission': logged in and sitting in the permission stage (attempt exists with
+//                   status 'permission' — device/ID checks not finished, test not started)
+//   - 'both':       either of the above
+// A candidate who has actually started (status 'in_progress'/'submitted') always has
+// consumedAt set, so the consumedAt: null filter below already excludes them.
+export type ReminderAudience = 'invited' | 'permission' | 'both';
+
 // Admin-triggered "Manual send" from the Reminder Email settings panel. Unlike the
 // automatic sweep this ignores the timer entirely (no reminderHoursBeforeClose window,
 // no fixed-endTime requirement) and the reminderSentAt gate, so an admin can nudge every
@@ -127,6 +136,7 @@ export async function sweepInvitationReminders(): Promise<void> {
 // invitations that were sent but never consumed.
 export async function sendManualInvitationReminders(
   testId: string,
+  audience: ReminderAudience = 'both',
 ): Promise<{ sent: number; failed: number }> {
   const invitations = await prisma.testInvitation.findMany({
     where: {
@@ -138,10 +148,32 @@ export async function sendManualInvitationReminders(
     include: REMINDER_INVITATION_INCLUDE,
   });
 
+  if (invitations.length === 0) return { sent: 0, failed: 0 };
+
+  // Match invitations to attempts by candidate email, the same join the invitation
+  // dashboard uses, so we can tell "never logged in" from "stuck in permission".
+  const emails = Array.from(new Set(invitations.map((invitation) => invitation.email.toLowerCase())));
+  const attempts = await prisma.testAttempt.findMany({
+    where: { testId, candidate: { email: { in: emails } } },
+    select: { status: true, candidate: { select: { email: true } } },
+  });
+  const attemptStatusByEmail = new Map<string, string>();
+  for (const attempt of attempts) {
+    attemptStatusByEmail.set(attempt.candidate.email.toLowerCase(), attempt.status);
+  }
+
+  const targets = invitations.filter((invitation) => {
+    const inPermission = attemptStatusByEmail.get(invitation.email.toLowerCase()) === 'permission';
+    const invitedOnly = !attemptStatusByEmail.has(invitation.email.toLowerCase());
+    if (audience === 'permission') return inPermission;
+    if (audience === 'invited') return invitedOnly;
+    return inPermission || invitedOnly;
+  });
+
   let sent = 0;
   let failed = 0;
 
-  for (const invitation of invitations) {
+  for (const invitation of targets) {
     try {
       await deliverReminder(invitation as ReminderInvitation);
       sent += 1;
