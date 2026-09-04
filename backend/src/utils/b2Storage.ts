@@ -223,6 +223,16 @@ export function sanitizeFolderSegment(raw: string): string {
   );
 }
 
+// Top-level folder for this deployment inside the shared B2 bucket, so
+// multiple instances (e.g. a production and an experimental deployment) can
+// point at the same bucket without their assessment/candidate folders
+// colliding. Unset means no instance layer — objects land directly under
+// "<testName>_<testId>/...", the previous behavior.
+export function getInstanceFolderPrefix(): string {
+  const instance = (process.env.INSTANCE_FILENAME || '').trim();
+  return instance ? `${sanitizeFolderSegment(instance)}/` : '';
+}
+
 export interface AssessmentCandidateContext {
   testId: string;
   testName: string;
@@ -261,7 +271,7 @@ export async function getAssessmentCandidateContext(
     candidateId: attempt.candidate.id,
     candidateName,
     attemptNumber: attempt.attemptNumber,
-    folder: `${testName}_${attempt.test.id}/${candidateName}_${attempt.candidate.id}/attempt ${attempt.attemptNumber}`,
+    folder: `${getInstanceFolderPrefix()}${testName}_${attempt.test.id}/${candidateName}_${attempt.candidate.id}/attempt ${attempt.attemptNumber}`,
   };
   contextCache.set(attemptId, context);
   return context;

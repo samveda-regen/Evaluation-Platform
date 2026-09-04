@@ -36,6 +36,23 @@ const HASHED_ADMIN_PASSWORD = SEB_ADMIN_PASSWORD
   ? crypto.createHash('sha256').update(SEB_ADMIN_PASSWORD, 'utf8').digest('hex')
   : '';
 
+// Same reasoning as SEB_ADMIN_PASSWORD above, but for quitting SEB entirely
+// (Ctrl+Q / the quit button) rather than opening its settings menu. Without
+// hashedQuitPassword set, any candidate can end the locked-down session
+// whenever they like.
+const SEB_QUIT_PASSWORD = process.env.SEB_QUIT_PASSWORD || '';
+if (!SEB_QUIT_PASSWORD) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    '[sebConfigService] SEB_QUIT_PASSWORD is not set — generated SEB configs ship with ' +
+    'hashedQuitPassword blank, so any candidate can quit SEB without a password. Set ' +
+    'SEB_QUIT_PASSWORD before distributing to real candidates.'
+  );
+}
+const HASHED_QUIT_PASSWORD = SEB_QUIT_PASSWORD
+  ? crypto.createHash('sha256').update(SEB_QUIT_PASSWORD, 'utf8').digest('hex')
+  : '';
+
 function xmlEscape(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -159,7 +176,7 @@ export function buildSebConfigXml(startUrl: string, quitUrl: string): string {
   <key>quitURLConfirm</key>
   <false/>
   <key>hashedQuitPassword</key>
-  <string></string>
+  <string>${HASHED_QUIT_PASSWORD}</string>
 
   <!-- seb.log (3 separate live tests) showed the auto-generated start-URL
        rule matches the START URL ONLY, not the whole domain despite what

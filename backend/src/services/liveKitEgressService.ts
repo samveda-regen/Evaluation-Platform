@@ -16,6 +16,7 @@ import {
   getAssessmentCandidateContext,
   getB2Config,
   getB2SignedUrl,
+  getInstanceFolderPrefix,
 } from '../utils/b2Storage.js';
 
 export { s3Configured, s3BucketName };
@@ -105,7 +106,7 @@ function egressClient(): EgressClient {
 // was deleted mid-attempt) so recording still proceeds rather than failing.
 async function relativeRecordingPath(testId: string, attemptId: string, timestamp: number): Promise<string> {
   const context = await getAssessmentCandidateContext(attemptId);
-  const folder = context?.folder || `${testId}/attempt-${attemptId}`;
+  const folder = context?.folder || `${getInstanceFolderPrefix()}${testId}/attempt-${attemptId}`;
   return `${folder}/webcam-${timestamp}.mp4`;
 }
 
