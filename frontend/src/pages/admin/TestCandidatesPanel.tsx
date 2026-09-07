@@ -103,11 +103,13 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [forceSubmittingId, setForceSubmittingId] = useState<string | null>(null);
   const [resendingId, setResendingId] = useState<string | null>(null);
+  const [reEvaluatingAll, setReEvaluatingAll] = useState(false);
+  const [selectedAttemptIds, setSelectedAttemptIds] = useState<Set<string>>(new Set());
   const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
 
   useEffect(() => { load(); }, [testId, refreshKey]);
-  useEffect(() => { setPage(1); }, [search, statusFilter]);
+  useEffect(() => { setPage(1); setSelectedAttemptIds(new Set()); }, [search, statusFilter]);
 
   const load = async () => {
     setInvLoading(true); setResLoading(true);
@@ -162,6 +164,28 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
     finally { setResendingId(null); }
   };
 
+  const handleReEvaluateSelected = async () => {
+    const ids = [...selectedAttemptIds];
+    const count = ids.length > 0 ? ids.length : submittedCount;
+    const scope = ids.length > 0 ? `the ${ids.length} selected` : `all ${submittedCount} submitted`;
+    if (count === 0) return;
+    if (!window.confirm(
+      `Re-evaluate ${scope} attempt(s)? This recalculates each candidate's score by re-running MCQ and coding auto-grading and sends the updated-score webhook. Manually-graded marks are kept.`
+    )) return;
+    setReEvaluatingAll(true);
+    try {
+      const { data } = await adminApi.reEvaluateAllAttempts(testId, ids.length > 0 ? ids : undefined);
+      if (data.failed > 0) {
+        toast.error(`${data.succeeded} re-evaluated, ${data.failed} failed`);
+      } else {
+        toast.success(`Re-evaluated ${data.succeeded} attempt(s)`);
+      }
+      setSelectedAttemptIds(new Set());
+      await load();
+    } catch { toast.error('Failed to re-evaluate attempts'); }
+    finally { setReEvaluatingAll(false); }
+  };
+
   const handleExport = async () => {
     setExporting(true);
     try {
@@ -203,6 +227,23 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
   /* -- Pagination -- */
   const totalPages = Math.max(1, Math.ceil(filtered.length / CANDIDATES_PAGE_SIZE));
   const pagedRows = filtered.slice((page - 1) * CANDIDATES_PAGE_SIZE, page * CANDIDATES_PAGE_SIZE);
+
+  /* -- Row selection (only submitted attempts can be re-evaluated) -- */
+  const isReEvaluable = (inv: InvitationRow, attempt?: TestAttempt): attempt is TestAttempt =>
+    !!attempt?.id && getCandStatus(inv, attempt) === 'Submitted';
+  const selectableIds = filtered.filter(r => isReEvaluable(r.inv, r.attempt)).map(r => r.attempt!.id);
+  const allSelected = selectableIds.length > 0 && selectableIds.every(id => selectedAttemptIds.has(id));
+  const someSelected = selectableIds.some(id => selectedAttemptIds.has(id));
+  const toggleSelectAll = () => {
+    setSelectedAttemptIds(allSelected ? new Set() : new Set(selectableIds));
+  };
+  const toggleOne = (id: string) => {
+    setSelectedAttemptIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   /* -- Selected candidate -- */
   const selectedRow = selectedId ? rows.find(r => r.inv.id === selectedId) : null;
@@ -285,6 +326,18 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
 
         <div className="flex-1 min-w-0" />
 
+        {/* Re-evaluate selected (or all submitted when nothing is ticked) */}
+        <button onClick={handleReEvaluateSelected} disabled={reEvaluatingAll || submittedCount === 0}
+          className="btn btn-secondary"
+          title="Recalculate score + resend the score webhook for the selected candidates (or all submitted if none are selected)">
+          <RotateCcw width={14} height={14} color="var(--admin-accent)" />
+          {reEvaluatingAll
+            ? 'Re-evaluating…'
+            : selectedAttemptIds.size > 0
+              ? `Re-evaluate selected (${selectedAttemptIds.size})`
+              : 'Re-evaluate all'}
+        </button>
+
         {/* Export CSV */}
         <button onClick={handleExport} disabled={exporting}
           className="btn btn-secondary">
@@ -304,9 +357,18 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
       <div className="rounded-2xl overflow-hidden" style={{ backgroundColor:'white', boxShadow:'0 1px 4px rgba(0,0,0,0.07)' }}>
         {/* Table header */}
         <div className="grid px-5 py-3" style={{
-          gridTemplateColumns:'minmax(220px,1fr) 140px 130px 90px 90px 100px 130px 36px',
+          gridTemplateColumns:'32px minmax(220px,1fr) 140px 130px 90px 90px 100px 130px 36px',
           borderBottom:'1px solid var(--admin-border)',
+          alignItems:'center',
         }}>
+          <input type="checkbox"
+            className="h-4 w-4 cursor-pointer accent-[var(--admin-accent)]"
+            checked={allSelected}
+            ref={el => { if (el) el.indeterminate = !allSelected && someSelected; }}
+            disabled={selectableIds.length === 0}
+            onChange={toggleSelectAll}
+            title="Select all submitted candidates"
+          />
           {['CANDIDATE','STATUS','ATTEMPTED ON','SCORE','TRUST','TIME','INTEGRITY',''].map(col => (
             <span key={col} className="text-xs font-semibold uppercase tracking-wide" style={{ color:'var(--admin-text-subtle)' }}>{col}</span>
           ))}
@@ -342,17 +404,30 @@ export default function TestCandidatesPanel({ testId, onInvite, refreshKey = 0 }
                 : integrity === 'Clean' ? 'var(--admin-accent-hover)'
                 : integrity === 'Not started' ? 'var(--admin-text-subtle)' : '#DC2626';
               const isSelected = selectedId === inv.id;
+              const reEvaluable = isReEvaluable(inv, attempt);
+              const isChecked = reEvaluable && selectedAttemptIds.has(attempt.id);
 
               return (
                 <div key={inv.id}
                   className="grid px-5 py-4 cursor-pointer transition-colors hover:bg-gray-50"
                   style={{
-                    gridTemplateColumns:'minmax(220px,1fr) 140px 130px 90px 90px 100px 130px 36px',
+                    gridTemplateColumns:'32px minmax(220px,1fr) 140px 130px 90px 90px 100px 130px 36px',
                     borderBottom:'1px solid #F9FAFB',
                     alignItems:'center',
                     backgroundColor: isSelected ? 'var(--admin-accent-soft)' : undefined,
                   }}
                   onClick={() => setSelectedId(prev => prev === inv.id ? null : inv.id)}>
+
+                  {/* Row select */}
+                  <div className="flex items-center" onClick={e => e.stopPropagation()}>
+                    {reEvaluable && (
+                      <input type="checkbox"
+                        className="h-4 w-4 cursor-pointer accent-[var(--admin-accent)]"
+                        checked={isChecked}
+                        onChange={() => toggleOne(attempt.id)}
+                      />
+                    )}
+                  </div>
 
                   {/* Candidate */}
                   <div className="flex items-center gap-3 min-w-0">

@@ -461,6 +461,16 @@ export const adminApi = {
   reEvaluateAttempt: (attemptId: string) =>
     api.post(`/admin/attempts/${attemptId}/reevaluate`),
 
+  reEvaluateAllAttempts: (testId: string, attemptIds?: string[]) =>
+    api.post<{
+      message: string;
+      total: number;
+      succeeded: number;
+      failed: number;
+      results: { attemptId: string; newScore: number }[];
+      failures: { attemptId: string; error: string }[];
+    }>(`/admin/tests/${testId}/reevaluate-all`, attemptIds?.length ? { attemptIds } : {}),
+
   exportResults: (testId: string, format: 'csv' | 'json' = 'csv') =>
     api.get(`/admin/tests/${testId}/export?format=${format}`, { responseType: format === 'csv' ? 'blob' : 'json' }),
 

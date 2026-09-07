@@ -924,185 +924,272 @@ export async function forceSubmitAttempt(req: AuthenticatedRequest, res: Respons
   }
 }
 
+class ReEvaluationError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = 'ReEvaluationError';
+  }
+}
+
+/**
+ * Re-run MCQ/coding auto-grading for a single attempt, fold in already-graded
+ * behavioral/communication marks, persist the new score, and fire the score webhook.
+ * Shared by the single-attempt and bulk (re-evaluate all) endpoints.
+ * Throws ReEvaluationError for not-found / access-denied so callers can map to HTTP.
+ */
+async function runAttemptReEvaluation(attemptId: string, adminId: string): Promise<number> {
+  const attempt = await prisma.testAttempt.findUnique({
+    where: { id: attemptId },
+    include: {
+      test: {
+        select: {
+          adminId: true,
+          negativeMarking: true,
+          totalMarks: true,
+          passingMarks: true
+        }
+      },
+      candidate: {
+        select: {
+          name: true,
+          email: true
+        }
+      },
+      mcqAnswers: {
+        include: { question: true }
+      },
+      codingAnswers: {
+        include: {
+          question: {
+            include: { testCases: true }
+          }
+        }
+      },
+      behavioralAnswers: {
+        select: { marksObtained: true }
+      },
+      communicationAnswers: {
+        include: { question: true }
+      }
+    }
+  });
+
+  if (!attempt) {
+    throw new ReEvaluationError(404, 'Attempt not found');
+  }
+
+  if (attempt.test.adminId !== adminId) {
+    throw new ReEvaluationError(403, 'Access denied');
+  }
+
+  let totalScore = 0;
+
+  // Re-evaluate MCQ answers
+  for (const mcqAnswer of attempt.mcqAnswers) {
+    const correctAnswers = JSON.parse(mcqAnswer.question.correctAnswers) as number[];
+    const selectedOptions = JSON.parse(mcqAnswer.selectedOptions) as number[];
+
+    const isCorrect =
+      correctAnswers.length === selectedOptions.length &&
+      correctAnswers.every((a: number) => selectedOptions.includes(a));
+
+    let marks = 0;
+    if (isCorrect) {
+      marks = mcqAnswer.question.marks;
+    } else if (selectedOptions.length > 0 && attempt.test.negativeMarking > 0) {
+      marks = -attempt.test.negativeMarking;
+    }
+
+    totalScore += marks;
+
+    await prisma.mCQAnswer.update({
+      where: { id: mcqAnswer.id },
+      data: {
+        isCorrect,
+        marksObtained: marks
+      }
+    });
+  }
+
+  // Re-evaluate coding answers
+  const { executeCode, compareOutput } = await import('../utils/codeExecutor.js');
+
+  for (const codingAnswer of attempt.codingAnswers) {
+    const question = codingAnswer.question;
+    const testResults = [];
+    let passedTests = 0;
+
+    for (const testCase of question.testCases) {
+      const result = await executeCode({
+        language: codingAnswer.language,
+        code: codingAnswer.code,
+        input: testCase.input,
+        timeLimit: question.timeLimit
+      });
+
+      const passed = result.success && compareOutput(testCase.expectedOutput, result.output || '');
+
+      testResults.push({
+        testCaseId: testCase.id,
+        passed,
+        executionTime: result.executionTime,
+        error: result.error
+      });
+
+      if (passed) passedTests++;
+    }
+
+    let marks = 0;
+    if (question.partialScoring) {
+      marks = (passedTests / question.testCases.length) * question.marks;
+    } else {
+      marks = passedTests === question.testCases.length ? question.marks : 0;
+    }
+
+    totalScore += marks;
+
+    await prisma.codingAnswer.update({
+      where: { id: codingAnswer.id },
+      data: {
+        testResults: JSON.stringify(testResults),
+        marksObtained: marks
+      }
+    });
+  }
+
+  // Fold in already-graded behavioral marks — this endpoint only re-runs MCQ/coding
+  // auto-grading and must not silently drop manually-graded behavioral scores.
+  for (const behavioralAnswer of attempt.behavioralAnswers) {
+    totalScore += behavioralAnswer.marksObtained ?? 0;
+  }
+
+  // Communication: Listening/Reading are MCQ-shaped and re-auto-score here (same exact-match
+  // rule); Written/Speaking are LLM/manually graded elsewhere, so their already-set marksObtained
+  // is simply folded in, mirroring the behavioral fold-in above.
+  for (const communicationAnswer of attempt.communicationAnswers) {
+    const question = communicationAnswer.question;
+    if (question.subType === 'LISTENING' || question.subType === 'READING') {
+      const correctAnswers = question.correctAnswers ? (JSON.parse(question.correctAnswers) as number[]) : [];
+      const selectedOptions = communicationAnswer.selectedOptions ? (JSON.parse(communicationAnswer.selectedOptions) as number[]) : [];
+      const isCorrect =
+        correctAnswers.length === selectedOptions.length &&
+        correctAnswers.every((a: number) => selectedOptions.includes(a));
+      const marks = isCorrect ? question.marks : 0;
+      totalScore += marks;
+
+      await prisma.communicationAnswer.update({
+        where: { id: communicationAnswer.id },
+        data: { isCorrect, marksObtained: marks }
+      });
+    } else {
+      totalScore += communicationAnswer.marksObtained ?? 0;
+    }
+  }
+
+  // Update attempt score
+  await prisma.testAttempt.update({
+    where: { id: attemptId },
+    data: { score: totalScore }
+  });
+
+  void sendCandidateScoreWebhook({
+    name: attempt.candidate?.name ?? 'Unknown',
+    emailid: attempt.candidate?.email ?? '',
+    score: totalScore,
+    totalMarks: attempt.test.totalMarks,
+    testid: attempt.testId,
+    status: 're_evaluated',
+    passingMarks: attempt.test.passingMarks ?? null,
+    result: attempt.test.passingMarks != null
+      ? (totalScore >= attempt.test.passingMarks ? 'passed' : 'failed')
+      : null,
+  });
+
+  return totalScore;
+}
+
 export async function reEvaluateAttempt(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
     const { attemptId } = req.params;
+    const newScore = await runAttemptReEvaluation(attemptId, req.admin!.id);
+    res.json({
+      message: 'Re-evaluation completed',
+      newScore
+    });
+  } catch (error) {
+    if (error instanceof ReEvaluationError) {
+      res.status(error.status).json({ error: error.message });
+      return;
+    }
+    console.error('Re-evaluate attempt error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
 
-    const attempt = await prisma.testAttempt.findUnique({
-      where: { id: attemptId },
-      include: {
-        test: {
-          select: {
-            adminId: true,
-            negativeMarking: true,
-            totalMarks: true,
-            passingMarks: true
-          }
-        },
-        candidate: {
-          select: {
-            name: true,
-            email: true
-          }
-        },
-        mcqAnswers: {
-          include: { question: true }
-        },
-        codingAnswers: {
-          include: {
-            question: {
-              include: { testCases: true }
-            }
-          }
-        },
-        behavioralAnswers: {
-          select: { marksObtained: true }
-        },
-        communicationAnswers: {
-          include: { question: true }
-        }
-      }
+/**
+ * Re-evaluate submitted attempts for a test in one call, so admins don't have to
+ * re-evaluate candidates one by one from the attempt-details page.
+ * Body may carry `attemptIds: string[]` to restrict the run to a selection; when
+ * omitted or empty, every submitted attempt on the test is re-evaluated.
+ */
+export async function reEvaluateAllAttempts(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { testId } = req.params;
+    const rawIds = (req.body as { attemptIds?: unknown })?.attemptIds;
+    const selectedIds = Array.isArray(rawIds)
+      ? rawIds.filter((id): id is string => typeof id === 'string')
+      : [];
+
+    const test = await prisma.test.findUnique({
+      where: { id: testId },
+      select: { adminId: true }
     });
 
-    if (!attempt) {
-      res.status(404).json({ error: 'Attempt not found' });
+    if (!test) {
+      res.status(404).json({ error: 'Test not found' });
       return;
     }
 
-    if (attempt.test.adminId !== req.admin!.id) {
+    if (test.adminId !== req.admin!.id) {
       res.status(403).json({ error: 'Access denied' });
       return;
     }
 
-    let totalScore = 0;
-
-    // Re-evaluate MCQ answers
-    for (const mcqAnswer of attempt.mcqAnswers) {
-      const correctAnswers = JSON.parse(mcqAnswer.question.correctAnswers) as number[];
-      const selectedOptions = JSON.parse(mcqAnswer.selectedOptions) as number[];
-
-      const isCorrect =
-        correctAnswers.length === selectedOptions.length &&
-        correctAnswers.every((a: number) => selectedOptions.includes(a));
-
-      let marks = 0;
-      if (isCorrect) {
-        marks = mcqAnswer.question.marks;
-      } else if (selectedOptions.length > 0 && attempt.test.negativeMarking > 0) {
-        marks = -attempt.test.negativeMarking;
-      }
-
-      totalScore += marks;
-
-      await prisma.mCQAnswer.update({
-        where: { id: mcqAnswer.id },
-        data: {
-          isCorrect,
-          marksObtained: marks
-        }
-      });
-    }
-
-    // Re-evaluate coding answers
-    const { executeCode, compareOutput } = await import('../utils/codeExecutor.js');
-
-    for (const codingAnswer of attempt.codingAnswers) {
-      const question = codingAnswer.question;
-      const testResults = [];
-      let passedTests = 0;
-
-      for (const testCase of question.testCases) {
-        const result = await executeCode({
-          language: codingAnswer.language,
-          code: codingAnswer.code,
-          input: testCase.input,
-          timeLimit: question.timeLimit
-        });
-
-        const passed = result.success && compareOutput(testCase.expectedOutput, result.output || '');
-
-        testResults.push({
-          testCaseId: testCase.id,
-          passed,
-          executionTime: result.executionTime,
-          error: result.error
-        });
-
-        if (passed) passedTests++;
-      }
-
-      let marks = 0;
-      if (question.partialScoring) {
-        marks = (passedTests / question.testCases.length) * question.marks;
-      } else {
-        marks = passedTests === question.testCases.length ? question.marks : 0;
-      }
-
-      totalScore += marks;
-
-      await prisma.codingAnswer.update({
-        where: { id: codingAnswer.id },
-        data: {
-          testResults: JSON.stringify(testResults),
-          marksObtained: marks
-        }
-      });
-    }
-
-    // Fold in already-graded behavioral marks — this endpoint only re-runs MCQ/coding
-    // auto-grading and must not silently drop manually-graded behavioral scores.
-    for (const behavioralAnswer of attempt.behavioralAnswers) {
-      totalScore += behavioralAnswer.marksObtained ?? 0;
-    }
-
-    // Communication: Listening/Reading are MCQ-shaped and re-auto-score here (same exact-match
-    // rule); Written/Speaking are LLM/manually graded elsewhere, so their already-set marksObtained
-    // is simply folded in, mirroring the behavioral fold-in above.
-    for (const communicationAnswer of attempt.communicationAnswers) {
-      const question = communicationAnswer.question;
-      if (question.subType === 'LISTENING' || question.subType === 'READING') {
-        const correctAnswers = question.correctAnswers ? (JSON.parse(question.correctAnswers) as number[]) : [];
-        const selectedOptions = communicationAnswer.selectedOptions ? (JSON.parse(communicationAnswer.selectedOptions) as number[]) : [];
-        const isCorrect =
-          correctAnswers.length === selectedOptions.length &&
-          correctAnswers.every((a: number) => selectedOptions.includes(a));
-        const marks = isCorrect ? question.marks : 0;
-        totalScore += marks;
-
-        await prisma.communicationAnswer.update({
-          where: { id: communicationAnswer.id },
-          data: { isCorrect, marksObtained: marks }
-        });
-      } else {
-        totalScore += communicationAnswer.marksObtained ?? 0;
-      }
-    }
-
-    // Update attempt score
-    await prisma.testAttempt.update({
-      where: { id: attemptId },
-      data: { score: totalScore }
+    const attempts = await prisma.testAttempt.findMany({
+      where: {
+        testId,
+        status: { in: ['submitted', 'auto_submitted', 'flagged'] },
+        ...(selectedIds.length > 0 ? { id: { in: selectedIds } } : {})
+      },
+      select: { id: true }
     });
 
-    void sendCandidateScoreWebhook({
-      name: attempt.candidate?.name ?? 'Unknown',
-      emailid: attempt.candidate?.email ?? '',
-      score: totalScore,
-      totalMarks: attempt.test.totalMarks,
-      testid: attempt.testId,
-      status: 're_evaluated',
-      passingMarks: attempt.test.passingMarks ?? null,
-      result: attempt.test.passingMarks != null
-        ? (totalScore >= attempt.test.passingMarks ? 'passed' : 'failed')
-        : null,
-    });
+    const results: { attemptId: string; newScore: number }[] = [];
+    const failures: { attemptId: string; error: string }[] = [];
+
+    // Sequential — each re-evaluation runs candidate code against every test case,
+    // so running them in parallel would swamp the code executor.
+    for (const { id } of attempts) {
+      try {
+        const newScore = await runAttemptReEvaluation(id, req.admin!.id);
+        results.push({ attemptId: id, newScore });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        console.error(`Re-evaluate all: attempt ${id} failed:`, err);
+        failures.push({ attemptId: id, error: message });
+      }
+    }
 
     res.json({
-      message: 'Re-evaluation completed',
-      newScore: totalScore
+      message: `Re-evaluated ${results.length} of ${attempts.length} attempt(s)`,
+      total: attempts.length,
+      succeeded: results.length,
+      failed: failures.length,
+      results,
+      failures
     });
   } catch (error) {
-    console.error('Re-evaluate attempt error:', error);
+    console.error('Re-evaluate all attempts error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 }

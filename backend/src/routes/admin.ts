@@ -76,6 +76,7 @@ import {
   deleteAttempt,
   forceSubmitAttempt,
   reEvaluateAttempt,
+  reEvaluateAllAttempts,
   exportResults,
   getDashboardStats,
   getRecentCompletedAttempts,
@@ -211,6 +212,7 @@ router.post('/attempts/:attemptId/communication/:questionId/auto-grade', adminAu
 router.delete('/attempts/:attemptId', adminAuth, deleteAttempt);
 router.post('/attempts/:attemptId/force-submit', adminAuth, forceSubmitAttempt);
 router.post('/attempts/:attemptId/reevaluate', adminAuth, reEvaluateAttempt);
+router.post('/tests/:testId/reevaluate-all', adminAuth, reEvaluateAllAttempts);
 router.get('/tests/:testId/export', adminAuth, exportResults);
 router.get('/trust-reports', adminAuth, getTrustReports);
 router.post('/attempts/:attemptId/trust-report/reevaluate', adminAuth, reEvaluateTrustReport);
