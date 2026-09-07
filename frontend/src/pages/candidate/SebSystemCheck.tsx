@@ -36,6 +36,13 @@ type CheckStatus = 'idle' | 'checking' | 'ok' | 'failed' | 'not-required';
  * camera, or straight to /test/instructions when it doesn't — there's
  * nothing for the environment-setup page to warm up in that case.
  */
+function handleSebExit() {
+  const sebQuitUrl = localStorage.getItem('sebQuitUrl');
+  if (sebQuitUrl) {
+    window.location.href = sebQuitUrl;
+  }
+}
+
 export default function SebSystemCheck() {
   const navigate = useNavigate();
   const [testDetails, setTestDetails] = useState<TestDetails | null>(null);
@@ -246,8 +253,31 @@ export default function SebSystemCheck() {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--admin-bg)' }}>
       <header className="bg-white border-b" style={{ borderColor: 'var(--admin-border)' }}>
-        <div className="max-w-3xl mx-auto px-6 py-4 flex items-center">
-          <img src={talentstaQLogo} alt="TalentstaQ" style={{ height: '30px', width: 'auto' }} />
+        <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => navigate('/test/login')}
+              className="flex items-center gap-1.5 text-sm font-medium transition-colors"
+              style={{ color: '#6B7280' }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#111827')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#6B7280')}
+            >
+              Back
+            </button>
+            <div className="h-5 w-px bg-gray-200" />
+            <img src={talentstaQLogo} alt="TalentstaQ" style={{ height: '30px', width: 'auto' }} />
+          </div>
+          <button
+            type="button"
+            onClick={handleSebExit}
+            className="text-sm font-medium transition-colors"
+            style={{ color: '#6B7280' }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = '#111827')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = '#6B7280')}
+          >
+            Exit
+          </button>
         </div>
       </header>
 
