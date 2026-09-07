@@ -37,6 +37,8 @@ import PhoneCapture from './pages/PhoneCapture';
 import CandidateLogin from './pages/candidate/CandidateLogin';
 import TestInvitation from './pages/candidate/TestInvitation';
 import TestInstructions from './pages/candidate/TestInstructions';
+import SebSystemCheck from './pages/candidate/SebSystemCheck';
+import SebEnvironmentSetup from './pages/candidate/SebEnvironmentSetup';
 import TestInterface from './pages/candidate/TestInterface';
 import TestComplete from './pages/candidate/TestComplete';
 
@@ -143,6 +145,22 @@ export default function App() {
 />
       <Route path="/test/login" element={<CandidateLogin />} />
       <Route path="/test/invite/:token" element={<TestInvitation />} />
+      <Route
+        path="/test/system-check"
+        element={
+          <ProtectedCandidateRoute>
+            <SebSystemCheck />
+          </ProtectedCandidateRoute>
+        }
+      />
+      <Route
+        path="/test/environment-setup"
+        element={
+          <ProtectedCandidateRoute>
+            <SebEnvironmentSetup />
+          </ProtectedCandidateRoute>
+        }
+      />
       <Route
         path="/test/instructions"
         element={

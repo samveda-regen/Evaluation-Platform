@@ -298,17 +298,21 @@ export default function TestInterface() {
 
   useEffect(() => {
     if (!proctorError || proctorInitHandledRef.current || !proctorEnabled) return;
+    // SEB's device checks now live on their own page (SebSystemCheck.tsx) rather than
+    // bundled into the instructions page — normal-browser mode still does its own inline,
+    // unchanged, so it still redirects to the instructions page.
+    const deviceCheckPath = isSebMode ? '/test/system-check' : '/test/instructions';
     const lowered = proctorError.toLowerCase();
     if (proctorError === SCREEN_SHARE_WRONG_SURFACE_MESSAGE) {
       proctorInitHandledRef.current = true;
       toast.error(SCREEN_SHARE_WRONG_SURFACE_MESSAGE, { duration: 8000 });
-      navigate('/test/instructions');
+      navigate(deviceCheckPath);
     } else if (lowered.includes('camera permission denied') || lowered.includes('microphone permission denied') || lowered.includes('screen share permission denied')) {
       proctorInitHandledRef.current = true;
       toast.error('Required proctoring permission missing. Complete Device Check once, then start test.');
-      navigate('/test/instructions');
+      navigate(deviceCheckPath);
     }
-  }, [proctorError, proctorEnabled, navigate]);
+  }, [proctorError, proctorEnabled, navigate, isSebMode]);
 
   useEffect(() => {
     if (liveProctoringError) {

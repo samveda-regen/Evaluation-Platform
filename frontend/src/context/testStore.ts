@@ -34,6 +34,12 @@ interface TestState {
   submissionResult: SubmissionResult | null;
   showTimer: boolean;
   autoSubmitOnTimeout: boolean;
+  // Set once, before the exam starts, by the pre-exam client-model readiness
+  // check (see clientDetectionReadiness.ts + SebTestInstructions.tsx). When
+  // true, useProctoring.ts never attempts in-browser detection for this
+  // attempt, regardless of what the backend's detectionMode says — a
+  // one-way latch for the whole attempt, not re-checked per cycle.
+  forceServerDetection: boolean;
 
   setTestData: (data: {
     testId: string;
@@ -69,6 +75,7 @@ interface TestState {
   saveCommunicationAudioAnswer: (questionId: string, audioAssetId: string, transcript?: string | null) => void;
   incrementViolations: () => number;
   setSubmitted: (result?: SubmissionResult) => void;
+  setForceServerDetection: (value: boolean) => void;
   resetTest: () => void;
   loadSavedAnswers: (mcq: MCQAnswer[], coding: CodingAnswer[], behavioral: BehavioralAnswer[], communication: CommunicationAnswer[]) => void;
 }
@@ -105,6 +112,7 @@ export const useTestStore = create<TestState>((set, get) => ({
   submissionResult: null,
   showTimer: true,
   autoSubmitOnTimeout: true,
+  forceServerDetection: false,
 
   setTestData: (data) => set({
     testId: data.testId,
@@ -205,6 +213,8 @@ export const useTestStore = create<TestState>((set, get) => ({
 
   setSubmitted: (result) => set({ isSubmitted: true, submissionResult: result ?? null }),
 
+  setForceServerDetection: (value) => set({ forceServerDetection: value }),
+
   resetTest: () => set({
     testId: null,
     testCode: null,
@@ -236,7 +246,8 @@ export const useTestStore = create<TestState>((set, get) => ({
     isSubmitted: false,
     submissionResult: null,
     showTimer: true,
-    autoSubmitOnTimeout: true
+    autoSubmitOnTimeout: true,
+    forceServerDetection: false
   }),
 
   loadSavedAnswers: (mcq, coding, behavioral, communication) => set((state) => {

@@ -31,6 +31,7 @@ import {
 import type { CameraDiagnostics } from '../services/cameraDeviceService';
 import { clearCachedStreams, getCachedStreams } from '../services/devicePermissionService';
 import { candidateApi } from '../services/api';
+import { useTestStore } from '../context/testStore';
 import { loadClientVisionModel, runClientDetection, detectionsToViolations } from '../services/clientVisionService';
 import {
   loadClientFaceMesh,
@@ -93,6 +94,12 @@ const TEMP_DISABLE_AUDIO_PROCTORING = true;
 const TEMP_DISABLE_SUSPICIOUS_AUDIO = TEMP_DISABLE_AUDIO_PROCTORING;
 
 export function useProctoring(attemptId: string, config: Partial<ProctorConfig> = {}) {
+  // One-way latch set by the pre-exam client-model readiness check (see
+  // clientDetectionReadiness.ts + SebTestInstructions.tsx). When true, the
+  // in-browser models are never attempted for this attempt, regardless of
+  // what the backend's detectionMode says — decided once before the exam
+  // starts, not re-evaluated per analysis cycle.
+  const forceServerDetection = useTestStore((state) => state.forceServerDetection);
   const mergedConfig = { ...defaultConfig, ...config };
   const finalConfig: ProctorConfig = TEMP_DISABLE_AUDIO_PROCTORING
     ? {
@@ -594,7 +601,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
         screenShareEnabled,
       });
 
-      if (proctorSession.detectionMode === 'client' && cameraEnabled) {
+      if (proctorSession.detectionMode === 'client' && cameraEnabled && !forceServerDetection) {
         // Clear any gaze timer left over from a previous session in this tab,
         // then start fetching the MediaPipe landmarker in the background. Its
         // WASM runtime plus model is ~15MB, so a cold load on the first
@@ -696,6 +703,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     enableWebcamRecording,
     allowRuntimeScreenPrompt,
     reportViolationAndHandleTermination,
+    forceServerDetection,
   ]);
 
   // Set video element for face detection
@@ -965,7 +973,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     try {
       let clientViolations: ReturnType<typeof detectionsToViolations> | undefined;
       let faceMeshSignal: FaceMeshSignal | null = null;
-      if (session.detectionMode === 'client') {
+      if (session.detectionMode === 'client' && !forceServerDetection) {
         try {
           const activeVideo = getActiveVideoElement();
           if (activeVideo) {
@@ -1111,7 +1119,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     } finally {
       snapshotAnalysisInFlightRef.current = false;
     }
-  }, [session, status.monitorCount, finalConfig, takeWebcamSnapshot, evidenceFrameRefreshMs, canEmitClientViolation, traceLog]);
+  }, [session, status.monitorCount, finalConfig, takeWebcamSnapshot, evidenceFrameRefreshMs, canEmitClientViolation, traceLog, forceServerDetection]);
 
   // Monitor for external monitors
   useEffect(() => {

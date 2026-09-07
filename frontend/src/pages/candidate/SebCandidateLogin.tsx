@@ -97,7 +97,7 @@ const sebQuitUrl =
 
 localStorage.setItem('sebQuitUrl', sebQuitUrl);
       toast.success(data.message || 'Invitation accepted');
-      navigate('/test/instructions');
+      navigate('/test/system-check');
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
       toast.error(e.response?.data?.error || 'Unable to start test. Check your access code.');
