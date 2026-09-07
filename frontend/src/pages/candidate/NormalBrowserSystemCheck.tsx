@@ -25,25 +25,16 @@ interface TestDetails {
 type CheckStatus = 'idle' | 'checking' | 'ok' | 'failed' | 'not-required';
 
 /**
- * Page 1 of the SEB pre-exam flow: device readiness only (camera, mic, screen
- * share, connection) — modeled on the standard "System check" screen used by
- * proctoring vendors (Pearson VUE etc), themed to match TalentstaQ. This used
- * to be bundled into the instructions page alongside instructions text, ID
- * verification, and the Start button; splitting it out means a candidate
- * sees exactly what's being checked here and nothing else.
+ * Page 1 of the normal-browser pre-exam flow: device readiness only (camera,
+ * mic, screen share, connection) — the normal-browser counterpart to
+ * SebSystemCheck.tsx. No Exit button here (unlike the SEB version, this runs
+ * in a regular browser tab, not a locked-down kiosk browser); Back just goes
+ * up the browser history, matching this flow's original convention.
  *
- * Next: /test/environment-setup (AI-model warm-up) when this test uses a
- * camera, or straight to /test/id-verification when it doesn't — there's
- * nothing for the environment-setup page to warm up in that case.
+ * Next: /test/environment-setup (server-side detection readiness) when this
+ * test uses a camera, or straight to /test/id-verification when it doesn't.
  */
-function handleSebExit() {
-  const sebQuitUrl = localStorage.getItem('sebQuitUrl');
-  if (sebQuitUrl) {
-    window.location.href = sebQuitUrl;
-  }
-}
-
-export default function SebSystemCheck() {
+export default function NormalBrowserSystemCheck() {
   const navigate = useNavigate();
   const [testDetails, setTestDetails] = useState<TestDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -253,31 +244,22 @@ export default function SebSystemCheck() {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--admin-bg)' }}>
       <header className="bg-white border-b" style={{ borderColor: 'var(--admin-border)' }}>
-        <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={() => navigate('/test/login')}
-              className="flex items-center gap-1.5 text-sm font-medium transition-colors"
-              style={{ color: '#6B7280' }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = '#111827')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = '#6B7280')}
-            >
-              Back
-            </button>
-            <div className="h-5 w-px bg-gray-200" />
-            <img src={talentstaQLogo} alt="TalentstaQ" style={{ height: '30px', width: 'auto' }} />
-          </div>
+        <div className="max-w-3xl mx-auto px-6 py-4 flex items-center">
           <button
             type="button"
-            onClick={handleSebExit}
-            className="text-sm font-medium transition-colors"
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-1.5 text-sm font-medium transition-colors"
             style={{ color: '#6B7280' }}
             onMouseEnter={(e) => (e.currentTarget.style.color = '#111827')}
             onMouseLeave={(e) => (e.currentTarget.style.color = '#6B7280')}
           >
-            Exit
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+            Back
           </button>
+          <div className="h-5 w-px bg-gray-200 mx-4" />
+          <img src={talentstaQLogo} alt="TalentstaQ" style={{ height: '30px', width: 'auto' }} />
         </div>
       </header>
 

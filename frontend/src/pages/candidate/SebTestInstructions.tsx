@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { candidateApi } from '../../services/api';
 import { useTestStore } from '../../context/testStore';
-import IDVerification from '../../components/IDVerification';
 import { getCachedStreams } from '../../services/devicePermissionService';
 import { DEFAULT_CUSTOM_AI_VIOLATIONS, normalizeCustomAIViolationSelection, filterViolationsForAssessmentMode } from '../../constants/customAIViolations';
 import talentstaQLogo from '../../assets/assessment-icons/icons/Talentstaq logo dark.svg';
@@ -39,13 +38,16 @@ interface TestDetails {
 const TEMP_DISABLE_AUDIO_PROCTORING = true;
 
 /**
- * Page 3 of the SEB pre-exam flow: instructions, ID verification (if
- * required), the terms checkbox, and the Start button — nothing about
- * device or AI-model readiness lives here anymore. That's handled by the two
- * pages before this one (SebSystemCheck.tsx for camera/mic/screen/connection,
- * SebEnvironmentSetup.tsx for the in-browser proctoring models), which a
- * candidate must pass through first — this page just trusts the streams
- * they granted are still cached (see the expiry check in handleStartTest).
+ * Page 4 (final) of the SEB pre-exam flow: instructions, the terms checkbox,
+ * and the Start button — nothing about device/AI-model readiness or identity
+ * verification lives here anymore. Those are handled by the three pages
+ * before this one (SebSystemCheck.tsx for camera/mic/screen/connection,
+ * SebEnvironmentSetup.tsx for the in-browser proctoring models,
+ * SebIdVerification.tsx for ID verification when the test requires it),
+ * which a candidate must pass through first — this page just trusts that
+ * work is done (with a redirect-back safety net below for verification, and
+ * the streams-still-cached check in handleStartTest for devices) rather than
+ * re-doing or re-rendering any of it.
  */
 export default function TestInstructions() {
   const [testDetails, setTestDetails] = useState<TestDetails | null>(null);
@@ -82,6 +84,14 @@ export default function TestInstructions() {
       const { data } = await candidateApi.getTestDetails();
       setTestDetails(data);
       const verification = await candidateApi.checkVerificationRequired(data.test.id);
+      // Safety net: this page trusts SebIdVerification.tsx already handled verification,
+      // but a candidate reaching this page directly (bookmarked URL, browser back/forward)
+      // without having done so gets bounced back there rather than seeing a broken Start
+      // button with no way to satisfy it.
+      if (verification.data.required && !verification.data.canProceed) {
+        navigate('/test/id-verification', { replace: true });
+        return;
+      }
       setVerificationRequired(verification.data.required);
       setVerificationComplete(verification.data.canProceed);
     } catch {
@@ -257,26 +267,6 @@ export default function TestInstructions() {
 
       {/* -- Body -- */}
       <main className="max-w-3xl mx-auto px-6 py-8">
-        {/* ID verification gate (shown inline if still pending) */}
-        {verificationRequired && !verificationComplete && (
-          <div className="bg-white rounded-2xl p-6 shadow-sm mb-6">
-            <h2 className="text-base font-semibold text-gray-800 mb-4">ID Verification Required</h2>
-            <IDVerification
-              onVerified={() => {
-                setVerificationComplete(true);
-                toast.success('Verification completed. You can start the test.');
-              }}
-              onSkip={() => {
-                setVerificationComplete(true);
-                toast.error(
-                  'ID verification was skipped with admin authorization. Proceed with strict review.',
-                );
-              }}
-              isOptional={false}
-            />
-          </div>
-        )}
-
         {/* -- Instructions -- */}
         <div className="bg-white rounded-2xl p-8 shadow-sm">
           <h1 className="text-2xl font-bold text-gray-900">Before you begin</h1>

@@ -87,7 +87,7 @@ export default function CandidateLogin() {
       localStorage.setItem('attemptStartTime', data.attempt.startTime);
       localStorage.setItem('assessmentMode', 'NORMAL_BROWSER');
       toast.success(data.message || 'Invitation accepted');
-      navigate('/test/instructions');
+      navigate('/test/system-check');
     } catch (err: unknown) {
       const e = err as { response?: { data?: { error?: string } } };
       toast.error(e.response?.data?.error || 'Unable to start test. Check your access code.');

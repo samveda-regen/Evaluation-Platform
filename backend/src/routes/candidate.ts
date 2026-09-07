@@ -13,6 +13,7 @@ import {
   candidateLogin,
   candidateInvitationLogin,
   getTestDetails,
+  getServerDetectionReadiness,
   startTest,
   saveMCQAnswer,
   saveCodingAnswer,
@@ -33,6 +34,7 @@ router.post('/login/invitation', invitationLoginValidation, handleValidationErro
 
 // Test routes (protected)
 router.get('/test', candidateAuth, getTestDetails);
+router.get('/test/detection-readiness', candidateAuth, getServerDetectionReadiness);
 router.post('/test/start', candidateAuth, startTest);
 router.get('/test/answers', candidateAuth, getSavedAnswers);
 

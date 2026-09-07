@@ -25,6 +25,7 @@ import { saveNotification, ensureNotificationTable } from './notifications.js';
 import { getTestGradingPreferences } from '../utils/testPreferences.js';
 import { canStoreViolationNow } from './proctoring.js';
 import { stopCandidateEgressRecording } from '../services/liveKitEgressService.js';
+import { checkPythonVisionServiceReady } from '../services/pythonVisionService.js';
 
 export async function candidateLogin(req: AuthenticatedRequest, res: Response): Promise<void> {
   try {
@@ -562,6 +563,17 @@ export async function candidateInvitationLogin(req: AuthenticatedRequest, res: R
     console.error('Candidate invitation login error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+}
+
+// Candidate-facing proxy for python_cv_service's /health — the normal-browser
+// equivalent of the SEB flow's in-browser model readiness check (see
+// clientDetectionReadiness.ts / SebEnvironmentSetup.tsx). Normal-browser mode
+// always uses server-side detection regardless of what this reports (there's no
+// client-side fallback to switch to), so this is purely a diagnostic/UX signal
+// for NormalBrowserEnvironmentSetup.tsx's loading page — it doesn't gate anything.
+export async function getServerDetectionReadiness(_req: AuthenticatedRequest, res: Response): Promise<void> {
+  const ready = await checkPythonVisionServiceReady();
+  res.json({ ready });
 }
 
 export async function getTestDetails(req: AuthenticatedRequest, res: Response): Promise<void> {

@@ -211,6 +211,36 @@ async function callPythonAnalyze(baseUrl: string, payload: VisionPayload): Promi
   return null;
 }
 
+// Lightweight readiness probe for the candidate-facing NormalBrowserEnvironmentSetup
+// page — the equivalent, for server-side detection, of the SEB flow's in-browser
+// model warm-up check (clientDetectionReadiness.ts). Unlike that one, the YOLO model
+// here loads eagerly at process startup (see python_cv_service/app.py's module-level
+// `_model = YOLO(...)`), so by the time any candidate reaches this page it's almost
+// always already loaded — this mostly guards against the service being unreachable
+// (down, mid-deploy, network blip) rather than a genuine per-candidate warm-up wait.
+// Deliberately bypasses the /analyze circuit breaker above: a health probe should
+// never be skipped just because recent live-analysis calls were failing, and a
+// probe failing here shouldn't trip that breaker either — they're independent signals.
+const CV_HEALTH_TIMEOUT_MS = Number(process.env.PYTHON_CV_HEALTH_TIMEOUT_MS || 4000);
+
+export async function checkPythonVisionServiceReady(): Promise<boolean> {
+  const baseUrl = getVisionServiceUrl();
+  if (!baseUrl) return false;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), CV_HEALTH_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${baseUrl}/health`, { signal: controller.signal });
+    if (!response.ok) return false;
+    const data = (await response.json()) as { yolo_loaded?: boolean };
+    return Boolean(data?.yolo_loaded);
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function analyzeFrameWithPython(frameBase64: string): Promise<PythonVisionResult | null> {
   const baseUrl = getVisionServiceUrl();
   if (!baseUrl) return null;
@@ -230,4 +260,5 @@ export async function analyzeFrameWithPythonForSession(
 export default {
   analyzeFrameWithPython,
   analyzeFrameWithPythonForSession,
+  checkPythonVisionServiceReady,
 };

@@ -37,8 +37,9 @@ import PhoneCapture from './pages/PhoneCapture';
 import CandidateLogin from './pages/candidate/CandidateLogin';
 import TestInvitation from './pages/candidate/TestInvitation';
 import TestInstructions from './pages/candidate/TestInstructions';
-import SebSystemCheck from './pages/candidate/SebSystemCheck';
-import SebEnvironmentSetup from './pages/candidate/SebEnvironmentSetup';
+import SystemCheck from './pages/candidate/SystemCheck';
+import EnvironmentSetup from './pages/candidate/EnvironmentSetup';
+import IdVerification from './pages/candidate/IdVerification';
 import TestInterface from './pages/candidate/TestInterface';
 import TestComplete from './pages/candidate/TestComplete';
 
@@ -149,7 +150,7 @@ export default function App() {
         path="/test/system-check"
         element={
           <ProtectedCandidateRoute>
-            <SebSystemCheck />
+            <SystemCheck />
           </ProtectedCandidateRoute>
         }
       />
@@ -157,7 +158,15 @@ export default function App() {
         path="/test/environment-setup"
         element={
           <ProtectedCandidateRoute>
-            <SebEnvironmentSetup />
+            <EnvironmentSetup />
+          </ProtectedCandidateRoute>
+        }
+      />
+      <Route
+        path="/test/id-verification"
+        element={
+          <ProtectedCandidateRoute>
+            <IdVerification />
           </ProtectedCandidateRoute>
         }
       />

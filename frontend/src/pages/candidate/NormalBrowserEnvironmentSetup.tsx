@@ -3,41 +3,39 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { BrainCircuit, ScanFace, ShieldCheck, Sparkles, Check } from 'lucide-react';
 import { candidateApi } from '../../services/api';
-import { checkClientDetectionReadiness } from '../../services/clientDetectionReadiness';
-import { useTestStore } from '../../context/testStore';
 import talentstaQLogo from '../../assets/assessment-icons/icons/Talentstaq logo dark.svg';
 
 // Cycled together: icon at ICONS[n] pairs with message at MESSAGES[n]. Purely
 // cosmetic — real state is just "still checking" vs "done" — so the exact
-// wording/order doesn't need to track actual load progress.
+// wording/order doesn't need to track actual readiness progress.
 const ICONS = [BrainCircuit, ScanFace, ShieldCheck, Sparkles];
 const MESSAGES = [
   'Setting up your environment…',
-  'Calibrating detection models…',
+  'Checking detection service status…',
   'Verifying proctoring signals…',
   'Almost ready…',
 ];
 const CYCLE_MS = 1800;
+const POLL_INTERVAL_MS = 3000;
+const MAX_WAIT_MS = 60000;
 
 /**
- * Page 2 of the SEB pre-exam flow: warms up the in-browser proctoring models
- * (yolo26n + MediaPipe gaze, see clientDetectionReadiness.ts), capped at 60s.
- * Whether that succeeds or not, this page always reaches "Ready" and moves
- * on — a candidate whose browser can't run the models still takes the exam,
- * just with server-side detection instead (testStore's forceServerDetection,
- * read by useProctoring.ts). Only reached when the test actually requires a
- * camera; SebSystemCheck.tsx skips straight to /test/id-verification otherwise.
+ * Page 2 of the normal-browser pre-exam flow — the normal-browser counterpart
+ * to SebEnvironmentSetup.tsx. That page warms up in-browser models per
+ * candidate; this mode never runs detection client-side (the backend always
+ * sets detectionMode: 'server' for NORMAL_BROWSER tests), so there's nothing
+ * per-candidate to warm up. Instead this polls whether the shared
+ * python_cv_service backend is actually up and has its model loaded
+ * (getServerDetectionReadiness, proxying its /health endpoint) — mostly
+ * useful for catching the service being down/mid-deploy rather than a real
+ * per-candidate wait, since that model loads once at process startup, not
+ * per request. Capped at 60s; whether or not it comes back ready, this page
+ * always reaches "Ready" and moves on — the exam runs the same either way,
+ * this is diagnostic/UX only, not a mode switch (there's no client-side
+ * fallback to switch to in this mode).
  */
-function handleSebExit() {
-  const sebQuitUrl = localStorage.getItem('sebQuitUrl');
-  if (sebQuitUrl) {
-    window.location.href = sebQuitUrl;
-  }
-}
-
-export default function SebEnvironmentSetup() {
+export default function NormalBrowserEnvironmentSetup() {
   const navigate = useNavigate();
-  const setForceServerDetection = useTestStore((state) => state.setForceServerDetection);
   const [step, setStep] = useState(0);
   const [ready, setReady] = useState(false);
   const ranRef = useRef(false);
@@ -54,8 +52,6 @@ export default function SebEnvironmentSetup() {
     ranRef.current = true;
 
     (async () => {
-      // Confirm we still have an authenticated candidate session (this page
-      // is reached mid-flow, not straight after login) before doing any work.
       try {
         await candidateApi.getTestDetails();
       } catch {
@@ -64,48 +60,45 @@ export default function SebEnvironmentSetup() {
         return;
       }
 
-      const clientReady = await checkClientDetectionReadiness();
-      setForceServerDetection(!clientReady);
-      setReady(true);
+      const deadline = Date.now() + MAX_WAIT_MS;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        try {
+          const { data } = await candidateApi.getServerDetectionReadiness();
+          if (data.ready) break;
+        } catch {
+          // Treated the same as "not ready yet" — keep polling until the deadline.
+        }
+        if (Date.now() >= deadline) break;
+        await new Promise((resolve) => window.setTimeout(resolve, POLL_INTERVAL_MS));
+      }
 
-      // Brief hold on the "Ready" state so it doesn't flash past unnoticed
-      // when the models load quickly (the common case). Goes to the ID
-      // verification page next, not straight to instructions — that page
-      // itself skips through immediately when verification isn't required.
+      setReady(true);
       window.setTimeout(() => navigate('/test/id-verification'), 700);
     })();
-  }, [navigate, setForceServerDetection]);
+  }, [navigate]);
 
   const Icon = ICONS[step];
 
   return (
     <div className="min-h-screen flex flex-col" style={{ background: 'var(--admin-bg)' }}>
       <header className="bg-white border-b" style={{ borderColor: 'var(--admin-border)' }}>
-        <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <button
-              type="button"
-              onClick={() => navigate('/test/system-check')}
-              className="flex items-center gap-1.5 text-sm font-medium transition-colors"
-              style={{ color: '#6B7280' }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = '#111827')}
-              onMouseLeave={(e) => (e.currentTarget.style.color = '#6B7280')}
-            >
-              Back
-            </button>
-            <div className="h-5 w-px bg-gray-200" />
-            <img src={talentstaQLogo} alt="TalentstaQ" style={{ height: '30px', width: 'auto' }} />
-          </div>
+        <div className="max-w-3xl mx-auto px-6 py-4 flex items-center">
           <button
             type="button"
-            onClick={handleSebExit}
-            className="text-sm font-medium transition-colors"
+            onClick={() => navigate('/test/system-check')}
+            className="flex items-center gap-1.5 text-sm font-medium transition-colors"
             style={{ color: '#6B7280' }}
             onMouseEnter={(e) => (e.currentTarget.style.color = '#111827')}
             onMouseLeave={(e) => (e.currentTarget.style.color = '#6B7280')}
           >
-            Exit
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+            Back
           </button>
+          <div className="h-5 w-px bg-gray-200 mx-4" />
+          <img src={talentstaQLogo} alt="TalentstaQ" style={{ height: '30px', width: 'auto' }} />
         </div>
       </header>
 
@@ -139,7 +132,7 @@ export default function SebEnvironmentSetup() {
               {ready ? 'Ready' : 'Getting your environment ready'}
             </p>
             <p className="text-sm mt-1" style={{ color: 'var(--admin-text-muted)', minHeight: '20px' }}>
-              {ready ? 'Taking you to the instructions…' : MESSAGES[step]}
+              {ready ? 'Taking you to the next step…' : MESSAGES[step]}
             </p>
           </div>
         </div>
