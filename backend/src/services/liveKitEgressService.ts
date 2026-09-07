@@ -217,9 +217,25 @@ export async function syncRecordingFromEgressInfo(info: EgressInfoLike): Promise
     });
   }
 }
-function isRoomNotFoundError(error: unknown): boolean {
+// Covers two distinct, both-transient failure modes worth retrying:
+//   - "room does not exist" — the room hasn't propagated to Egress yet (see
+//     the comment on startParticipantEgressWithRetry below).
+//   - transport-level failures reaching the LiveKit server itself — a Twirp
+//     "no response from servers"/"unknown" error, or a raw network error
+//     (connection refused/reset, timeout, DNS). These have nothing to do
+//     with the room or the candidate; they mean the LiveKit server was
+//     momentarily unreachable (mid-restart, brief network blip) at the exact
+//     instant this request went out. Previously only room-not-found was
+//     retried, so any candidate unlucky enough to hit one of these got an
+//     immediate, permanent "Status: Failed" with no retry — while a
+//     candidate whose request landed a moment later succeeded fine, making
+//     it look like a per-candidate problem when it was actually timing.
+function isRetryableEgressError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
-  return /room does not exist/i.test(message);
+  return /room does not exist/i.test(message)
+    || /no response from servers?/i.test(message)
+    || /twirp error unknown/i.test(message)
+    || /ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN/i.test(message);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -231,16 +247,17 @@ function sleep(ms: number): Promise<void> {
 // exist by the time we get here. In practice, on very fast exams the
 // candidate can disconnect (room torn down client-side) right as this
 // request is in flight, or there can be a brief propagation delay between
-// the SFU accepting the connection and the room being visible to Egress.
+// the SFU accepting the connection and the room being visible to Egress —
+// plus the transport-level failures isRetryableEgressError also covers.
 // Retry a few times before giving up, rather than failing the recording
-// outright on the first "room does not exist".
+// outright on the first attempt.
 async function startParticipantEgressWithRetry(
   client: EgressClient,
   roomName: string,
   participantIdentity: string,
   output: EncodedFileOutput,
   webhooks: WebhookConfig[] | undefined,
-  maxAttempts = 3,
+  maxAttempts = 4,
 ): Promise<{ egressId: string }> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -253,7 +270,7 @@ async function startParticipantEgressWithRetry(
       );
     } catch (error) {
       lastError = error;
-      if (!isRoomNotFoundError(error) || attempt === maxAttempts) throw error;
+      if (!isRetryableEgressError(error) || attempt === maxAttempts) throw error;
       await sleep(500 * attempt);
     }
   }
