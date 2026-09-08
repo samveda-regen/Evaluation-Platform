@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
+import { Clock, Eye, Lock, AlertTriangle, MousePointer2, ClipboardCheck, Code2, MessageSquare } from 'lucide-react';
 import { candidateApi } from '../../services/api';
 import { getCachedStreams } from '../../services/devicePermissionService';
+import TestInstructionsCard, { type InstructionItem, type QuestionMixEntry } from './TestInstructionsCard';
 import talentstaQLogo from '../../assets/assessment-icons/icons/Talentstaq logo dark.svg';
 
 interface TestDetails {
@@ -148,33 +150,83 @@ export default function TestInstructions() {
 
   const canStart = accepted && (!verificationRequired || verificationComplete);
 
+  const instructionItems: InstructionItem[] = [
+    {
+      key: 'timed',
+      icon: <Clock className="w-5 h-5" aria-hidden="true" />,
+      title: 'Timed assessment',
+      description: `You have ${test.duration} minutes. The test auto-submits when time runs out.`,
+      tone: 'orange',
+    },
+    {
+      key: 'proctored',
+      icon: <Eye className="w-5 h-5" aria-hidden="true" />,
+      title: 'Proctored session',
+      description: 'Your camera, microphone and screen are monitored by AI throughout.',
+      tone: 'blue',
+    },
+    {
+      key: 'fullscreen',
+      icon: <Lock className="w-5 h-5" aria-hidden="true" />,
+      title: 'Full-screen required',
+      description: 'The test runs in full-screen. Leaving it is recorded as a violation.',
+      tone: 'blue',
+    },
+    {
+      key: 'no-help',
+      icon: <AlertTriangle className="w-5 h-5" aria-hidden="true" />,
+      title: 'No external help',
+      description: 'Switching tabs, copying, or a second person in frame will be flagged.',
+      tone: 'amber',
+    },
+    // Default mouse cursor required — Safe Exam Browser refuses to start a session if any
+    // Windows cursor has been swapped for a custom .cur file outside its own default cursor
+    // folders, treating it as a tampering risk and aborting with "Failed to ensure session
+    // integrity!" before the exam ever loads.
+    {
+      key: 'cursor',
+      icon: <MousePointer2 className="w-5 h-5" aria-hidden="true" />,
+      title: 'Default mouse cursor required',
+      description: (
+        <>
+          If you use a custom cursor theme, Secure Exam Browser will fail to start.
+          Reset it to the Windows default first: Settings → Bluetooth &amp; devices →
+          Mouse → Additional mouse settings → Pointers tab → Scheme:
+          &quot;Windows Default (system scheme)&quot; → Apply.
+        </>
+      ),
+      tone: 'amber',
+    },
+  ];
+
+  const questionMix: QuestionMixEntry[] = [
+    { key: 'mcq', icon: <ClipboardCheck className="w-5 h-5" aria-hidden="true" />, label: 'Multiple choice', count: test.questionCounts?.mcq },
+    { key: 'coding', icon: <Code2 className="w-5 h-5" aria-hidden="true" />, label: 'Coding', count: test.questionCounts?.coding },
+    { key: 'behavioral', icon: <MessageSquare className="w-5 h-5" aria-hidden="true" />, label: 'Behavioral', count: test.questionCounts?.behavioral },
+  ];
+
   return (
-    <div className="min-h-screen" style={{ background: 'var(--admin-border)' }}>
+    <div className="min-h-screen" style={{ background: '#F3F6FB' }}>
       {/* -- Header -- */}
-      <header className="bg-white border-b border-gray-200">
-        <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
+      <header className="bg-white border-b" style={{ borderColor: 'var(--admin-border-soft)' }}>
+        <div className="max-w-[1160px] mx-auto px-6 sm:px-10 py-3 sm:py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
-  type="button"
-  onClick={handleSebExit}
-  className="flex items-center gap-1.5 text-sm font-medium transition-colors"
-  style={{ color: '#6B7280' }}
-  onMouseEnter={e => (e.currentTarget.style.color = '#111827')}
-  onMouseLeave={e => (e.currentTarget.style.color = '#6B7280')}
->
-  Exit
-</button>
+              type="button"
+              onClick={handleSebExit}
+              className="flex items-center gap-1 text-sm font-medium transition-colors rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+              style={{ color: '#6B7280' }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#111827')}
+              onMouseLeave={e => (e.currentTarget.style.color = '#6B7280')}
+            >
+              Exit
+            </button>
             <div className="h-5 w-px bg-gray-200" />
-            <div className="flex items-center gap-3">
-              <img src={talentstaQLogo} alt="TalentstaQ" style={{ height: '34px', width: 'auto' }} />
-            </div>
+            <img src={talentstaQLogo} alt="TalentstaQ" style={{ height: '28px', width: 'auto' }} />
           </div>
           {identityVerified && (
-            <div className="flex items-center gap-2 text-sm font-medium" style={{ color: 'var(--admin-accent)' }}>
-              <span
-                className="w-2 h-2 rounded-full"
-                style={{ background: 'var(--admin-accent)' }}
-              />
+            <div className="flex items-center gap-1.5 text-sm font-medium" style={{ color: 'var(--admin-text-subtle)' }}>
+              <span className="w-2 h-2 rounded-full" style={{ background: '#22C55E' }} aria-hidden="true" />
               Identity verified
             </div>
           )}
@@ -182,186 +234,21 @@ export default function TestInstructions() {
       </header>
 
       {/* -- Body -- */}
-      <main className="max-w-3xl mx-auto px-6 py-8">
-        {/* -- Instructions -- */}
-        <div className="bg-white rounded-2xl p-8 shadow-sm">
-          <h1 className="text-2xl font-bold text-gray-900">Before you begin</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {test.name}
-            {test.duration ? ` · ${test.duration} minutes` : ''}
-            {totalQuestions > 0 ? ` · ${totalQuestions} questions` : ''}
-          </p>
-
-          <div className="mt-6 space-y-5">
-            <InstructionRow
-              path="M12 7v5l3 3M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              title="Timed assessment"
-              description={`You have ${test.duration} minutes. The test auto-submits when time runs out.`}
-            />
-            <InstructionRow
-              path="M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-              title="Proctored session"
-              description="Your camera, microphone and screen are monitored by AI throughout."
-            />
-            <InstructionRow
-              path="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-              title="Full-screen required"
-              description="The test runs in full-screen. Leaving it is recorded as a violation."
-            />
-            <InstructionRow
-              path="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-              title="No external help"
-              description="Switching tabs, copying, or a second person in frame will be flagged."
-            />
-            {/* Default mouse cursor required — Safe Exam Browser refuses to start a session
-                if any Windows cursor has been swapped for a custom .cur file outside its own
-                default cursor folders, treating it as a tampering risk and aborting with
-                "Failed to ensure session integrity!" before the exam ever loads. */}
-            <InstructionRow
-              path="M5 3l14 8-6.5 1.5L11 19 5 3z"
-              title="Default mouse cursor required"
-              description={
-                <>
-                  If you use a custom cursor theme, Secure Exam Browser will fail to start.
-                  Reset it to the Windows default first: Settings → Bluetooth &amp; devices →
-                  Mouse → Additional mouse settings → Pointers tab → Scheme:
-                  &quot;Windows Default (system scheme)&quot; → Apply.
-                </>
-              }
-            />
-          </div>
-
-          {/* Custom instructions */}
-          {test.instructions && (
-            <div className="mt-6 pt-6 border-t border-gray-100">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-2">
-                Additional Instructions
-              </p>
-              <pre className="whitespace-pre-wrap font-sans text-sm text-gray-600">
-                {test.instructions}
-              </pre>
-            </div>
-          )}
-
-          {/* Checkbox + Start */}
-          <div className="mt-8 pt-6 border-t border-gray-100">
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={accepted}
-                onChange={(e) => setAccepted(e.target.checked)}
-                className="w-4 h-4 mt-0.5 rounded accent-amber-500 flex-shrink-0"
-              />
-              <span className="text-sm text-gray-600 leading-relaxed">
-                I have read the instructions and I&apos;m ready to start in full-screen mode.
-              </span>
-            </label>
-
-            <button
-              onClick={handleStartTest}
-              disabled={!canStart}
-              className="mt-4 w-full sm:w-auto flex items-center justify-center gap-2 py-3 px-8 rounded-xl font-semibold text-sm transition-opacity"
-              style={{
-                background: canStart ? 'var(--admin-accent)' : '#9CA3AF',
-                color: 'white',
-                cursor: canStart ? 'pointer' : 'not-allowed',
-              }}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M8 5v14l11-7z" />
-              </svg>
-              Start assessment
-            </button>
-
-            <p className="text-xs text-gray-400 mt-2">Timer starts when you click start</p>
-          </div>
-        </div>
-
-        {/* -- Question mix card -- */}
-        <div className="bg-white rounded-2xl p-6 mt-6 shadow-sm">
-          <p className="font-semibold text-gray-800 mb-5">Question mix</p>
-          <div className="flex flex-wrap gap-8">
-            <QuestionMixItem
-              icon={
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
-                </svg>
-              }
-              color="var(--admin-accent-hover)"
-              bg="#FFF6EE"
-              label="Multiple choice"
-              count={test.questionCounts?.mcq}
-            />
-            <QuestionMixItem
-              icon={
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-                </svg>
-              }
-              color="#C2410C"
-              bg="#FFF6EE"
-              label="Coding"
-              count={test.questionCounts?.coding}
-            />
-            <QuestionMixItem
-              icon={
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-              }
-              color="var(--admin-accent-hover)"
-              bg="#FFF6EE"
-              label="Behavioral"
-              count={test.questionCounts?.behavioral}
-            />
-          </div>
-        </div>
+      <main className="px-4 sm:px-6 py-6 sm:py-8">
+        <TestInstructionsCard
+          testName={test.name}
+          duration={test.duration}
+          totalQuestions={totalQuestions}
+          instructionItems={instructionItems}
+          customInstructions={test.instructions}
+          accepted={accepted}
+          onAcceptedChange={setAccepted}
+          checkboxLabel="I have read the instructions and I'm ready to start in full-screen mode."
+          canStart={canStart}
+          onStart={handleStartTest}
+          questionMix={questionMix}
+        />
       </main>
-    </div>
-  );
-}
-
-/* -- Helper components -- */
-
-function InstructionRow({ path, title, description }: { path: string; title: string; description: React.ReactNode }) {
-  return (
-    <div className="flex items-start gap-4">
-      <div className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: '#FFF6EE' }}>
-        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-          <path strokeLinecap="round" strokeLinejoin="round" d={path} />
-        </svg>
-      </div>
-      <div>
-        <p className="font-semibold text-gray-900 text-sm">{title}</p>
-        <p className="text-gray-500 text-sm mt-0.5">{description}</p>
-      </div>
-    </div>
-  );
-}
-
-function QuestionMixItem({
-  icon,
-  color,
-  bg,
-  label,
-  count,
-}: {
-  icon: React.ReactNode;
-  color: string;
-  bg: string;
-  label: string;
-  count?: number;
-}) {
-  return (
-    <div className="flex flex-col items-center gap-2">
-      <div
-        className="w-12 h-12 rounded-full flex items-center justify-center"
-        style={{ background: bg, color }}
-      >
-        {icon}
-      </div>
-      <p className="text-sm font-medium text-gray-700 text-center">{label}</p>
-      <p className="text-xs text-gray-400 text-center">{count ?? 0} questions</p>
     </div>
   );
 }
