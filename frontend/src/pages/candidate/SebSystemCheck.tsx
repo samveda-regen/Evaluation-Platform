@@ -194,7 +194,7 @@ export default function SebSystemCheck() {
 
   const handleNext = () => {
     if (!testDetails) return;
-    navigate('/test/id-verification');
+    navigate(testDetails.test.requireCamera ? '/test/environment-setup' : '/test/id-verification');
   };
 
   if (loading) {
