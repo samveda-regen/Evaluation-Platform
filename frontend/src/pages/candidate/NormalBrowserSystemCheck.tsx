@@ -30,8 +30,9 @@ interface TestDetails {
  * in a regular browser tab, not a locked-down kiosk browser); Back just goes
  * up the browser history, matching this flow's original convention.
  *
- * Next: /test/environment-setup (server-side detection readiness) when this
- * test uses a camera, or straight to /test/id-verification when it doesn't.
+ * Next: always /test/id-verification. Server-detection readiness no longer
+ * has its own page here — it happens at /test/start
+ * (NormalBrowserTestStart.tsx), directly before the exam renders.
  */
 export default function NormalBrowserSystemCheck() {
   const navigate = useNavigate();
@@ -184,7 +185,7 @@ export default function NormalBrowserSystemCheck() {
 
   const handleNext = () => {
     if (!testDetails) return;
-    navigate(testDetails.test.requireCamera ? '/test/environment-setup' : '/test/id-verification');
+    navigate('/test/id-verification');
   };
 
   if (loading) {

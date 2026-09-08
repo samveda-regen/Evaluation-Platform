@@ -707,7 +707,7 @@ export const candidateApi = {
     api.get('/candidate/test'),
 
   // Normal-browser equivalent of the SEB flow's in-browser model warm-up check —
-  // proxies python_cv_service's /health. See NormalBrowserEnvironmentSetup.tsx.
+  // proxies python_cv_service's /health. See NormalBrowserTestStart.tsx.
   getServerDetectionReadiness: () =>
     api.get<{ ready: boolean }>('/candidate/test/detection-readiness'),
 

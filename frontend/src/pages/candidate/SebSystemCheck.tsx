@@ -31,9 +31,10 @@ interface TestDetails {
  * verification, and the Start button; splitting it out means a candidate
  * sees exactly what's being checked here and nothing else.
  *
- * Next: /test/environment-setup (AI-model warm-up) when this test uses a
- * camera, or straight to /test/id-verification when it doesn't — there's
- * nothing for the environment-setup page to warm up in that case.
+ * Next: always /test/id-verification. Model warm-up no longer has its own
+ * page here — it happens at /test/start (SebTestStart.tsx), directly before
+ * the exam renders, so there's no navigation between "models confirmed
+ * ready" and "candidate is in the exam."
  */
 function handleSebExit() {
   const sebQuitUrl = localStorage.getItem('sebQuitUrl');
@@ -193,7 +194,7 @@ export default function SebSystemCheck() {
 
   const handleNext = () => {
     if (!testDetails) return;
-    navigate(testDetails.test.requireCamera ? '/test/environment-setup' : '/test/id-verification');
+    navigate('/test/id-verification');
   };
 
   if (loading) {

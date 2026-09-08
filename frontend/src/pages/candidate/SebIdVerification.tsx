@@ -68,12 +68,12 @@ export default function SebIdVerification() {
           <div className="flex items-center gap-4">
             <button
               type="button"
-              onClick={() => navigate('/test/environment-setup')}
+              onClick={() => navigate('/test/system-check')}
               className="flex items-center gap-1 text-sm font-medium transition-colors rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
               style={{ color: '#6B7280' }}
               onMouseEnter={(e) => (e.currentTarget.style.color = '#111827')}
               onMouseLeave={(e) => (e.currentTarget.style.color = '#6B7280')}
-              aria-label="Go back to environment setup"
+              aria-label="Go back to system check"
             >
               <ChevronLeft className="w-4 h-4" aria-hidden="true" />
               Back

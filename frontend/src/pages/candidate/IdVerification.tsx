@@ -7,7 +7,7 @@ type AssessmentMode = 'SEB' | 'NORMAL_BROWSER';
 
 /**
  * Dispatcher for page 3 of the pre-exam flow — same pattern as
- * TestInstructions.tsx/SystemCheck.tsx/EnvironmentSetup.tsx. The two
+ * TestInstructions.tsx/SystemCheck.tsx/TestStart.tsx. The two
  * implementations differ only in navigation chrome (SEB has an Exit-to-SEB
  * button, normal-browser uses ordinary browser back); the verification logic
  * itself is identical.
