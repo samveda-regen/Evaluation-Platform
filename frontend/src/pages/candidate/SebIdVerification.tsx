@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
+import { ChevronLeft, ShieldCheck } from 'lucide-react';
 import { candidateApi } from '../../services/api';
 import IDVerification from '../../components/IDVerification';
 import talentstaQLogo from '../../assets/assessment-icons/icons/Talentstaq logo dark.svg';
@@ -50,39 +51,57 @@ export default function SebIdVerification() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'var(--admin-bg)' }}>
-      <header className="bg-white border-b" style={{ borderColor: 'var(--admin-border)' }}>
-        <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div className="h-screen flex flex-col relative overflow-hidden" style={{ background: '#F3F6FB' }}>
+      <div
+        className="pointer-events-none absolute -top-32 -right-32 w-96 h-96 rounded-full opacity-60 blur-3xl"
+        style={{ background: 'radial-gradient(circle, #DCE6FB 0%, transparent 70%)' }}
+        aria-hidden="true"
+      />
+      <div
+        className="pointer-events-none absolute -bottom-40 -left-40 w-[28rem] h-[28rem] rounded-full opacity-60 blur-3xl"
+        style={{ background: 'radial-gradient(circle, #E3F4E9 0%, transparent 70%)' }}
+        aria-hidden="true"
+      />
+
+      <header className="relative flex-shrink-0 bg-white border-b shadow-sm" style={{ borderColor: 'var(--admin-border-soft)' }}>
+        <div className="max-w-[1180px] mx-auto px-6 sm:px-10 py-3 sm:py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
               type="button"
-              onClick={() => navigate('/test/environment-setup')}
-              className="flex items-center gap-1.5 text-sm font-medium transition-colors"
+              onClick={() => navigate('/test/system-check')}
+              className="flex items-center gap-1 text-sm font-medium transition-colors rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+              style={{ color: '#6B7280' }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#111827')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#6B7280')}
+              aria-label="Go back to system check"
+            >
+              <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+              Back
+            </button>
+            <div className="h-5 w-px bg-gray-200" />
+            <img src={talentstaQLogo} alt="TalentstaQ" style={{ height: '26px', width: 'auto' }} />
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="hidden sm:flex items-center gap-1.5 text-sm font-medium" style={{ color: 'var(--admin-text-subtle)' }}>
+              <ShieldCheck className="w-4 h-4" style={{ color: '#16A34A' }} aria-hidden="true" />
+              Secure &amp; Private
+            </span>
+            <button
+              type="button"
+              onClick={handleSebExit}
+              className="text-sm font-medium transition-colors rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
               style={{ color: '#6B7280' }}
               onMouseEnter={(e) => (e.currentTarget.style.color = '#111827')}
               onMouseLeave={(e) => (e.currentTarget.style.color = '#6B7280')}
             >
-              Back
+              Exit
             </button>
-            <div className="h-5 w-px bg-gray-200" />
-            <img src={talentstaQLogo} alt="TalentstaQ" style={{ height: '30px', width: 'auto' }} />
           </div>
-          <button
-            type="button"
-            onClick={handleSebExit}
-            className="text-sm font-medium transition-colors"
-            style={{ color: '#6B7280' }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = '#111827')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = '#6B7280')}
-          >
-            Exit
-          </button>
         </div>
       </header>
 
-      <main className="flex-1 flex items-start justify-center px-4 py-10">
-        <div className="w-full max-w-3xl bg-white rounded-2xl p-6 shadow-sm">
-          <h1 className="text-base font-semibold text-gray-800 mb-4">Identity Verification Required</h1>
+      <main className="relative flex-1 min-h-0 overflow-y-auto flex items-start justify-center px-4 sm:px-6 py-4 sm:py-6">
+        <div className="w-full max-w-5xl">
           <IDVerification
             onVerified={() => {
               toast.success('Verification completed. You can continue to the test.');
