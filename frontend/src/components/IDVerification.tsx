@@ -11,7 +11,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
-import { ShieldCheck, CheckCircle2, ImageIcon, X, Clock, Camera, Smartphone, IdCard, Sun, Lock, ArrowRight, User, Users, Check } from 'lucide-react';
+import { ShieldCheck, CheckCircle2, ImageIcon, X, Clock, Camera, Smartphone, IdCard, Sun, Lock, ArrowRight, User, Users, Check, ChevronDown, Lightbulb } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import api from '../services/api';
 import WebcamCapture from './WebcamCapture';
@@ -491,6 +491,12 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
     </div>
   );
 
+  const documentProgressSteps = [
+    { index: 1, label: 'Upload ID' },
+    { index: 2, label: 'Verify' },
+    { index: 3, label: 'Complete' },
+  ];
+
   const renderDocument = () => (
     <>
       {/* Webcam modal */}
@@ -533,112 +539,222 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
         </div>
       )}
 
-      <div className="space-y-6">
-        <div className="text-center">
-          <h2 className="text-xl font-bold text-gray-800">Upload Your ID Document</h2>
-          <p className="text-gray-600 mt-1">Take a clear photo of your government-issued ID</p>
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[60%_40%]">
+        {/* Left column — document details */}
+        <div className="p-6 sm:p-10 lg:p-12">
+          <p className="text-xs font-semibold tracking-wide uppercase" style={{ color: 'var(--admin-accent)' }}>
+            Identity Verification
+          </p>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Document Type</label>
-          <select
-            value={documentType}
-            onChange={e => setDocumentType(e.target.value as DocumentType)}
-            className="input w-full"
-          >
-            <option value="national_id">National ID Card</option>
-            <option value="passport">Passport</option>
-            <option value="drivers_license">Driver's License</option>
-            <option value="student_id">Student ID</option>
-          </select>
-        </div>
+          {/* Progress indicator */}
+          <div className="mt-4 flex items-center max-w-xs" aria-hidden="true">
+            {documentProgressSteps.map((s, i) => (
+              <div key={s.label} className={`flex items-center ${i < documentProgressSteps.length - 1 ? 'flex-1' : ''}`}>
+                <div className="flex flex-col items-center gap-1.5">
+                  <div
+                    className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                    style={{
+                      background: current >= s.index ? 'var(--admin-accent)' : '#E5E9F0',
+                      color: current >= s.index ? '#FFFFFF' : '#94A3B8',
+                    }}
+                  >
+                    {s.index}
+                  </div>
+                  <span
+                    className="text-[11px] font-medium whitespace-nowrap"
+                    style={{ color: current >= s.index ? 'var(--admin-text)' : 'var(--admin-text-subtle)' }}
+                  >
+                    {s.label}
+                  </span>
+                </div>
+                {i < documentProgressSteps.length - 1 && (
+                  <div className="flex-1 h-px mx-2 mb-4" style={{ background: current > s.index ? 'var(--admin-accent)' : '#E5E9F0' }} />
+                )}
+              </div>
+            ))}
+          </div>
 
-        {/* File upload drop zone */}
-        <div
-          className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
-            documentImage ? 'border-green-400 bg-green-50' : 'border-gray-300 hover:border-gray-400'
-          }`}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            onChange={handleDocumentUpload}
-            className="hidden"
-          />
+          <h2 className="mt-8 text-2xl sm:text-[28px] font-bold tracking-tight" style={{ color: 'var(--admin-text)' }}>
+            Upload Your ID Document
+          </h2>
+          <p className="mt-2 text-sm sm:text-base leading-relaxed" style={{ color: 'var(--admin-text-muted)' }}>
+            Take a clear photo of your government-issued ID to verify your identity.
+          </p>
 
-          {documentImage ? (
-            <div className="space-y-3">
-              <img
-                src={`data:image/jpeg;base64,${documentImage}`}
-                alt="ID Document"
-                className="max-h-48 mx-auto rounded"
+          <div className="mt-8">
+            <label htmlFor="document-type" className="block text-sm font-medium mb-2" style={{ color: 'var(--admin-text)' }}>
+              Document Type
+            </label>
+            <div className="relative">
+              <IdCard
+                className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                style={{ color: 'var(--admin-text-subtle)' }}
+                aria-hidden="true"
               />
-              <p className="text-green-600 font-medium">Document ready</p>
-              <button
-                onClick={e => { e.stopPropagation(); setDocumentImage(null); }}
-                className="text-sm text-red-600 hover:text-red-800"
+              <select
+                id="document-type"
+                value={documentType}
+                onChange={e => setDocumentType(e.target.value as DocumentType)}
+                className="w-full appearance-none rounded-xl border pl-10 pr-9 text-sm font-medium bg-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+                style={{ height: 50, borderColor: 'var(--admin-border)', color: 'var(--admin-text)' }}
               >
-                Remove and upload different image
-              </button>
+                <option value="national_id">National ID Card</option>
+                <option value="passport">Passport</option>
+                <option value="drivers_license">Driver's License</option>
+                <option value="student_id">Student ID</option>
+              </select>
+              <ChevronDown
+                className="w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                style={{ color: 'var(--admin-text-subtle)' }}
+                aria-hidden="true"
+              />
             </div>
-          ) : (
-            <>
-              <ImageIcon className="w-12 h-12 mx-auto text-gray-400" />
-              <p className="mt-2 text-gray-600">Click to upload or drag and drop</p>
-              <p className="text-sm text-gray-400">JPEG, PNG, or WebP · max 10 MB</p>
-            </>
-          )}
+          </div>
+
+          {/* File upload drop zone */}
+          <div
+            className="mt-6 border-2 border-dashed rounded-2xl text-center cursor-pointer transition-colors flex flex-col items-center justify-center px-6"
+            style={{
+              minHeight: 200,
+              borderColor: documentImage ? '#86EFAC' : 'var(--admin-border)',
+              background: documentImage ? '#F0FDF4' : 'var(--admin-bg)',
+            }}
+            onClick={() => fileInputRef.current?.click()}
+            onMouseEnter={e => { if (!documentImage) e.currentTarget.style.borderColor = 'var(--admin-accent)'; }}
+            onMouseLeave={e => { if (!documentImage) e.currentTarget.style.borderColor = 'var(--admin-border)'; }}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleDocumentUpload}
+              className="hidden"
+              aria-label="Upload ID document"
+            />
+
+            {documentImage ? (
+              <div className="space-y-3 py-2">
+                <img
+                  src={`data:image/jpeg;base64,${documentImage}`}
+                  alt="ID Document"
+                  className="max-h-40 mx-auto rounded-lg"
+                />
+                <p className="text-sm font-semibold" style={{ color: '#16A34A' }}>Document ready</p>
+                <button
+                  onClick={e => { e.stopPropagation(); setDocumentImage(null); }}
+                  className="text-sm font-medium hover:underline"
+                  style={{ color: '#DC2626' }}
+                >
+                  Remove and upload different image
+                </button>
+              </div>
+            ) : (
+              <>
+                <div
+                  className="w-12 h-12 rounded-xl flex items-center justify-center mb-3"
+                  style={{ background: '#EAF1FE', color: 'var(--admin-accent)' }}
+                >
+                  <ImageIcon className="w-6 h-6" aria-hidden="true" />
+                </div>
+                <p className="font-semibold text-sm" style={{ color: 'var(--admin-text)' }}>Click to upload or drag and drop</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--admin-text-subtle)' }}>JPEG, PNG, or WebP · max 10 MB</p>
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Alternative capture methods */}
-        {!documentImage && (
-          <div className="space-y-2">
-            <p className="text-xs text-center text-gray-400 font-medium uppercase tracking-wide">or capture directly</p>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => setShowWebcam(true)}
-                className="flex flex-col items-center gap-2 p-4 border-2 border-gray-200 rounded-xl hover:border-primary-400 hover:bg-primary-50 transition-colors group"
-              >
-                <Camera className="w-6 h-6 text-gray-400 group-hover:text-primary-600" />
-                <span className="text-sm font-medium text-gray-600 group-hover:text-primary-700">Use Webcam</span>
-                <span className="text-xs text-gray-400">Desktop camera</span>
-              </button>
+        {/* Right column — capture options, tips, and actions */}
+        <div
+          className="flex flex-col p-6 sm:p-10 lg:p-12 border-t lg:border-t-0 lg:border-l"
+          style={{ background: '#F8FAFC', borderColor: 'var(--admin-border-soft)' }}
+        >
+          {!documentImage && (
+            <div>
+              <p className="text-sm font-semibold" style={{ color: 'var(--admin-text)' }}>Other ways to capture</p>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowWebcam(true)}
+                  className="flex flex-col items-center justify-center gap-2 rounded-xl border bg-white p-4 text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+                  style={{ borderColor: 'var(--admin-border)', minHeight: 108 }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--admin-accent)'; e.currentTarget.style.background = '#EEF4FF'; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--admin-border)'; e.currentTarget.style.background = '#FFFFFF'; }}
+                >
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: '#EAF1FE', color: 'var(--admin-accent)' }}>
+                    <Camera className="w-5 h-5" aria-hidden="true" />
+                  </div>
+                  <span className="text-sm font-semibold" style={{ color: 'var(--admin-text)' }}>Use Webcam</span>
+                  <span className="text-xs" style={{ color: 'var(--admin-text-subtle)' }}>Desktop camera</span>
+                </button>
 
+                <button
+                  type="button"
+                  onClick={startPhoneSession}
+                  disabled={phonePolling}
+                  className="flex flex-col items-center justify-center gap-2 rounded-xl border bg-white p-4 text-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+                  style={{ borderColor: 'var(--admin-border)', minHeight: 108 }}
+                  onMouseEnter={e => { if (!e.currentTarget.disabled) { e.currentTarget.style.borderColor = 'var(--admin-accent)'; e.currentTarget.style.background = '#EEF4FF'; } }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--admin-border)'; e.currentTarget.style.background = '#FFFFFF'; }}
+                >
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: '#EAF1FE', color: 'var(--admin-accent)' }}>
+                    <Smartphone className="w-5 h-5" aria-hidden="true" />
+                  </div>
+                  <span className="text-sm font-semibold" style={{ color: 'var(--admin-text)' }}>Use Phone</span>
+                  <span className="text-xs" style={{ color: 'var(--admin-text-subtle)' }}>Scan QR code</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className={documentImage ? '' : 'mt-8'}>
+            <div className="rounded-xl border px-4 py-3.5 flex gap-2.5" style={{ background: '#FEF9E7', borderColor: '#FDE9B8' }}>
+              <Lightbulb className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#B45309' }} aria-hidden="true" />
+              <div>
+                <p className="text-xs font-semibold" style={{ color: '#92400E' }}>Tips</p>
+                <ul className="mt-1 space-y-0.5 text-xs leading-relaxed list-disc list-inside" style={{ color: '#92400E' }}>
+                  <li>Ensure all text is readable</li>
+                  <li>Avoid glare or reflections</li>
+                  <li>Include all four corners of your ID</li>
+                  <li>Use a well-lit area</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-auto pt-8">
+            <div className="h-px w-full mb-6" style={{ background: 'var(--admin-border-soft)' }} />
+            <div className="flex gap-3">
               <button
-                onClick={startPhoneSession}
-                disabled={phonePolling}
-                className="flex flex-col items-center gap-2 p-4 border-2 border-gray-200 rounded-xl hover:border-primary-400 hover:bg-primary-50 transition-colors group disabled:opacity-50"
+                type="button"
+                onClick={() => setStep('intro')}
+                className="flex-1 inline-flex items-center justify-center rounded-xl border text-sm font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+                style={{ height: 50, borderColor: 'var(--admin-border)', color: 'var(--admin-text)', background: '#FFFFFF' }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#F1F5F9'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = '#FFFFFF'; }}
               >
-                <Smartphone className="w-6 h-6 text-gray-400 group-hover:text-primary-600" />
-                <span className="text-sm font-medium text-gray-600 group-hover:text-primary-700">Use Phone</span>
-                <span className="text-xs text-gray-400">Scan QR code</span>
+                Back
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!documentImage) { toast.error('Please provide your ID document'); return; }
+                  setCapturePhase('idle');
+                  setSelfieImage(null);
+                  setLivenessFrames([]);
+                  setStep('selfie');
+                  startCamera();
+                }}
+                disabled={!documentImage}
+                className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl text-sm font-semibold text-white transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
+                style={{ height: 50, background: 'var(--admin-accent)' }}
+                onMouseEnter={e => { if (!e.currentTarget.disabled) e.currentTarget.style.background = 'var(--admin-accent-hover)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'var(--admin-accent)'; }}
+              >
+                Continue
+                <ArrowRight className="w-4 h-4" aria-hidden="true" />
               </button>
             </div>
           </div>
-        )}
-
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
-          <strong>Tips:</strong> Ensure all text is readable, avoid glare, and include all four corners.
-        </div>
-
-        <div className="flex gap-3">
-          <button onClick={() => setStep('intro')} className="btn btn-secondary">Back</button>
-          <button
-            onClick={() => {
-              if (!documentImage) { toast.error('Please provide your ID document'); return; }
-              setCapturePhase('idle');
-              setSelfieImage(null);
-              setLivenessFrames([]);
-              setStep('selfie');
-              startCamera();
-            }}
-            disabled={!documentImage}
-            className="btn btn-primary flex-1"
-          >
-            Continue
-          </button>
         </div>
       </div>
     </>
@@ -967,12 +1083,12 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
   return (
     <div
       className={
-        step === 'intro'
+        step === 'intro' || step === 'document'
           ? 'bg-white rounded-3xl shadow-sm overflow-hidden max-w-5xl mx-auto'
           : 'bg-white rounded-xl shadow-lg p-8 max-w-lg mx-auto'
       }
     >
-      {step !== 'intro' && step !== 'result' && (
+      {step !== 'intro' && step !== 'document' && step !== 'result' && (
         <div className="flex items-center justify-center mb-6">
           {[1, 2, 3].map((dot, i) => (
             <div key={dot} className="contents">
