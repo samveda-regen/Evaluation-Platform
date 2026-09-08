@@ -1,18 +1,17 @@
 import { useEffect, useState } from 'react';
 import { candidateApi } from '../../services/api';
-import NormalBrowserTestStart from './NormalBrowserTestStart';
-import SebTestStart from './SebTestStart';
+import NormalBrowserEnvironmentSetup from './NormalBrowserEnvironmentSetup';
+import SebEnvironmentSetup from './SebEnvironmentSetup';
 
 type AssessmentMode = 'SEB' | 'NORMAL_BROWSER';
 
 /**
- * Dispatcher mounted at /test/start — same pattern as
- * TestInstructions.tsx/SystemCheck.tsx/IdVerification.tsx.
- * Both variants gate the real exam (TestInterface) behind their own
- * "Setting up" step and only call startTest() once that clears; see
- * SebTestStart.tsx / NormalBrowserTestStart.tsx.
+ * Dispatcher for page 2 of the pre-exam flow — same pattern as
+ * TestInstructions.tsx/SystemCheck.tsx/IdVerification.tsx. SEB primes
+ * in-browser detection models per candidate; normal-browser instead checks
+ * the shared server-side detection service's readiness.
  */
-export default function TestStart() {
+export default function EnvironmentSetup() {
   const [mode, setMode] = useState<AssessmentMode | null>(null);
 
   useEffect(() => {
@@ -46,5 +45,5 @@ export default function TestStart() {
     );
   }
 
-  return mode === 'NORMAL_BROWSER' ? <NormalBrowserTestStart /> : <SebTestStart />;
+  return mode === 'NORMAL_BROWSER' ? <NormalBrowserEnvironmentSetup /> : <SebEnvironmentSetup />;
 }

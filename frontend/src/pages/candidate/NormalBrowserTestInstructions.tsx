@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { candidateApi } from '../../services/api';
+import { useTestStore } from '../../context/testStore';
 import { getCachedStreams } from '../../services/devicePermissionService';
+import { DEFAULT_CUSTOM_AI_VIOLATIONS, normalizeCustomAIViolationSelection } from '../../constants/customAIViolations';
 import talentstaQLogo from '../../assets/assessment-icons/icons/Talentstaq logo dark.svg';
 
 interface TestDetails {
@@ -41,21 +43,22 @@ const TEMP_DISABLE_AUDIO_PROCTORING = true;
  * counterpart to SebTestInstructions.tsx. Instructions, the terms checkbox,
  * and the Start button only — device/detection readiness and identity
  * verification are handled by the three pages before this one
- * (NormalBrowserSystemCheck.tsx, NormalBrowserTestStart.tsx's "Setting up"
- * gate, NormalBrowserIdVerification.tsx), which a candidate must pass
- * through first — this page just trusts that work is done (with a
- * redirect-back safety net below for verification, and the
- * streams-still-cached check in handleStartTest for devices) rather than
- * re-doing or re-rendering any of it.
+ * (NormalBrowserSystemCheck.tsx, NormalBrowserEnvironmentSetup.tsx,
+ * NormalBrowserIdVerification.tsx), which a candidate must pass through
+ * first — this page just trusts that work is done (with a redirect-back
+ * safety net below for verification, and the streams-still-cached check in
+ * handleStartTest for devices) rather than re-doing or re-rendering any of it.
  */
 export default function TestInstructions() {
   const [testDetails, setTestDetails] = useState<TestDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [accepted, setAccepted] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [verificationRequired, setVerificationRequired] = useState(false);
   const [verificationComplete, setVerificationComplete] = useState(false);
   const [checkingVerification, setCheckingVerification] = useState(true);
   const navigate = useNavigate();
+  const setTestData = useTestStore((state) => state.setTestData);
 
   // Speaking questions need mic access independent of the (currently disabled) audio-proctoring
   // toggle — kept here (not just in NormalBrowserSystemCheck.tsx) because handleStartTest's
@@ -94,12 +97,7 @@ export default function TestInstructions() {
     }
   };
 
-  // startTest()/setTestData() no longer happen here — they've moved to
-  // NormalBrowserTestStart.tsx, which runs after this button navigates, so
-  // that the server-side start time (and the candidate's exam timer) is
-  // stamped only once the "Setting up your environment" gate there actually
-  // clears, not at the moment this button is clicked. This is just validation.
-  const handleStartTest = () => {
+  const handleStartTest = async () => {
     if (!accepted) {
       toast.error('Please accept the terms and conditions');
       return;
@@ -120,7 +118,70 @@ export default function TestInstructions() {
       }
     }
 
-    navigate('/test/start');
+    setStarting(true);
+    try {
+      const { data } = await candidateApi.startTest();
+      const savedAnswers = await candidateApi.getSavedAnswers();
+      setTestData({
+        testId: data.test.id,
+        testCode: testDetails!.test.testCode,
+        attemptId: testDetails!.attempt.id,
+        testName: data.test.name,
+        duration: data.test.duration,
+        totalMarks: data.test.totalMarks,
+        negativeMarking: data.test.negativeMarking,
+        maxViolations: data.test.maxViolations,
+        proctorEnabled: data.test.proctorEnabled,
+        requireCamera: data.test.requireCamera,
+        requireMicrophone: microphoneRequired,
+        requireScreenShare: data.test.requireScreenShare,
+        assessmentMode: 'NORMAL_BROWSER',
+        customAIViolations: normalizeCustomAIViolationSelection(
+          data.test.customAIViolations || DEFAULT_CUSTOM_AI_VIOLATIONS,
+        ),
+        violationPopupSettings: (() => {
+          try {
+            const raw = data.test.violationPopupSettings;
+            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            if (
+              parsed &&
+              typeof parsed.enabled === 'boolean' &&
+              typeof parsed.durationSeconds === 'number'
+            ) {
+              return { enabled: parsed.enabled, durationSeconds: parsed.durationSeconds };
+            }
+          } catch {
+            /* ignore */
+          }
+          return { enabled: false, durationSeconds: 2 };
+        })(),
+        startTime: new Date(data.startTime),
+        questions: data.questions,
+        initialViolations: 0,
+        showTimer: data.test.showTimer,
+        autoSubmitOnTimeout: data.test.autoSubmitOnTimeout,
+      });
+      if (
+        savedAnswers.data.mcqAnswers.length > 0 ||
+        savedAnswers.data.codingAnswers.length > 0 ||
+        savedAnswers.data.behavioralAnswers.length > 0 ||
+        (savedAnswers.data.communicationAnswers?.length ?? 0) > 0
+      ) {
+        useTestStore
+          .getState()
+          .loadSavedAnswers(
+            savedAnswers.data.mcqAnswers,
+            savedAnswers.data.codingAnswers,
+            savedAnswers.data.behavioralAnswers,
+            savedAnswers.data.communicationAnswers ?? [],
+          );
+      }
+      navigate('/test/start');
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { error?: string } } };
+      toast.error(err.response?.data?.error || 'Failed to start test');
+      setStarting(false);
+    }
   };
 
   if (loading || checkingVerification) {
@@ -133,6 +194,24 @@ export default function TestInstructions() {
 
   if (!testDetails) return null;
 
+  if (starting) {
+    return (
+      <div
+        className="min-h-screen flex flex-col items-center justify-center gap-6 px-4"
+        style={{ background: 'var(--admin-border)' }}
+      >
+        <div className="relative w-16 h-16">
+          <div className="absolute inset-0 rounded-full border-4 border-amber-200" />
+          <div className="absolute inset-0 rounded-full border-4 border-amber-500 border-t-transparent animate-spin" />
+        </div>
+        <div className="text-center">
+          <p className="text-lg font-semibold text-gray-900">Starting your assessment</p>
+          <p className="text-sm text-gray-500 mt-1">Just a moment…</p>
+        </div>
+      </div>
+    );
+  }
+
   const { test } = testDetails;
   const totalQuestions =
     (test.questionCounts?.mcq ?? 0) +
@@ -140,7 +219,7 @@ export default function TestInstructions() {
     (test.questionCounts?.behavioral ?? 0);
   const identityVerified = !verificationRequired || verificationComplete;
 
-  const canStart = accepted && (!verificationRequired || verificationComplete);
+  const canStart = accepted && !starting && (!verificationRequired || verificationComplete);
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--admin-border)' }}>

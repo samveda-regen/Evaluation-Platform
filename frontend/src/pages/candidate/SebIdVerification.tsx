@@ -56,7 +56,7 @@ export default function SebIdVerification() {
           <div className="flex items-center gap-4">
             <button
               type="button"
-              onClick={() => navigate('/test/system-check')}
+              onClick={() => navigate('/test/environment-setup')}
               className="flex items-center gap-1.5 text-sm font-medium transition-colors"
               style={{ color: '#6B7280' }}
               onMouseEnter={(e) => (e.currentTarget.style.color = '#111827')}
