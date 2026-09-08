@@ -38,9 +38,8 @@ import CandidateLogin from './pages/candidate/CandidateLogin';
 import TestInvitation from './pages/candidate/TestInvitation';
 import TestInstructions from './pages/candidate/TestInstructions';
 import SystemCheck from './pages/candidate/SystemCheck';
-import EnvironmentSetup from './pages/candidate/EnvironmentSetup';
 import IdVerification from './pages/candidate/IdVerification';
-import TestInterface from './pages/candidate/TestInterface';
+import TestStart from './pages/candidate/TestStart';
 import TestComplete from './pages/candidate/TestComplete';
 
 // Components
@@ -155,14 +154,6 @@ export default function App() {
         }
       />
       <Route
-        path="/test/environment-setup"
-        element={
-          <ProtectedCandidateRoute>
-            <EnvironmentSetup />
-          </ProtectedCandidateRoute>
-        }
-      />
-      <Route
         path="/test/id-verification"
         element={
           <ProtectedCandidateRoute>
@@ -182,7 +173,7 @@ export default function App() {
         path="/test/start"
         element={
           <ProtectedCandidateRoute>
-            <TestInterface />
+            <TestStart />
           </ProtectedCandidateRoute>
         }
       />
