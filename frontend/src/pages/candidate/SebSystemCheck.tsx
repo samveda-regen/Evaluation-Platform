@@ -211,7 +211,7 @@ export default function SebSystemCheck() {
 
   tiles.push({
     tileKey: 'camera',
-    icon: <Video className="w-6 h-6" />,
+    icon: <Video className="w-5 h-5" />,
     label: 'Webcam',
     status: !test.requireCamera ? 'not-required' : checkingDevices ? 'checking' : !hasRunOnce ? 'idle' : deviceStatus.camera ? 'ok' : 'failed',
     okLabel: 'Connected',
@@ -227,7 +227,7 @@ export default function SebSystemCheck() {
 
   tiles.push({
     tileKey: 'microphone',
-    icon: <Mic className="w-6 h-6" />,
+    icon: <Mic className="w-5 h-5" />,
     label: 'Microphone',
     status: !microphoneRequired ? 'not-required' : checkingDevices ? 'checking' : !hasRunOnce ? 'idle' : deviceStatus.microphone ? 'ok' : 'failed',
     okLabel: 'Detected',
@@ -238,7 +238,7 @@ export default function SebSystemCheck() {
 
   tiles.push({
     tileKey: 'screen',
-    icon: <MonitorUp className="w-6 h-6" />,
+    icon: <MonitorUp className="w-5 h-5" />,
     label: 'Screen share',
     status: !test.requireScreenShare ? 'not-required' : checkingDevices ? 'checking' : !hasRunOnce ? 'idle' : deviceStatus.screenShare ? 'ok' : 'failed',
     okLabel: 'Granted',
@@ -249,7 +249,7 @@ export default function SebSystemCheck() {
 
   tiles.push({
     tileKey: 'connection',
-    icon: <Wifi className="w-6 h-6" />,
+    icon: <Wifi className="w-5 h-5" />,
     label: 'Connection',
     status: connectionStatus === 'ok' ? 'ok' : connectionStatus === 'failed' ? 'failed' : 'checking',
     okLabel: connectionLatency !== null ? `Stable · ${connectionLatency}ms` : 'Stable',
@@ -259,7 +259,7 @@ export default function SebSystemCheck() {
   });
 
   return (
-    <div className="min-h-screen flex flex-col relative overflow-hidden" style={{ background: '#F3F6FB' }}>
+    <div className="h-screen flex flex-col relative overflow-hidden" style={{ background: '#F3F6FB' }}>
       <div
         className="pointer-events-none absolute -top-32 -right-32 w-96 h-96 rounded-full opacity-60 blur-3xl"
         style={{ background: 'radial-gradient(circle, #DCE6FB 0%, transparent 70%)' }}
@@ -271,8 +271,8 @@ export default function SebSystemCheck() {
         aria-hidden="true"
       />
 
-      <header className="relative bg-white border-b shadow-sm" style={{ borderColor: 'var(--admin-border-soft)' }}>
-        <div className="max-w-[1180px] mx-auto px-6 sm:px-10 py-4 sm:py-5 flex items-center justify-between">
+      <header className="relative flex-shrink-0 bg-white border-b shadow-sm" style={{ borderColor: 'var(--admin-border-soft)' }}>
+        <div className="max-w-[1180px] mx-auto px-6 sm:px-10 py-3 sm:py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
               type="button"
@@ -287,7 +287,7 @@ export default function SebSystemCheck() {
               Back
             </button>
             <div className="h-5 w-px bg-gray-200" />
-            <img src={talentstaQLogo} alt="TalentstaQ" style={{ height: '28px', width: 'auto' }} />
+            <img src={talentstaQLogo} alt="TalentstaQ" style={{ height: '26px', width: 'auto' }} />
           </div>
           <button
             type="button"
@@ -302,7 +302,7 @@ export default function SebSystemCheck() {
         </div>
       </header>
 
-      <main className="relative flex-1 flex items-start justify-center px-4 sm:px-6 py-8 sm:py-12">
+      <main className="relative flex-1 min-h-0 overflow-y-auto flex items-start justify-center px-4 sm:px-6 py-4 sm:py-6">
         <SystemCheckCard
           tiles={tiles}
           allChecksOk={allChecksOk}

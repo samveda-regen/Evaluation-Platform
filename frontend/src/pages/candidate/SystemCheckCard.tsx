@@ -55,21 +55,21 @@ export default function SystemCheckCard({
   return (
     <div className="w-full max-w-[1180px] mx-auto bg-white rounded-3xl shadow-[0_8px_40px_-12px_rgba(15,23,42,0.15)] overflow-hidden">
       <div
-        className="px-6 sm:px-10 pt-8 sm:pt-10 pb-6 sm:pb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5 border-b"
+        className="px-6 sm:px-10 pt-6 sm:pt-8 pb-5 sm:pb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b"
         style={{ borderColor: 'var(--admin-border-soft)' }}
       >
         <div className="flex items-start sm:items-center gap-4">
           <div
-            className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
+            className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
             style={{ background: '#E7F8EE', color: '#16A34A' }}
           >
-            <ShieldCheck className="w-6 h-6 sm:w-7 sm:h-7" />
+            <ShieldCheck className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight" style={{ color: 'var(--admin-text)' }}>
+            <h1 className="text-lg sm:text-xl font-bold tracking-tight" style={{ color: 'var(--admin-text)' }}>
               System Check
             </h1>
-            <p className="mt-1 text-sm sm:text-[15px] max-w-md" style={{ color: 'var(--admin-text-muted)' }}>
+            <p className="mt-0.5 text-xs sm:text-sm max-w-md" style={{ color: 'var(--admin-text-muted)' }}>
               We&apos;ll check your device, permissions and connection to make sure everything is ready for your
               assessment.
             </p>
@@ -83,8 +83,8 @@ export default function SystemCheckCard({
         />
       </div>
 
-      <div className="px-6 sm:px-10 py-8">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+      <div className="px-6 sm:px-10 py-5 sm:py-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {tiles.map((tile) => (
             <CheckStatusCard key={tile.tileKey} {...tile} />
           ))}
@@ -92,7 +92,7 @@ export default function SystemCheckCard({
 
         {showCameraDiagnostics && cameraDiagnostics && (
           <div
-            className="mt-5 text-left w-full rounded-xl px-4 py-3"
+            className="mt-4 text-left w-full rounded-xl px-4 py-3"
             style={{ background: '#FEF2F2', border: '1px solid #FECACA', fontSize: '12px', lineHeight: 1.6, color: '#991B1B' }}
           >
             <p className="font-semibold mb-1">Camera diagnostics</p>
@@ -103,9 +103,9 @@ export default function SystemCheckCard({
         )}
       </div>
 
-      <div className="px-6 sm:px-10 pb-8 sm:pb-10">
+      <div className="px-6 sm:px-10 pb-6 sm:pb-8">
         <div
-          className="rounded-2xl px-5 sm:px-6 py-5 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6 sm:justify-between transition-colors duration-300"
+          className="rounded-2xl px-5 sm:px-6 py-4 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 sm:justify-between transition-colors duration-300"
           style={{
             background: hasFailure ? '#FEF2F2' : '#EEF4FF',
             border: `1px solid ${hasFailure ? '#FECACA' : '#DCE6FB'}`,
@@ -256,12 +256,12 @@ function CheckStatusCard({ icon, label, status, okLabel, failLabel, okDescriptio
 
   return (
     <div
-      className="relative rounded-2xl border p-5 flex flex-col gap-3 transition-colors duration-300 hover:shadow-md"
+      className="relative rounded-2xl border p-4 flex flex-col gap-2 transition-colors duration-300 hover:shadow-md"
       style={{ borderColor, background: cardBg }}
     >
       <div className="flex items-start justify-between">
         <div
-          className="relative w-14 h-14 rounded-full flex items-center justify-center overflow-hidden flex-shrink-0"
+          className="relative w-12 h-12 rounded-full flex items-center justify-center overflow-hidden flex-shrink-0"
           style={{ background: iconBg, color: iconFg }}
         >
           {preview || icon}
@@ -294,11 +294,11 @@ function CheckStatusCard({ icon, label, status, okLabel, failLabel, okDescriptio
       </div>
 
       <div>
-        <p className="text-[15px] font-semibold" style={{ color: 'var(--admin-text)' }}>
+        <p className="text-sm font-semibold" style={{ color: 'var(--admin-text)' }}>
           {label}
         </p>
         <span
-          className="inline-flex items-center mt-1.5 px-2 py-0.5 rounded-full text-xs font-medium"
+          className="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-xs font-medium"
           style={{ background: badgeBg, color: badgeFg }}
         >
           <span className="sr-only">Status: </span>
@@ -306,7 +306,7 @@ function CheckStatusCard({ icon, label, status, okLabel, failLabel, okDescriptio
         </span>
       </div>
 
-      <p className="text-xs sm:text-[13px] leading-relaxed" style={{ color: isFailed ? '#B91C1C' : 'var(--admin-text-subtle)' }}>
+      <p className="text-xs leading-snug" style={{ color: isFailed ? '#B91C1C' : 'var(--admin-text-subtle)' }}>
         {description}
       </p>
     </div>
