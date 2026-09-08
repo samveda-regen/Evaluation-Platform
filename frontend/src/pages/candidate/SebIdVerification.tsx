@@ -51,7 +51,7 @@ export default function SebIdVerification() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col relative overflow-hidden" style={{ background: '#F3F6FB' }}>
+    <div className="h-screen flex flex-col relative overflow-hidden" style={{ background: '#F3F6FB' }}>
       <div
         className="pointer-events-none absolute -top-32 -right-32 w-96 h-96 rounded-full opacity-60 blur-3xl"
         style={{ background: 'radial-gradient(circle, #DCE6FB 0%, transparent 70%)' }}
@@ -100,7 +100,7 @@ export default function SebIdVerification() {
         </div>
       </header>
 
-      <main className="relative flex-1 flex items-start justify-center px-4 sm:px-6 py-8 sm:py-12">
+      <main className="relative flex-1 min-h-0 overflow-y-auto flex items-start justify-center px-4 sm:px-6 py-4 sm:py-6">
         <div className="w-full max-w-5xl">
           <IDVerification
             onVerified={() => {

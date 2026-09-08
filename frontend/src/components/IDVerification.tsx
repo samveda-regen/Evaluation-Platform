@@ -368,7 +368,7 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
   const renderIntro = () => (
     <div className="grid grid-cols-1 lg:grid-cols-2">
       {/* Left column — requirements & call to action */}
-      <div className="p-6 sm:p-10 lg:p-12">
+      <div className="p-6 sm:p-8 lg:p-10">
         <span
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold tracking-wide"
           style={{ background: '#EAF1FE', color: 'var(--admin-accent)' }}
@@ -377,25 +377,25 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
           REQUIRED BEFORE YOU BEGIN
         </span>
 
-        <h2 className="mt-4 text-3xl sm:text-4xl font-bold tracking-tight" style={{ color: 'var(--admin-text)' }}>
+        <h2 className="mt-3 text-2xl sm:text-3xl font-bold tracking-tight" style={{ color: 'var(--admin-text)' }}>
           Verify Your Identity
         </h2>
-        <p className="mt-3 text-base leading-relaxed max-w-md" style={{ color: 'var(--admin-text-muted)' }}>
+        <p className="mt-2 text-sm sm:text-base leading-relaxed max-w-md" style={{ color: 'var(--admin-text-muted)' }}>
           To ensure a fair and secure testing environment, we need to verify your identity before you begin.
         </p>
 
-        <div className="mt-8 rounded-2xl overflow-hidden border" style={{ borderColor: 'var(--admin-border-soft)' }}>
+        <div className="mt-5 rounded-2xl overflow-hidden border" style={{ borderColor: 'var(--admin-border-soft)' }}>
           <p
-            className="px-5 pt-4 pb-2 text-xs font-semibold uppercase tracking-wide"
+            className="px-5 pt-3 pb-1.5 text-xs font-semibold uppercase tracking-wide"
             style={{ background: 'var(--admin-bg)', color: 'var(--admin-text-subtle)' }}
           >
             You will need
           </p>
           <div className="divide-y" style={{ background: 'var(--admin-bg)' }}>
             {requirements.map((req) => (
-              <div key={req.title} className="flex items-center gap-4 px-5 py-4" style={{ borderColor: 'var(--admin-border-soft)' }}>
+              <div key={req.title} className="flex items-center gap-4 px-5 py-3" style={{ borderColor: 'var(--admin-border-soft)' }}>
                 <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+                  className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
                   style={{ background: req.bg, color: req.fg }}
                 >
                   <req.icon className="w-5 h-5" aria-hidden="true" />
@@ -409,11 +409,11 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
           </div>
         </div>
 
-        <div className="mt-8 flex flex-col sm:flex-row gap-3">
+        <div className="mt-5 flex flex-col sm:flex-row gap-3">
           <button
             onClick={() => setStep('document')}
             className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl text-base font-semibold text-white transition-all active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
-            style={{ background: 'var(--admin-accent)', height: 56 }}
+            style={{ background: 'var(--admin-accent)', height: 52 }}
             onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--admin-accent-hover)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--admin-accent)'; }}
           >
@@ -426,7 +426,7 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
           )}
         </div>
 
-        <p className="mt-4 flex items-center gap-2 text-xs" style={{ color: 'var(--admin-text-subtle)' }}>
+        <p className="mt-3 flex items-center gap-2 text-xs" style={{ color: 'var(--admin-text-subtle)' }}>
           <Lock className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
           Your information is kept private and used only to verify your identity.
         </p>
@@ -434,27 +434,27 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
 
       {/* Right column — trust & security visual */}
       <div
-        className="relative flex flex-col justify-center px-6 sm:px-10 lg:px-12 py-10 lg:py-12 overflow-hidden"
+        className="relative flex flex-col justify-center px-6 sm:px-8 lg:px-10 py-6 lg:py-8 overflow-hidden"
         style={{ background: 'linear-gradient(160deg, #EFF4FC 0%, #E4ECFA 100%)' }}
       >
-        <div className="relative flex items-center justify-center py-4">
+        <div className="relative flex items-center justify-center py-2">
           <div
-            className="absolute w-56 h-56 rounded-[2rem] rotate-6"
+            className="absolute w-40 h-40 rounded-[2rem] rotate-6"
             style={{ background: 'rgba(31,53,86,0.07)' }}
             aria-hidden="true"
           />
           <div
-            className="absolute w-56 h-56 rounded-[2rem] -rotate-3 translate-x-3"
+            className="absolute w-40 h-40 rounded-[2rem] -rotate-3 translate-x-3"
             style={{ background: 'rgba(31,53,86,0.05)' }}
             aria-hidden="true"
           />
 
-          <div className="relative bg-white rounded-2xl shadow-lg p-4 w-64 flex items-center gap-3">
+          <div className="relative bg-white rounded-2xl shadow-lg p-4 w-56 flex items-center gap-3">
             <div
-              className="w-16 h-16 rounded-xl flex items-center justify-center flex-shrink-0"
+              className="w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0"
               style={{ background: '#DCE6FB' }}
             >
-              <User className="w-8 h-8" style={{ color: 'var(--admin-accent)' }} aria-hidden="true" />
+              <User className="w-7 h-7" style={{ color: 'var(--admin-accent)' }} aria-hidden="true" />
             </div>
             <div className="flex-1 space-y-2">
               <div className="h-2.5 rounded-full w-full" style={{ background: '#E2E8F0' }} />
@@ -471,14 +471,14 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
           </div>
         </div>
 
-        <div className="relative text-center mt-8">
+        <div className="relative text-center mt-5">
           <h3 className="text-lg font-bold" style={{ color: 'var(--admin-text)' }}>Your identity builds trust</h3>
           <p className="mt-1 text-sm max-w-xs mx-auto" style={{ color: 'var(--admin-text-muted)' }}>
             Helps us maintain integrity and give everyone a fair opportunity.
           </p>
         </div>
 
-        <div className="relative mt-8 grid grid-cols-3 gap-3 text-center">
+        <div className="relative mt-5 grid grid-cols-3 gap-3 text-center">
           {trustIndicators.map((t) => (
             <div key={t.label} className="flex flex-col items-center gap-1.5">
               <t.icon className="w-5 h-5" style={{ color: 'var(--admin-accent)' }} aria-hidden="true" />
@@ -541,13 +541,13 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
 
       <div className="grid grid-cols-1 lg:grid-cols-[60%_40%]">
         {/* Left column — document details */}
-        <div className="p-6 sm:p-10 lg:p-12">
+        <div className="p-6 sm:p-8 lg:p-10">
           <p className="text-xs font-semibold tracking-wide uppercase" style={{ color: 'var(--admin-accent)' }}>
             Identity Verification
           </p>
 
           {/* Progress indicator */}
-          <div className="mt-4 flex items-center max-w-xs" aria-hidden="true">
+          <div className="mt-3 flex items-center max-w-xs" aria-hidden="true">
             {documentProgressSteps.map((s, i) => (
               <div key={s.label} className={`flex items-center ${i < documentProgressSteps.length - 1 ? 'flex-1' : ''}`}>
                 <div className="flex flex-col items-center gap-1.5">
@@ -574,14 +574,14 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
             ))}
           </div>
 
-          <h2 className="mt-8 text-2xl sm:text-[28px] font-bold tracking-tight" style={{ color: 'var(--admin-text)' }}>
+          <h2 className="mt-5 text-xl sm:text-2xl font-bold tracking-tight" style={{ color: 'var(--admin-text)' }}>
             Upload Your ID Document
           </h2>
-          <p className="mt-2 text-sm sm:text-base leading-relaxed" style={{ color: 'var(--admin-text-muted)' }}>
+          <p className="mt-1.5 text-sm sm:text-base leading-relaxed" style={{ color: 'var(--admin-text-muted)' }}>
             Take a clear photo of your government-issued ID to verify your identity.
           </p>
 
-          <div className="mt-8">
+          <div className="mt-5">
             <label htmlFor="document-type" className="block text-sm font-medium mb-2" style={{ color: 'var(--admin-text)' }}>
               Document Type
             </label>
@@ -613,9 +613,9 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
 
           {/* File upload drop zone */}
           <div
-            className="mt-6 border-2 border-dashed rounded-2xl text-center cursor-pointer transition-colors flex flex-col items-center justify-center px-6"
+            className="mt-5 border-2 border-dashed rounded-2xl text-center cursor-pointer transition-colors flex flex-col items-center justify-center px-6"
             style={{
-              minHeight: 200,
+              minHeight: 160,
               borderColor: documentImage ? '#86EFAC' : 'var(--admin-border)',
               background: documentImage ? '#F0FDF4' : 'var(--admin-bg)',
             }}
@@ -665,18 +665,18 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
 
         {/* Right column — capture options, tips, and actions */}
         <div
-          className="flex flex-col p-6 sm:p-10 lg:p-12 border-t lg:border-t-0 lg:border-l"
+          className="flex flex-col p-6 sm:p-8 lg:p-10 border-t lg:border-t-0 lg:border-l"
           style={{ background: '#F8FAFC', borderColor: 'var(--admin-border-soft)' }}
         >
           {!documentImage && (
             <div>
               <p className="text-sm font-semibold" style={{ color: 'var(--admin-text)' }}>Other ways to capture</p>
-              <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="mt-3 grid grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() => setShowWebcam(true)}
                   className="flex flex-col items-center justify-center gap-2 rounded-xl border bg-white p-4 text-center transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
-                  style={{ borderColor: 'var(--admin-border)', minHeight: 108 }}
+                  style={{ borderColor: 'var(--admin-border)', minHeight: 92 }}
                   onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--admin-accent)'; e.currentTarget.style.background = '#EEF4FF'; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--admin-border)'; e.currentTarget.style.background = '#FFFFFF'; }}
                 >
@@ -692,7 +692,7 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
                   onClick={startPhoneSession}
                   disabled={phonePolling}
                   className="flex flex-col items-center justify-center gap-2 rounded-xl border bg-white p-4 text-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1"
-                  style={{ borderColor: 'var(--admin-border)', minHeight: 108 }}
+                  style={{ borderColor: 'var(--admin-border)', minHeight: 92 }}
                   onMouseEnter={e => { if (!e.currentTarget.disabled) { e.currentTarget.style.borderColor = 'var(--admin-accent)'; e.currentTarget.style.background = '#EEF4FF'; } }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--admin-border)'; e.currentTarget.style.background = '#FFFFFF'; }}
                 >
@@ -706,8 +706,8 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
             </div>
           )}
 
-          <div className={documentImage ? '' : 'mt-8'}>
-            <div className="rounded-xl border px-4 py-3.5 flex gap-2.5" style={{ background: '#FEF9E7', borderColor: '#FDE9B8' }}>
+          <div className={documentImage ? '' : 'mt-5'}>
+            <div className="rounded-xl border px-4 py-3 flex gap-2.5" style={{ background: '#FEF9E7', borderColor: '#FDE9B8' }}>
               <Lightbulb className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: '#B45309' }} aria-hidden="true" />
               <div>
                 <p className="text-xs font-semibold" style={{ color: '#92400E' }}>Tips</p>
@@ -721,8 +721,8 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
             </div>
           </div>
 
-          <div className="mt-auto pt-8">
-            <div className="h-px w-full mb-6" style={{ background: 'var(--admin-border-soft)' }} />
+          <div className="mt-auto pt-5">
+            <div className="h-px w-full mb-4" style={{ background: 'var(--admin-border-soft)' }} />
             <div className="flex gap-3">
               <button
                 type="button"
