@@ -11,7 +11,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { toast } from 'react-hot-toast';
-import { ShieldCheck, CheckCircle2, ImageIcon, X, Clock, Camera, Smartphone } from 'lucide-react';
+import { ShieldCheck, CheckCircle2, ImageIcon, X, Clock, Camera, Smartphone, IdCard, Sun, Lock, ArrowRight, User, Users, Check } from 'lucide-react';
 import QRCode from 'react-qr-code';
 import api from '../services/api';
 import WebcamCapture from './WebcamCapture';
@@ -335,42 +335,158 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
 
   // ── Step renderers ──────────────────────────────────────────────────────────
 
-  const renderIntro = () => (
-    <div className="text-center space-y-6">
-      <div className="w-20 h-20 bg-primary-100 rounded-full flex items-center justify-center mx-auto">
-        <ShieldCheck className="w-10 h-10 text-primary-600" />
-      </div>
+  const requirements = [
+    {
+      icon: IdCard,
+      title: 'Valid Government-issued ID',
+      description: "National ID, Passport, or Driver's License",
+      bg: '#E7F8EE',
+      fg: '#16A34A',
+    },
+    {
+      icon: Camera,
+      title: 'Working Webcam',
+      description: 'For a quick and clear selfie',
+      bg: '#EAF1FE',
+      fg: '#1F3556',
+    },
+    {
+      icon: Sun,
+      title: 'Good Lighting',
+      description: 'Sit in a well-lit area and avoid strong backlighting',
+      bg: '#FEF3E2',
+      fg: '#D97706',
+    },
+  ];
 
-      <div>
-        <h2 className="text-2xl font-bold text-gray-800">Identity Verification</h2>
-        <p className="text-gray-600 mt-2">
-          To ensure test integrity, we need to verify your identity before you begin.
+  const trustIndicators = [
+    { icon: ShieldCheck, label: 'Secure', description: 'Your data is protected' },
+    { icon: Users, label: 'Trusted', description: 'Fair for everyone' },
+    { icon: Lock, label: 'Private', description: 'Used only to verify you' },
+  ];
+
+  const renderIntro = () => (
+    <div className="grid grid-cols-1 lg:grid-cols-2">
+      {/* Left column — requirements & call to action */}
+      <div className="p-6 sm:p-10 lg:p-12">
+        <span
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold tracking-wide"
+          style={{ background: '#EAF1FE', color: 'var(--admin-accent)' }}
+        >
+          <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
+          REQUIRED BEFORE YOU BEGIN
+        </span>
+
+        <h2 className="mt-4 text-3xl sm:text-4xl font-bold tracking-tight" style={{ color: 'var(--admin-text)' }}>
+          Verify Your Identity
+        </h2>
+        <p className="mt-3 text-base leading-relaxed max-w-md" style={{ color: 'var(--admin-text-muted)' }}>
+          To ensure a fair and secure testing environment, we need to verify your identity before you begin.
+        </p>
+
+        <div className="mt-8 rounded-2xl overflow-hidden border" style={{ borderColor: 'var(--admin-border-soft)' }}>
+          <p
+            className="px-5 pt-4 pb-2 text-xs font-semibold uppercase tracking-wide"
+            style={{ background: 'var(--admin-bg)', color: 'var(--admin-text-subtle)' }}
+          >
+            You will need
+          </p>
+          <div className="divide-y" style={{ background: 'var(--admin-bg)' }}>
+            {requirements.map((req) => (
+              <div key={req.title} className="flex items-center gap-4 px-5 py-4" style={{ borderColor: 'var(--admin-border-soft)' }}>
+                <div
+                  className="w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0"
+                  style={{ background: req.bg, color: req.fg }}
+                >
+                  <req.icon className="w-5 h-5" aria-hidden="true" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--admin-text)' }}>{req.title}</p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--admin-text-subtle)' }}>{req.description}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-8 flex flex-col sm:flex-row gap-3">
+          <button
+            onClick={() => setStep('document')}
+            className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl text-base font-semibold text-white transition-all active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            style={{ background: 'var(--admin-accent)', height: 56 }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--admin-accent-hover)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--admin-accent)'; }}
+          >
+            <ShieldCheck className="w-5 h-5" aria-hidden="true" />
+            Start Verification
+            <ArrowRight className="w-5 h-5" aria-hidden="true" />
+          </button>
+          {isOptional && onSkip && (
+            <button onClick={onSkip} className="btn btn-secondary">Skip</button>
+          )}
+        </div>
+
+        <p className="mt-4 flex items-center gap-2 text-xs" style={{ color: 'var(--admin-text-subtle)' }}>
+          <Lock className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />
+          Your information is kept private and used only to verify your identity.
         </p>
       </div>
 
-      <div className="bg-gray-50 rounded-lg p-4 text-left space-y-3">
-        <p className="font-medium text-gray-700">You will need:</p>
-        <ul className="space-y-2 text-sm text-gray-600">
-          {[
-            'A valid government-issued ID (National ID, Passport, or Driver\'s License)',
-            'A working webcam for a quick selfie',
-            'Good lighting — avoid strong backlighting',
-          ].map(item => (
-            <li key={item} className="flex items-center gap-2">
-              <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" />
-              {item}
-            </li>
-          ))}
-        </ul>
-      </div>
+      {/* Right column — trust & security visual */}
+      <div
+        className="relative flex flex-col justify-center px-6 sm:px-10 lg:px-12 py-10 lg:py-12 overflow-hidden"
+        style={{ background: 'linear-gradient(160deg, #EFF4FC 0%, #E4ECFA 100%)' }}
+      >
+        <div className="relative flex items-center justify-center py-4">
+          <div
+            className="absolute w-56 h-56 rounded-[2rem] rotate-6"
+            style={{ background: 'rgba(31,53,86,0.07)' }}
+            aria-hidden="true"
+          />
+          <div
+            className="absolute w-56 h-56 rounded-[2rem] -rotate-3 translate-x-3"
+            style={{ background: 'rgba(31,53,86,0.05)' }}
+            aria-hidden="true"
+          />
 
-      <div className="flex gap-3">
-        <button onClick={() => setStep('document')} className="btn btn-primary flex-1">
-          Start Verification
-        </button>
-        {isOptional && onSkip && (
-          <button onClick={onSkip} className="btn btn-secondary">Skip</button>
-        )}
+          <div className="relative bg-white rounded-2xl shadow-lg p-4 w-64 flex items-center gap-3">
+            <div
+              className="w-16 h-16 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: '#DCE6FB' }}
+            >
+              <User className="w-8 h-8" style={{ color: 'var(--admin-accent)' }} aria-hidden="true" />
+            </div>
+            <div className="flex-1 space-y-2">
+              <div className="h-2.5 rounded-full w-full" style={{ background: '#E2E8F0' }} />
+              <div className="h-2.5 rounded-full w-4/5" style={{ background: '#E2E8F0' }} />
+              <div className="h-2.5 rounded-full w-3/5" style={{ background: '#E2E8F0' }} />
+            </div>
+            <span
+              className="absolute -bottom-3 -right-3 w-9 h-9 rounded-full flex items-center justify-center shadow-md"
+              style={{ background: '#22C55E' }}
+              aria-hidden="true"
+            >
+              <Check className="w-5 h-5 text-white" strokeWidth={3} />
+            </span>
+          </div>
+        </div>
+
+        <div className="relative text-center mt-8">
+          <h3 className="text-lg font-bold" style={{ color: 'var(--admin-text)' }}>Your identity builds trust</h3>
+          <p className="mt-1 text-sm max-w-xs mx-auto" style={{ color: 'var(--admin-text-muted)' }}>
+            Helps us maintain integrity and give everyone a fair opportunity.
+          </p>
+        </div>
+
+        <div className="relative mt-8 grid grid-cols-3 gap-3 text-center">
+          {trustIndicators.map((t) => (
+            <div key={t.label} className="flex flex-col items-center gap-1.5">
+              <t.icon className="w-5 h-5" style={{ color: 'var(--admin-accent)' }} aria-hidden="true" />
+              <p className="text-xs font-semibold" style={{ color: 'var(--admin-text)' }}>{t.label}</p>
+              <p className="text-[11px] leading-snug" style={{ color: 'var(--admin-text-subtle)' }}>{t.description}</p>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -849,7 +965,13 @@ export default function IDVerification({ onVerified, onSkip, isOptional = false 
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-lg p-8 max-w-lg mx-auto">
+    <div
+      className={
+        step === 'intro'
+          ? 'bg-white rounded-3xl shadow-sm overflow-hidden max-w-5xl mx-auto'
+          : 'bg-white rounded-xl shadow-lg p-8 max-w-lg mx-auto'
+      }
+    >
       {step !== 'intro' && step !== 'result' && (
         <div className="flex items-center justify-center mb-6">
           {[1, 2, 3].map((dot, i) => (
