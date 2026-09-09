@@ -35,8 +35,6 @@ interface TestDetails {
   };
 }
 
-const TEMP_DISABLE_AUDIO_PROCTORING = true;
-
 /**
  * Page 4 (final) of the SEB pre-exam flow: instructions, the terms checkbox,
  * and the Start button — nothing about device/AI-model readiness or identity
@@ -67,11 +65,15 @@ export default function TestInstructions() {
     }
   };
 
-  // Speaking questions need mic access independent of the (currently disabled) audio-proctoring
-  // toggle — kept here (not just in SebSystemCheck.tsx) because handleStartTest's cached-stream
-  // check below needs the same definition to know what "still granted" means.
+  // Mirrors the test's own requireMicrophone setting (plus speaking questions, which
+  // always need mic access regardless) — kept here (not just in SebSystemCheck.tsx)
+  // because handleStartTest's cached-stream check below needs the same definition to
+  // know what "still granted" means. This only decides whether the mic gets
+  // requested/published (audio ends up in the recording); audio-based VIOLATION
+  // analysis is a separate, independent switch inside useProctoring.ts, unaffected
+  // by this value.
   const needsSpeakingMic = testDetails?.test.hasSpeakingQuestion ?? false;
-  const microphoneRequired = (!!testDetails?.test.requireMicrophone && !TEMP_DISABLE_AUDIO_PROCTORING) || needsSpeakingMic;
+  const microphoneRequired = !!testDetails?.test.requireMicrophone || needsSpeakingMic;
   const deviceCheckNeeded = !!testDetails?.test.proctorEnabled || needsSpeakingMic;
 
   useEffect(() => {

@@ -9,8 +9,6 @@ import { acquireVerifiedCameraStream, type CameraDiagnostics } from '../../servi
 import SystemCheckCard, { type SystemCheckTile } from './SystemCheckCard';
 import talentstaQLogo from '../../assets/assessment-icons/icons/Talentstaq logo dark.svg';
 
-const TEMP_DISABLE_AUDIO_PROCTORING = true;
-
 interface TestDetails {
   test: {
     id: string;
@@ -31,10 +29,8 @@ interface TestDetails {
  * verification, and the Start button; splitting it out means a candidate
  * sees exactly what's being checked here and nothing else.
  *
- * Next: always /test/id-verification. Model warm-up no longer has its own
- * page here — it happens at /test/start (SebTestStart.tsx), directly before
- * the exam renders, so there's no navigation between "models confirmed
- * ready" and "candidate is in the exam."
+ * Next: /test/environment-setup (in-browser model warm-up) when this test
+ * requires a camera, else straight to /test/id-verification.
  */
 function handleSebExit() {
   const sebQuitUrl = localStorage.getItem('sebQuitUrl');
@@ -103,9 +99,12 @@ export default function SebSystemCheck() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Mirrors the test's own requireMicrophone setting (plus speaking questions, which
+  // always need mic access regardless). Only decides whether the mic gets requested/
+  // published here (audio ends up in the recording); audio-based VIOLATION analysis
+  // is a separate, independent switch inside useProctoring.ts, unaffected by this.
   const needsSpeakingMic = testDetails?.test.hasSpeakingQuestion ?? false;
-  const microphoneRequired =
-    (!!testDetails?.test.requireMicrophone && !TEMP_DISABLE_AUDIO_PROCTORING) || needsSpeakingMic;
+  const microphoneRequired = !!testDetails?.test.requireMicrophone || needsSpeakingMic;
   const deviceCheckNeeded = !!testDetails?.test.proctorEnabled || needsSpeakingMic;
 
   const runSystemCheck = async () => {
