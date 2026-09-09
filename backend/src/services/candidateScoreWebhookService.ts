@@ -16,8 +16,13 @@ type CandidateScoreWebhookPayload = {
 
 const DEFAULT_TIMEOUT_MS = 5000;
 
-function getWebhookUrl(): string {
-  return (process.env.CANDIDATE_SCORE_WEBHOOK_URL || '').trim();
+// CANDIDATE_SCORE_WEBHOOK_URL accepts one URL or a comma-separated list, so the
+// legacy single-tenant score webhook can fan out to multiple instances at once.
+function getWebhookUrls(): string[] {
+  return (process.env.CANDIDATE_SCORE_WEBHOOK_URL || '')
+    .split(',')
+    .map((url) => url.trim())
+    .filter((url) => url.length > 0);
 }
 
 function getTimeoutMs(): number {
@@ -25,12 +30,11 @@ function getTimeoutMs(): number {
   return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_TIMEOUT_MS;
 }
 
-export async function sendCandidateScoreWebhook(payload: CandidateScoreWebhookPayload): Promise<void> {
-  const webhookUrl = getWebhookUrl();
-  if (!webhookUrl) {
-    return;
-  }
-
+async function postCandidateScoreWebhook(
+  webhookUrl: string,
+  body: string,
+  payload: CandidateScoreWebhookPayload
+): Promise<void> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), getTimeoutMs());
 
@@ -40,24 +44,35 @@ export async function sendCandidateScoreWebhook(payload: CandidateScoreWebhookPa
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(payload),
+      body,
       signal: controller.signal,
     });
 
     if (!response.ok) {
       const responseText = await response.text().catch(() => '');
       console.error(
-        `Candidate score webhook failed with status ${response.status}: ${responseText || response.statusText}`
+        `Candidate score webhook to ${webhookUrl} failed with status ${response.status}: ${responseText || response.statusText}`
       );
       return;
     }
 
-    console.info(`Candidate score webhook sent for test ${payload.testid} (${payload.emailid})`);
+    console.info(`Candidate score webhook sent to ${webhookUrl} for test ${payload.testid} (${payload.emailid})`);
   } catch (error) {
-    console.error('Candidate score webhook error:', error);
+    console.error(`Candidate score webhook to ${webhookUrl} error:`, error);
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export async function sendCandidateScoreWebhook(payload: CandidateScoreWebhookPayload): Promise<void> {
+  const webhookUrls = getWebhookUrls();
+  if (webhookUrls.length === 0) {
+    return;
+  }
+
+  const body = JSON.stringify(payload);
+  // One slow/broken target must not hold up or fail delivery to the others.
+  await Promise.allSettled(webhookUrls.map((url) => postCandidateScoreWebhook(url, body, payload)));
 }
 
 interface WebhookDeliveryLogInput {
