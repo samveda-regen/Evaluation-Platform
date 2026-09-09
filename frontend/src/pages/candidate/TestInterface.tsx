@@ -102,7 +102,6 @@ export default function TestInterface() {
   const [codeOutput, setCodeOutput] = useState('');
   const [runningCode, setRunningCode] = useState(false);
   const [showConfirmSubmit, setShowConfirmSubmit] = useState(false);
-  const [showExitConfirm, setShowExitConfirm] = useState(false);
   const [showFullscreenPrompt, setShowFullscreenPrompt] = useState(false);
   const [showYellowWarning, setShowYellowWarning] = useState(false);
   const [yellowWarningMessage, setYellowWarningMessage] = useState('');
@@ -1123,19 +1122,25 @@ export default function TestInterface() {
 
       {/* -- Header -- */}
       <header className="flex items-center justify-between px-5 py-3 flex-shrink-0 relative z-10" style={{ background: '#0F172A' }}>
-        {/* Left: back + logo + test name + proctoring */}
+        {/* Left: end assessment + logo + test name + proctoring */}
         <div className="flex items-center gap-3">
+          {/* No way back once the exam has started — this replaces what used to be a
+              "Back" button here that navigated out of the exam via browser history. Ending
+              the attempt is only ever available through the submit-confirmation modal
+              (also reachable from BottomNav's Submit Test button on the last question), never
+              a silent, unconfirmed exit. */}
           <button
-            onClick={() => setShowExitConfirm(true)}
-            className="flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors"
-            style={{ color: '#94A3B8', background: '#1E293B' }}
-            onMouseEnter={e => (e.currentTarget.style.color = '#F1F5F9')}
-            onMouseLeave={e => (e.currentTarget.style.color = '#94A3B8')}
+            onClick={() => setShowConfirmSubmit(true)}
+            disabled={isTestFrozen}
+            className="flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ color: '#FCA5A5', background: '#1E293B' }}
+            onMouseEnter={e => { if (!isTestFrozen) e.currentTarget.style.color = '#FEF2F2'; }}
+            onMouseLeave={e => (e.currentTarget.style.color = '#FCA5A5')}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
-            Back
+            End Assessment
           </button>
           <img src={talentstaQLogoLight} alt="TalentstaQ" style={{ height: '28px', width: 'auto', flexShrink: 0 }} />
           <span className="text-white font-semibold text-sm">{testName}</span>
@@ -2015,38 +2020,6 @@ export default function TestInterface() {
         </div>
       )}
 
-      {/* -- Exit / Go back confirmation modal -- */}
-      {showExitConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl">
-            <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: 'var(--admin-accent-disabled)' }}>
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="var(--admin-accent-hover)" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-              </svg>
-            </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2 text-center">Exit Test?</h2>
-            <p className="text-sm text-gray-500 mb-6 text-center">
-              Your progress will be lost. Are you sure you want to go back?
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowExitConfirm(false)}
-                className="flex-1 py-3 rounded-xl font-semibold text-sm border text-gray-700 hover:bg-gray-50 transition-colors"
-                style={{ borderColor: 'var(--admin-border)' }}
-              >
-                Stay
-              </button>
-              <button
-                onClick={() => { setShowExitConfirm(false); navigate(-1); }}
-                className="flex-1 py-3 rounded-xl font-semibold text-sm text-white transition-colors"
-                style={{ background: 'var(--admin-accent)' }}
-              >
-                Exit Test
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
