@@ -663,14 +663,16 @@ export default function TestDetails() {
   const completionPct = analytics && analytics.totalAttempts > 0
     ? Math.round((analytics.completedAttempts / analytics.totalAttempts) * 100)
     : 0;
+  // Clamp displayed score percentages at 0 — negative marking can push a raw score
+  // below zero, and a negative "-1%" on the dashboard reads as a bug.
   const avgScore = analytics?.averageScore != null && test.totalMarks
-    ? Math.round((analytics.averageScore / test.totalMarks) * 100)
+    ? Math.max(0, Math.round((analytics.averageScore / test.totalMarks) * 100))
     : null;
   // Highest/median/lowest are stored as raw marks (out of totalMarks), not percentages —
   // convert to the same percentage scale as avgScore so the four sit consistently side by
   // side instead of mixing raw-marks and percentage numbers with no unit to tell them apart.
   const toScorePct = (raw: number | null | undefined) =>
-    raw != null && test.totalMarks ? Math.round((raw / test.totalMarks) * 1000) / 10 : null;
+    raw != null && test.totalMarks ? Math.max(0, Math.round((raw / test.totalMarks) * 1000) / 10) : null;
   const highestScorePct = toScorePct(analytics?.highestScore);
   const medianScorePct  = toScorePct(analytics?.medianScore);
   const lowestScorePct  = toScorePct(analytics?.lowestScore);

@@ -252,6 +252,8 @@ export default function PerformanceAnalytics() {
   };
 
   /* -- Derived display values -- */
+  // Negative marking can push a raw score below zero; never surface a negative % on the dashboard.
+  const pct0 = (n: number) => Math.max(0, Math.round(n));
   let kpiAttempts = '—', kpiAvgScore = '—', kpiPassRate = '—', kpiFourth = '—';
   let kpiFourthLabel = isTestMode ? 'Avg trust' : 'Avg time';
   let changeAttempts: string|undefined, changeAvgScore: string|undefined, changePassRate: string|undefined;
@@ -260,7 +262,7 @@ export default function PerformanceAnalytics() {
   if (!isTestMode && overview?.stats) {
     const s = overview.stats;
     kpiAttempts  = String(s.totalAttempts);
-    kpiAvgScore  = `${s.avgScore}%`;
+    kpiAvgScore  = `${pct0(s.avgScore)}%`;
     kpiPassRate  = `${s.passRate}%`;
     kpiFourth    = fmtTime(s.avgTimeMinutes);
     changeAttempts  = fmtChange(s.changes.attempts);  changeUpAttempts  = (s.changes.attempts  ?? 0) >= 0;
@@ -269,7 +271,7 @@ export default function PerformanceAnalytics() {
   } else if (isTestMode && testAnalytics) {
     const ta = testAnalytics;
     kpiAttempts = String(ta.totalAttempts);
-    kpiAvgScore = `${Math.round((ta.averageScore / testTotalMarks) * 100)}%`;
+    kpiAvgScore = `${pct0((ta.averageScore / testTotalMarks) * 100)}%`;
     kpiPassRate = `${Math.round(ta.passRate)}%`;
     kpiFourth   = ta.averageTrustScore != null ? `${Math.round(ta.averageTrustScore)}%` : '—';
   }
@@ -279,15 +281,15 @@ export default function PerformanceAnalytics() {
   if (!isTestMode && overview) {
     trendBars = overview.scoreTrend.map(b => ({
       label: b.label,
-      value: b.avgScore,
-      sublabel: b.count > 0 ? `${b.avgScore}%` : '—',
+      value: pct0(b.avgScore),
+      sublabel: b.count > 0 ? `${pct0(b.avgScore)}%` : '—',
     }));
   } else if (isTestMode) {
     const sorted = [...comparison].sort((a, b) => b.percentage - a.percentage).slice(0, 6);
     trendBars = sorted.map((c, i) => ({
       label: `W${i+1}`,
-      value: Math.round(c.percentage),
-      sublabel: `${Math.round(c.percentage)}%`,
+      value: pct0(c.percentage),
+      sublabel: `${pct0(c.percentage)}%`,
     }));
   }
   while (trendBars.length < 6) trendBars.push({ label: `W${trendBars.length+1}`, value: 0, sublabel: '—' });
@@ -314,8 +316,8 @@ export default function PerformanceAnalytics() {
   interface TopEntry { id:string; name:string; pct:number; trust:number; attemptId?:string }
   const topCandidates: TopEntry[] = isTestMode
     ? [...comparison].sort((a,b)=>b.percentage-a.percentage).slice(0,4)
-        .map(c=>({ id:c.candidateId, name:c.candidateName||c.candidateEmail, pct:Math.round(c.percentage), trust:Math.round(c.trustScore) }))
-    : (overview?.topCandidates||[]).map(c=>({ id:c.candidateId, name:c.candidateName, pct:c.score, trust:c.trustScore, attemptId:c.attemptId }));
+        .map(c=>({ id:c.candidateId, name:c.candidateName||c.candidateEmail, pct:pct0(c.percentage), trust:Math.round(c.trustScore) }))
+    : (overview?.topCandidates||[]).map(c=>({ id:c.candidateId, name:c.candidateName, pct:pct0(c.score), trust:c.trustScore, attemptId:c.attemptId }));
 
   if (loading) return (
     <div style={{ display:'flex', justifyContent:'center', padding:'80px 0' }}>
@@ -382,10 +384,10 @@ export default function PerformanceAnalytics() {
           <p style={{ fontSize:'16px', fontWeight:600, color:'var(--admin-text)', margin:'0 0 20px' }}>Score Statistics</p>
           <div style={{ display:'flex', justifyContent:'space-around', textAlign:'center' }}>
             {[
-              { label:'Highest', value: testAnalytics.highestScore != null ? `${Math.round((testAnalytics.highestScore/testTotalMarks)*100)}%` : '—', color:'var(--admin-accent)' },
-              { label:'Median',  value: testAnalytics.medianScore  != null ? `${Math.round((testAnalytics.medianScore/testTotalMarks)*100)}%`  : '—', color:'var(--admin-text)' },
-              { label:'Average', value: testAnalytics.averageScore != null ? `${Math.round((testAnalytics.averageScore/testTotalMarks)*100)}%` : '—', color:'var(--admin-accent)' },
-              { label:'Lowest',  value: testAnalytics.lowestScore  != null ? `${Math.round((testAnalytics.lowestScore/testTotalMarks)*100)}%`  : '—', color:'#EF4444' },
+              { label:'Highest', value: testAnalytics.highestScore != null ? `${pct0((testAnalytics.highestScore/testTotalMarks)*100)}%` : '—', color:'var(--admin-accent)' },
+              { label:'Median',  value: testAnalytics.medianScore  != null ? `${pct0((testAnalytics.medianScore/testTotalMarks)*100)}%`  : '—', color:'var(--admin-text)' },
+              { label:'Average', value: testAnalytics.averageScore != null ? `${pct0((testAnalytics.averageScore/testTotalMarks)*100)}%` : '—', color:'var(--admin-accent)' },
+              { label:'Lowest',  value: testAnalytics.lowestScore  != null ? `${pct0((testAnalytics.lowestScore/testTotalMarks)*100)}%`  : '—', color:'#EF4444' },
               { label:'Flagged', value: String(testAnalytics.flaggedAttempts ?? 0), color:'#F97316' },
             ].map(stat => (
               <div key={stat.label}>

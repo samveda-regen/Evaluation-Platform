@@ -583,15 +583,21 @@ export async function generateTestAnalytics(testId: string): Promise<void> {
     const completedCount = attempts.length;
     const passingMarks = attempts[0]?.test?.passingMarks || 0;
     const trustScoredAttempts = attempts.filter(a => a.analytics?.trustScore != null);
+    const rawAverage = scores.reduce((a, b) => a + b, 0) / completedCount;
+    const rawMedian = sortedScores.length % 2 === 0
+      ? (sortedScores[(sortedScores.length / 2) - 1] + sortedScores[sortedScores.length / 2]) / 2
+      : sortedScores[Math.floor(sortedScores.length / 2)];
     const analytics = {
       totalAttempts: totalAllAttempts,   // all started (any status)
       completedAttempts: completedCount, // submitted/auto_submitted with a score
-      averageScore: scores.reduce((a, b) => a + b, 0) / completedCount,
-      medianScore: sortedScores.length % 2 === 0
-        ? (sortedScores[(sortedScores.length / 2) - 1] + sortedScores[sortedScores.length / 2]) / 2
-        : sortedScores[Math.floor(sortedScores.length / 2)],
-      highestScore: Math.max(...scores),
-      lowestScore: Math.min(...scores),
+      // Negative marking can drive a raw attempt score below zero. Clamp the reported
+      // aggregates at 0 (same idea as the scoreDistribution clamp below) so the admin
+      // dashboards never show a negative percentage — the raw per-attempt score is
+      // left untouched for grading / re-evaluation / attempt detail.
+      averageScore: Math.max(0, rawAverage),
+      medianScore: Math.max(0, rawMedian),
+      highestScore: Math.max(0, ...scores),
+      lowestScore: Math.max(0, Math.min(...scores)),
       passRate: (attempts.filter(a => (a.score || 0) >= passingMarks).length / completedCount) * 100,
       flaggedAttempts: attempts.filter(a => a.isFlagged).length,
       averageTrustScore: trustScoredAttempts.length > 0
