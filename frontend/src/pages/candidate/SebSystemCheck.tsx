@@ -7,6 +7,7 @@ import { clearCachedStreams, setCachedStreams } from '../../services/devicePermi
 import { requestScreenShare, getScreenShareErrorMessage } from '../../services/proctorService';
 import { acquireVerifiedCameraStream, type CameraDiagnostics } from '../../services/cameraDeviceService';
 import SystemCheckCard, { type SystemCheckTile } from './SystemCheckCard';
+import MicCheckWaveform from '../../components/MicCheckWaveform';
 import talentstaQLogo from '../../assets/assessment-icons/icons/Talentstaq logo dark.svg';
 
 interface TestDetails {
@@ -49,6 +50,7 @@ export default function SebSystemCheck() {
   const [cameraFrameIssue, setCameraFrameIssue] = useState(false);
   const [lastCameraDiagnostics, setLastCameraDiagnostics] = useState<CameraDiagnostics | null>(null);
   const [cameraPreviewStream, setCameraPreviewStream] = useState<MediaStream | null>(null);
+  const [micCheckStream, setMicCheckStream] = useState<MediaStream | null>(null);
   const [connectionLatency, setConnectionLatency] = useState<number | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'ok' | 'failed'>('checking');
   const cameraPreviewRef = useRef<HTMLVideoElement | null>(null);
@@ -111,6 +113,7 @@ export default function SebSystemCheck() {
     if (!testDetails) return;
     setCheckingDevices(true);
     setHasRunOnce(true);
+    setMicCheckStream(null);
     const required = testDetails.test;
     let cameraOk = !required.requireCamera;
     let microphoneOk = !microphoneRequired;
@@ -147,6 +150,7 @@ export default function SebSystemCheck() {
       try {
         micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
         microphoneOk = micStream.getAudioTracks().length > 0;
+        setMicCheckStream(micStream); // feed the live-level waveform in the Microphone tile
       } catch {
         microphoneOk = false;
       }
@@ -234,6 +238,7 @@ export default function SebSystemCheck() {
     failLabel: 'Not detected',
     okDescription: 'Your microphone is working properly.',
     failDescription: 'Could not detect your microphone. Please allow microphone permissions and try again.',
+    checkingPreview: <MicCheckWaveform stream={micCheckStream} />,
   });
 
   tiles.push({

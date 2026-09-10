@@ -13,6 +13,8 @@ export interface SystemCheckTile {
   okDescription: string;
   failDescription: string;
   preview?: ReactNode;
+  /** Optional content shown in place of the description line while status === 'checking'. */
+  checkingPreview?: ReactNode;
 }
 
 interface CameraDiagnosticsSummary {
@@ -229,7 +231,7 @@ function OverallStatusBadge({
   );
 }
 
-function CheckStatusCard({ icon, label, status, okLabel, failLabel, okDescription, failDescription, preview }: SystemCheckTile) {
+function CheckStatusCard({ icon, label, status, okLabel, failLabel, okDescription, failDescription, preview, checkingPreview }: SystemCheckTile) {
   const isOk = status === 'ok' || status === 'not-required';
   const isFailed = status === 'failed';
   const isChecking = status === 'checking';
@@ -306,9 +308,18 @@ function CheckStatusCard({ icon, label, status, okLabel, failLabel, okDescriptio
         </span>
       </div>
 
-      <p className="text-xs leading-snug" style={{ color: isFailed ? '#B91C1C' : 'var(--admin-text-subtle)' }}>
-        {description}
-      </p>
+      {isChecking && checkingPreview ? (
+        <div>
+          {checkingPreview}
+          <p className="text-[10px] leading-snug mt-1 text-center" style={{ color: 'var(--admin-text-subtle)' }}>
+            Speak in a normal voice…
+          </p>
+        </div>
+      ) : (
+        <p className="text-xs leading-snug" style={{ color: isFailed ? '#B91C1C' : 'var(--admin-text-subtle)' }}>
+          {description}
+        </p>
+      )}
     </div>
   );
 }
