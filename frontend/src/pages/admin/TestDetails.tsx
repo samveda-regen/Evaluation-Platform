@@ -406,6 +406,7 @@ export default function TestDetails() {
     formData.append('file', fileToSend);
     if (customMessage.trim()) formData.append('customMessage', customMessage.trim());
     setSendingInvitations(true); setInvitationSummary(null);
+    let succeeded = false;
     try {
       const { data } = await adminApi.sendInvitations(testId, formData);
       setInvitationSummary(data);
@@ -413,10 +414,13 @@ export default function TestDetails() {
       toast.success(data.failed > 0 && data.sent > 0
         ? `Partial: ${data.sent} sent, ${data.failed} failed`
         : 'Invitation batch completed');
+      succeeded = true;
     } catch (error: unknown) {
       const e = error as { response?: { data?: { error?: string } } };
       toast.error(e.response?.data?.error || 'Failed to send invitations');
     } finally { setSendingInvitations(false); }
+    // Auto-close the invite panel once the batch was sent; the toast reports the result.
+    if (succeeded) closeInviteModal();
   };
 
   const loadAvailableQuestions = async (type: 'mcq' | 'coding' | 'behavioral') => {
