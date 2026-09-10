@@ -1710,6 +1710,7 @@ export default function TestInterface() {
                     )}
 
                     <AudioRecorder
+                      key={currentQuestion.questionId}
                       maxDurationSec={currentQuestion.recordingTimeLimit || 120}
                       onSubmitRecording={handleSpeakingRecordingComplete}
                       disabled={isSubmitted || timeUp}
