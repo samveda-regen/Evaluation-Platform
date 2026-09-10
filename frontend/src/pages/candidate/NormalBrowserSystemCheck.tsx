@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 import { Mic, Video, MonitorUp, Wifi, ChevronLeft } from 'lucide-react';
@@ -8,6 +8,7 @@ import { requestScreenShare, getScreenShareErrorMessage } from '../../services/p
 import { acquireVerifiedCameraStream, type CameraDiagnostics } from '../../services/cameraDeviceService';
 import SystemCheckCard, { type SystemCheckTile } from './SystemCheckCard';
 import MicCheckWaveform from '../../components/MicCheckWaveform';
+import SystemCheckCameraPanel from '../../components/SystemCheckCameraPanel';
 import talentstaQLogo from '../../assets/assessment-icons/icons/Talentstaq logo dark.svg';
 
 interface TestDetails {
@@ -45,25 +46,16 @@ export default function NormalBrowserSystemCheck() {
   const [micCheckStream, setMicCheckStream] = useState<MediaStream | null>(null);
   const [connectionLatency, setConnectionLatency] = useState<number | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<'checking' | 'ok' | 'failed'>('checking');
-  const cameraPreviewRef = useRef<HTMLVideoElement | null>(null);
 
-  const setCameraPreviewVideo = useCallback(
-    (el: HTMLVideoElement | null) => {
-      cameraPreviewRef.current = el;
-      if (el && cameraPreviewStream) {
-        el.srcObject = cameraPreviewStream;
-        el.play().catch(() => {});
-      }
-    },
-    [cameraPreviewStream],
-  );
-
-  useEffect(() => {
-    if (cameraPreviewRef.current && cameraPreviewStream) {
-      cameraPreviewRef.current.srcObject = cameraPreviewStream;
-      cameraPreviewRef.current.play().catch(() => {});
-    }
-  }, [cameraPreviewStream]);
+  // Candidate picked a different camera in the Webcam tile: stop the old preview
+  // stream and swap in the new one, keeping the shared cache in sync.
+  const handleCameraDeviceChange = useCallback((next: MediaStream) => {
+    setCameraPreviewStream((prev) => {
+      if (prev && prev !== next) prev.getTracks().forEach((t) => t.stop());
+      return next;
+    });
+    setCachedStreams({ cameraStream: next });
+  }, []);
 
   useEffect(() => {
     clearCachedStreams(true);
@@ -127,6 +119,7 @@ export default function NormalBrowserSystemCheck() {
         .catch(() => {});
       if (result.stream) {
         cameraStream = result.stream;
+        setCameraPreviewStream(cameraStream); // show the live preview as soon as the camera opens
         cameraOk = result.framesVerified;
         frameIssue = !result.framesVerified;
         if (!result.framesVerified) {
@@ -216,8 +209,8 @@ export default function NormalBrowserSystemCheck() {
     failDescription: cameraFrameIssue
       ? 'Camera detected but not producing a picture. Try a different camera or restart your browser.'
       : 'Could not access your camera. Please allow camera permissions and try again.',
-    preview: cameraPreviewStream ? (
-      <video ref={setCameraPreviewVideo} autoPlay muted playsInline className="w-full h-full object-cover" style={{ transform: 'scaleX(-1)' }} />
+    body: cameraPreviewStream ? (
+      <SystemCheckCameraPanel stream={cameraPreviewStream} onDeviceChange={handleCameraDeviceChange} />
     ) : undefined,
   });
 
@@ -230,7 +223,14 @@ export default function NormalBrowserSystemCheck() {
     failLabel: 'Not detected',
     okDescription: 'Your microphone is working properly.',
     failDescription: 'Could not detect your microphone. Please allow microphone permissions and try again.',
-    checkingPreview: <MicCheckWaveform stream={micCheckStream} />,
+    body: micCheckStream ? (
+      <div className="mt-1">
+        <MicCheckWaveform stream={micCheckStream} />
+        <p className="text-[10px] leading-snug mt-1 text-center" style={{ color: 'var(--admin-text-subtle)' }}>
+          Speak in a normal voice…
+        </p>
+      </div>
+    ) : undefined,
   });
 
   tiles.push({

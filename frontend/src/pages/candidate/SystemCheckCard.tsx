@@ -12,9 +12,13 @@ export interface SystemCheckTile {
   failLabel: string;
   okDescription: string;
   failDescription: string;
-  preview?: ReactNode;
-  /** Optional content shown in place of the description line while status === 'checking'. */
-  checkingPreview?: ReactNode;
+  /**
+   * Optional rich content rendered full-width in the card body (e.g. the live
+   * webcam preview or mic-level waveform). A tile with a `body` grows to fit it
+   * and stays top-aligned; tiles without one vertically-centre their content so
+   * they stay balanced next to the taller media tiles.
+   */
+  body?: ReactNode;
 }
 
 interface CameraDiagnosticsSummary {
@@ -231,7 +235,7 @@ function OverallStatusBadge({
   );
 }
 
-function CheckStatusCard({ icon, label, status, okLabel, failLabel, okDescription, failDescription, preview, checkingPreview }: SystemCheckTile) {
+function CheckStatusCard({ icon, label, status, okLabel, failLabel, okDescription, failDescription, body }: SystemCheckTile) {
   const isOk = status === 'ok' || status === 'not-required';
   const isFailed = status === 'failed';
   const isChecking = status === 'checking';
@@ -253,73 +257,76 @@ function CheckStatusCard({ icon, label, status, okLabel, failLabel, okDescriptio
   const cardBg = isOk ? '#F0FDF4' : isFailed ? '#FEF2F2' : '#FFFFFF';
   const badgeBg = isOk ? '#DCFCE7' : isFailed ? '#FEE2E2' : isChecking ? '#DBEAFE' : '#F1F5F9';
   const badgeFg = isOk ? '#15803D' : isFailed ? '#DC2626' : isChecking ? '#1D4ED8' : '#64748B';
-  const iconBg = preview ? '#18181B' : isOk ? '#DCFCE7' : isFailed ? '#FEE2E2' : isChecking ? '#DBEAFE' : 'var(--admin-bg)';
-  const iconFg = preview ? '#FFFFFF' : isOk ? '#16A34A' : isFailed ? '#DC2626' : isChecking ? '#2563EB' : 'var(--admin-accent)';
+  const iconBg = isOk ? '#DCFCE7' : isFailed ? '#FEE2E2' : isChecking ? '#DBEAFE' : 'var(--admin-bg)';
+  const iconFg = isOk ? '#16A34A' : isFailed ? '#DC2626' : isChecking ? '#2563EB' : 'var(--admin-accent)';
 
+  // A "Checking…"/"Pending" line under a live media body is just noise (the badge
+  // already says it) — only show the description for a settled state.
+  const showDescription = !(body && (isChecking || status === 'idle'));
+
+  // Every card vertically-centres its content within the (grid-stretched) row
+  // height, so the short tiles stay balanced next to the tall webcam/mic ones.
   return (
     <div
-      className="relative rounded-2xl border p-4 flex flex-col gap-2 transition-colors duration-300 hover:shadow-md"
+      className="relative rounded-2xl border p-4 flex flex-col h-full justify-center transition-colors duration-300 hover:shadow-md"
       style={{ borderColor, background: cardBg }}
     >
-      <div className="flex items-start justify-between">
-        <div
-          className="relative w-12 h-12 rounded-full flex items-center justify-center overflow-hidden flex-shrink-0"
-          style={{ background: iconBg, color: iconFg }}
-        >
-          {preview || icon}
-          {isChecking && (
+      <div className="flex flex-col gap-2">
+        <div className="flex items-start justify-between">
+          <div
+            className="relative w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0"
+            style={{ background: iconBg, color: iconFg }}
+          >
+            {icon}
+            {isChecking && (
+              <span
+                className="absolute inset-0 rounded-full border-2 animate-spin"
+                style={{ borderColor: 'transparent', borderTopColor: '#2563EB' }}
+                aria-hidden="true"
+              />
+            )}
+          </div>
+          {isOk && (
             <span
-              className="absolute inset-0 rounded-full border-2 animate-spin"
-              style={{ borderColor: 'transparent', borderTopColor: '#2563EB' }}
+              className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: '#22C55E' }}
               aria-hidden="true"
-            />
+            >
+              <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
+            </span>
+          )}
+          {isFailed && (
+            <span
+              className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ background: '#EF4444' }}
+              aria-hidden="true"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
+            </span>
           )}
         </div>
-        {isOk && (
-          <span
-            className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
-            style={{ background: '#22C55E' }}
-            aria-hidden="true"
-          >
-            <Check className="w-3.5 h-3.5 text-white" strokeWidth={3} />
-          </span>
-        )}
-        {isFailed && (
-          <span
-            className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
-            style={{ background: '#EF4444' }}
-            aria-hidden="true"
-          >
-            <AlertTriangle className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
-          </span>
-        )}
-      </div>
 
-      <div>
-        <p className="text-sm font-semibold" style={{ color: 'var(--admin-text)' }}>
-          {label}
-        </p>
-        <span
-          className="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-xs font-medium"
-          style={{ background: badgeBg, color: badgeFg }}
-        >
-          <span className="sr-only">Status: </span>
-          {badgeText}
-        </span>
-      </div>
-
-      {isChecking && checkingPreview ? (
         <div>
-          {checkingPreview}
-          <p className="text-[10px] leading-snug mt-1 text-center" style={{ color: 'var(--admin-text-subtle)' }}>
-            Speak in a normal voice…
+          <p className="text-sm font-semibold" style={{ color: 'var(--admin-text)' }}>
+            {label}
           </p>
+          <span
+            className="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-xs font-medium"
+            style={{ background: badgeBg, color: badgeFg }}
+          >
+            <span className="sr-only">Status: </span>
+            {badgeText}
+          </span>
         </div>
-      ) : (
-        <p className="text-xs leading-snug" style={{ color: isFailed ? '#B91C1C' : 'var(--admin-text-subtle)' }}>
-          {description}
-        </p>
-      )}
+
+        {body}
+
+        {showDescription && (
+          <p className="text-xs leading-snug" style={{ color: isFailed ? '#B91C1C' : 'var(--admin-text-subtle)' }}>
+            {description}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
