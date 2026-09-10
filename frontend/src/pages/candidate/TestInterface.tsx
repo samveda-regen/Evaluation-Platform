@@ -1160,26 +1160,8 @@ export default function TestInterface() {
 
       {/* -- Header -- */}
       <header className="flex items-center justify-between px-5 py-3 flex-shrink-0 relative z-10" style={{ background: '#0F172A' }}>
-        {/* Left: end assessment + logo + test name + proctoring */}
+        {/* Left: logo + test name + proctoring */}
         <div className="flex items-center gap-3">
-          {/* No way back once the exam has started — this replaces what used to be a
-              "Back" button here that navigated out of the exam via browser history. Ending
-              the attempt is only ever available through the submit-confirmation modal
-              (also reachable from BottomNav's Submit Test button on the last question), never
-              a silent, unconfirmed exit. */}
-          <button
-            onClick={() => setShowConfirmSubmit(true)}
-            disabled={isTestFrozen}
-            className="flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ color: '#FCA5A5', background: '#1E293B' }}
-            onMouseEnter={e => { if (!isTestFrozen) e.currentTarget.style.color = '#FEF2F2'; }}
-            onMouseLeave={e => (e.currentTarget.style.color = '#FCA5A5')}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-            End Assessment
-          </button>
           <img src={talentstaQLogoLight} alt="TalentstaQ" style={{ height: '28px', width: 'auto', flexShrink: 0 }} />
           <span className="text-white font-semibold text-sm">{testName}</span>
           {proctorEnabled && (
@@ -1190,8 +1172,20 @@ export default function TestInterface() {
           )}
         </div>
 
-        {/* Right: icons + timer */}
+        {/* Right: end assessment + icons + timer */}
         <div className="flex items-center gap-3">
+          {/* End the assessment — only ever via the submit-confirmation modal, never a
+              silent, unconfirmed exit (there is no "back" out of a started exam). */}
+          <button
+            onClick={() => setShowConfirmSubmit(true)}
+            disabled={isTestFrozen}
+            className="text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{ color: '#FCA5A5', background: '#1E293B' }}
+            onMouseEnter={e => { if (!isTestFrozen) e.currentTarget.style.color = '#FEF2F2'; }}
+            onMouseLeave={e => (e.currentTarget.style.color = '#FCA5A5')}
+          >
+            End Assessment
+          </button>
           {/* Network strength icon */}
           {(() => {
             const qColor = { excellent: '#22C55E', good: '#F59E0B', fair: '#F97316', poor: '#EF4444' }[networkQuality];
@@ -1246,9 +1240,12 @@ export default function TestInterface() {
               </svg>
             </button>
           )}
-          {/* Timer */}
+          {/* Timer — blinks once under 5 minutes remain */}
           {showTimer && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl" style={{ background: timeRemaining < 300000 ? 'rgba(239,68,68,0.18)' : 'rgba(245,158,11,0.18)', border: `1px solid ${timeRemaining < 300000 ? 'rgba(239,68,68,0.55)' : 'rgba(245,158,11,0.55)'}` }}>
+            <div
+              className={`flex items-center gap-2 px-3 py-2 rounded-xl${timeRemaining > 0 && timeRemaining < 300000 ? ' animate-timer-blink' : ''}`}
+              style={{ background: timeRemaining < 300000 ? 'rgba(239,68,68,0.18)' : 'rgba(245,158,11,0.18)', border: `1px solid ${timeRemaining < 300000 ? 'rgba(239,68,68,0.55)' : 'rgba(245,158,11,0.55)'}` }}
+            >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke={timeRemaining < 300000 ? '#EF4444' : '#F59E0B'} strokeWidth={1.8}>
                 <circle cx="12" cy="12" r="9" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 7v5l3 3" />

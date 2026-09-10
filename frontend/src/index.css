@@ -408,9 +408,19 @@ body {
   40%  { transform: scale(1.18); }
   100% { transform: scale(1); }
 }
+/* Exam timer urgency blink — used on the countdown once it drops below 5 minutes. */
+@keyframes timer-blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
 
 .animate-pulse-dot  { animation: pulse-dot  1.4s ease-in-out infinite; }
 .animate-fade-in-up { animation: fade-in-up 0.22s ease-out both; }
+.animate-timer-blink { animation: timer-blink 1s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-timer-blink { animation: none; }
+}
 
 /* Admin-wide hover tint */
 :root { --admin-hover: #f3f4f8; }
