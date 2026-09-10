@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { ShieldCheck, Eye, Users, Info, Play } from 'lucide-react';
+import InstructionSlideshow from '../../components/InstructionSlideshow';
 
 export type InstructionTone = 'orange' | 'blue' | 'amber';
 
@@ -169,6 +170,8 @@ export default function TestInstructionsCard({
                 description="The same assessment rules apply to all candidates."
               />
             </div>
+
+            <InstructionSlideshow />
 
             <div
               className="mt-auto pt-5"
