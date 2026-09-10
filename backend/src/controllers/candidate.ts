@@ -623,6 +623,30 @@ export async function getTestDetails(req: AuthenticatedRequest, res: Response): 
       where: { testId, questionType: 'communication', communicationQuestion: { subType: 'SPEAKING' } }
     })) > 0;
 
+    // Per-type question counts for the "Question mix" on the pre-exam instructions
+    // screen (previously never sent, so every category rendered "0 questions").
+    // Prefer the attempt's own assigned questions when they exist (candidate
+    // resuming an already-started exam), otherwise fall back to the full test —
+    // mirroring what startTest() actually serves.
+    const assignedQuestionRows = await prisma.testAttemptQuestion.findMany({
+      where: { attemptId },
+      select: { testQuestion: { select: { questionType: true } } },
+    });
+    const questionTypes = assignedQuestionRows.length > 0
+      ? assignedQuestionRows.map((row) => row.testQuestion.questionType)
+      : (
+          await prisma.testQuestion.findMany({
+            where: { testId },
+            select: { questionType: true },
+          })
+        ).map((row) => row.questionType);
+    const questionCounts = {
+      mcq: questionTypes.filter((type) => type === 'mcq').length,
+      coding: questionTypes.filter((type) => type === 'coding').length,
+      behavioral: questionTypes.filter((type) => type === 'behavioral').length,
+      communication: questionTypes.filter((type) => type === 'communication').length,
+    };
+
     // Derive device requirements from proctoringSettings JSON when available.
     // This ensures the candidate "Before you begin" page always reflects what
     // the admin actually configured in the AI Proctoring tab, even if the
@@ -656,6 +680,7 @@ export async function getTestDetails(req: AuthenticatedRequest, res: Response): 
         requireMicrophone,
         requireScreenShare,
         hasSpeakingQuestion,
+        questionCounts,
         customAIViolations: filterViolationsForAssessmentMode(
           parseStoredCustomAIViolationEvents(test.customAIViolations),
           test.assessmentMode,

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { ChevronLeft, Clock, Eye, Lock, AlertTriangle, ClipboardCheck, Code2, MessageSquare } from 'lucide-react';
+import { ChevronLeft, Clock, Eye, Lock, AlertTriangle, ClipboardCheck, Code2, MessageSquare, Languages } from 'lucide-react';
 import { candidateApi } from '../../services/api';
 import { useTestStore } from '../../context/testStore';
 import { getCachedStreams } from '../../services/devicePermissionService';
@@ -28,7 +28,7 @@ interface TestDetails {
     assessmentMode: 'SEB' | 'NORMAL_BROWSER';
     hasSpeakingQuestion: boolean;
     customAIViolations?: string[];
-    questionCounts?: { mcq?: number; coding?: number; behavioral?: number };
+    questionCounts?: { mcq?: number; coding?: number; behavioral?: number; communication?: number };
   };
   attempt: {
     id: string;
@@ -219,7 +219,8 @@ export default function TestInstructions() {
   const totalQuestions =
     (test.questionCounts?.mcq ?? 0) +
     (test.questionCounts?.coding ?? 0) +
-    (test.questionCounts?.behavioral ?? 0);
+    (test.questionCounts?.behavioral ?? 0) +
+    (test.questionCounts?.communication ?? 0);
   const identityVerified = !verificationRequired || verificationComplete;
 
   const canStart = accepted && !starting && (!verificationRequired || verificationComplete);
@@ -259,7 +260,8 @@ export default function TestInstructions() {
     { key: 'mcq', icon: <ClipboardCheck className="w-5 h-5" aria-hidden="true" />, label: 'Multiple choice', count: test.questionCounts?.mcq },
     { key: 'coding', icon: <Code2 className="w-5 h-5" aria-hidden="true" />, label: 'Coding', count: test.questionCounts?.coding },
     { key: 'behavioral', icon: <MessageSquare className="w-5 h-5" aria-hidden="true" />, label: 'Behavioral', count: test.questionCounts?.behavioral },
-  ];
+    { key: 'communication', icon: <Languages className="w-5 h-5" aria-hidden="true" />, label: 'Communication', count: test.questionCounts?.communication },
+  ].filter((entry) => (entry.count ?? 0) > 0);
 
   return (
     <div className="min-h-screen" style={{ background: '#F3F6FB' }}>

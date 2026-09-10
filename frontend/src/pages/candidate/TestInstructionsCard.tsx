@@ -188,6 +188,7 @@ export default function TestInstructionsCard({
       </div>
 
       {/* Question mix */}
+      {questionMix.length > 0 && (
       <div
         className="bg-white rounded-3xl shadow-[0_8px_40px_-12px_rgba(15,23,42,0.12)] mt-6 p-6 sm:p-8"
       >
@@ -213,6 +214,7 @@ export default function TestInstructionsCard({
           ))}
         </div>
       </div>
+      )}
     </div>
   );
 }

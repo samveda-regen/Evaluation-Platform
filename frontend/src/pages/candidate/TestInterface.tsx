@@ -861,6 +861,34 @@ export default function TestInterface() {
   const communicationText = currentQuestion.type === 'communication' ? (communicationAnswers[currentQuestion.questionId] || '') : '';
   const wordCount = getWordCount(currentQuestion.type === 'communication' ? communicationText : behavioralText);
 
+  // Group the palette by question category ("section") purely for readability.
+  // This is a display grouping over the existing flat `questions` array — question
+  // order, numbering, Next/Prev navigation and all scoring stay exactly as before;
+  // every palette button still points at its real flat index.
+  const paletteSectionLabel = (q: { type: string; subType?: string }): string => {
+    if (q.type === 'mcq') return 'Multiple choice';
+    if (q.type === 'coding') return 'Coding';
+    if (q.type === 'behavioral') return 'Behavioral';
+    if (q.type === 'communication') {
+      if (q.subType === 'SPEAKING') return 'Speaking';
+      if (q.subType === 'WRITTEN') return 'Writing';
+      if (q.subType === 'LISTENING') return 'Listening';
+      if (q.subType === 'READING') return 'Reading';
+      return 'Communication';
+    }
+    return 'Questions';
+  };
+  const paletteSections: Array<{ label: string; indices: number[] }> = (() => {
+    const order: string[] = [];
+    const byLabel = new Map<string, number[]>();
+    questions.forEach((q, idx) => {
+      const label = paletteSectionLabel(q);
+      if (!byLabel.has(label)) { byLabel.set(label, []); order.push(label); }
+      byLabel.get(label)!.push(idx);
+    });
+    return order.map((label) => ({ label, indices: byLabel.get(label)! }));
+  })();
+
   // -- Question Palette --------------------------------------------------
   const Palette = () => (
     <aside className="w-52 border-l bg-white flex flex-col overflow-hidden" style={{ borderColor: 'var(--admin-border)' }}>
@@ -878,38 +906,48 @@ export default function TestInterface() {
         </div>
       </div>
 
-      {/* Number grid */}
-      <div className="flex-1 overflow-y-auto px-4 pb-4">
-        <div className="grid grid-cols-5 gap-1.5">
-          {questions.map((_, idx) => {
-            const isCurrent = idx === currentQuestionIndex;
-            const answered = isAnswered(idx);
-            const marked = markedForReview.has(idx);
+      {/* Number grid, grouped by question section */}
+      <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-4">
+        {paletteSections.map((section) => (
+          <div key={section.label}>
+            {paletteSections.length > 1 && (
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{section.label}</span>
+                <span className="text-[11px] text-gray-400">{section.indices.length}</span>
+              </div>
+            )}
+            <div className="grid grid-cols-5 gap-1.5">
+              {section.indices.map((idx) => {
+                const isCurrent = idx === currentQuestionIndex;
+                const answered = isAnswered(idx);
+                const marked = markedForReview.has(idx);
 
-            let bg = '#FFFFFF';
-            let border = '#E0E0E0';
-            let textColor = '#9CA3AF';
+                let bg = '#FFFFFF';
+                let border = '#E0E0E0';
+                let textColor = '#9CA3AF';
 
-            if (isCurrent) { bg = '#C62828'; border = '#C62828'; textColor = '#FFFFFF'; }
-            else if (marked) { bg = '#6A1B9A'; border = '#6A1B9A'; textColor = '#FFFFFF'; }
-            else if (answered) { bg = '#2E7D32'; border = '#2E7D32'; textColor = '#FFFFFF'; }
+                if (isCurrent) { bg = '#C62828'; border = '#C62828'; textColor = '#FFFFFF'; }
+                else if (marked) { bg = '#6A1B9A'; border = '#6A1B9A'; textColor = '#FFFFFF'; }
+                else if (answered) { bg = '#2E7D32'; border = '#2E7D32'; textColor = '#FFFFFF'; }
 
-            return (
-              <button
-                key={idx}
-                onClick={() => {
-                  if (isTestFrozen) return;
-                  saveCurrentAnswer();
-                  setCurrentQuestion(idx);
-                }}
-                className="aspect-square rounded-lg text-xs font-semibold transition-colors flex items-center justify-center outline-none focus:outline-none focus-visible:outline-none"
-                style={{ background: bg, border: `1.5px solid ${border}`, color: textColor, outline: 'none', boxShadow: 'none' }}
-              >
-                {idx + 1}
-              </button>
-            );
-          })}
-        </div>
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      if (isTestFrozen) return;
+                      saveCurrentAnswer();
+                      setCurrentQuestion(idx);
+                    }}
+                    className="aspect-square rounded-lg text-xs font-semibold transition-colors flex items-center justify-center outline-none focus:outline-none focus-visible:outline-none"
+                    style={{ background: bg, border: `1.5px solid ${border}`, color: textColor, outline: 'none', boxShadow: 'none' }}
+                  >
+                    {idx + 1}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Legend */}
