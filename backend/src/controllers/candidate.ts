@@ -899,16 +899,37 @@ export async function startTest(req: AuthenticatedRequest, res: Response): Promi
       : [];
 
     if (selectedTestQuestions.length === 0) {
-      const baseQuestions = test.questions.filter((q) => !q.sectionId);
-      const sectionQuestions = (test.sections || []).flatMap((section) => section.questions || []);
+      const allQuestions = [
+        ...test.questions.filter((q) => !q.sectionId),
+        ...(test.sections || []).flatMap((section) => section.questions || []),
+      ].sort((a, b) => a.orderIndex - b.orderIndex);
 
-      selectedTestQuestions = [...baseQuestions, ...sectionQuestions];
+      // Order the exam section-by-section so the candidate's question numbers stay
+      // 1..N contiguous (the palette groups by this same key). Sections appear in
+      // the order the admin arranged them — the first question of each type/subType
+      // claims that section's slot. When shuffleQuestions is on, questions are
+      // shuffled only WITHIN their section, never across sections; when it's off,
+      // each section keeps the admin's orderIndex order.
+      const sectionKeyOf = (q: (typeof allQuestions)[number]): string =>
+        q.questionType === 'communication'
+          ? `communication:${q.communicationQuestion?.subType ?? ''}`
+          : q.questionType;
 
-      if (test.shuffleQuestions) {
-        selectedTestQuestions = shuffleArray(selectedTestQuestions);
-      } else {
-        selectedTestQuestions.sort((a, b) => a.orderIndex - b.orderIndex);
+      const sectionOrder: string[] = [];
+      const questionsBySection = new Map<string, typeof allQuestions>();
+      for (const question of allQuestions) {
+        const key = sectionKeyOf(question);
+        if (!questionsBySection.has(key)) {
+          questionsBySection.set(key, []);
+          sectionOrder.push(key);
+        }
+        questionsBySection.get(key)!.push(question);
       }
+
+      selectedTestQuestions = sectionOrder.flatMap((key) => {
+        const group = questionsBySection.get(key)!;
+        return test.shuffleQuestions ? shuffleArray(group) : group;
+      });
 
       if (selectedTestQuestions.length > 0) {
         await prisma.testAttemptQuestion.createMany({
