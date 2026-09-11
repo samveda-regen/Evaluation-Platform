@@ -175,6 +175,19 @@ export async function uploadSnapshot(sessionId: string, imageData: string, purpo
   }
 }
 
+// Periodic in-exam identity check — compares this frame against the candidate's
+// ID-verification photo, server-side. Deliberately silent: the response never
+// reveals a match/mismatch (see identityCheck in controllers/proctoring.ts), and
+// this call swallows its own errors so a network hiccup here is never visible
+// to the candidate either.
+export async function submitIdentityCheck(sessionId: string, imageData: string): Promise<void> {
+  try {
+    await api.post(`/proctoring/session/${sessionId}/identity-check`, { imageData });
+  } catch {
+    // Fire-and-forget — never surfaced to the candidate.
+  }
+}
+
 // Update monitor count
 export async function updateMonitorCount(sessionId: string, monitorCount: number): Promise<boolean> {
   try {

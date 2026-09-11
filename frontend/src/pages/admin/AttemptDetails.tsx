@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   Sparkles,
   Video,
+  ScanFace,
 } from 'lucide-react';
 
 /* -- Types -- */
@@ -83,6 +84,15 @@ interface AttemptData {
     id: string; eventType: string; eventData?: string; timestamp: string;
   }>;
   violationCounts?: Record<string, number>;
+  // Periodic in-exam identity-check mismatches — admin-only; the candidate is
+  // never shown these during the exam. Empty when nothing mismatched (or the
+  // candidate had no ID-verification photo to compare against).
+  identityChecks?: Array<{
+    id: string;
+    confidence: number | null;
+    snapshotUrl: string | null;
+    timestamp: string;
+  }>;
   recordings: Array<{
     id: string;
     status: 'starting' | 'recording' | 'processing' | 'ready' | 'failed';
@@ -530,6 +540,8 @@ export default function AttemptDetails() {
      written only to ProctorEvent, never to ActivityLog. */
   const violationCounts: Record<string, number> = data.violationCounts || {};
   const trustScore = typeof attempt.trustScore === 'number' ? Math.round(attempt.trustScore) : 100;
+  // Periodic in-exam identity checks — admin-only, never shown to the candidate.
+  const identityChecks = data.identityChecks || [];
 
   /* -- integrity tags -- */
   const integrityTags: Array<{ label: string; positive: boolean }> = [];
@@ -1250,6 +1262,47 @@ export default function AttemptDetails() {
               View full trust report
               <ChevronRight size={12} color="var(--admin-accent)" />
             </button>
+          </div>
+
+          {/* Identity checks — periodic in-exam face re-verification against the
+              candidate's ID-verification photo. Admin-only: the candidate is never
+              shown these, during the exam or after. */}
+          <div style={{
+            borderRadius:'14px', padding:'18px 22px',
+            backgroundColor: identityChecks.length > 0 ? '#FEF2F2' : 'var(--admin-bg)',
+            border: `1.5px solid ${identityChecks.length > 0 ? '#FECACA' : 'var(--admin-border)'}`,
+          }}>
+            <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom: identityChecks.length > 0 ? '10px' : 0 }}>
+              <ScanFace width={20} height={20} stroke={identityChecks.length > 0 ? '#DC2626' : 'var(--admin-text-subtle)'} strokeWidth={2} />
+              <span style={{ fontSize:'14px', fontWeight:600, color:'var(--admin-text)' }}>Identity checks</span>
+              <span style={{ fontSize:'12px', color:'var(--admin-text-subtle)' }}>
+                (periodic in-exam re-verification — not shown to the candidate)
+              </span>
+            </div>
+
+            {identityChecks.length === 0 ? (
+              <span style={{ fontSize:'12px', color:'var(--admin-text-subtle)' }}>No mismatches detected during this attempt.</span>
+            ) : (
+              <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
+                {identityChecks.map(check => (
+                  <div key={check.id} style={{
+                    display:'flex', alignItems:'center', justifyContent:'space-between',
+                    fontSize:'12px', color:'#991B1B', background:'#FEE2E2', borderRadius:'8px', padding:'6px 10px',
+                  }}>
+                    <span>
+                      {format(new Date(check.timestamp), 'MMM d, HH:mm:ss')} — did not match the verified photo
+                      {typeof check.confidence === 'number' ? ` (similarity ${Math.round(check.confidence)}%)` : ''}
+                    </span>
+                    {check.snapshotUrl && (
+                      <a href={check.snapshotUrl} target="_blank" rel="noopener noreferrer"
+                        style={{ color:'#DC2626', fontWeight:600, textDecoration:'underline', flexShrink:0, marginLeft:'10px' }}>
+                        View frame
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
         </div>

@@ -16,6 +16,7 @@ import {
   deleteFile,
 } from '../services/fileStorageService';
 import { emitToProctorTargets } from '../services/socketService';
+import { performPeriodicIdentityCheck } from '../services/verificationService';
 import { analyzeFrameWithPythonForSession } from '../services/pythonVisionService';
 import {
   parseStoredCustomAIViolationEvents,
@@ -1318,6 +1319,72 @@ export const uploadFaceSnapshot = async (req: Request, res: Response): Promise<v
     }
     console.error('Error uploading face snapshot:', error);
     res.status(500).json({ error: 'Failed to upload snapshot' });
+  }
+};
+
+/**
+ * Periodic in-exam identity check (every ~2-3 minutes, driven by the frontend
+ * timer in useProctoring.ts) — compares a fresh camera frame against the
+ * candidate's ID-verification reference photo.
+ *
+ * Deliberately silent to the candidate: the response is always the same shape
+ * regardless of whether the session/attempt exists, whether a reference photo
+ * is on file, or whether this frame matched it. A mismatch is recorded ONLY as
+ * a ProctorEvent for admin review (surfaced on the attempt's own record) — it
+ * never touches TestAttempt.violations, never triggers a toast/pause/auto-submit,
+ * and is never mentioned in this endpoint's response body.
+ */
+export const identityCheck = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { sessionId } = req.params;
+    const { imageData } = req.body;
+
+    if (!imageData) {
+      res.json({ ok: true });
+      return;
+    }
+
+    const session = await prisma.proctorSession.findUnique({
+      where: { id: sessionId },
+      select: { id: true, attempt: { select: { id: true, status: true, candidateId: true } } },
+    });
+
+    if (!session || session.attempt.status !== 'in_progress') {
+      res.json({ ok: true });
+      return;
+    }
+
+    const frameBuffer = Buffer.from(imageData, 'base64');
+    const result = await performPeriodicIdentityCheck(session.attempt.candidateId, frameBuffer);
+
+    if (!result.skipped && result.matched === false) {
+      let snapshotUrl: string | undefined;
+      try {
+        const uploaded = await uploadSnapshot(frameBuffer, session.attempt.id, 'face', 'image/jpeg');
+        if (uploaded.success) snapshotUrl = uploaded.cdnUrl || uploaded.url;
+      } catch {
+        // Evidence upload is best-effort — still record the mismatch without it.
+      }
+
+      await prisma.proctorEvent.create({
+        data: {
+          sessionId: session.id,
+          eventType: 'identity_mismatch',
+          severity: 'critical',
+          confidence: result.similarity ?? 0,
+          description: "Periodic in-exam identity check did not match the candidate's verified photo.",
+          metadata: JSON.stringify({ similarity: result.similarity }),
+          snapshotUrl,
+        },
+      });
+    }
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Identity check error:', error);
+    // Same response shape as every other outcome above — never leak a
+    // distinguishable signal to the candidate just because this errored.
+    res.json({ ok: true });
   }
 };
 

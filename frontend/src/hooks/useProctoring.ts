@@ -13,6 +13,7 @@ import {
   reportViolation,
   submitAnalysis,
   uploadSnapshot,
+  submitIdentityCheck,
   updateMonitorCount,
   endProctorSession,
   getBrowserInfo,
@@ -165,6 +166,7 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
   const audioIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const obstructionIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const screenEvidenceIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const identityCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const snapshotAnalysisInFlightRef = useRef(false);
   const analysisFailureStreakRef = useRef(0);
   const analysisBackoffUntilRef = useRef(0);
@@ -206,6 +208,10 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
   const analysisFrameMaxWidth = Number((import.meta as any).env?.VITE_PROCTOR_ANALYSIS_FRAME_MAX_WIDTH || 640);
   const snapshotFrameQuality = Number((import.meta as any).env?.VITE_PROCTOR_SNAPSHOT_QUALITY || 0.85);
   const snapshotFrameMaxWidth = Number((import.meta as any).env?.VITE_PROCTOR_SNAPSHOT_MAX_WIDTH || 1024);
+  // Periodic in-exam identity re-check cadence — compares a fresh frame against the
+  // candidate's ID-verification photo. Defaults to 2.5 minutes (within the 2-3 minute
+  // window). Entirely silent to the candidate either way — see submitIdentityCheck.
+  const identityCheckIntervalMs = Number((import.meta as any).env?.VITE_PROCTOR_IDENTITY_CHECK_INTERVAL_MS || 150000);
   const enableWebcamRecording = ((import.meta as any).env?.VITE_ENABLE_WEBCAM_RECORDING || 'false') === 'true';
   const allowRuntimeScreenPrompt = ((import.meta as any).env?.VITE_ALLOW_RUNTIME_SCREEN_PROMPT || 'false') === 'true';
   const traceEnabled = ((import.meta as any).env?.VITE_PROCTOR_TRACE || 'false') === 'true';
@@ -921,6 +927,19 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     }
   }, [session, getActiveVideoElement, snapshotFrameQuality, snapshotFrameMaxWidth]);
 
+  // Periodic in-exam identity check — silent to the candidate in every respect:
+  // no UI state changes here, no toast, and submitIdentityCheck itself swallows
+  // its own errors. A mismatch is only ever recorded server-side for admin review.
+  const runIdentityCheck = useCallback(async () => {
+    const activeVideo = getActiveVideoElement();
+    if (!activeVideo || !session) return;
+
+    const imageData = captureFrame(activeVideo, { quality: snapshotFrameQuality, maxWidth: snapshotFrameMaxWidth });
+    if (imageData) {
+      await submitIdentityCheck(session.sessionId, imageData);
+    }
+  }, [session, getActiveVideoElement, snapshotFrameQuality, snapshotFrameMaxWidth]);
+
   /**
    * Capture a JPEG snapshot from the camera by drawing the video element onto a canvas.
    *
@@ -1182,6 +1201,11 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
       );
     }
 
+    // Periodic identity-check interval
+    if (finalConfig.enableCamera) {
+      identityCheckIntervalRef.current = setInterval(runIdentityCheck, identityCheckIntervalMs);
+    }
+
     // Audio interval
     if (finalConfig.enableAudioAnalysis && finalConfig.enableMicrophone) {
       audioIntervalRef.current = setInterval(runAudioAnalysis, 2000);
@@ -1232,6 +1256,9 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
       if (screenEvidenceIntervalRef.current) {
         clearInterval(screenEvidenceIntervalRef.current);
       }
+      if (identityCheckIntervalRef.current) {
+        clearInterval(identityCheckIntervalRef.current);
+      }
     };
   }, [
     status.isInitialized,
@@ -1241,6 +1268,8 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     runAudioAnalysis,
     runObstructionMonitor,
     uploadPeriodicSnapshot,
+    runIdentityCheck,
+    identityCheckIntervalMs,
     runSnapshotAnalysis,
     analysisIntervalMs,
     getActiveScreenVideoElement,
@@ -1354,6 +1383,9 @@ export function useProctoring(attemptId: string, config: Partial<ProctorConfig> 
     }
     if (screenEvidenceIntervalRef.current) {
       clearInterval(screenEvidenceIntervalRef.current);
+    }
+    if (identityCheckIntervalRef.current) {
+      clearInterval(identityCheckIntervalRef.current);
     }
 
     // Stop media streams

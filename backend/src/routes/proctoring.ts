@@ -5,6 +5,7 @@ import {
   submitAnalysis,
   reportViolation,
   uploadFaceSnapshot,
+  identityCheck,
   getRecordingUploadUrl,
   finalizeRecording,
   uploadRecordingChunk,
@@ -48,6 +49,7 @@ router.post('/engine/event', ingestExternalEngineEvent);
 
 // Upload face snapshot
 router.post('/session/:sessionId/snapshot', candidateAuth, uploadFaceSnapshot);
+router.post('/session/:sessionId/identity-check', candidateAuth, identityCheck);
 
 // Get pre-signed URL for recording upload
 router.post('/session/:sessionId/recording-url', candidateAuth, getRecordingUploadUrl);

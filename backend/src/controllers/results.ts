@@ -350,6 +350,19 @@ export async function getAttemptDetails(req: AuthenticatedRequest, res: Response
     const trustEvents = await getTrustEventsForAttempt(attempt.proctorSession?.id);
     const violationCounts = groupEventCounts(trustEvents);
 
+    // Periodic in-exam identity-check mismatches (see identityCheck in
+    // controllers/proctoring.ts). Deliberately kept out of REPORT_EVENT_TYPES /
+    // trust-score scoring for now — this is a new, separately-reviewed signal,
+    // not folded into the existing trust percentage — and shown only here, on
+    // the candidate's own attempt record, never to the candidate.
+    const identityChecks = attempt.proctorSession
+      ? await prisma.proctorEvent.findMany({
+          where: { sessionId: attempt.proctorSession.id, eventType: 'identity_mismatch' },
+          select: { id: true, confidence: true, snapshotUrl: true, timestamp: true },
+          orderBy: { timestamp: 'desc' },
+        })
+      : [];
+
     res.json({
       attempt: {
         id: attempt.id,
@@ -385,6 +398,7 @@ export async function getAttemptDetails(req: AuthenticatedRequest, res: Response
       violationCounts,
       communicationAnswers,
       recordings,
+      identityChecks,
     });
   } catch (error) {
     console.error('Get attempt details error:', error);

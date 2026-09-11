@@ -21,13 +21,21 @@
  */
 
 import prisma from '../utils/db';
-import { uploadIdDocument, deleteFile } from './fileStorageService';
+import { uploadIdDocument, deleteFile, getFile } from './fileStorageService';
 import { compareFacesViaCompreFace } from './faceVerificationService';
 import { analyzeDocumentOCR }       from './ocrService';
 
 // Face-match score at/above which a submission is auto-approved (skipping the
 // manual admin queue), provided the document and liveness checks also passed.
 const AUTO_APPROVE_FACE_MATCH_THRESHOLD = parseFloat(process.env.ID_VERIFICATION_AUTO_APPROVE_THRESHOLD || '75');
+
+// Face-match score at/above which a mid-exam identity check counts as "still the
+// same candidate." Deliberately lower than the enrollment threshold above — the
+// enrollment selfie is a posed, well-lit, camera-facing shot; a mid-exam frame is
+// grabbed mid-thought, often off-angle or with screen glare, so holding it to the
+// enrollment bar would flag honest candidates constantly. This threshold governs
+// ONLY performPeriodicIdentityCheck below, never the enrollment decision above.
+const PERIODIC_IDENTITY_MATCH_THRESHOLD = parseFloat(process.env.PERIODIC_IDENTITY_MATCH_THRESHOLD || '60');
 
 export type VerificationStatus = 'pending' | 'in_progress' | 'verified' | 'rejected' | 'expired';
 export type DocumentType       = 'national_id' | 'passport' | 'drivers_license' | 'student_id';
@@ -92,6 +100,55 @@ export async function compareFaces(
     similarity:     result.similarity,
     confidence:     result.confidence,
     requiresReview: result.requiresReview,
+  };
+}
+
+// ─── Periodic in-exam identity check ──────────────────────────────────────────
+// Compares a mid-exam camera frame against the same reference photo captured at
+// ID verification (CandidateIdentity.faceReferenceUrl). Never throws a
+// candidate-visible signal — callers must treat every non-skipped result as
+// admin-only data (see identityCheck in controllers/proctoring.ts).
+
+export interface PeriodicIdentityCheckResult {
+  // True whenever there's nothing to meaningfully compare against — no reference
+  // photo on file, the reference file was deleted, or CompreFace itself couldn't
+  // return a usable result (not configured, circuit open, timeout, no face found
+  // in either image). "Skipped" is deliberately never treated as a mismatch: the
+  // general face-presence violation already covers "candidate not visible," and
+  // an infra hiccup here must never manifest as an identity accusation.
+  skipped: boolean;
+  matched?: boolean;
+  similarity?: number;
+}
+
+export async function performPeriodicIdentityCheck(
+  candidateId: string,
+  frameBuffer: Buffer
+): Promise<PeriodicIdentityCheckResult> {
+  const identity = await prisma.candidateIdentity.findUnique({
+    where: { candidateId },
+    select: { faceReferenceUrl: true },
+  });
+
+  if (!identity?.faceReferenceUrl) {
+    return { skipped: true };
+  }
+
+  const referenceFileId = extractFileId(identity.faceReferenceUrl);
+  const referenceFile = referenceFileId ? await getFile(referenceFileId) : null;
+  if (!referenceFile?.data?.length) {
+    return { skipped: true };
+  }
+
+  const result = await compareFacesViaCompreFace(frameBuffer, referenceFile.data);
+  if (result.error) {
+    return { skipped: true };
+  }
+
+  return {
+    skipped: false,
+    matched: result.similarity >= PERIODIC_IDENTITY_MATCH_THRESHOLD,
+    similarity: result.similarity,
   };
 }
 
@@ -436,6 +493,7 @@ export default {
   analyzeDocument,
   compareFaces,
   detectLiveness,
+  performPeriodicIdentityCheck,
   submitVerification,
   getVerificationStatus,
   adminVerify,
