@@ -506,19 +506,31 @@ export async function inviteCandidatesFromIntegration(req: AuthenticatedRequest,
       ? sanitizeInput(req.body.customMessage)
       : undefined;
 
-    const summary = await sendStructuredTestInvitations({
+       const summary = await sendStructuredTestInvitations({
       testId,
       candidates,
       customMessage,
     });
 
-    void dispatchCompanyWebhookEvent(companyId, 'invitation.sent', {
-      testId,
-      testName: scopedTest.name,
-      total: summary.total,
-      sent: summary.sent,
-      failed: summary.failed,
-    });
+    // Fire one invitation.sent event per successfully-sent candidate (matching
+    // test.completed's per-candidate shape) instead of a single batch-count
+    // event with no candidate identity — partners like hria.io need
+    // candidateName/candidateEmail here to later match test.completed against
+    // the right invitation record. `results` only carries email/status, so
+    // look the name up from the original candidates list by email.
+    const candidateNameByEmail = new Map(
+      candidates.map((c) => [c.email.toLowerCase().trim(), c.name])
+    );
+    for (const result of summary.results) {
+      if (result.status !== 'SENT') continue;
+      const candidateName = candidateNameByEmail.get(result.email.toLowerCase().trim()) ?? 'Unknown';
+      void dispatchCompanyWebhookEvent(companyId, 'invitation.sent', {
+        testId,
+        testName: scopedTest.name,
+        candidateName,
+        candidateEmail: result.email,
+      });
+    }
 
     res.json({
       testId,
