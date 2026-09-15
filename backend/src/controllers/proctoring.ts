@@ -399,6 +399,18 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
       return;
     }
 
+    // Resolved once, here, and reused everywhere below instead of the same inline
+    // ternary repeated per branch. Logged unconditionally (not gated behind
+    // PROCTOR_TRACE, same reasoning as CAMERA_DIAGNOSTICS above) so it's visible in
+    // plain `pm2 logs backend` the moment a candidate's exam starts (or resumes) —
+    // no env flag to flip, no devtools access on the candidate's machine needed.
+    // 'client' = onnxruntime-web YOLO + MediaPipe running in the candidate's browser
+    // (SEB); 'server' = python_cv_service does the detection instead (NORMAL_BROWSER).
+    const detectionMode = attempt.test.assessmentMode === 'NORMAL_BROWSER' ? 'server' : 'client';
+    console.log(
+      `[DETECTION_MODE] attempt=${attemptId} assessmentMode=${attempt.test.assessmentMode} detectionMode=${detectionMode}`
+    );
+
     // Check if session already exists
     const existingSession = await prisma.proctorSession.findUnique({
       where: { attemptId },
@@ -424,7 +436,7 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
         externalMonitorDetected: normalizedMonitorCount > 1,
         enabledAIViolations,
         assessmentMode: attempt.test.assessmentMode,
-        detectionMode: attempt.test.assessmentMode === 'NORMAL_BROWSER' ? 'server' : 'client',
+        detectionMode,
         ipAddress: req.ip,
         sessionUpdatedAt: new Date().toISOString(),
       };
@@ -462,7 +474,7 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
           microphone: TEMP_DISABLE_AUDIO_PROCTORING ? false : attempt.test.requireMicrophone,
           screenShare: attempt.test.requireScreenShare,
         },
-        detectionMode: attempt.test.assessmentMode === 'NORMAL_BROWSER' ? 'server' : 'client',
+        detectionMode,
       });
 
       emitToProctorTargets(attempt.testId, attemptId, 'candidate-status', {
@@ -501,7 +513,7 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
       externalMonitorDetected: normalizedMonitorCount > 1,
       enabledAIViolations,
       assessmentMode: attempt.test.assessmentMode,
-      detectionMode: attempt.test.assessmentMode === 'NORMAL_BROWSER' ? 'server' : 'client',
+      detectionMode,
       ipAddress: req.ip,
       sessionStartedAt: new Date().toISOString(),
     };
@@ -539,7 +551,7 @@ export const initializeSession = async (req: Request, res: Response): Promise<vo
         microphone: TEMP_DISABLE_AUDIO_PROCTORING ? false : attempt.test.requireMicrophone,
         screenShare: attempt.test.requireScreenShare,
       },
-      detectionMode: attempt.test.assessmentMode === 'NORMAL_BROWSER' ? 'server' : 'client',
+      detectionMode,
     });
 
     emitToProctorTargets(attempt.testId, attemptId, 'candidate-status', {
