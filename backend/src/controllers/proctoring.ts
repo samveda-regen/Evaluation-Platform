@@ -678,6 +678,21 @@ export const submitAnalysis = async (req: Request, res: Response): Promise<void>
     const violations = analyzeProctoring(trustedAnalysisData);
     let pythonResult: Awaited<ReturnType<typeof analyzeFrameWithPythonForSession>> = null;
     const hasClientVisionResult = !useServerVision && Array.isArray(analysisData.clientViolations);
+
+    // Which detection path this cycle actually resolves to — logged unconditionally
+    // (every cycle, not just when a violation is found) so PM2 logs can confirm
+    // whether SEB sessions are really running client-side (onnxruntime-web/YOLO +
+    // MediaPipe) detection as intended, or silently falling back to python_cv_service
+    // every cycle instead. Requires PROCTOR_TRACE=true (see proctorTrace above).
+    proctorTrace('detection_source', {
+      sessionId,
+      assessmentMode: session.attempt.test.assessmentMode,
+      useServerVision,
+      hasClientVisionResult,
+      clientViolationCount: analysisData.clientViolations?.length ?? 0,
+      resolvedSource: hasClientVisionResult ? 'client' : analysisData.frameData ? 'server_fallback' : 'none',
+    });
+
     proctorTrace('local_analysis', {
       sessionId,
       localViolationCount: violations.length,
