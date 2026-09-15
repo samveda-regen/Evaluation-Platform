@@ -1187,6 +1187,7 @@ export async function reEvaluateAttempt(req: AuthenticatedRequest, res: Response
       status: 're_evaluated',
       passingMarks: attempt.test.passingMarks ?? null,
       result: reEvaluatedResult,
+      companyId: attempt.test.companyId ?? null,
     });
 
     // Keep the recruiter-partner's per-company webhook in sync too — otherwise a

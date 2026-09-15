@@ -2043,6 +2043,7 @@ export async function performSubmission(attemptId: string, testId: string, autoS
       status: webhookStatus,
       passingMarks: test.passingMarks ?? null,
       result: webhookResult,
+      companyId: (test as any).companyId ?? null,
     });
 
     void dispatchCompanyWebhookEvent((test as any).companyId, 'test.completed', {

@@ -12,6 +12,11 @@ type CandidateScoreWebhookPayload = {
   status: string;
   passingMarks: number | null;
   result: 'passed' | 'failed' | null;
+  // Our internal Company.id (same value callers pass to dispatchCompanyWebhookEvent).
+  // Resolved to the partner-issued externalCompanyId below before it goes on the
+  // wire — receivers that need to tell orgs apart (e.g. a multi-tenant endpoint
+  // shared across companies) have no way to recognize our own DB id as "their" org.
+  companyId?: string | null;
 };
 
 const DEFAULT_TIMEOUT_MS = 5000;
@@ -70,7 +75,18 @@ export async function sendCandidateScoreWebhook(payload: CandidateScoreWebhookPa
     return;
   }
 
-  const body = JSON.stringify(payload);
+  let externalCompanyId: string | null = null;
+  if (payload.companyId) {
+    const company = await prisma.company.findUnique({
+      where: { id: payload.companyId },
+      select: { externalCompanyId: true },
+    });
+    externalCompanyId = company?.externalCompanyId ?? null;
+  }
+
+  const { companyId: _internalCompanyId, ...rest } = payload;
+  const outgoing = { ...rest, companyId: externalCompanyId };
+  const body = JSON.stringify(outgoing);
   // One slow/broken target must not hold up or fail delivery to the others.
   await Promise.allSettled(webhookUrls.map((url) => postCandidateScoreWebhook(url, body, payload)));
 }
