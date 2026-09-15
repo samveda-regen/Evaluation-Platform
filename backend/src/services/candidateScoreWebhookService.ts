@@ -128,14 +128,17 @@ export async function dispatchCompanyWebhookEvent(
   try {
     const company = await prisma.company.findUnique({
       where: { id: companyId },
-      select: { webhookUrl: true, webhookSecret: true },
+      select: { webhookUrl: true, webhookSecret: true, externalCompanyId: true },
     });
 
     if (!company?.webhookUrl) {
       return;
     }
 
-    const body = JSON.stringify({ event, companyId, data, timestamp: new Date().toISOString() });
+    // The payload's companyId must be the id the partner gave us (externalCompanyId),
+    // not our internal Company.id — the partner has no way to recognize our own UUID
+    // as "their" org, and rejects it (401 "Webhook not configured for this organization").
+    const body = JSON.stringify({ event, companyId: company.externalCompanyId, data, timestamp: new Date().toISOString() });
     const signature = company.webhookSecret
       ? createHmac('sha256', decryptSecret(company.webhookSecret)).update(body).digest('hex')
       : undefined;
