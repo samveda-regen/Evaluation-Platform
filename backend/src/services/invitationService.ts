@@ -108,9 +108,10 @@ export interface StructuredInvitationCandidate {
 }
 
 export interface StructuredInvitationSummary extends SendInvitationSummary {
+  skipped: number;
   results: Array<{
     email: string;
-    status: 'SENT' | 'FAILED';
+    status: 'SENT' | 'FAILED' | 'SKIPPED';
     reason?: string;
   }>;
 }
@@ -610,6 +611,12 @@ export async function sendStructuredTestInvitations(input: {
   testId: string;
   candidates: StructuredInvitationCandidate[];
   customMessage?: string;
+  // Callers (e.g. recruiter-platform integrations) sometimes re-POST the same
+  // candidate list — a retry after a webhook 400, a UI double-submit, a re-sync.
+  // Default is to skip anyone already SENT instead of silently re-sending the
+  // invite email + re-firing invitation.sent on every repeated call. Pass
+  // resend:true to force an actual re-send for a specific candidate.
+  resend?: boolean;
 }): Promise<StructuredInvitationSummary> {
   const test = await (prisma.test as any).findUnique({
     where: { id: input.testId },
@@ -663,10 +670,27 @@ export async function sendStructuredTestInvitations(input: {
   const results: StructuredInvitationSummary['results'] = [];
   let sent = 0;
   let failed = 0;
+  let skipped = 0;
 
   for (const row of rows) {
     let invitationId: string | null = null;
     try {
+      if (!input.resend) {
+        const existing = await prisma.testInvitation.findUnique({
+          where: { testId_email: { testId: test.id, email: row.email } },
+          select: { status: true },
+        });
+        if (existing?.status === 'SENT') {
+          skipped += 1;
+          results.push({
+            email: row.email,
+            status: 'SKIPPED',
+            reason: 'Already invited — pass resend:true to re-send.',
+          });
+          continue;
+        }
+      }
+
       const token = randomBytes(32).toString('hex');
       const accessCode = await generateUniqueAccessCode();
       const invitation = await prisma.testInvitation.upsert({
@@ -754,6 +778,7 @@ export async function sendStructuredTestInvitations(input: {
     total: rows.length,
     sent,
     failed,
+    skipped,
     results
   };
 }

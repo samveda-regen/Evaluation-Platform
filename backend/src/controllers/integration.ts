@@ -505,11 +505,13 @@ export async function inviteCandidatesFromIntegration(req: AuthenticatedRequest,
     const customMessage = typeof req.body.customMessage === 'string'
       ? sanitizeInput(req.body.customMessage)
       : undefined;
+    const resend = req.body.resend === true;
 
-       const summary = await sendStructuredTestInvitations({
+    const summary = await sendStructuredTestInvitations({
       testId,
       candidates,
       customMessage,
+      resend,
     });
 
     // Fire one invitation.sent event per successfully-sent candidate (matching
