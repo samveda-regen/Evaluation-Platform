@@ -51,14 +51,43 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+function describeError(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
+export interface ClientDetectionReadinessResult {
+  ready: boolean;
+  // Which stage failed and why — null when ready is true. Surfaced so callers
+  // can report it (SebEnvironmentSetup.tsx's model_priming_diagnostics activity
+  // log) instead of just a bare pass/fail, since a timeout (slow/blocked asset)
+  // and an immediate throw (WASM unsupported, CORS, missing cross-origin
+  // isolation) point at completely different fixes.
+  reason: string | null;
+}
+
 export async function checkClientDetectionReadiness(
   primeSource?: HTMLVideoElement | HTMLCanvasElement,
-): Promise<boolean> {
+): Promise<ClientDetectionReadinessResult> {
   try {
     await withTimeout(
       (async () => {
-        const [session, landmarker] = await Promise.all([loadClientVisionModel(), loadClientFaceMesh()]);
+        // allSettled (not all) so a single rejection still tells us which of the
+        // two independent models failed, instead of Promise.all's "first
+        // rejection wins" hiding whether it was one, the other, or both.
+        const [visionResult, faceMeshResult] = await Promise.allSettled([
+          loadClientVisionModel(),
+          loadClientFaceMesh(),
+        ]);
+        if (visionResult.status === 'rejected' || faceMeshResult.status === 'rejected') {
+          const parts: string[] = [];
+          if (visionResult.status === 'rejected') parts.push(`vision: ${describeError(visionResult.reason)}`);
+          if (faceMeshResult.status === 'rejected') parts.push(`faceMesh: ${describeError(faceMeshResult.reason)}`);
+          throw new Error(parts.join(' | '));
+        }
         if (!primeSource) return;
+        const session = visionResult.value;
+        const landmarker = faceMeshResult.value;
         // Both run best-effort — a priming failure (e.g. a still-black frame)
         // shouldn't fail the whole readiness check; the model is loaded either
         // way, which is what actually matters for the exam to proceed. Run
@@ -76,8 +105,8 @@ export async function checkClientDetectionReadiness(
       })(),
       READINESS_TIMEOUT_MS,
     );
-    return true;
-  } catch {
-    return false;
+    return { ready: true, reason: null };
+  } catch (err) {
+    return { ready: false, reason: describeError(err) };
   }
 }

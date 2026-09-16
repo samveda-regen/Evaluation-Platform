@@ -122,8 +122,8 @@ export default function SebEnvironmentSetup() {
           }
         }
 
-        const clientReady = await checkClientDetectionReadiness(primeSource);
-        setForceServerDetection(!clientReady);
+        const readiness = await checkClientDetectionReadiness(primeSource);
+        setForceServerDetection(!readiness.ready);
 
         // Diagnostic — see whether priming actually ran against a real frame or got
         // skipped, without needing devtools access to whatever machine hit this.
@@ -132,7 +132,8 @@ export default function SebEnvironmentSetup() {
             eventType: 'model_priming_diagnostics',
             eventData: {
               hadFrame,
-              clientReady,
+              clientReady: readiness.ready,
+              failureReason: readiness.reason,
               durationMs: Math.round(performance.now() - startedAt),
             },
           })
