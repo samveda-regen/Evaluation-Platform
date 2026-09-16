@@ -52,6 +52,20 @@ export interface VerifiedCameraResult {
 // color picture of a person/room is reliably well above this even under flat lighting.
 const MIN_COLORFULNESS = 5;
 const MAX_DEVICE_ATTEMPTS = 3;
+// How many times to retry the SAME device on a frame-verification failure before moving
+// on. There's no browser API that reports when a just-stopped track's hardware has
+// actually been released by the OS/driver (MediaStreamTrack.stop() is fire-and-forget),
+// so a stream reopened immediately after the previous attempt's camera was stopped can
+// succeed at the getUserMedia() level while the sensor is still mid-teardown and
+// delivers 0x0/blank frames. Retrying the same device (with backoff) lets acquisition
+// wait exactly as long as the hardware actually needs, instead of guessing a fixed
+// delay up front — most retries here resolve on the 2nd attempt.
+const MAX_SAME_DEVICE_RETRIES = 3;
+const SAME_DEVICE_RETRY_DELAY_MS = 400;
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 // getUserMedia() itself was, until now, awaited with no timeout at all — only the frame
 // check *after* a successful acquisition had one. Confirmed via real production logs: a
@@ -187,10 +201,12 @@ async function preferredDeviceOrder(): Promise<string[]> {
 
 /**
  * Acquires a camera stream, verifying the result is both frame-producing AND a real
- * color picture (not an IR/monochrome sensor) before accepting it. On systems with more
- * than one camera, tries up to 3 distinct devices, scoring each by measured pixel
- * colorfulness, and keeps the best one seen even if none clears the color threshold — so
- * callers always get a result rather than nothing.
+ * color picture (not an IR/monochrome sensor) before accepting it. On a frame-check
+ * failure, retries the same device (with backoff) up to MAX_SAME_DEVICE_RETRIES times
+ * before moving on — covers the just-released-by-previous-attempt teardown race — then
+ * falls back to trying other devices, scoring each by measured pixel colorfulness, and
+ * keeps the best one seen even if none clears the color threshold — so callers always
+ * get a result rather than nothing.
  */
 export async function acquireVerifiedCameraStream(
   constraints: MediaTrackConstraints = {},
@@ -212,30 +228,51 @@ export async function acquireVerifiedCameraStream(
   for (let attempt = 0; attempt < MAX_DEVICE_ATTEMPTS; attempt++) {
     const nextDeviceId = candidateDeviceIds.find(id => !tried.has(id));
     if (candidateDeviceIds.length > 0 && !nextDeviceId) break; // every known device already tried
+    tried.add(nextDeviceId || `attempt-${attempt}`);
 
-    let stream: MediaStream;
-    try {
-      stream = await getUserMediaWithTimeout({
-        video: nextDeviceId ? { ...constraints, deviceId: { exact: nextDeviceId } } : constraints,
-      }, GET_USER_MEDIA_TIMEOUT_MS);
-    } catch (err) {
-      console.error('Camera acquisition failed:', err);
+    let framesOk = false;
+    let colorfulness = 0;
+    let stream: MediaStream | null = null;
+    let track: MediaStreamTrack | undefined;
+    let label = '(no label)';
+    let acquisitionError: unknown;
+
+    for (let retry = 0; retry < MAX_SAME_DEVICE_RETRIES; retry++) {
+      if (retry > 0) await delay(SAME_DEVICE_RETRY_DELAY_MS);
+
+      stream?.getTracks().forEach(t => t.stop());
+      try {
+        stream = await getUserMediaWithTimeout({
+          video: nextDeviceId ? { ...constraints, deviceId: { exact: nextDeviceId } } : constraints,
+        }, GET_USER_MEDIA_TIMEOUT_MS);
+      } catch (err) {
+        acquisitionError = err;
+        stream = null;
+        break; // getUserMedia() itself failing isn't a teardown race — no point retrying
+      }
+
+      track = stream.getVideoTracks()[0];
+      label = track?.label || '(no label)';
+      const result = await checkFrameAndColor(stream, frameTimeoutMs);
+      framesOk = result.framesOk;
+      colorfulness = result.colorfulness;
+
+      if (framesOk) break; // got real frames — no need to keep retrying this device
+    }
+
+    if (!stream) {
+      console.error('Camera acquisition failed:', acquisitionError);
       attempts.push({
         deviceId: nextDeviceId,
         label: '(getUserMedia threw)',
         framesOk: false,
         colorfulness: 0,
-        error: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+        error: acquisitionError instanceof Error ? `${acquisitionError.name}: ${acquisitionError.message}` : String(acquisitionError),
       });
       break;
     }
 
-    const track = stream.getVideoTracks()[0];
     const actualDeviceId = track?.getSettings().deviceId;
-    tried.add(actualDeviceId || nextDeviceId || `attempt-${attempt}`);
-
-    const { framesOk, colorfulness } = await checkFrameAndColor(stream, frameTimeoutMs);
-    const label = track?.label || '(no label)';
     attempts.push({ deviceId: actualDeviceId, label, framesOk, colorfulness });
 
     if (framesOk && colorfulness >= MIN_COLORFULNESS) {
