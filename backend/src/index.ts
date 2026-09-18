@@ -143,7 +143,15 @@ function isOriginAllowed(origin: string | undefined): boolean {
 }
 
 const app = express();
-app.set('trust proxy', 1);
+// Two reverse-proxy hops sit between the internet and this process on the
+// production/experiment droplet: Caddy (public :443, terminates TLS) then
+// nginx (127.0.0.1:8443, does the actual /api, /socket.io, / routing) before
+// reaching this app on :3000. Both correctly forward X-Forwarded-For, but
+// trusting only 1 hop here made req.ip resolve to nginx's own loopback
+// address instead of walking back the extra hop to the real client IP --
+// the actual bug behind every login recording 127.0.0.1 (see AuthSession /
+// services/deviceSessions.ts, which relies on req.ip being correct).
+app.set('trust proxy', 2);
 const httpServer = createServer(app);
 const io = new SocketServer(httpServer, {
   cors: {
