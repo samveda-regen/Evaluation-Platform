@@ -35,6 +35,7 @@ export default function SuperAdminFeatureLocks() {
   const [selectedAccountId, setSelectedAccountId] = useState<string>(GLOBAL_VIEW);
   const [accountFlags, setAccountFlags] = useState<AdminFeatureOverrideView[] | null>(null);
   const [pending, setPending] = useState<string | null>(null);
+  const [confirmingMaintenanceOn, setConfirmingMaintenanceOn] = useState(false);
 
   const loadGlobal = useCallback(async () => {
     try {
@@ -88,6 +89,25 @@ export default function SuperAdminFeatureLocks() {
     } finally {
       setPending(null);
     }
+  };
+
+  // maintenance_mode uses enabled=true for "operating normally" (see
+  // statusLabel above), so turning it ON — the disruptive direction, which
+  // blocks every admin platform-wide — means flipping enabled to false.
+  // Only that direction gets a confirmation; switching it back off (restoring
+  // normal operation) is the safe direction and applies immediately.
+  const requestMaintenanceToggle = () => {
+    if (!maintenanceFlag) return;
+    if (maintenanceFlag.enabled) {
+      setConfirmingMaintenanceOn(true);
+    } else {
+      void toggleGlobal(maintenanceFlag);
+    }
+  };
+
+  const confirmMaintenanceOn = () => {
+    setConfirmingMaintenanceOn(false);
+    if (maintenanceFlag) void toggleGlobal(maintenanceFlag);
   };
 
   const toggleAccountOverride = async (flag: AdminFeatureOverrideView) => {
@@ -154,10 +174,39 @@ export default function SuperAdminFeatureLocks() {
           </div>
           <Toggle
             on={maintenanceFlag.enabled}
-            onClick={() => toggleGlobal(maintenanceFlag)}
+            onClick={requestMaintenanceToggle}
             disabled={pending === maintenanceFlag.key}
             label="Toggle maintenance mode"
           />
+        </div>
+      )}
+
+      {confirmingMaintenanceOn && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+          <div className="relative w-full max-w-md bg-sa-panel-raised border border-sa-critical/40 rounded-xl p-6 shadow-2xl">
+            <div className="flex items-center gap-2.5 mb-2">
+              <AlertTriangle size={18} className="text-sa-critical shrink-0" />
+              <h2 className="text-sm font-semibold text-sa-critical">Enable maintenance mode?</h2>
+            </div>
+            <p className="text-[13px] text-sa-ink-dim mb-5">
+              This will stop all admin console logins and actions platform-wide, immediately, for every admin. Candidates
+              already taking a test are never affected. Are you sure?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmingMaintenanceOn(false)}
+                className="text-[12.5px] px-3.5 py-2 rounded-lg border border-sa-line text-sa-ink-dim hover:text-sa-ink hover:border-sa-line-bright transition-all"
+              >
+                No, cancel
+              </button>
+              <button
+                onClick={confirmMaintenanceOn}
+                className="text-[12.5px] px-3.5 py-2 rounded-lg bg-sa-critical text-white font-semibold hover:brightness-110 transition-all"
+              >
+                Yes, enable it
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
