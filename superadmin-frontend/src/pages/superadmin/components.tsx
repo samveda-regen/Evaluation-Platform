@@ -126,12 +126,16 @@ export function Toggle({ on, onClick, disabled, label }: {
       aria-pressed={on}
       aria-label={label}
       className={`relative shrink-0 w-11 h-6 rounded-full transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-        on ? 'bg-sa-accent' : 'bg-sa-line-bright'
+        on ? 'bg-sa-good' : 'bg-sa-critical'
       }`}
     >
       <span
+        // Track is 44px wide, knob is 18px — a 3px margin on the resting side
+        // (left-[3px] when off) means the "on" position needs the same 3px
+        // margin on the right: 44 - 18 - 3 = 23px, not 20px (which left a
+        // visible 6px gap instead of 3px, so the knob looked short of the edge).
         className={`absolute top-1/2 -translate-y-1/2 h-[18px] w-[18px] rounded-full bg-white shadow transition-all duration-200 ${
-          on ? 'left-[20px]' : 'left-[3px]'
+          on ? 'left-[23px]' : 'left-[3px]'
         }`}
       />
     </button>
