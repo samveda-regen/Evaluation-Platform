@@ -9,18 +9,26 @@ import { Card, StatusPill, EmptyState, PageHeader, relativeTime } from './compon
 // deliberately separate apps (see the port-2002 extraction). This was
 // previously hardcoded to the local dev origin (localhost:5173), which meant
 // "View as this admin" opened a dead localhost URL for every superadmin
-// visiting the deployed console. VITE_MAIN_APP_ORIGIN lets it be overridden
-// per deployment; the fallback mirrors the backend's own default for
-// FRONTEND_URL (see adminAuth.ts::getFrontendUrl) so the two stay in sync
-// without needing the env var set explicitly for the primary deployment.
+// visiting the deployed console.
+//
+// Set explicitly via VITE_Impersonating_url_superadmin in this app's .env
+// (e.g. VITE_Impersonating_url_superadmin="https://your-exam-platform-domain").
+// Vite only exposes client-side env vars prefixed with VITE_ — the prefix is
+// required, "Impersonating_url_superadmin" alone will not be picked up.
 const viteEnv = (import.meta as unknown as { env?: Record<string, unknown> }).env || {};
 const isLocalBrowser =
   typeof window !== 'undefined' &&
   (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-const mainAppOriginFromEnv =
-  typeof viteEnv.VITE_MAIN_APP_ORIGIN === 'string' ? viteEnv.VITE_MAIN_APP_ORIGIN : '';
+const configuredMainAppOrigin =
+  typeof viteEnv.VITE_Impersonating_url_superadmin === 'string'
+    ? viteEnv.VITE_Impersonating_url_superadmin.replace(/\/+$/, '')
+    : '';
+// Last-resort guess when the env var above isn't set and this isn't local
+// dev — kept only so impersonation doesn't silently break, not something to
+// rely on. impersonate() below warns whenever it's actually used.
+const FALLBACK_MAIN_APP_ORIGIN = 'https://humint.talentsatq.ai';
 const MAIN_APP_ORIGIN =
-  mainAppOriginFromEnv || (isLocalBrowser ? 'http://localhost:5173' : 'https://humint.talentsatq.ai');
+  configuredMainAppOrigin || (isLocalBrowser ? 'http://localhost:5173' : FALLBACK_MAIN_APP_ORIGIN);
 
 export default function SuperAdminAccounts() {
   const [admins, setAdmins] = useState<AdminAccountSummary[] | null>(null);
@@ -83,6 +91,12 @@ export default function SuperAdminAccounts() {
   };
 
   const impersonate = async (admin: AdminAccountSummary) => {
+    if (!configuredMainAppOrigin && !isLocalBrowser) {
+      toast.error(
+        `Exam platform URL isn't configured — opening a guess (${FALLBACK_MAIN_APP_ORIGIN}). Set VITE_Impersonating_url_superadmin in this app's .env.`,
+        { duration: 8000 }
+      );
+    }
     try {
       const { data } = await superAdminApi.impersonateAccount(admin.id);
       window.open(`${MAIN_APP_ORIGIN}/admin/impersonate?token=${encodeURIComponent(data.token)}`, '_blank');
