@@ -4,10 +4,23 @@ import { Trash2, Eye, LogOut, Unlock, XCircle, Clock } from 'lucide-react';
 import { superAdminApi, type AdminAccountSummary } from '../../services/superAdminApi';
 import { Card, StatusPill, EmptyState, PageHeader, relativeTime } from './components';
 
-// The main app's own dev origin — impersonation opens a new tab there with
-// a short-lived token, since this console and the exam platform are
-// deliberately separate apps (see the port-2002 extraction).
-const MAIN_APP_ORIGIN = 'http://localhost:5173';
+// The exam platform's origin — impersonation opens a new tab there with a
+// short-lived token, since this console and the exam platform are
+// deliberately separate apps (see the port-2002 extraction). This was
+// previously hardcoded to the local dev origin (localhost:5173), which meant
+// "View as this admin" opened a dead localhost URL for every superadmin
+// visiting the deployed console. VITE_MAIN_APP_ORIGIN lets it be overridden
+// per deployment; the fallback mirrors the backend's own default for
+// FRONTEND_URL (see adminAuth.ts::getFrontendUrl) so the two stay in sync
+// without needing the env var set explicitly for the primary deployment.
+const viteEnv = (import.meta as unknown as { env?: Record<string, unknown> }).env || {};
+const isLocalBrowser =
+  typeof window !== 'undefined' &&
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+const mainAppOriginFromEnv =
+  typeof viteEnv.VITE_MAIN_APP_ORIGIN === 'string' ? viteEnv.VITE_MAIN_APP_ORIGIN : '';
+const MAIN_APP_ORIGIN =
+  mainAppOriginFromEnv || (isLocalBrowser ? 'http://localhost:5173' : 'https://humint.talentsatq.ai');
 
 export default function SuperAdminAccounts() {
   const [admins, setAdmins] = useState<AdminAccountSummary[] | null>(null);
