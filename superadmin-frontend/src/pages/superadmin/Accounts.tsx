@@ -23,12 +23,13 @@ const configuredMainAppOrigin =
   typeof viteEnv.VITE_Impersonating_url_superadmin === 'string'
     ? viteEnv.VITE_Impersonating_url_superadmin.replace(/\/+$/, '')
     : '';
-// Last-resort guess when the env var above isn't set and this isn't local
-// dev — kept only so impersonation doesn't silently break, not something to
-// rely on. impersonate() below warns whenever it's actually used.
-const FALLBACK_MAIN_APP_ORIGIN = 'https://humint.talentsatq.ai';
-const MAIN_APP_ORIGIN =
-  configuredMainAppOrigin || (isLocalBrowser ? 'http://localhost:5173' : FALLBACK_MAIN_APP_ORIGIN);
+// No hardcoded production guess here on purpose — a wrong guess (e.g. a
+// domain that isn't actually this deployment's) is worse than refusing to
+// open anything, since it fails silently instead of obviously. Only
+// localhost:5173 is assumed, since that's genuinely this repo's fixed local
+// dev port (see ecosystem.config.js / frontend's vite preview script), not a
+// guess about which exam-platform domain a given deployment uses.
+const MAIN_APP_ORIGIN = configuredMainAppOrigin || (isLocalBrowser ? 'http://localhost:5173' : '');
 
 export default function SuperAdminAccounts() {
   const [admins, setAdmins] = useState<AdminAccountSummary[] | null>(null);
@@ -91,11 +92,12 @@ export default function SuperAdminAccounts() {
   };
 
   const impersonate = async (admin: AdminAccountSummary) => {
-    if (!configuredMainAppOrigin && !isLocalBrowser) {
+    if (!MAIN_APP_ORIGIN) {
       toast.error(
-        `Exam platform URL isn't configured — opening a guess (${FALLBACK_MAIN_APP_ORIGIN}). Set VITE_Impersonating_url_superadmin in this app's .env.`,
+        "Exam platform URL isn't configured. Set VITE_Impersonating_url_superadmin in this app's .env, rebuild, and restart.",
         { duration: 8000 }
       );
+      return;
     }
     try {
       const { data } = await superAdminApi.impersonateAccount(admin.id);
