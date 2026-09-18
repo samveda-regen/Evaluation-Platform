@@ -639,6 +639,14 @@ async function startServer(): Promise<void> {
     await prisma.$executeRaw`CREATE UNIQUE INDEX IF NOT EXISTS "FeatureFlagOverride_featureKey_adminId_key" ON "FeatureFlagOverride"("featureKey", "adminId")`;
     await prisma.$executeRaw`CREATE INDEX IF NOT EXISTS "FeatureFlagOverride_adminId_idx" ON "FeatureFlagOverride"("adminId")`;
     console.log('Feature flag overrides table: ready');
+
+    // Superadmin Observer's per-account "devices logged in" view — cached
+    // IP-geolocation columns on AuthSession, resolved asynchronously after
+    // login (see services/deviceSessions.ts) rather than at row-creation time.
+    await prisma.$executeRaw`ALTER TABLE "AuthSession" ADD COLUMN IF NOT EXISTS "geoCity" TEXT`;
+    await prisma.$executeRaw`ALTER TABLE "AuthSession" ADD COLUMN IF NOT EXISTS "geoRegion" TEXT`;
+    await prisma.$executeRaw`ALTER TABLE "AuthSession" ADD COLUMN IF NOT EXISTS "geoCountry" TEXT`;
+    console.log('AuthSession geolocation columns: ready');
   } catch (error) {
     console.error('Database connectivity check failed. Verify PostgreSQL and DATABASE_URL.', error);
     process.exit(1);

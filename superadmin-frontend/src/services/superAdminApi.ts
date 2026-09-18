@@ -56,6 +56,7 @@ export interface AdminAccountSummary {
   createdAt: string;
   lastActiveAt: string | null;
   status: 'online' | 'offline';
+  deviceCount: number;
   actionsRecorded: number;
   ownedContent: {
     tests: number;
@@ -67,6 +68,17 @@ export interface AdminAccountSummary {
   securityLockReason: string | null;
   pendingDeletionAt: string | null;
   deletionReason: string | null;
+}
+
+export interface AdminDeviceInfo {
+  key: string;
+  browser: string;
+  os: string;
+  ipAddress: string | null;
+  location: string | null;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  loginCount: number;
 }
 
 export interface AdminActionLogEntry {
@@ -424,6 +436,8 @@ export const superAdminApi = {
     superAdminHttp.post<{ token: string; adminEmail: string; expiresInMinutes: number }>(
       `/superadmin/accounts/${adminId}/impersonate`
     ),
+  getAdminDevices: (adminId: string) =>
+    superAdminHttp.get<{ count: number; devices: AdminDeviceInfo[] }>(`/superadmin/accounts/${adminId}/devices`),
   forceLogoutAdmin: (adminId: string) =>
     superAdminHttp.post<{ message: string }>(`/superadmin/accounts/${adminId}/force-logout`),
   lockAdminSecurity: (adminId: string) =>

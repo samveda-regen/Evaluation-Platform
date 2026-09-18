@@ -9,6 +9,7 @@ import {
   scheduleDeleteAdminAccount,
   cancelDeleteAdminAccount,
   impersonateAdmin,
+  getAdminDevices,
 } from '../controllers/superAdminAccounts.js';
 import {
   listFeatureFlags,
@@ -91,6 +92,7 @@ router.get('/profile', superAdminAuth, getSuperAdminProfile);
 
 // ---- Accounts ----
 router.get('/accounts', superAdminAuth, listAdminAccounts);
+router.get('/accounts/:adminId/devices', superAdminAuth, getAdminDevices);
 router.delete('/accounts/:adminId', superAdminAuth, requireFullControl, deleteAdminAccount);
 router.post('/accounts/:adminId/schedule-delete', superAdminAuth, requireFullControl, scheduleDeleteAdminAccount);
 router.post('/accounts/:adminId/cancel-delete', superAdminAuth, requireFullControl, cancelDeleteAdminAccount);

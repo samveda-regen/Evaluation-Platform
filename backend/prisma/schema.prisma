@@ -169,6 +169,13 @@ model AuthSession {
   scopes           String    @default("[]")
   userAgent        String?
   ipAddress        String?
+  // Resolved asynchronously after the row is created (see
+  // services/deviceSessions.ts) via a free IP-geolocation lookup — null until
+  // that resolves, and left null forever for private/loopback IPs (localhost
+  // dev, internal networks) since those can't be geolocated at all.
+  geoCity          String?
+  geoRegion        String?
+  geoCountry       String?
   expiresAt        DateTime
   revokedAt        DateTime?
   createdAt        DateTime  @default(now())

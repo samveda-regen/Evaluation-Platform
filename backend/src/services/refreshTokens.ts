@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import prisma from '../utils/db.js';
 import { generateAdminToken, generateSuperAdminToken } from '../utils/jwt.js';
 import { invalidateAdminSecurityCache, invalidateSuperAdminSecurityCache } from './sessionSecurity.js';
+import { resolveSessionGeo } from './deviceSessions.js';
 
 // Rotation + reuse-detection for admin/superadmin sessions, following the
 // exact pattern already proven in controllers/integration.ts's recruiter
@@ -25,7 +26,7 @@ interface RequestContext {
 
 export async function issueAdminRefreshToken(adminId: string, ctx: RequestContext): Promise<string> {
   const token = crypto.randomBytes(40).toString('hex');
-  await prisma.authSession.create({
+  const session = await prisma.authSession.create({
     data: {
       adminId,
       refreshTokenHash: hashToken(token),
@@ -34,6 +35,10 @@ export async function issueAdminRefreshToken(adminId: string, ctx: RequestContex
       expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
     },
   });
+  // Fire-and-forget — the Superadmin Observer's "devices logged in" view
+  // (services/deviceSessions.ts) backfills location from this once it
+  // resolves; never delays or can fail the login itself.
+  resolveSessionGeo(session.id, ctx.ip);
   return token;
 }
 
