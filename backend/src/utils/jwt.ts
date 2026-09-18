@@ -14,10 +14,14 @@ export function generateAdminToken(payload: AdminPayload): string {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: ADMIN_JWT_EXPIRY });
 }
 
-// Deliberately short-lived (15m, non-configurable) — used only by the
-// superadmin "impersonate" action, never by a normal admin login.
+// Deliberately short-lived and non-configurable — used only by the
+// superadmin "impersonate" action, never by a normal admin login. Exported
+// so superAdminAccounts.ts's response/audit log can report the same number
+// instead of a second hardcoded copy that could drift from this one.
+export const IMPERSONATION_TOKEN_EXPIRY_MINUTES = 2;
+
 export function generateAdminImpersonationToken(payload: AdminPayload): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '15m' });
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: `${IMPERSONATION_TOKEN_EXPIRY_MINUTES}m` });
 }
 
 export function generateCandidateToken(payload: CandidatePayload): string {

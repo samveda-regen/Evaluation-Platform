@@ -102,7 +102,7 @@ export default function SuperAdminAccounts() {
     try {
       const { data } = await superAdminApi.impersonateAccount(admin.id);
       window.open(`${MAIN_APP_ORIGIN}/admin/impersonate?token=${encodeURIComponent(data.token)}`, '_blank');
-      toast.success(`Impersonation session opened for ${admin.email} (15 min)`);
+      toast.success(`Impersonation session opened for ${admin.email} (${data.expiresInMinutes} min)`);
     } catch {
       toast.error('Failed to start impersonation');
     }
@@ -181,7 +181,7 @@ export default function SuperAdminAccounts() {
                     <div className="flex items-center justify-end gap-1.5">
                       <button
                         onClick={() => void impersonate(a)}
-                        title="View as this admin (15 min)"
+                        title="View as this admin (2 min)"
                         className="p-1.5 text-sa-ink-faint hover:text-sa-accent transition-colors"
                       >
                         <Eye size={15} />

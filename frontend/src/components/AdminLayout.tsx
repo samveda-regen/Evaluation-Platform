@@ -7,6 +7,7 @@ import {
   ChevronRight, ChevronLeft, CheckCircle2, PlayCircle, UserCheck, ShieldCheck,
 } from 'lucide-react';
 import Icon from './Icon';
+import ImpersonationBanner from './ImpersonationBanner';
 import talentstaQLogo from '../assets/assessment-icons/icons/Talentstaq logo dark.svg';
 import regenQLogo from '../assets/assessment-icons/icons/regen-q-logo.svg';
 
@@ -685,7 +686,9 @@ export default function AdminLayout() {
   const isActiveItem = (matchPrefix: string) => location.pathname.startsWith(matchPrefix);
 
   return (
-    <div className="admin-shell flex h-screen overflow-hidden" style={{ background: 'var(--admin-bg)' }}>
+    <div className="admin-shell flex flex-col h-screen overflow-hidden" style={{ background: 'var(--admin-bg)' }}>
+      <ImpersonationBanner />
+      <div className="flex flex-1 overflow-hidden">
 
       {/* -- LEFT SIDEBAR -- */}
       <aside
@@ -1174,6 +1177,7 @@ export default function AdminLayout() {
             <Outlet />
           </div>
         </main>
+      </div>
       </div>
 
       {/* Completion / Started Popups */}
