@@ -201,7 +201,7 @@ export default function SuperAdminAuditLog() {
 
       {tab === 'changes' && (
         <Card className="p-0 overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto max-h-[560px] overflow-y-auto">
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="border-b border-sa-line text-left">
@@ -243,7 +243,7 @@ export default function SuperAdminAuditLog() {
 
       {tab === 'requests' && (
         <Card className="p-0 overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto max-h-[560px] overflow-y-auto">
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="border-b border-sa-line text-left">
@@ -292,7 +292,7 @@ export default function SuperAdminAuditLog() {
               >
                 <ArrowLeft size={13} /> Back to sessions
               </button>
-              <div className="relative pl-5 space-y-3 border-l border-sa-line-bright ml-1.5">
+              <div className="relative pl-5 space-y-3 border-l border-sa-line-bright ml-1.5 max-h-[560px] overflow-y-auto">
                 {replayEvents?.map((event) => (
                   <div key={event.id} className="relative">
                     <span className="absolute -left-[23px] top-1 h-2 w-2 rounded-full bg-sa-accent" />
@@ -311,7 +311,7 @@ export default function SuperAdminAuditLog() {
               </div>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto max-h-[560px] overflow-y-auto">
               <table className="w-full text-[13px]">
                 <thead>
                   <tr className="border-b border-sa-line text-left">
