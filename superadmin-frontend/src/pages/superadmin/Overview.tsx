@@ -6,11 +6,11 @@ import {
   superAdminApi,
   type AdminAccountSummary,
   type AdminActionLogEntry,
-  type LiveTelemetry,
   type FeatureFlag,
   type OverviewTrends,
 } from '../../services/superAdminApi';
 import { getRealtimeSocket } from '../../services/realtimeService';
+import { useSuperAdminRealtimeStore } from '../../context/superAdminRealtimeStore';
 import { Card, StatCard, EmptyState, PageHeader, StatusPill } from './components';
 
 const tooltipStyle = {
@@ -26,21 +26,20 @@ const gridProps = {
 export default function SuperAdminOverview() {
   const [admins, setAdmins] = useState<AdminAccountSummary[]>([]);
   const [recentActions, setRecentActions] = useState<AdminActionLogEntry[]>([]);
-  const [live, setLive] = useState<LiveTelemetry | null>(null);
   const [flags, setFlags] = useState<FeatureFlag[]>([]);
   const [trends, setTrends] = useState<OverviewTrends | null>(null);
+  // Kept live by SuperAdminLayout's socket listeners rather than fetched here.
+  const live = useSuperAdminRealtimeStore((s) => s.live);
 
   const load = useCallback(async () => {
-    const [accountsRes, actionsRes, telemetryRes, flagsRes, trendsRes] = await Promise.allSettled([
+    const [accountsRes, actionsRes, flagsRes, trendsRes] = await Promise.allSettled([
       superAdminApi.listAccounts(),
       superAdminApi.getActionLog({ limit: 8 }),
-      superAdminApi.getLiveTelemetry(),
       superAdminApi.listFeatureFlags(),
       superAdminApi.getOverviewTrends(30),
     ]);
     if (accountsRes.status === 'fulfilled') setAdmins(accountsRes.value.data.admins);
     if (actionsRes.status === 'fulfilled') setRecentActions(actionsRes.value.data.entries);
-    if (telemetryRes.status === 'fulfilled') setLive(telemetryRes.value.data);
     if (flagsRes.status === 'fulfilled') setFlags(flagsRes.value.data.flags);
     if (trendsRes.status === 'fulfilled') setTrends(trendsRes.value.data);
   }, []);

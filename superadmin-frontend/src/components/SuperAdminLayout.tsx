@@ -18,7 +18,9 @@ import {
   Webhook,
 } from 'lucide-react';
 import { useSuperAdminStore } from '../context/superAdminStore';
+import { useSuperAdminRealtimeStore, type StreamEntry } from '../context/superAdminRealtimeStore';
 import { getRealtimeSocket } from '../services/realtimeService';
+import { superAdminApi, type LiveTelemetry, type LiveResources, type TelemetrySnapshotEntry } from '../services/superAdminApi';
 import regenLogo from '../assets/regen-logo.png';
 
 const navItems = [
@@ -41,6 +43,16 @@ export default function SuperAdminLayout() {
   const { superAdmin, logout } = useSuperAdminStore();
   const navigate = useNavigate();
   const [joined, setJoined] = useState(false);
+  const {
+    setLive,
+    setHistory,
+    appendHistorySnapshot,
+    setResources,
+    setOnlineAdminIds,
+    markAdminOnline,
+    markAdminOffline,
+    pushStreamEntry,
+  } = useSuperAdminRealtimeStore();
 
   useEffect(() => {
     const token = localStorage.getItem('superAdminToken');
@@ -59,6 +71,73 @@ export default function SuperAdminLayout() {
       socket.off('superadmin-join-rejected', handleRejected);
     };
   }, []);
+
+  // Everything below is attached once, here, rather than inside the
+  // individual pages that display it — this component stays mounted for the
+  // whole authenticated session (React Router keeps a route's parent layout
+  // alive across its child routes), so telemetry/resources/activity keep
+  // accumulating in the store no matter which section is currently open.
+  useEffect(() => {
+    superAdminApi.getLiveTelemetry().then(({ data }) => setLive(data)).catch(() => {});
+    superAdminApi.getTelemetryHistory(120).then(({ data }) => setHistory(data.snapshots)).catch(() => {});
+    superAdminApi.getLiveResources().then(({ data }) => setResources(data)).catch(() => {});
+    superAdminApi
+      .listAccounts()
+      .then(({ data }) => {
+        setOnlineAdminIds(new Set(data.admins.filter((a) => a.status === 'online').map((a) => a.id)));
+      })
+      .catch(() => {});
+
+    const socket = getRealtimeSocket();
+
+    const handleTelemetryTick = (payload: LiveTelemetry) => setLive(payload);
+    const handleTelemetrySnapshot = (snapshot: TelemetrySnapshotEntry) => appendHistorySnapshot(snapshot);
+    const handleResourcesTick = (payload: LiveResources) => setResources(payload);
+    const handleAdminOnline = (payload: { adminId: string }) => markAdminOnline(payload.adminId);
+    const handleAdminOffline = (payload: { adminId: string }) => markAdminOffline(payload.adminId);
+    const handleAdminAction = (row: { id: string; createdAt: string; adminEmail: string; method: string; path: string; statusCode: number }) => {
+      pushStreamEntry({
+        id: row.id,
+        time: row.createdAt,
+        adminEmail: row.adminEmail,
+        kind: 'action',
+        detail: `${row.method} ${row.path} · ${row.statusCode}`,
+      });
+    };
+    const handleAdminClickBatch = (payload: {
+      adminEmail: string;
+      events: Array<{ id?: string; eventType: string; targetLabel?: string; route?: string; clientTimestamp: string }>;
+    }) => {
+      payload.events.forEach((e, i) => {
+        const entry: StreamEntry = {
+          id: `${payload.adminEmail}-${e.clientTimestamp}-${i}`,
+          time: e.clientTimestamp,
+          adminEmail: payload.adminEmail,
+          kind: 'click',
+          detail: `clicked "${e.targetLabel || 'unknown'}" on ${e.route || ''}`,
+        };
+        pushStreamEntry(entry);
+      });
+    };
+
+    socket.on('telemetry-tick', handleTelemetryTick);
+    socket.on('telemetry-snapshot', handleTelemetrySnapshot);
+    socket.on('resources-tick', handleResourcesTick);
+    socket.on('admin-online', handleAdminOnline);
+    socket.on('admin-offline', handleAdminOffline);
+    socket.on('admin-action', handleAdminAction);
+    socket.on('admin-click-batch', handleAdminClickBatch);
+
+    return () => {
+      socket.off('telemetry-tick', handleTelemetryTick);
+      socket.off('telemetry-snapshot', handleTelemetrySnapshot);
+      socket.off('resources-tick', handleResourcesTick);
+      socket.off('admin-online', handleAdminOnline);
+      socket.off('admin-offline', handleAdminOffline);
+      socket.off('admin-action', handleAdminAction);
+      socket.off('admin-click-batch', handleAdminClickBatch);
+    };
+  }, [appendHistorySnapshot, markAdminOffline, markAdminOnline, pushStreamEntry, setHistory, setLive, setOnlineAdminIds, setResources]);
 
   const handleLogout = () => {
     logout();

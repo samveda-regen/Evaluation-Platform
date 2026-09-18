@@ -1,88 +1,24 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { getRealtimeSocket } from '../../services/realtimeService';
+import { useEffect, useState } from 'react';
 import { superAdminApi, type AdminAccountSummary } from '../../services/superAdminApi';
+import { useSuperAdminRealtimeStore } from '../../context/superAdminRealtimeStore';
 import { Card, EmptyState, PageHeader } from './components';
 
-interface StreamEntry {
-  id: string;
-  time: string;
-  adminEmail: string;
-  kind: 'click' | 'action';
-  detail: string;
-}
-
-const MAX_STREAM = 150;
-
+// onlineAdminIds and stream come from the shared realtime store (populated by
+// SuperAdminLayout, which stays mounted for the whole session) rather than
+// being owned here — that way the activity feed keeps accumulating in the
+// background while this page isn't open, instead of restarting empty every
+// time it's re-opened.
 export default function SuperAdminLiveMonitor() {
-  const [onlineAdmins, setOnlineAdmins] = useState<Set<string>>(new Set());
   const [admins, setAdmins] = useState<AdminAccountSummary[]>([]);
-  const [stream, setStream] = useState<StreamEntry[]>([]);
-  const streamRef = useRef<StreamEntry[]>([]);
-
-  const pushEntry = useCallback((entry: StreamEntry) => {
-    streamRef.current = [entry, ...streamRef.current].slice(0, MAX_STREAM);
-    setStream(streamRef.current);
-  }, []);
+  const onlineAdmins = useSuperAdminRealtimeStore((s) => s.onlineAdminIds);
+  const stream = useSuperAdminRealtimeStore((s) => s.stream);
 
   useEffect(() => {
     superAdminApi
       .listAccounts()
-      .then(({ data }) => {
-        setAdmins(data.admins);
-        setOnlineAdmins(new Set(data.admins.filter((a) => a.status === 'online').map((a) => a.id)));
-      })
+      .then(({ data }) => setAdmins(data.admins))
       .catch(() => {});
   }, []);
-
-  useEffect(() => {
-    const socket = getRealtimeSocket();
-
-    const handleOnline = (payload: { adminId: string }) => {
-      setOnlineAdmins((prev) => new Set(prev).add(payload.adminId));
-    };
-    const handleOffline = (payload: { adminId: string }) => {
-      setOnlineAdmins((prev) => {
-        const next = new Set(prev);
-        next.delete(payload.adminId);
-        return next;
-      });
-    };
-    const handleAction = (row: { id: string; createdAt: string; adminEmail: string; method: string; path: string; statusCode: number }) => {
-      pushEntry({
-        id: row.id,
-        time: row.createdAt,
-        adminEmail: row.adminEmail,
-        kind: 'action',
-        detail: `${row.method} ${row.path} · ${row.statusCode}`,
-      });
-    };
-    const handleClickBatch = (payload: {
-      adminEmail: string;
-      events: Array<{ id?: string; eventType: string; targetLabel?: string; route?: string; clientTimestamp: string }>;
-    }) => {
-      payload.events.forEach((e, i) => {
-        pushEntry({
-          id: `${payload.adminEmail}-${e.clientTimestamp}-${i}`,
-          time: e.clientTimestamp,
-          adminEmail: payload.adminEmail,
-          kind: 'click',
-          detail: `clicked "${e.targetLabel || 'unknown'}" on ${e.route || ''}`,
-        });
-      });
-    };
-
-    socket.on('admin-online', handleOnline);
-    socket.on('admin-offline', handleOffline);
-    socket.on('admin-action', handleAction);
-    socket.on('admin-click-batch', handleClickBatch);
-
-    return () => {
-      socket.off('admin-online', handleOnline);
-      socket.off('admin-offline', handleOffline);
-      socket.off('admin-action', handleAction);
-      socket.off('admin-click-batch', handleClickBatch);
-    };
-  }, [pushEntry]);
 
   return (
     <div>

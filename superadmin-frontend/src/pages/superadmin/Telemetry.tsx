@@ -1,11 +1,6 @@
-import { useEffect, useState, useCallback } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { toast } from 'react-hot-toast';
-import { superAdminApi, type LiveTelemetry, type LiveResources, type TelemetrySnapshotEntry } from '../../services/superAdminApi';
-import { getRealtimeSocket } from '../../services/realtimeService';
+import { useSuperAdminRealtimeStore } from '../../context/superAdminRealtimeStore';
 import { Card, KpiTile, PageHeader, EmptyState, StatusPill } from './components';
-
-const MAX_HISTORY_POINTS = 120;
 
 function fmt(value: number | null, unit: string, digits = 0): string {
   if (value === null || value === undefined) return '—';
@@ -68,66 +63,14 @@ const gridProps = {
   yAxis: { tick: { fill: '#68686F', fontSize: 10 }, axisLine: false as const, tickLine: false as const, width: 36 },
 };
 
+// live/history/resources are populated by SuperAdminLayout (mounted for the
+// whole session) into the shared realtime store, so they're already current
+// the moment this page opens and keep updating in the background while it's
+// closed — this component only reads, it doesn't fetch or subscribe itself.
 export default function SuperAdminTelemetry() {
-  const [live, setLive] = useState<LiveTelemetry | null>(null);
-  const [history, setHistory] = useState<TelemetrySnapshotEntry[]>([]);
-  const [resources, setResources] = useState<LiveResources | null>(null);
-
-  const loadLive = useCallback(async () => {
-    try {
-      const { data } = await superAdminApi.getLiveTelemetry();
-      setLive(data);
-    } catch {
-      // silent — the live socket feed will populate this shortly after
-    }
-  }, []);
-
-  const loadHistory = useCallback(async () => {
-    try {
-      const { data } = await superAdminApi.getTelemetryHistory(MAX_HISTORY_POINTS);
-      setHistory(data.snapshots);
-    } catch {
-      toast.error('Failed to load telemetry history');
-    }
-  }, []);
-
-  const loadResources = useCallback(async () => {
-    try {
-      const { data } = await superAdminApi.getLiveResources();
-      setResources(data);
-    } catch {
-      // silent — the live socket feed will populate this shortly after
-    }
-  }, []);
-
-  // One-time fetch for immediate paint; everything after this arrives live
-  // over the socket (telemetry-tick / telemetry-snapshot / resources-tick) —
-  // no polling.
-  useEffect(() => {
-    void loadLive();
-    void loadHistory();
-    void loadResources();
-  }, [loadLive, loadHistory, loadResources]);
-
-  useEffect(() => {
-    const socket = getRealtimeSocket();
-
-    const handleTick = (payload: LiveTelemetry) => setLive(payload);
-    const handleSnapshot = (snapshot: TelemetrySnapshotEntry) => {
-      setHistory((prev) => [...prev, snapshot].slice(-MAX_HISTORY_POINTS));
-    };
-    const handleResourcesTick = (payload: LiveResources) => setResources(payload);
-
-    socket.on('telemetry-tick', handleTick);
-    socket.on('telemetry-snapshot', handleSnapshot);
-    socket.on('resources-tick', handleResourcesTick);
-
-    return () => {
-      socket.off('telemetry-tick', handleTick);
-      socket.off('telemetry-snapshot', handleSnapshot);
-      socket.off('resources-tick', handleResourcesTick);
-    };
-  }, []);
+  const live = useSuperAdminRealtimeStore((s) => s.live);
+  const history = useSuperAdminRealtimeStore((s) => s.history);
+  const resources = useSuperAdminRealtimeStore((s) => s.resources);
 
   const chartData = history.map((s) => ({
     time: new Date(s.capturedAt).toLocaleTimeString(),
