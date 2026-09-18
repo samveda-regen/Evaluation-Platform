@@ -44,8 +44,16 @@ async function logLoginAttempt(params: {
   }
 }
 
+// FRONTEND_URL is a comma-separated CORS allow-list (see parseAllowedOrigins
+// in index.ts) that can list more than one origin — e.g. the main app and
+// the separately-deployed superadmin console. Link-building (welcome email
+// login link, password reset link) only ever wants one canonical origin, so
+// this takes just the first entry rather than the raw env value: using the
+// raw value previously produced a broken, comma-joined URL in those emails
+// whenever FRONTEND_URL had more than one origin configured.
 function getFrontendUrl(): string {
-  return (process.env.FRONTEND_URL || 'https://humint.talentsatq.ai').replace(/\/+$/, '');
+  const firstOrigin = (process.env.FRONTEND_URL || '').split(',')[0]?.trim();
+  return (firstOrigin || 'https://humint.talentsatq.ai').replace(/\/+$/, '');
 }
 
 export async function registerAdmin(req: AuthenticatedRequest, res: Response): Promise<void> {
