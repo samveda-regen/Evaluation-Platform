@@ -15,7 +15,13 @@ export default function MaintenancePage({ message }: MaintenancePageProps) {
         <p className="mt-3 text-[15px] leading-relaxed text-gray-600">
           {message || 'The platform is temporarily down for maintenance. Please try again shortly.'}
         </p>
-        <p className="mt-2 text-[13px] text-gray-400">If this persists, please contact support.</p>
+        <p className="mt-2 text-[13px] text-gray-400">
+          If this persists, please contact{' '}
+          <a href="mailto:support@hria.io" className="text-gray-500 underline hover:text-gray-700">
+            support@hria.io
+          </a>
+          .
+        </p>
       </div>
     </div>
   );
