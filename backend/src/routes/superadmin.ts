@@ -60,6 +60,7 @@ import {
   listSuperAdmins,
   createSuperAdmin,
   deleteSuperAdmin,
+  lockAdminSecurity,
   unlockAdminSecurity,
 } from '../controllers/superAdminSecurity.js';
 import {
@@ -95,6 +96,7 @@ router.post('/accounts/:adminId/schedule-delete', superAdminAuth, requireFullCon
 router.post('/accounts/:adminId/cancel-delete', superAdminAuth, requireFullControl, cancelDeleteAdminAccount);
 router.post('/accounts/:adminId/impersonate', superAdminAuth, requireFullControl, impersonateAdmin);
 router.post('/accounts/:adminId/force-logout', superAdminAuth, requireFullControl, forceLogoutAdmin);
+router.post('/accounts/:adminId/lock', superAdminAuth, requireFullControl, lockAdminSecurity);
 router.post('/accounts/:adminId/unlock', superAdminAuth, requireFullControl, unlockAdminSecurity);
 
 // ---- Feature locks ----

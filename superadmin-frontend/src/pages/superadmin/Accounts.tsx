@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'react-hot-toast';
-import { Trash2, Eye, LogOut, Unlock, XCircle, Clock } from 'lucide-react';
+import { Trash2, Eye, LogOut, Lock, Unlock, XCircle, Clock } from 'lucide-react';
 import { superAdminApi, type AdminAccountSummary } from '../../services/superAdminApi';
 import { Card, StatusPill, EmptyState, PageHeader, relativeTime } from './components';
 
@@ -117,6 +117,16 @@ export default function SuperAdminAccounts() {
     }
   };
 
+  const lock = async (admin: AdminAccountSummary) => {
+    try {
+      await superAdminApi.lockAdminSecurity(admin.id);
+      toast.success(`${admin.email} locked — blocked from logging in or taking actions until unlocked`);
+      void load();
+    } catch {
+      toast.error('Failed to lock');
+    }
+  };
+
   const unlock = async (admin: AdminAccountSummary) => {
     try {
       await superAdminApi.unlockAdminSecurity(admin.id);
@@ -193,13 +203,21 @@ export default function SuperAdminAccounts() {
                       >
                         <LogOut size={15} />
                       </button>
-                      {a.securityLocked && (
+                      {a.securityLocked ? (
                         <button
                           onClick={() => void unlock(a)}
                           title="Unlock"
                           className="p-1.5 text-sa-ink-faint hover:text-sa-good transition-colors"
                         >
                           <Unlock size={15} />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => void lock(a)}
+                          title="Lock this account (manual — same mechanism as the automatic anomaly lock)"
+                          className="p-1.5 text-sa-ink-faint hover:text-sa-critical transition-colors"
+                        >
+                          <Lock size={15} />
                         </button>
                       )}
                       {a.pendingDeletionAt ? (

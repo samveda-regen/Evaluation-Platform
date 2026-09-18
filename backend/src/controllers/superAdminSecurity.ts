@@ -316,6 +316,49 @@ export async function deleteSuperAdmin(req: AuthenticatedRequest, res: Response)
   }
 }
 
+// Manual counterpart to the automatic anomaly lock (anomalyLock.ts) — same
+// securityLocked field, same enforcement (requireFeatureEnabled /
+// isFeatureEnabledForAdmin block the admin from logging in or acting while
+// it's set), just triggered by a superadmin directly instead of the hourly
+// activity-spike job. Distinct from AdminBilling.status='suspended', which
+// only blocks billed actions rather than the whole account.
+export async function lockAdminSecurity(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const { adminId } = req.params;
+    const admin = await prisma.admin.findUnique({ where: { id: adminId } });
+    if (!admin) {
+      res.status(404).json({ error: 'Admin not found' });
+      return;
+    }
+    if (admin.securityLocked) {
+      res.status(409).json({ error: `${admin.email} is already locked.` });
+      return;
+    }
+
+    const reason = `Manually locked by ${req.superAdmin!.email}`;
+    await prisma.admin.update({
+      where: { id: adminId },
+      data: { securityLocked: true, securityLockReason: reason, securityLockedAt: new Date() },
+    });
+    invalidateAdminSecurityCache(adminId);
+
+    await createAuditLogEntry({
+      actorAdminId: null,
+      actorEmail: req.superAdmin!.email,
+      action: 'update',
+      resourceType: 'AdminSecurity',
+      resourceId: adminId,
+      before: { securityLocked: false },
+      after: { securityLocked: true, reason },
+    });
+
+    res.json({ message: `${admin.email} has been locked.` });
+  } catch (error) {
+    console.error('Lock admin security error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
 // Reverses a securityLocked lock — either manually applied or set by the
 // anomaly auto-lock job. Distinct from AdminBilling.status='suspended',
 // which only blocks billed actions rather than the whole account.

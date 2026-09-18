@@ -426,6 +426,8 @@ export const superAdminApi = {
     ),
   forceLogoutAdmin: (adminId: string) =>
     superAdminHttp.post<{ message: string }>(`/superadmin/accounts/${adminId}/force-logout`),
+  lockAdminSecurity: (adminId: string) =>
+    superAdminHttp.post<{ message: string }>(`/superadmin/accounts/${adminId}/lock`),
   unlockAdminSecurity: (adminId: string) =>
     superAdminHttp.post<{ message: string }>(`/superadmin/accounts/${adminId}/unlock`),
 
