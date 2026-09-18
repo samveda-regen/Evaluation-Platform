@@ -142,6 +142,36 @@ export interface LiveTelemetry {
   disclaimer: string;
 }
 
+export interface HostResources {
+  cpuLoadPct: number | null;
+  cpuCores: number;
+  memTotalBytes: number;
+  memUsedBytes: number;
+  memUsedPct: number;
+  diskTotalBytes: number | null;
+  diskUsedBytes: number | null;
+  diskUsedPct: number | null;
+  uptimeSec: number;
+}
+
+export interface ProcessResource {
+  name: string;
+  pmId: number;
+  status: string;
+  cpuPct: number;
+  memBytes: number;
+  uptimeMs: number | null;
+  restarts: number;
+}
+
+export interface LiveResources {
+  capturedAt: string;
+  host: HostResources;
+  processes: ProcessResource[] | null;
+  dbPool: { activeConnections: number } | null;
+  backlog: { pendingAdminDeletions: number };
+}
+
 export interface TelemetrySnapshotEntry {
   id: string;
   capturedAt: string;
@@ -431,6 +461,7 @@ export const superAdminApi = {
     superAdminHttp.get<{ snapshots: TelemetrySnapshotEntry[] }>('/superadmin/telemetry/history', {
       params: { limit },
     }),
+  getLiveResources: () => superAdminHttp.get<LiveResources>('/superadmin/resources/live'),
 
   chatWithAssistant: (message: string, history: AssistantChatMessage[]) =>
     superAdminHttp.post<{ reply: string; toolsUsed: string[] }>('/superadmin/ai/chat', { message, history }),

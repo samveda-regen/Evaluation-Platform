@@ -34,6 +34,14 @@ export function emitToSuperAdminRoom(event: string, payload: unknown): void {
   ioInstance.to(SUPERADMIN_ROOM).emit(event, payload);
 }
 
+// Lets the telemetry/resources tick loops skip their work (DB queries, a
+// `pm2 jlist` subprocess spawn) when no superadmin tab is actually open to
+// receive it, rather than paying that cost forever at a 2s cadence.
+export function isSuperAdminRoomActive(): boolean {
+  if (!ioInstance) return false;
+  return (ioInstance.sockets.adapter.rooms.get(SUPERADMIN_ROOM)?.size ?? 0) > 0;
+}
+
 export function emitToProctorTargets(
   testId: string,
   attemptId: string,

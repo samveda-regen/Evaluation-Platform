@@ -27,6 +27,7 @@ import {
   getClickSessionReplay,
 } from '../controllers/superAdminAuditLog.js';
 import { getLiveTelemetry, getTelemetryHistory } from '../controllers/superAdminTelemetry.js';
+import { getLiveResources } from '../controllers/superAdminResources.js';
 import { chatWithAssistant } from '../controllers/superAdminAssistant.js';
 import { getOverviewTrends } from '../controllers/superAdminOverview.js';
 import {
@@ -115,6 +116,7 @@ router.get('/logs/clicks/sessions/:sessionId', superAdminAuth, getClickSessionRe
 // ---- Telemetry ----
 router.get('/telemetry/live', superAdminAuth, getLiveTelemetry);
 router.get('/telemetry/history', superAdminAuth, getTelemetryHistory);
+router.get('/resources/live', superAdminAuth, getLiveResources);
 
 // ---- Overview ----
 router.get('/overview/trends', superAdminAuth, getOverviewTrends);
