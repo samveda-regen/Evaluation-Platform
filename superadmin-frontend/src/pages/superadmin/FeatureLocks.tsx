@@ -120,6 +120,11 @@ export default function SuperAdminFeatureLocks() {
   const isGlobalView = selectedAccountId === GLOBAL_VIEW;
   const maintenanceFlag = flags?.find((flag) => flag.key === MAINTENANCE_FLAG_KEY) ?? null;
   const maintenanceActive = maintenanceFlag !== null && !maintenanceFlag.enabled;
+  // maintenance_mode gets its own dedicated banner+toggle above (with clearer
+  // On/Off framing than a generic flag row) — excluded from both capability
+  // lists below so it isn't a duplicate control for the same setting.
+  const listedFlags = flags?.filter((flag) => flag.key !== MAINTENANCE_FLAG_KEY) ?? null;
+  const listedAccountFlags = accountFlags?.filter((flag) => flag.key !== MAINTENANCE_FLAG_KEY) ?? null;
 
   return (
     <div>
@@ -173,9 +178,9 @@ export default function SuperAdminFeatureLocks() {
       </div>
 
       {isGlobalView ? (
-        <Card title="Platform-wide capabilities" meta={flags ? `${flags.length} features` : undefined}>
+        <Card title="Platform-wide capabilities" meta={listedFlags ? `${listedFlags.length} features` : undefined}>
           <div>
-            {flags?.map((flag) => (
+            {listedFlags?.map((flag) => (
               <div key={flag.key} className="flex items-center gap-3.5 py-3.5 border-b border-sa-line-soft last:border-0">
                 <div
                   className={`shrink-0 h-8 w-8 rounded-lg border flex items-center justify-center ${
@@ -200,17 +205,17 @@ export default function SuperAdminFeatureLocks() {
                 <Toggle on={flag.enabled} onClick={() => toggleGlobal(flag)} disabled={pending === flag.key} label={`Toggle ${flag.label}`} />
               </div>
             ))}
-            {flags?.length === 0 && <EmptyState>No feature flags configured.</EmptyState>}
-            {flags === null && <EmptyState>Loading…</EmptyState>}
+            {listedFlags?.length === 0 && <EmptyState>No feature flags configured.</EmptyState>}
+            {listedFlags === null && <EmptyState>Loading…</EmptyState>}
           </div>
         </Card>
       ) : (
         <Card
           title={`Overrides for ${selectedAccount?.name || selectedAccount?.email || 'account'}`}
-          meta={accountFlags ? `${accountFlags.length} features` : undefined}
+          meta={listedAccountFlags ? `${listedAccountFlags.length} features` : undefined}
         >
           <div>
-            {accountFlags?.map((flag) => (
+            {listedAccountFlags?.map((flag) => (
               <div key={flag.key} className="flex items-center gap-3.5 py-3.5 border-b border-sa-line-soft last:border-0">
                 <div
                   className={`shrink-0 h-8 w-8 rounded-lg border flex items-center justify-center ${
@@ -256,8 +261,8 @@ export default function SuperAdminFeatureLocks() {
                 />
               </div>
             ))}
-            {accountFlags?.length === 0 && <EmptyState>No feature flags configured.</EmptyState>}
-            {accountFlags === null && <EmptyState>Loading…</EmptyState>}
+            {listedAccountFlags?.length === 0 && <EmptyState>No feature flags configured.</EmptyState>}
+            {listedAccountFlags === null && <EmptyState>Loading…</EmptyState>}
           </div>
         </Card>
       )}
