@@ -72,7 +72,7 @@ export default function SuperAdminTelemetry() {
   const history = useSuperAdminRealtimeStore((s) => s.history);
   const resources = useSuperAdminRealtimeStore((s) => s.resources);
 
-  const chartData = history.map((s) => ({
+  const rawChartData = history.map((s) => ({
     time: new Date(s.capturedAt).toLocaleTimeString(),
     ping: s.medianPingMs,
     cvP50: s.cvLatencyP50Ms,
@@ -81,6 +81,31 @@ export default function SuperAdminTelemetry() {
     apiP50: s.apiLatencyP50Ms,
     apiP95: s.apiLatencyP95Ms,
   }));
+
+  // Every metric here only has a real value while something is actually
+  // generating it (an admin's browser tab open and reporting fps/ping, an
+  // admin API request in flight, a CV analysis call) — a snapshot is still
+  // taken every 60s regardless, so a quiet stretch at either end of the
+  // fetched window is an all-null row, not a zero. Charting the raw history
+  // unchanged left that quiet padding in place, which squeezed the actual
+  // data into the middle of the chart with dead space on one or both sides.
+  // Trimming the leading/trailing all-null rows makes the real data span the
+  // full chart width — connectNulls on each Area still bridges any gaps
+  // *within* that span the same as before.
+  const firstDataIndex = rawChartData.findIndex(
+    (p) => p.ping !== null || p.cvP50 !== null || p.cvP95 !== null || p.appFps !== null || p.apiP50 !== null || p.apiP95 !== null
+  );
+  const lastDataIndex = (() => {
+    for (let i = rawChartData.length - 1; i >= 0; i--) {
+      const p = rawChartData[i];
+      if (p.ping !== null || p.cvP50 !== null || p.cvP95 !== null || p.appFps !== null || p.apiP50 !== null || p.apiP95 !== null) {
+        return i;
+      }
+    }
+    return -1;
+  })();
+  const chartData =
+    firstDataIndex === -1 ? [] : rawChartData.slice(firstDataIndex, lastDataIndex + 1);
 
   return (
     <div>
