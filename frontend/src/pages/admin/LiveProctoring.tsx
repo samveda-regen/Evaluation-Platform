@@ -7,10 +7,11 @@ import {
   Mic,
   Monitor,
   Search,
+  Send,
   ShieldCheck,
   X,
 } from 'lucide-react';
-import { RemoteTrack, RemoteTrackPublication, Room, RoomEvent, Track, VideoQuality } from 'livekit-client';
+import { RemoteParticipant, RemoteTrack, RemoteTrackPublication, Room, RoomEvent, Track, VideoQuality } from 'livekit-client';
 import { adminApi } from '../../services/api';
 
 interface LiveCandidate {
@@ -45,17 +46,24 @@ function LiveVideoFeed({
   quality,
   withAudio,
   showOverlay = true,
+  onRoom,
 }: {
   attemptId?: string;
   active: boolean;
   quality: VideoQuality;
   withAudio: boolean;
   showOverlay?: boolean;
+  onRoom?: (room: Room | null) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const attachedVideoRef = useRef<RemoteTrack | null>(null);
+  const onRoomRef = useRef(onRoom);
   const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle');
+
+  useEffect(() => {
+    onRoomRef.current = onRoom;
+  }, [onRoom]);
 
   useEffect(() => {
     if (!active || !attemptId) {
@@ -108,6 +116,7 @@ function LiveVideoFeed({
         if (cancelled) return;
         await room.connect(data.url, data.token, { autoSubscribe: false });
         if (cancelled) return;
+        onRoomRef.current?.(room);
         room.remoteParticipants.forEach((participant) => {
           participant.trackPublications.forEach((publication) => {
             subscribeIfWanted(publication);
@@ -131,6 +140,7 @@ function LiveVideoFeed({
         attachedVideoRef.current.detach(videoRef.current);
       }
       attachedVideoRef.current = null;
+      onRoomRef.current?.(null);
       room.disconnect();
     };
   }, [active, attemptId, quality, withAudio]);
@@ -385,6 +395,61 @@ export default function LiveProctoring() {
   const [search, setSearch] = useState('');
   const [testFilter, setTestFilter] = useState<string | null>(null);
   const [testMenuOpen, setTestMenuOpen] = useState(false);
+  const [viewerRoom, setViewerRoom] = useState<Room | null>(null);
+  const [messageText, setMessageText] = useState('');
+  const [chatMessages, setChatMessages] = useState<{ id: string; text: string; at: number; from: 'admin' | 'candidate' }[]>([]);
+
+  useEffect(() => {
+    setChatMessages([]);
+    setMessageText('');
+  }, [viewerCandidate?.attemptId]);
+
+  useEffect(() => {
+    if (!viewerRoom) return;
+
+    const handleCandidateData = (payload: Uint8Array, participant?: RemoteParticipant) => {
+      if (participant && !participant.identity?.startsWith('candidate:')) return;
+      try {
+        const decoded = JSON.parse(new TextDecoder().decode(payload));
+        if (decoded && decoded.type === 'candidate-message' && typeof decoded.text === 'string') {
+          setChatMessages((prev) => [
+            ...prev,
+            {
+              id: typeof decoded.id === 'string' ? decoded.id : `${Date.now()}`,
+              text: decoded.text,
+              at: typeof decoded.at === 'number' ? decoded.at : Date.now(),
+              from: 'candidate',
+            },
+          ]);
+        }
+      } catch {
+        // Ignore malformed candidate data packets.
+      }
+    };
+
+    viewerRoom.on(RoomEvent.DataReceived, handleCandidateData);
+    return () => {
+      viewerRoom.off(RoomEvent.DataReceived, handleCandidateData);
+    };
+  }, [viewerRoom]);
+
+  const sendProctorMessage = () => {
+    const text = messageText.trim();
+    if (!text || !viewerRoom) return;
+    const message = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      text,
+      at: Date.now(),
+    };
+    const payload = new TextEncoder().encode(
+      JSON.stringify({ type: 'admin-message', ...message })
+    );
+    void viewerRoom.localParticipant
+      .publishData(payload, { reliable: true })
+      .catch((error) => console.error('Failed to send proctor message:', error));
+    setChatMessages((prev) => [...prev, { ...message, from: 'admin' }]);
+    setMessageText('');
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -723,7 +788,8 @@ export default function LiveProctoring() {
               width: 'min(1120px, 96vw)',
               maxHeight: '92vh',
               borderRadius: '12px',
-              overflow: 'hidden',
+              overflowY: 'auto',
+              overflowX: 'hidden',
               backgroundColor: 'white',
               boxShadow: '0 24px 70px rgba(15, 23, 42, 0.34)',
             }}
@@ -782,6 +848,7 @@ export default function LiveProctoring() {
                 quality={VideoQuality.HIGH}
                 withAudio
                 showOverlay
+                onRoom={setViewerRoom}
               />
               <div
                 style={{
@@ -802,6 +869,102 @@ export default function LiveProctoring() {
                 <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: 'white' }} />
                 LIVE CAMERA
               </div>
+            </div>
+
+            <div
+              style={{
+                borderTop: '1px solid var(--admin-border-soft)',
+                padding: '14px 16px 16px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px',
+                backgroundColor: 'white',
+              }}
+            >
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  letterSpacing: '0.04em',
+                  textTransform: 'uppercase',
+                  color: 'var(--admin-text-subtle)',
+                }}
+              >
+                Message candidate
+              </p>
+
+              {chatMessages.length > 0 && (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                    maxHeight: '148px',
+                    overflowY: 'auto',
+                  }}
+                >
+                  {chatMessages.map((message) => (
+                    <div
+                      key={message.id}
+                      style={{
+                        alignSelf: message.from === 'admin' ? 'flex-end' : 'flex-start',
+                        maxWidth: '80%',
+                        backgroundColor: message.from === 'admin' ? 'var(--admin-accent)' : '#F1F5F9',
+                        color: message.from === 'admin' ? 'white' : 'var(--admin-text)',
+                        padding: '7px 11px',
+                        borderRadius: '10px',
+                        fontSize: '13px',
+                        lineHeight: 1.35,
+                        wordBreak: 'break-word',
+                      }}
+                    >
+                      {message.text}
+                      <span style={{ display: 'block', fontSize: '10px', opacity: 0.75, marginTop: '3px' }}>
+                        {new Date(message.at).toLocaleTimeString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  sendProctorMessage();
+                }}
+                style={{ display: 'flex', gap: '8px' }}
+              >
+                <input
+                  value={messageText}
+                  onChange={(event) => setMessageText(event.target.value)}
+                  placeholder={viewerRoom ? 'Type a message to the candidate...' : 'Connecting to live session...'}
+                  disabled={!viewerRoom}
+                  aria-label="Message to candidate"
+                  maxLength={500}
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    height: '38px',
+                    borderRadius: '9px',
+                    border: '1px solid var(--admin-border)',
+                    padding: '0 12px',
+                    fontSize: '13px',
+                    color: 'var(--admin-text)',
+                    backgroundColor: 'white',
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  type="submit"
+                  className="admin-btn admin-btn-primary"
+                  disabled={!viewerRoom || !messageText.trim()}
+                  style={{ opacity: !viewerRoom || !messageText.trim() ? 0.6 : 1, flexShrink: 0 }}
+                >
+                  <Send size={14} />
+                  Send
+                </button>
+              </form>
             </div>
           </div>
         </div>
