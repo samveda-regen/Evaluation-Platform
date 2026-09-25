@@ -397,30 +397,40 @@ export default function LiveProctoring() {
   const [testMenuOpen, setTestMenuOpen] = useState(false);
   const [viewerRoom, setViewerRoom] = useState<Room | null>(null);
   const [messageText, setMessageText] = useState('');
-  const [chatMessages, setChatMessages] = useState<{ id: string; text: string; at: number; from: 'admin' | 'candidate' }[]>([]);
+  // Keyed by attemptId so closing and reopening the popup for the same candidate
+  // keeps their thread; history lives only for this page session (until refresh/nav away).
+  const [chatMessagesByAttempt, setChatMessagesByAttempt] = useState<
+    Record<string, { id: string; text: string; at: number; from: 'admin' | 'candidate' }[]>
+  >({});
+  const viewerAttemptIdRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    setChatMessages([]);
+    viewerAttemptIdRef.current = viewerCandidate?.attemptId;
     setMessageText('');
   }, [viewerCandidate?.attemptId]);
+
+  const chatMessages = (viewerCandidate?.attemptId && chatMessagesByAttempt[viewerCandidate.attemptId]) || [];
 
   useEffect(() => {
     if (!viewerRoom) return;
 
     const handleCandidateData = (payload: Uint8Array, participant?: RemoteParticipant) => {
       if (participant && !participant.identity?.startsWith('candidate:')) return;
+      const attemptId = viewerAttemptIdRef.current;
+      if (!attemptId) return;
       try {
         const decoded = JSON.parse(new TextDecoder().decode(payload));
         if (decoded && decoded.type === 'candidate-message' && typeof decoded.text === 'string') {
-          setChatMessages((prev) => [
+          const entry = {
+            id: typeof decoded.id === 'string' ? decoded.id : `${Date.now()}`,
+            text: decoded.text,
+            at: typeof decoded.at === 'number' ? decoded.at : Date.now(),
+            from: 'candidate' as const,
+          };
+          setChatMessagesByAttempt((prev) => ({
             ...prev,
-            {
-              id: typeof decoded.id === 'string' ? decoded.id : `${Date.now()}`,
-              text: decoded.text,
-              at: typeof decoded.at === 'number' ? decoded.at : Date.now(),
-              from: 'candidate',
-            },
-          ]);
+            [attemptId]: [...(prev[attemptId] || []), entry],
+          }));
         }
       } catch {
         // Ignore malformed candidate data packets.
@@ -435,7 +445,8 @@ export default function LiveProctoring() {
 
   const sendProctorMessage = () => {
     const text = messageText.trim();
-    if (!text || !viewerRoom) return;
+    const attemptId = viewerCandidate?.attemptId;
+    if (!text || !viewerRoom || !attemptId) return;
     const message = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       text,
@@ -447,7 +458,10 @@ export default function LiveProctoring() {
     void viewerRoom.localParticipant
       .publishData(payload, { reliable: true })
       .catch((error) => console.error('Failed to send proctor message:', error));
-    setChatMessages((prev) => [...prev, { ...message, from: 'admin' }]);
+    setChatMessagesByAttempt((prev) => ({
+      ...prev,
+      [attemptId]: [...(prev[attemptId] || []), { ...message, from: 'admin' }],
+    }));
     setMessageText('');
   };
 
