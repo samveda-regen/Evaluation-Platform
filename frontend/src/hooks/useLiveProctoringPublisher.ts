@@ -33,6 +33,22 @@ export function useLiveProctoringPublisher({
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const sendReply = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || !roomRef.current) return;
+    const message = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      text: trimmed,
+      at: Date.now(),
+    };
+    const payload = new TextEncoder().encode(
+      JSON.stringify({ type: 'candidate-message', ...message })
+    );
+    void roomRef.current.localParticipant
+      .publishData(payload, { reliable: true })
+      .catch((err) => console.error('Failed to send candidate reply:', err));
+  };
+
   useEffect(() => {
     onAdminMessageRef.current = onAdminMessage;
   }, [onAdminMessage]);
@@ -157,5 +173,6 @@ export function useLiveProctoringPublisher({
     connected,
     error,
     disconnect: () => roomRef.current?.disconnect(),
+    sendReply,
   };
 }

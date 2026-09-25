@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   X,
 } from 'lucide-react';
-import { RemoteTrack, RemoteTrackPublication, Room, RoomEvent, Track } from 'livekit-client';
+import { RemoteParticipant, RemoteTrack, RemoteTrackPublication, Room, RoomEvent, Track } from 'livekit-client';
 import { adminApi } from '../../services/api';
 
 interface LiveCandidate {
@@ -366,12 +366,41 @@ export default function LiveProctoring() {
   const [testMenuOpen, setTestMenuOpen] = useState(false);
   const [viewerRoom, setViewerRoom] = useState<Room | null>(null);
   const [messageText, setMessageText] = useState('');
-  const [sentMessages, setSentMessages] = useState<{ id: string; text: string; at: number }[]>([]);
+  const [chatMessages, setChatMessages] = useState<{ id: string; text: string; at: number; from: 'admin' | 'candidate' }[]>([]);
 
   useEffect(() => {
-    setSentMessages([]);
+    setChatMessages([]);
     setMessageText('');
   }, [viewerCandidate?.attemptId]);
+
+  useEffect(() => {
+    if (!viewerRoom) return;
+
+    const handleCandidateData = (payload: Uint8Array, participant?: RemoteParticipant) => {
+      if (participant && !participant.identity?.startsWith('candidate:')) return;
+      try {
+        const decoded = JSON.parse(new TextDecoder().decode(payload));
+        if (decoded && decoded.type === 'candidate-message' && typeof decoded.text === 'string') {
+          setChatMessages((prev) => [
+            ...prev,
+            {
+              id: typeof decoded.id === 'string' ? decoded.id : `${Date.now()}`,
+              text: decoded.text,
+              at: typeof decoded.at === 'number' ? decoded.at : Date.now(),
+              from: 'candidate',
+            },
+          ]);
+        }
+      } catch {
+        // Ignore malformed candidate data packets.
+      }
+    };
+
+    viewerRoom.on(RoomEvent.DataReceived, handleCandidateData);
+    return () => {
+      viewerRoom.off(RoomEvent.DataReceived, handleCandidateData);
+    };
+  }, [viewerRoom]);
 
   const sendProctorMessage = () => {
     const text = messageText.trim();
@@ -387,7 +416,7 @@ export default function LiveProctoring() {
     void viewerRoom.localParticipant
       .publishData(payload, { reliable: true })
       .catch((error) => console.error('Failed to send proctor message:', error));
-    setSentMessages((prev) => [...prev, message]);
+    setChatMessages((prev) => [...prev, { ...message, from: 'admin' }]);
     setMessageText('');
   };
 
@@ -851,7 +880,7 @@ export default function LiveProctoring() {
                 Message candidate
               </p>
 
-              {sentMessages.length > 0 && (
+              {chatMessages.length > 0 && (
                 <div
                   style={{
                     display: 'flex',
@@ -861,14 +890,14 @@ export default function LiveProctoring() {
                     overflowY: 'auto',
                   }}
                 >
-                  {sentMessages.map((message) => (
+                  {chatMessages.map((message) => (
                     <div
                       key={message.id}
                       style={{
-                        alignSelf: 'flex-end',
+                        alignSelf: message.from === 'admin' ? 'flex-end' : 'flex-start',
                         maxWidth: '80%',
-                        backgroundColor: 'var(--admin-accent)',
-                        color: 'white',
+                        backgroundColor: message.from === 'admin' ? 'var(--admin-accent)' : '#F1F5F9',
+                        color: message.from === 'admin' ? 'white' : 'var(--admin-text)',
                         padding: '7px 11px',
                         borderRadius: '10px',
                         fontSize: '13px',

@@ -108,7 +108,9 @@ export default function TestInterface() {
   const [faceFrozen, setFaceFrozen] = useState(false);
   const [policyPaused, setPolicyPaused] = useState(false);
   const [policyPauseReason, setPolicyPauseReason] = useState('');
-  const [proctorMessage, setProctorMessage] = useState<{ id: string; text: string; at: number } | null>(null);
+  const [proctorMessages, setProctorMessages] = useState<{ id: string; text: string; at: number; from: 'admin' | 'candidate' }[]>([]);
+  const [proctorChatOpen, setProctorChatOpen] = useState(false);
+  const [proctorReplyText, setProctorReplyText] = useState('');
   // New state for redesigned UI
   const [markedForReview, setMarkedForReview] = useState<Set<number>>(new Set());
   const [autoSaved, setAutoSaved] = useState(false);
@@ -256,6 +258,7 @@ export default function TestInterface() {
   const {
     disconnect: disconnectLiveProctoring,
     error: liveProctoringError,
+    sendReply: sendProctorReply,
   } = useLiveProctoringPublisher({
     enabled: proctorEnabled && proctorStatus.isInitialized,
     attemptId: attemptId || '',
@@ -263,9 +266,21 @@ export default function TestInterface() {
     cameraStream,
     screenStream,
     onAdminMessage: (message) => {
-      setProctorMessage(message);
+      setProctorMessages((prev) => [...prev, { ...message, from: 'admin' }]);
+      setProctorChatOpen(true);
     },
   });
+
+  const handleSendProctorReply = () => {
+    const text = proctorReplyText.trim();
+    if (!text) return;
+    sendProctorReply(text);
+    setProctorMessages((prev) => [
+      ...prev,
+      { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, text, at: Date.now(), from: 'candidate' },
+    ]);
+    setProctorReplyText('');
+  };
 
   const proctorStatusRef = useRef(proctorStatus);
   const hiddenAtRef = useRef<number | null>(null);
@@ -1055,24 +1070,62 @@ export default function TestInterface() {
         </div>
       )}
 
-      {/* Proctor message */}
-      {proctorMessage && (
+      {/* Proctor chat */}
+      {proctorMessages.length > 0 && (
         <div className="fixed top-16 right-4 z-50 w-[calc(100%-2rem)] max-w-sm sm:w-96">
           <div className="overflow-hidden rounded-xl bg-indigo-600 text-white shadow-2xl ring-1 ring-black/10">
-            <div className="flex items-center justify-between bg-indigo-700 px-4 py-2">
+            <button
+              type="button"
+              onClick={() => setProctorChatOpen((open) => !open)}
+              className="flex w-full items-center justify-between bg-indigo-700 px-4 py-2"
+            >
               <span className="text-xs font-bold uppercase tracking-wide">Message from Invigilator</span>
-              <button
-                type="button"
-                aria-label="Dismiss proctor message"
-                onClick={() => setProctorMessage(null)}
-                className="flex h-6 w-6 items-center justify-center rounded text-lg leading-none transition-colors hover:bg-white/15"
-              >
-                &times;
-              </button>
-            </div>
-            <p className="whitespace-pre-wrap break-words px-4 py-3 text-sm font-medium">
-              {proctorMessage.text}
-            </p>
+              <span aria-hidden className="text-xs">{proctorChatOpen ? 'Hide' : 'Show'}</span>
+            </button>
+            {proctorChatOpen && (
+              <>
+                <div className="flex max-h-48 flex-col gap-2 overflow-y-auto px-3 py-3">
+                  {proctorMessages.map((message) => (
+                    <div
+                      key={message.id}
+                      className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                        message.from === 'admin'
+                          ? 'self-start bg-indigo-800/70'
+                          : 'self-end bg-white/15'
+                      }`}
+                    >
+                      <p className="whitespace-pre-wrap break-words font-medium">{message.text}</p>
+                      <span className="mt-1 block text-[10px] opacity-75">
+                        {new Date(message.at).toLocaleTimeString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    handleSendProctorReply();
+                  }}
+                  className="flex gap-2 border-t border-white/10 px-3 py-2"
+                >
+                  <input
+                    value={proctorReplyText}
+                    onChange={(event) => setProctorReplyText(event.target.value)}
+                    placeholder="Reply to invigilator..."
+                    aria-label="Reply to invigilator"
+                    maxLength={500}
+                    className="min-w-0 flex-1 rounded-md border-0 bg-white/10 px-3 py-1.5 text-sm text-white placeholder-white/60 outline-none"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!proctorReplyText.trim()}
+                    className="shrink-0 rounded-md bg-white px-3 py-1.5 text-sm font-semibold text-indigo-700 disabled:opacity-50"
+                  >
+                    Send
+                  </button>
+                </form>
+              </>
+            )}
           </div>
         </div>
       )}
